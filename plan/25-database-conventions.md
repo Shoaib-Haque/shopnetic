@@ -1,0 +1,225 @@
+# 25 — Database Conventions (Schema Evolution, Deletion, Transactions)
+
+Status: DRAFT
+Related: `07-data-model.md`, `CODING-RULES.md` §M/§N/§Q, `02-architecture.md`, `17-infrastructure-devops.md` §6
+
+`07` lists *what* the tables are. This file is *how we change and operate them
+without losing data*. Prisma + PostgreSQL, one schema per bounded context.
+
+---
+
+## Part 1 — Schema evolution (migrations)
+
+### 1.1 Expand / contract, always
+
+Every change that removes or narrows something is split across **at least two
+releases**:
+
+| Phase | Release | Action |
+|-------|---------|--------|
+| **Expand** | R1 | Add the new structure — nullable column, new table, new nullable FK, new index (`CONCURRENTLY`). Deploy. Old code still works. |
+| **Migrate** | R1→R2 | Backfill job populates new structure from old. Idempotent, batched, resumable. Dual-write from app code if needed. |
+| **Switch** | R2 | Code reads/writes the new structure. Old structure now unused but still present. Deploy. Verify. |
+| **Contract** | R3 (days/weeks later) | Drop the old column/table/constraint. Deploy. |
+
+Rollback from any phase is safe because the previous phase's structure still
+exists.
+
+### 1.2 Operations that are BANNED in a single migration on a live table
+
+- `DROP COLUMN` / `DROP TABLE` that current code still references.
+- `ALTER COLUMN ... TYPE` in place (rewrites + locks). → add new column, backfill,
+  switch, drop.
+- `RENAME COLUMN` / `RENAME TABLE`. → add-copy-switch-drop (a rename is invisible
+  to the not-yet-deployed old pods and breaks them).
+- `ADD COLUMN ... NOT NULL` with no `DEFAULT` on a non-empty table. → add nullable
+  (or with a safe default), backfill, then `SET NOT NULL` in a later migration
+  after a `NOT VALID` + `VALIDATE CONSTRAINT` check.
+- `ADD CONSTRAINT ... UNIQUE` / `FOREIGN KEY` without `NOT VALID` then
+  `VALIDATE CONSTRAINT` (validate scans + locks).
+- `CREATE INDEX` (non-concurrent) on a large table.
+- Any `UPDATE`/`DELETE` touching many rows inside the migration transaction.
+
+### 1.3 Migration mechanics
+
+- Prisma Migrate, **forward-only**, one logical change per migration, reviewed
+  SQL (`prisma migrate diff` output inspected — don't trust the ORM blindly).
+- Run as a **pre-deploy Kubernetes Job**, not on app boot. App pods wait for it.
+- **Rehearse** every migration on a clone of prod-sized data; record the measured
+  lock/latency in the PR. Statement/lock timeouts set so a bad migration aborts
+  instead of freezing the DB.
+- Additive index creation: `CREATE INDEX CONCURRENTLY` (cannot run in a txn — its
+  own migration).
+- Each migration PR states: expand or contract phase, backfill plan, rollback
+  plan, rehearsal numbers, which release does the contract.
+
+### 1.4 Backfills
+
+- A **job** in `apps/workers`, never inline SQL in the migration.
+- Chunked (e.g. 1–5k rows), rate-limited, `WHERE` on an indexed cursor,
+  idempotent (safe to re-run), progress + ETA logged, resumable after a crash.
+- Emits a completion event; the "switch" release is gated on backfill done +
+  verified (row counts / checksums match).
+
+### 1.5 Naming & style conventions
+
+- `snake_case` tables and columns; plural table names (`order_lines`).
+- PK: `id uuid` default **uuidv7** (time-sortable, index-friendly).
+- Timestamps: `created_at timestamptz not null default now()`,
+  `updated_at timestamptz not null` (trigger or ORM-managed).
+- Soft delete: `deleted_at timestamptz null` (see Part 2).
+- Money: `amount_minor bigint` + `currency char(3)`. Never `float`/`numeric` math
+  in app code for money; integer minor units end to end.
+- Enums: Postgres `enum` for stable small sets; `text` + `CHECK` when values
+  churn; never store display labels (those are i18n keys, `24`).
+- FKs: explicit name, explicit `ON DELETE` behavior (Part 2). No implicit cascade.
+- Every foreign key column is indexed.
+- JSONB for genuinely flexible/sparse data (product spec, address snapshot,
+  localized fields) — not as an escape hatch for things that should be columns.
+- One `outbox` table per schema (event publishing, `02` §4).
+- Partition high-growth tables from the start: `order_events`, `ledger_entry`,
+  `audit_event`, `tracking_event`, `interaction_event` — by month/range.
+
+### 1.6 Read models & denormalization
+
+- Cross-context data is **copied** via events into a local read-model table
+  (only the fields needed), never a cross-schema FK/join (`02` §5).
+- PDP / search / listing denormalized documents are read models — rebuildable,
+  not sources of truth. Rebuild jobs + drift-repair jobs exist for each.
+
+---
+
+## Part 2 — Deletion
+
+### 2.1 Policy per entity
+
+| Entity | Delete mode | Notes |
+|--------|-------------|-------|
+| `account` (buyer/seller/staff) | **Soft** + anonymize on erasure request | Never hard-deleted while orders/disputes/ledger reference it; PII scrubbed, row kept |
+| `address`, `payment_method` | Soft | Referenced by historical orders via *snapshot*, so the live row can go |
+| `product`, `variant` | Soft (`archived`/`deleted_at`) | Order lines hold snapshots; PDP can 410/redirect (`10` §5) |
+| `offer`, `stock` | Soft | Removing a listing ≠ deleting sales history |
+| `shop` | Soft | Offboarding saga (`05` §8) archives; keep for statements/retention |
+| `category`, `brand` | Soft + reparent/relink flow | Never orphan products silently; admin must reassign or `SET NULL` |
+| `option_type`, `option_value` | Soft, additive-only in practice (`26`) | Cannot remove a value that variants use |
+| `review`, `message`, `thread` | Soft (redact for T&S) | Moderation may redact content but keep the record |
+| `cart`, `cart_item`, `saved_item` | **Hard** (or TTL sweep) | No historical value; guest carts expire |
+| `stock_reservation` | Hard on release/expiry | Transient |
+| `notification` (in-app) | Hard after retention window | |
+| `order`, `sub_order`, `order_line`, `invoice` | **Never** | Anonymize referenced PII only |
+| `ledger_entry`, `journal`, `payment_*`, `payout*` | **Never** | Financial record; append-only |
+| `audit_event` | **Never** | Immutable, retention-bound |
+| media blobs (object storage) | Soft-ref then GC job | Delete the DB row (soft), a later job removes the S3 object once nothing references it |
+
+### 2.2 Soft-delete mechanics
+
+- `deleted_at timestamptz null`. A Prisma **client extension / global middleware**
+  adds `deleted_at IS NULL` to every default query; explicit `withDeleted()` for
+  admin/restore/audit views.
+- **Partial unique indexes**: `UNIQUE (shop_id, slug) WHERE deleted_at IS NULL` —
+  so a soft-deleted row doesn't block re-creating the same slug, and restore is
+  possible.
+- Soft delete is a normal `UPDATE` → fires `updated_at`, writes an `outbox`
+  event (`X.soft_deleted`) so other contexts react.
+- **Restore** is supported for anything soft-deleted (set `deleted_at = null`,
+  emit `X.restored`). Design features assuming restore can happen.
+
+### 2.3 FK behavior matrix (decide per relation, document in `07`)
+
+| Relationship kind | Behavior | Example |
+|-------------------|----------|---------|
+| Child is meaningless without parent, same context, no history value | App-level **cascade soft-delete** via the owning service (loop or event), **not** DB `CASCADE` | `product` soft-deleted → its `variant`, `offer`, `product_media` soft-deleted by Catalog/Inventory |
+| Child should survive without parent | `ON DELETE SET NULL` + app handles the "no parent" UI | `product.brand_id` when a brand is removed → product keeps going, brand shows as "—" |
+| Parent must not be deletable while children exist | `ON DELETE RESTRICT` / `NO ACTION` (default for financial/historical) | Can't delete a `seller` row while `payout` rows exist |
+| Cross-context reference (by id only) | No DB FK at all; reconcile via events; keep a snapshot if history matters | `order_line.offer_id` — Orders never joins Inventory's tables |
+
+**`ON DELETE CASCADE` in the database is banned** for anything that crosses a
+context boundary or touches money, orders, or audit. Cascades hide blast radius
+and make "one bad delete" catastrophic.
+
+### 2.4 Deletion chains — write them before building the delete button (`CODING-RULES.md` §N4)
+
+For each actor × target, the PR documents the full chain. Examples:
+
+- **Seller deletes an offer**: soft-delete `offer` + its `stock`, `offer_media`
+  → emit `offer.deleted` → Search removes it from the index / recomputes buy-box
+  → Cart service flags carts containing it (`29`) → open sub-orders are
+  unaffected (snapshots) → nothing financial changes.
+- **Admin soft-deletes a product** (policy violation): soft-delete `product` +
+  cascade to `variant`/`offer`/`media` → `product.archived` event → PDP returns
+  410 + shows alternatives (`10` §5) → Search drop → carts/wishlists flagged →
+  existing orders untouched.
+- **Admin removes a category**: **blocked** unless products are reassigned;
+  provide a "move children to category X" step; then soft-delete; emit
+  `category.deleted` → nav/menu cache purge, breadcrumb fallback, search facet
+  config update.
+- **Buyer requests account deletion** with open orders: `account` → `anonymized`
+  (name/email/phone/addresses scrubbed, replaced with tombstone values), auth
+  disabled, sessions revoked; `order`/`ledger` rows **retained** with the
+  anonymized reference; reviews either anonymized ("A verified buyer") or
+  redacted per policy; propagate erasure to subprocessors (`16` §7).
+- **Brand removed / merged**: `SET NULL` or relink products to the surviving
+  brand via a merge tool + alias (`26`); never leave products pointing at a
+  deleted brand id.
+
+### 2.5 Deletes are privileged mutations
+
+Authorized (`authorize()`), audited (`audit_event` with before-state + reason —
+reason **required** for hard/GDPR deletes), rate-limited, and — for bulk — an
+async job with a per-row result report (`CODING-RULES.md` §N5).
+
+---
+
+## Part 3 — Transactions & atomic writes
+
+### 3.1 One service, multiple tables → one DB transaction
+
+Any create/update flow that writes 2+ tables in the **same** database is wrapped
+in a single `prisma.$transaction`. Partial success is a defect. If seller
+onboarding writes `seller` + `shop` + `shop_policy` + `agreement_acceptance` and
+the policy insert fails, **nothing** persists and the API returns one error.
+
+### 3.2 Keep transactions short and side-effect-free (`CODING-RULES.md` §Q3)
+
+Inside a transaction: only DB reads/writes. **No** HTTP calls, no queue publish,
+no email, no cache write, no file upload. External effects happen *after* commit,
+driven by the `outbox` row written *inside* the transaction. A slow third party
+must never hold a row lock.
+
+### 3.3 Cross-service → saga, not distributed transaction
+
+When the write spans contexts/databases (checkout, refund, seller offboarding),
+use the **outbox + orchestrated saga** with an explicit compensation per step
+(`02` §4, `12` §3). No 2-phase commit, no cross-DB locks.
+
+### 3.4 Concurrency for money & stock
+
+- Stock decrement: atomic conditional update
+  `UPDATE stock SET on_hand = on_hand - :q WHERE offer_id = :id AND on_hand - reserved >= :q`
+  — one statement, no read-modify-write race, cannot oversell.
+- Coupon redemption limits: `SELECT … FOR UPDATE` on the coupon row **or** a
+  unique partial index on `coupon_redemption` that the insert must satisfy.
+- Ledger writes: the whole journal (all balanced entries) in one transaction;
+  a `CHECK`/trigger or app assertion that debits = credits before commit.
+- Where correctness needs it, use `SERIALIZABLE` and retry on
+  40001 serialization failures (bounded retries, jittered). Document the choice
+  in the PR.
+
+### 3.5 Idempotency (`08` §6)
+
+Any externally-triggered write that could be retried (checkout confirm, webhook,
+refund, admin bulk action) carries an idempotency key; the handler records
+`(key, route, actor) → result` and replays the stored result on a repeat.
+
+### 3.6 Connection & pool hygiene
+
+- PgBouncer (transaction pooling) in front of Postgres; per-service pool caps so
+  one service can't exhaust connections.
+- Long-running reports/exports run against a **read replica**, never the primary,
+  never inside a transaction with app writes.
+- No transaction spans a user "think time" (don't open a txn on form load and
+  commit on submit).
+
+## Changelog
+
+- 2026-08-31 — Initial draft.
