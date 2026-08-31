@@ -1,0 +1,238 @@
+# 07 — Data Model
+
+Status: DRAFT
+Related: `02-architecture.md`, `12-cart-checkout-orders.md`, `13-payments-and-payouts.md`
+
+## Principles
+
+1. **One Postgres schema per bounded context.** No cross-schema FKs. Cross-context
+   links are `*_id` columns + events for consistency.
+2. **Immutability where money or history matters.** Orders, ledger entries,
+   invoices, audit logs are append-only; corrections are new rows.
+3. **Snapshots over live joins for orders.** An order line stores the title,
+   price, seller, tax, and attributes *as they were at purchase*.
+4. **Soft-delete** (`deleted_at`) for user-facing entities; hard-delete only via
+   retention jobs / GDPR erasure.
+5. **Every table**: `id` (uuid v7 for time-sortable), `created_at`, `updated_at`;
+   money as integer minor units + `currency`; enums as Postgres enums or check
+   constraints; `version`/`updated_at` for optimistic locking on editable rows.
+6. **Outbox table per schema** for reliable event publishing.
+
+## Context: Identity & Access (`identity`)
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `account` | email (citext, unique), password_hash (argon2id), status, email_verified_at, phone, mfa_secret | One per human login. |
+| `oauth_identity` | account_id, provider, provider_uid | Optional social login. |
+| `session` | account_id, refresh_token_hash, family_id, user_agent, ip, expires_at, revoked_at | Refresh-token rotation family. |
+| `role` | name, description, is_system | `BUYER/SELLER/SERVICE_ADMIN/ADMIN/SUPER_ADMIN` + custom staff roles. |
+| `permission` | key (`resource:verb`), description | Seeded from `@shopnetic/auth`. |
+| `role_permission` | role_id, permission_id | Bundle. |
+| `grant` | account_id, role_id, scope_type (`self/seller/global`), scope_id | An account's effective authority. |
+| `staff_invite` | email, role_id, invited_by, token_hash, accepted_at, expires_at | Invite-only staff plane. |
+| `audit_event` | actor_id, action, target_type, target_id, before, after, reason, ip, correlation_id, created_at | Append-only, partitioned by month. |
+
+## Context: Seller (`seller`)
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `seller` | account_id, legal_name, type, country, status (`draft/in_review/approved/suspended/offboarding/closed`), commission_override_bps, reserve_bps | |
+| `shop` | seller_id, slug (unique), display_name, logo_url, banner_url, description, categories[], vacation_until | Public storefront. |
+| `shop_policy` | shop_id, kind (`shipping/returns/cancellation/warranty`), body, version, effective_at | Versioned; feeds checkout & disputes. |
+| `kyc_document` | seller_id, kind, file_key, status, reviewed_by, reject_reason | |
+| `payout_account` | seller_id, provider_ref, last4, verification_status, verified_at | No raw bank numbers; provider tokenized. |
+| `agreement_acceptance` | seller_id, terms_version, accepted_at, ip | |
+| `seller_health` | seller_id, on_time_ship_pct, cancel_rate, return_rate, dispute_rate, rating_avg, score, standing | Rebuilt by jobs from events. |
+
+## Context: Catalog (`catalog`)
+
+> Full modeling + all corner cases: **`26-catalog-options-variants-brands.md`**.
+> User-facing names/descriptions/labels are **localized fields** (`24` §5) —
+> shown below as `*_i18n`.
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `category` | parent_id, name_i18n, slug, path (ltree), position, is_active, brand_requirement (`required/optional/none`), deleted_at | Tree; `path` for fast subtree queries. |
+| `option_type` | code, name_i18n, data_type (`enum/text/number/bool/swatch`), has_swatch | Global, reusable axis of choice (Color, Size, Storage, Carrier…). |
+| `option_value` | option_type_id, code, label_i18n, swatch_hex, swatch_image_key, position, status (`active/deprecated`) | Allowed value; deprecate, never hard-delete if used. |
+| `value_set` / `value_set_item` | name / (value_set_id, option_value_id, position) | Managed value lists (e.g. "Apparel sizes"). |
+| `category_option` | category_id, option_type_id, applicability (`required/optional/not_applicable`), is_variant_axis, value_source (`predefined/open/hybrid`), value_set_id, price_impact, position | Admin config: which options apply to a category and how. `is_variant_axis=false` ⇒ it's an attribute (spec/facet), not a buyable choice. |
+| `attribute` / `attribute_value` | code, name_i18n, data_type, unit / (attribute_id, value, position) | Non-variant facts (Fabric, Impedance, Origin). |
+| `brand` | name, slug, display_name_i18n, logo_key, status (`pending/active/rejected`), merged_into_brand_id, deleted_at | Optional per product (see `category.brand_requirement`). |
+| `brand_alias` | brand_id, alias | Dedupe / merge ("JBL" = "jbl" = "JBL Audio"). |
+| `brand_request` | seller_id, proposed_name, proposed_logo_key, evidence (jsonb), status, reviewed_by, reject_reason, resulting_brand_id | Seller-proposed unlisted brand → admin moderation. |
+| `product` | category_id, brand_id (nullable), title_i18n, description_i18n, slug, status (`draft/pending/active/archived`), base_price_minor (nullable), currency, spec (jsonb), proposed_by_seller_id, deleted_at | Shared catalog concept across sellers. |
+| `product_option` | product_id, option_type_id, position, required_value_id (nullable) | Which option types THIS product uses + order. `required_value_id` set for the "single value / One Size" case (UI skips the picker). |
+| `product_option_value` | product_id, option_type_id, option_value_id, position | The subset of values this product offers on each axis. |
+| `variant` (SKU) | product_id, sku_code, gtin, weight_g, dims (jsonb), combo_signature (unique per product), status, position, deleted_at | One concrete combination; **created lazily** only for combos a seller offers. `combo_signature` = ordered concat of (option_type:option_value) — prevents dup combos. |
+| `variant_option_value` | variant_id, option_type_id, option_value_id — PK (variant_id, option_type_id) | The set of these rows **is** the variant's combination (0..n axes, no schema change). |
+| `media_asset` | owner_type (`product/offer`), owner_id, kind (`image/video`), file_key, poster_key, width, height, duration_s, blurhash, alt_i18n, position, status | `product`-owned = shared/curated; `offer`-owned = seller's own shots. |
+| `media_option_tag` | media_asset_id, option_type_id, option_value_id | 0..n. Tags an asset to option value(s) (e.g. Color=White) so the gallery swaps per selected variant (`26` §5). Untagged = default/all. |
+| `product_edit_request` | product_id or new, seller_id, kind (`new_product/edit/new_variant/shared_media`), payload (jsonb), status | Moderation queue for seller-proposed catalog data. |
+| `product_related` | product_id, related_product_id, kind (`also_viewed/also_bought/fbt/related/more_from_seller`), score, rank, computed_at | Precomputed by jobs (`27` §7); served straight to the PDP. |
+
+Price resolution for (seller, variant):
+`offer.sale_price ?? offer.price ?? (product.base_price + variant delta)`.
+**Price and stock are per `offer` (per seller), options/variants are per
+`product` (shared).**
+
+## Context: Inventory & Offers (`inventory`)
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `offer` | seller_id, variant_id, price_minor, sale_price_minor, sale_starts/ends, compare_at_minor, condition, handling_days, status, min_qty, max_qty, deleted_at | A seller's sellable instance of a variant. Unique (seller_id, variant_id) where not deleted. |
+| `offer_media` | see `media_asset` with `owner_type='offer'` | Seller-specific images/videos for their listing. |
+| `warehouse` | seller_id, name, address (jsonb) | |
+| `stock` | offer_id, warehouse_id, on_hand, reserved, safety_stock, backorder, restock_eta | Available = on_hand − reserved (invariant ≥ 0). Per offer = per seller per variant. |
+| `stock_reservation` | offer_id, cart_id/order_id, qty, expires_at, state (`held/committed/released`) | TTL holds during checkout. |
+| `stock_ledger` | offer_id, delta, reason, ref_type, ref_id | Auditable stock movements. |
+| `buybox` | variant_id, winning_offer_id, computed_at | Cached buy-box result (`11` §7). |
+
+## Context: Cart (`cart`)
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `cart` | account_id (nullable), anon_id (nullable), currency, status (`active/ordered/abandoned`) | One active per owner. |
+| `cart_item` | cart_id, offer_id, variant_id, seller_id, qty, added_price_minor, added_qty, snapshot (jsonb), added_at | Baseline snapshot to detect drift (`29`). |
+| `saved_item` | account_id, offer_id, added_price_minor, added_at | Save-for-later / wishlist; feeds back-in-stock / price-drop (`29`, `27`). |
+| `cart_item_alert` | cart_id, cart_item_id/saved_item_id, change_type, old_value (jsonb), new_value (jsonb), severity (`info/action_required/blocking`), first_shown_at, acknowledged_at, resolved_at, superseded_by_id | One-time "your cart changed" notices (`29`). |
+
+## Context: Pricing & Promotions (`promo`)
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `coupon` | code (unique), owner_type (`platform/seller`), owner_id, kind (`percent/flat/free_ship`), value, currency, min_spend, max_discount, starts/ends, usage_limit, per_user_limit, status | |
+| `coupon_eligibility` | coupon_id, include/exclude, target_type (`category/product/seller/collection`), target_id | |
+| `coupon_redemption` | coupon_id, account_id, order_id, amount, created_at | Enforces limits; idempotent. |
+| `campaign` | name, funding_split_bps, budget, spent, schedule, status | Platform campaigns sellers opt into. |
+| `campaign_participation` | campaign_id, seller_id, offer_id, discount_bps, accepted_at | |
+| `price_rule` | scope, condition, action, priority | Automatic (non-code) discounts. |
+
+## Context: Checkout / Orders (`orders`)
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `order` | buyer_account_id, currency, status, placed_at, totals (items/discount/shipping/tax/grand), billing_address (jsonb snapshot), idempotency_key (unique) | Parent; rollup of sub-orders. |
+| `sub_order` | order_id, seller_id, status (`pending/confirmed/packed/shipped/delivered/cancelled/returned/refunded`), shipping_address (jsonb snapshot), shipping_method, handling_deadline, totals | **Unit of fulfilment & settlement.** |
+| `order_line` | sub_order_id, offer_id, variant_id, product_snapshot (jsonb: title/attrs/image), unit_price, qty, discount_alloc, tax_alloc, seller_id | Immutable snapshot. |
+| `order_event` | order_id/sub_order_id, type, payload, actor, created_at | Status timeline. |
+| `shipment` | sub_order_id, carrier, tracking_no, status, shipped_at, delivered_at, line_qtys (jsonb) | Supports partial shipments. |
+| `return_request` | sub_order_id, lines (jsonb), reason, status, rma_no, resolution (`refund/replace/deny`), photos[] | |
+| `cancellation` | sub_order_id or line, initiated_by, reason, refund_amount | |
+| `checkout_session` | cart snapshot, quotes (shipping/tax), reservations[], state, expires_at | Drives the checkout saga. |
+
+## Context: Payments & Ledger (`payments`)
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `payment_intent` | order_id, amount, currency, provider, provider_ref, status, method_summary, idempotency_key | One per checkout attempt. |
+| `payment_transaction` | payment_intent_id, kind (`authorize/capture/refund/chargeback`), amount, provider_ref, status | |
+| `ledger_account` | owner_type (`platform/seller/buyer/gateway/escrow`), owner_id, currency | Double-entry accounts. |
+| `ledger_entry` | journal_id, ledger_account_id, direction (`debit/credit`), amount, currency | Sum per journal = 0. Append-only. |
+| `journal` | reason (`sale/commission/refund/payout/adjustment/chargeback`), ref_type, ref_id, created_at | Groups balanced entries. |
+| `refund` | sub_order_id, amount, reason, to (`original/store_credit`), status, ledger_journal_id | |
+| `store_credit` | account_id, balance, currency | Backed by ledger. |
+
+## Context: Payouts (`payouts`)
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `seller_balance` | seller_id, currency, available, pending, on_hold | Derived from ledger; cached. |
+| `payout_run` | scheduled_for, status, total, seller_count | Batch. |
+| `payout` | payout_run_id, seller_id, amount, currency, provider_ref, status, statement_key | |
+| `payout_hold` | seller_id, amount/all, reason, created_by, released_at | Disputes / risk. |
+| `reserve` | seller_id, rate_bps, rolling_days, current_amount | New/high-risk sellers. |
+
+## Context: Shipping (`shipping`)
+
+| Entity | Key fields |
+|--------|-----------|
+| `carrier` | name, api_config_ref, active |
+| `zone` | name, countries[], regions[] |
+| `rate_table` | seller_id/global, zone_id, method, price, free_over, per_kg |
+| `serviceability` | seller_id, zone_id, allowed |
+| `tracking_event` | shipment_id, status, description, occurred_at, raw |
+
+## Context: Reviews & Ratings (`reviews`)
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `product_review` | product_id, author_account_id, order_line_id, rating, title, body, media[], status (`pending/published/rejected/redacted`), verified_purchase | One per (author, product). |
+| `review_vote` | review_id, account_id, helpful (bool) | |
+| `seller_rating` | seller_id, author_account_id, sub_order_id, rating, comment, status | Separate from product review. |
+| `review_report` | review_id, reporter, reason → Trust & Safety | |
+
+## Context: Messaging (`messaging`)
+
+| Entity | Key fields |
+|--------|-----------|
+| `thread` | kind (`presale/order/dispute`), buyer_id, seller_id, order_id?, status, locked_by |
+| `message` | thread_id, sender_id, body, attachments[], created_at, read_by (jsonb) |
+| `thread_participant` | thread_id, account_id, role (`buyer/seller/staff`) |
+
+## Context: Notifications (`notifications`)
+
+| Entity | Key fields |
+|--------|-----------|
+| `notification` | account_id, type, title, body, data (jsonb), channels[], read_at |
+| `notification_pref` | account_id, event_key, channel, enabled |
+| `template` | key, channel, locale, subject, body (mjml/handlebars), version |
+| `delivery` | notification_id, channel, provider_ref, status, attempts, error |
+
+## Context: Trust & Safety (`trust`)
+
+| Entity | Key fields |
+|--------|-----------|
+| `report` | reporter_id, target_type, target_id, category, description, status, assignee_id, resolution |
+| `moderation_case` | subject_type, subject_id, queue, state, sla_due_at, actions[] |
+| `dispute` | sub_order_id, opened_by, type, state, evidence[], recommendation, decision, refund_id |
+| `enforcement_action` | target_type, target_id, action (`warn/hide/restrict/suspend/ban`), reason, expires_at, created_by |
+
+## Context: Analytics & Events (`analytics`)
+
+> Feeds both merchandising/ranking (`27`) and business reporting (`30`). Raw
+> events are append-only; summary tables are rebuildable rollups.
+
+| Entity | Key fields | Notes |
+|--------|-----------|-------|
+| `interaction_event` | ts, session_id, account_id (nullable), anon_id (nullable), type (`impression/product_click/pdp_view/add_to_cart/search/filter_apply/media_open/dwell/…`), surface, slot, product_ids (jsonb), context (jsonb) | Client-emitted, sampled/batched. Partitioned by day. Bot/self-traffic filtered before rollups. |
+| `ranking_feature_product` | product_id / variant_id, scope, window, impressions, clicks, ctr, pdp_views, atc, orders, units, gmv_minor, sales_velocity_decayed, rating_avg, rating_count, return_rate, computed_at | Read model for scoring (`27` §5). |
+| `user_affinity` | account_id, dimension (`category/brand/price_band`), key, score, updated_at | Consented personalization signals only. |
+| `report_daily_product` / `_seller` / `_category` / `_campaign` / `_finance` | date, dimension ids, additive measures (units, gmv_minor, net_minor, refunds_minor, commission_minor, fees_minor, …) | Pre-aggregated, read-replica-served, partitioned by date. Reprocessable. Money ties to ledger (`30` §4). |
+| `report_export_job` | requested_by, scope, params (jsonb), status, file_key, created_at | Async CSV/XLSX exports. |
+
+## Key invariants (enforce in DB + code)
+
+- `available_stock = on_hand − reserved ≥ 0` always.
+- Every `journal` has balanced debits/credits; no orphan `ledger_entry`.
+- A `sub_order` belongs to exactly one seller; every `order_line` in it shares that seller.
+- One `active` cart per (account_id) and per (anon_id).
+- One published `product_review` per (author_account_id, product_id).
+- `coupon_redemption` count per (coupon, account) ≤ `per_user_limit`; total ≤ `usage_limit` (enforced with row locks / unique partial indexes).
+- Order totals = Σ sub_order totals = Σ line (price·qty − discount + tax) + shipping.
+- Refund total for a sub_order ≤ amount captured for it.
+- A `variant` has exactly one `variant_option_value` per `option_type` in its product's `product_option` set; `combo_signature` unique per product (no duplicate combinations).
+- Every `option_value` referenced by a live `variant` is `active` (deprecate, never delete in use).
+- `product.brand_id` may be null only where `category.brand_requirement <> 'required'`.
+- Closed-period `report_daily_finance` sums reconcile to the ledger for that period (`30` §4).
+
+## Indexing / performance notes (first pass)
+
+- `offer(variant_id, status)` and `stock(offer_id)` — hot on PDP & checkout.
+- `variant(product_id)`, `variant_option_value(variant_id)`, `variant_option_value(option_type_id, option_value_id)` — variant resolution + facets.
+- `product_option(product_id)`, `product_option_value(product_id, option_type_id)`.
+- `media_option_tag(media_asset_id)`, `media_asset(owner_type, owner_id, position)` — gallery resolution.
+- `brand_alias(alias)` for brand typeahead/dedupe.
+- `category.path` GiST (ltree) for subtree browse.
+- `order(buyer_account_id, placed_at desc)`, `sub_order(seller_id, status, handling_deadline)`.
+- `coupon(code)` unique; partial index `where status='active'`.
+- `cart_item_alert(cart_id) where acknowledged_at is null` — returning-buyer notice lookup.
+- `product_related(product_id, kind, rank)` — PDP sections.
+- `interaction_event`, `audit_event`, `ledger_entry`, `tracking_event` — monthly/range partitions.
+- `report_daily_*` partitioned by date, PK (date, dimension ids).
+- Soft-deletable tables: partial unique indexes `… WHERE deleted_at IS NULL` (`25` §2.2).
+- Full-text/search + facets live in the search engine, not Postgres (`11`).
+
+## Changelog
+
+- _(date)_ — Initial draft.
