@@ -46,7 +46,7 @@ export class IdentityController {
     @Req() req: Request,
     @Body(registerBody) body: RegisterRequest,
   ): Promise<{ data: RegisterResponse; meta: { requestId: string } }> {
-    const result = await this.identity.register(body);
+    const result = await this.identity.register(body, requestMeta(req));
     return ok(req, result);
   }
 
@@ -57,7 +57,7 @@ export class IdentityController {
     @Req() req: Request,
     @Body(verifyBody) body: VerifyEmailRequest,
   ): Promise<{ data: { verified: true }; meta: { requestId: string } }> {
-    const result = await this.identity.verifyEmail(body);
+    const result = await this.identity.verifyEmail(body, requestMeta(req));
     return ok(req, result);
   }
 
@@ -130,10 +130,23 @@ function readRefreshCookie(req: Request): string | undefined {
   return jar?.[REFRESH_COOKIE];
 }
 
-function sessionContext(req: Request): { ip?: string; userAgent?: string } {
+function sessionContext(req: Request): {
+  ip?: string;
+  userAgent?: string;
+  correlationId?: string;
+} {
   const ua = req.headers['user-agent'];
   return {
     ...(req.ip ? { ip: req.ip } : {}),
     ...(typeof ua === 'string' ? { userAgent: ua } : {}),
+    ...requestMeta(req),
+  };
+}
+
+function requestMeta(req: Request): { ip?: string; correlationId?: string } {
+  const cid = req.headers['x-correlation-id'];
+  return {
+    ...(req.ip ? { ip: req.ip } : {}),
+    ...(typeof cid === 'string' ? { correlationId: cid } : {}),
   };
 }

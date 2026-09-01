@@ -3,11 +3,13 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { API_ENV, type ApiEnv } from '../config/env.js';
 import { AppError } from '../common/app-error.js';
+import { AuditService } from '../audit/audit.service.js';
 import { generateOpaqueToken, hashOpaqueToken } from './opaque-token.js';
 
 export interface SessionContext {
   ip?: string;
   userAgent?: string;
+  correlationId?: string;
 }
 
 export interface IssuedSession {
@@ -29,6 +31,7 @@ export class SessionService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(API_ENV) private readonly env: ApiEnv,
+    private readonly audit: AuditService,
   ) {}
 
   async create(accountId: string, ctx: SessionContext): Promise<IssuedSession> {
@@ -60,6 +63,15 @@ export class SessionService {
     if (session.revokedAt || session.replacedById) {
       await this.revokeFamily(session.familyId, 'reuse_detected');
       this.logger.warn(`refresh token reuse detected — revoked family ${session.familyId}`);
+      await this.audit.record({
+        actorAccountId: session.accountId,
+        action: 'identity.token_reuse_detected',
+        targetType: 'session_family',
+        targetId: session.familyId,
+        reason: 'rotated-out refresh token was presented again',
+        ...(ctx.ip !== undefined ? { ip: ctx.ip } : {}),
+        ...(ctx.correlationId !== undefined ? { correlationId: ctx.correlationId } : {}),
+      });
       throw new AppError('SESSION_REVOKED', 401, {
         detail: 'refresh token reuse detected; all sessions in this family revoked',
       });

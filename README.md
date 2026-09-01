@@ -3,11 +3,12 @@
 Multi-vendor e-commerce marketplace. **Monorepo** (pnpm workspaces + Turborepo).
 
 > Phase 0. Landed: the monorepo skeleton; the **Identity & Access** data layer
-> (`identity` schema, migrations, seed); and **buyer auth** — register → verify
-> email (Mailpit) → login, with JWT access tokens + refresh-token rotation and
-> reuse detection, served through the storefront as a BFF. Next: RBAC
-> enforcement, then the staff plane. See `plan/` and
-> `plan/21-roadmap-milestones.md`.
+> (`identity` schema, migrations, seed); **buyer auth** (register → verify email
+> via Mailpit → login, JWT + refresh rotation + reuse detection, served through
+> the storefront as a BFF); and **RBAC enforcement** (`can()` + `AuthGuard` /
+> `@RequirePermission` / `PermissionGuard`, per-request `Actor`, append-only
+> audit trail). Next: the staff plane (invite-only, `aud=admin`, TOTP). See
+> `plan/` and `plan/21-roadmap-milestones.md`.
 
 ## Layout
 

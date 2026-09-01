@@ -52,6 +52,7 @@ authorization helper — never `if (actor.role === 'ADMIN')`.
 - Must register/login to checkout.
 
 ### Buyer (`BUYER`, scope `self`)
+- A `BUYER` grant (scope `self`) is created at registration.
 - Everything Guest can do, plus:
 - Manage profile, addresses, payment methods, notification preferences.
 - Cart persistence, wishlist, checkout, place orders.
@@ -145,16 +146,26 @@ Platform owner. Everything, plus the things Admins can't:
 
 ## 5. Auth mechanics (details in `16-security.md`)
 
-- Access JWT: 10–15 min TTL, carries `sub`, `grants` (role+scope), `sid` (session
-  id). Signed with rotating asymmetric keys (JWKS).
+- Access JWT: 10–15 min TTL, carries `sub` + `sid` (session id). Signed RS256
+  via JWKS. **Note:** grants/permissions are *not* in the token — the API
+  rebuilds the `Actor` from the DB per request (see below), so the token stays
+  small and stale grants are impossible.
 - Refresh token: opaque, httpOnly cookie, 30-day sliding, **rotated on every
   use**, family-revoked on reuse detection.
 - Staff sessions: shorter refresh (8h), mandatory TOTP 2FA, step-up re-auth for
   sensitive actions.
-- Permission changes take effect on next access-token refresh (≤15 min) or
-  immediately via a session-invalidation event on the Realtime channel.
-- **Every privileged mutation emits an `audit.action` event**: who, what, target,
-  before/after, IP, correlation ID. Immutable store.
+- Enforcement (implemented, `apps/api/src/auth/`): `AuthGuard` verifies the
+  bearer token (signature + `iss` + `aud`) and loads the `Actor`
+  (`ActorService`: grants → roles → permissions). `@RequirePermission(perm,
+  scopeResolver?)` + `PermissionGuard` call `can()` from `@shopnetic/auth`;
+  deny → `403`, object-ownership fail → `404`.
+- Because the `Actor` is per-request, a **permission change is effective
+  immediately** (no waiting for the next refresh; the Realtime
+  session-invalidation event is only needed to kill in-flight *sessions*).
+- **Every privileged mutation emits an `audit_event`** (`AuditService`): who,
+  what, target, before/after, IP, correlation ID. Append-only. Auth events
+  (`identity.account_registered` / `email_verified` / `session_created` /
+  `login_failed` / `token_reuse_detected`) are recorded too.
 
 ## 6. Edge cases to handle
 

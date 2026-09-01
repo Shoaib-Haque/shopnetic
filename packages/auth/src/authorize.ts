@@ -1,21 +1,61 @@
-import type { Actor, Permission } from './permissions.js';
+import type { Actor, Grant, Permission } from './permissions.js';
 
 export interface ResourceContext {
-  /** Seller that owns the resource — checked against a `seller`-scoped grant. */
+  /** Seller that owns the resource — matched against a `seller`-scoped grant. */
   sellerId?: string;
-  /** Account that owns the resource — checked against a `self`-scoped grant. */
+  /** Account that owns the resource — matched against a `self`-scoped grant. */
   ownerAccountId?: string;
 }
 
 /**
- * The single authorization entry point. Business code calls this — never
- * `if (actor.role === 'ADMIN')` (plan/03 §2, plan/CODING-RULES.md §I1).
+ * The single authorization entry point (plan/03 §2, plan/CODING-RULES.md §I1).
+ * **Deny by default.** True only when the actor holds a grant that (a) carries
+ * `permission` and (b) whose scope covers `ctx`:
  *
- * STUB: the real deny-by-default check (permission match + object-level scope
- * match) lands with the Nest guard + `@RequirePermission` decorator in the
- * "RBAC enforcement" Phase 0 slice. The `Actor` / `Grant` shape it will consume
- * is already fixed in `./permissions.ts`.
+ *  - `global` — covers everything (staff).
+ *  - `self`   — covers an action with no specific object, or one whose
+ *               `ownerAccountId` is the actor.
+ *  - `seller` — covers an action whose `sellerId` equals the grant's `scopeId`.
+ *
+ * Business code still does its own object-level ownership check where the
+ * resource isn't identified purely by these ids.
  */
-export function can(_actor: Actor, _permission: Permission, _ctx: ResourceContext = {}): boolean {
-  throw new Error('NOT_IMPLEMENTED: authorize.can — RBAC enforcement slice (plan/03).');
+export function can(actor: Actor, permission: Permission, ctx: ResourceContext = {}): boolean {
+  return actor.grants.some((grant) => grantAllows(grant, permission, ctx, actor.accountId));
+}
+
+/** Throwing form for guards/services. */
+export function assertCan(actor: Actor, permission: Permission, ctx: ResourceContext = {}): void {
+  if (!can(actor, permission, ctx)) {
+    throw new AuthorizationError(permission);
+  }
+}
+
+export class AuthorizationError extends Error {
+  readonly permission: Permission;
+  constructor(permission: Permission) {
+    super(`not authorized: ${permission}`);
+    this.name = 'AuthorizationError';
+    this.permission = permission;
+  }
+}
+
+function grantAllows(
+  grant: Grant,
+  permission: Permission,
+  ctx: ResourceContext,
+  actorAccountId: string,
+): boolean {
+  if (!grant.permissions.includes(permission)) return false;
+
+  switch (grant.scopeType) {
+    case 'global':
+      return true;
+    case 'self':
+      return ctx.ownerAccountId === undefined || ctx.ownerAccountId === actorAccountId;
+    case 'seller':
+      return ctx.sellerId !== undefined && ctx.sellerId === grant.scopeId;
+    default:
+      return false;
+  }
 }
