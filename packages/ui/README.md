@@ -9,5 +9,6 @@ Consumed as **source** — each Next app lists `@shopnetic/ui` in
 `transpilePackages`. Import `@shopnetic/ui/tokens.css` once in the app's global
 stylesheet, and spread `@shopnetic/ui/tailwind` into the app's Tailwind preset.
 
-STUB — `Button` + `Spinner` only. `Link`, `Input`, `Dialog`, `Table`,
-`EmptyState`, etc. land as features need them.
+Components so far: `Button`, `Spinner`, `Input` (with `invalid`), `Field`
+(label + control + hint/error). `Link`, `Dialog`, `Table`, `EmptyState`, etc.
+land as features need them.

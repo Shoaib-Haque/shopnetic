@@ -122,6 +122,19 @@ export class IdentityService {
     if (presentedToken) await this.sessions.revokeByToken(presentedToken, 'logout');
   }
 
+  /** Resolve the signed-in user from a refresh cookie without rotating anything. */
+  async readSession(presentedToken: string | undefined): Promise<SessionUser> {
+    if (!presentedToken) {
+      throw new AppError('UNAUTHENTICATED', 401, { detail: 'no session cookie' });
+    }
+    const { accountId } = await this.sessions.resolveActive(presentedToken);
+    const account = await this.prisma.account.findUnique({ where: { id: accountId } });
+    if (!account || account.status !== 'active') {
+      throw new AppError('UNAUTHENTICATED', 401, { detail: 'account unavailable' });
+    }
+    return toSessionUser(account);
+  }
+
   private verifyUrl(token: string): string {
     return `${this.env.APP_WEB_URL}/en/verify-email?token=${encodeURIComponent(token)}`;
   }

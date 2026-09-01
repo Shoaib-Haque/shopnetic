@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import {
   loginRequestSchema,
@@ -10,6 +10,7 @@ import {
   type RegisterRequest,
   type RegisterResponse,
   type ResendVerificationRequest,
+  type SessionUser,
   type VerifyEmailRequest,
 } from '@shopnetic/contracts';
 import { API_ENV, type ApiEnv } from '../config/env.js';
@@ -111,6 +112,16 @@ export class IdentityController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<void> {
     await this.identity.logout(readRefreshCookie(req));
     clearRefreshCookie(res, this.isProd);
+  }
+
+  /** Current user for a valid refresh cookie. No rotation. 401 if not signed in. */
+  @Get('session')
+  @HttpCode(200)
+  async session(
+    @Req() req: Request,
+  ): Promise<{ data: { user: SessionUser }; meta: { requestId: string } }> {
+    const user = await this.identity.readSession(readRefreshCookie(req));
+    return ok(req, { user });
   }
 }
 

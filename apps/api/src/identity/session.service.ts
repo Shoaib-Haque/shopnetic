@@ -105,6 +105,17 @@ export class SessionService {
     };
   }
 
+  /** Read-only: returns the account for a still-valid refresh token, else throws. */
+  async resolveActive(presentedToken: string): Promise<{ accountId: string }> {
+    const session = await this.prisma.session.findUnique({
+      where: { refreshTokenHash: hashOpaqueToken(presentedToken) },
+    });
+    if (!session || session.revokedAt || session.replacedById || session.expiresAt <= new Date()) {
+      throw new AppError('UNAUTHENTICATED', 401, { detail: 'no active session' });
+    }
+    return { accountId: session.accountId };
+  }
+
   async revokeByToken(
     presentedToken: string,
     reason: 'logout' | 'password_change' | 'admin' = 'logout',
