@@ -1,7 +1,11 @@
 name: shopnetic
 
-# Local service dependencies. Nothing in the skeleton uses these yet — they're
-# here so the DB/cache/mail wiring in the next Phase 0 PR has somewhere to point.
+# Local service dependencies for development.
+#
+# Host ports are deliberately non-default (5433 / 6380) so this stack can run
+# alongside another Postgres/Redis already bound to 5432/6379 on the same
+# machine. Container-internal ports are unchanged. `.env.example` files point at
+# these host ports.
 
 services:
   postgres:
@@ -12,7 +16,7 @@ services:
       POSTGRES_PASSWORD: shopnetic
       POSTGRES_DB: shopnetic
     ports:
-      - '5432:5432'
+      - '5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -26,7 +30,7 @@ services:
     restart: unless-stopped
     command: ['redis-server', '--save', '', '--appendonly', 'no']
     ports:
-      - '6379:6379'
+      - '6380:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s

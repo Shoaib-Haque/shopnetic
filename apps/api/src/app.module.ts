@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from './config/config.module.js';
+import { PrismaModule } from './prisma/prisma.module.js';
 import { HealthController } from './health/health.controller.js';
 
 /**
@@ -7,7 +9,7 @@ import { HealthController } from './health/health.controller.js';
  * plan/23-project-structure.md.
  */
 @Module({
-  imports: [],
+  imports: [ConfigModule, PrismaModule],
   controllers: [HealthController],
   providers: [],
 })

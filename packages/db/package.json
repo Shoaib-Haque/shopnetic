@@ -12,15 +12,34 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "generate": "prisma generate",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "echo \"@shopnetic/db: no tests\" && exit 0",
-    "clean": "rm -rf dist *.tsbuildinfo src/generated"
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset"
+  },
+  "prisma": {
+    "seed": "tsx --env-file-if-exists=.env prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.3.1",
+    "@shopnetic/auth": "workspace:*",
+    "@shopnetic/observability": "workspace:*",
+    "zod": "3.24.1"
   },
   "devDependencies": {
     "@shopnetic/config": "workspace:*",
+    "@types/node": "22.10.5",
     "eslint": "9.18.0",
-    "typescript": "5.7.3"
+    "prisma": "6.3.1",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3",
+    "vitest": "2.1.8"
   }
 }

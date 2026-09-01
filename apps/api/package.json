@@ -6,9 +6,9 @@
   "description": "Shopnetic backend — NestJS modular monolith",
   "main": "dist/main.js",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/main.js",
+    "start": "node --env-file-if-exists=.env dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "echo \"@shopnetic/api: no tests yet\" && exit 0",
@@ -19,9 +19,11 @@
     "@nestjs/core": "12.0.1",
     "@nestjs/platform-express": "12.0.1",
     "@shopnetic/contracts": "workspace:*",
+    "@shopnetic/db": "workspace:*",
     "@shopnetic/observability": "workspace:*",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.1"
+    "rxjs": "7.8.1",
+    "zod": "3.24.1"
   },
   "devDependencies": {
     "@shopnetic/config": "workspace:*",

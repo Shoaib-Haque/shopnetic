@@ -17,8 +17,8 @@ out/
 .env.*
 !.env.example
 
-# prisma
-packages/db/src/generated/
+# prisma — client is generated into node_modules/.prisma (default location)
+**/.prisma/
 
 # logs
 *.log

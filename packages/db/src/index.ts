@@ -1,19 +1,38 @@
+export { getPrismaClient, PrismaClient } from './client.js';
+export type { Prisma } from './client.js';
+export { loadDbEnv, type DbEnv } from './env.js';
+
 /**
- * Prisma client singleton — see plan/01-tech-stack.md and
- * plan/25-database-conventions.md §3.6.
- *
- * STUB: the schema has no models yet, so there is no generated client. Once
- * Identity & Access models land we will:
- *   1. add models to prisma/schema.prisma (grouped by context, `@@schema(...)`)
- *   2. `pnpm --filter @shopnetic/db exec prisma generate`
- *   3. replace this with the real singleton (global-cached in dev, pooled via
- *      PgBouncer in prod).
+ * Model + enum types generated from `prisma/schema.prisma`. Consumers import
+ * these from here rather than depending on `@prisma/client` directly.
  */
+export type {
+  Account,
+  Credential,
+  EmailVerification,
+  Session,
+  TotpSecret,
+  RecoveryCode,
+  Role,
+  Permission,
+  RolePermission,
+  Grant,
+  StaffInvite,
+  AuditEvent,
+  Outbox,
+} from '@prisma/client';
 
-export function getPrismaClient(): never {
-  throw new Error(
-    'NOT_IMPLEMENTED: @shopnetic/db — add Prisma models + `prisma generate` first (Phase 0).',
-  );
-}
+export {
+  AccountPlane,
+  AccountStatus,
+  EmailVerificationPurpose,
+  SessionRevokedReason,
+  GrantScopeType,
+} from '@prisma/client';
 
-export const DATABASE_SCHEMAS = ['identity', 'catalog', 'inventory', 'orders', 'payments'] as const;
+/**
+ * Postgres schemas currently created by migrations. Grows one entry per bounded
+ * context as its models land (plan/07). Planned full set: identity, catalog,
+ * inventory, orders, payments, seller, cart, promo, …
+ */
+export const DATABASE_SCHEMAS = ['identity'] as const;
