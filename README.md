@@ -2,9 +2,11 @@
 
 Multi-vendor e-commerce marketplace. **Monorepo** (pnpm workspaces + Turborepo).
 
-> This repo is currently a **skeleton** — structure + tooling only. No database,
-> no domain features yet. See `plan/` for the full design and `plan/21-roadmap-milestones.md`
-> for what comes next.
+> Early Phase 0. The monorepo skeleton is in place and the **Identity & Access**
+> data layer has landed: `identity` Postgres schema, migrations, seed
+> (permissions + system roles + bootstrap Super Admin). No auth endpoints or
+> storefront auth UI yet. See `plan/` for the design and
+> `plan/21-roadmap-milestones.md` for what comes next.
 
 ## Layout
 
@@ -21,11 +23,11 @@ packages/
   config/          shared tsconfig / eslint / prettier / tailwind preset
   ui/              shadcn-based component wrappers + design tokens
   contracts/       Zod schemas + shared API types (source of truth)
-  auth/            RBAC permission constants + authorize() (stub)
+  auth/            RBAC permission catalog + roles + password hashing (can() stub)
   events/          domain event name + payload constants (stub)
   observability/   structured logger + tracing bootstrap (stub)
   i18n/            locale config + Intl formatting helpers (stub)
-  db/              Prisma schema + client singleton (no models yet)
+  db/              Prisma schema (identity context) + client singleton + seed
 infra/
   docker/          docker-compose for local services
   terraform/       (deferred — local-first for now)
@@ -38,13 +40,29 @@ Full rationale: `plan/23-project-structure.md`.
 
 - Node `>=22` (`.nvmrc` → `22`)
 - pnpm `>=11` (`corepack enable` or `npm i -g pnpm`)
-- Docker + Docker Compose (for local Postgres/Redis when we wire the DB)
+- Docker + Docker Compose (local Postgres / Redis / Mailpit)
 
 ## Install
 
 ```bash
 pnpm install
 pnpm lefthook install   # git hooks (format, lint, commitlint)
+```
+
+## Local services + database
+
+Host ports are non-default (`5433` Postgres, `6380` Redis) so the stack can run
+next to another local Postgres/Redis.
+
+```bash
+docker compose -f infra/docker/docker-compose.yml up -d      # postgres, redis, mailpit
+
+cp packages/db/.env.example packages/db/.env                 # DATABASE_URL (+ optional bootstrap admin)
+pnpm --filter @shopnetic/db db:migrate                       # apply migrations
+pnpm --filter @shopnetic/db db:seed                          # permissions, system roles, role wiring
+
+cp apps/api/.env.example apps/api/.env
+pnpm --filter @shopnetic/api dev                             # http://localhost:4000/healthz
 ```
 
 ## Common commands (run from repo root)
@@ -60,14 +78,6 @@ pnpm format       # prettier --write
 
 Run one app: `pnpm --filter @shopnetic/storefront dev` (append `...` to include its
 workspace deps: `pnpm --filter @shopnetic/storefront... build`).
-
-## Local services
-
-```bash
-docker compose -f infra/docker/docker-compose.yml up -d   # postgres, redis, mailpit
-```
-
-Nothing depends on these yet in the skeleton.
 
 ## Per-app docs
 

@@ -5,7 +5,8 @@ build
 .turbo
 coverage
 pnpm-lock.yaml
-packages/db/src/generated
+**/.prisma
+packages/db/prisma/migrations
 **/next-env.d.ts
 
 # Hand-maintained design docs — kept at a fixed 80-col wrap, not Prettier's job.
