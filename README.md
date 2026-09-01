@@ -25,7 +25,7 @@ packages/
   config/          shared tsconfig / eslint / prettier / tailwind preset
   ui/              shadcn-based component wrappers + design tokens
   contracts/       Zod schemas + shared API types (source of truth)
-  auth/            RBAC permission catalog + roles + password hashing (can() stub)
+  auth/            RBAC — permission catalog, roles, can()/assertCan(), password hashing
   events/          domain event name + payload constants (stub)
   observability/   structured logger + tracing bootstrap (stub)
   i18n/            locale config + Intl formatting helpers (stub)
@@ -64,8 +64,21 @@ pnpm --filter @shopnetic/db db:migrate                       # apply migrations
 pnpm --filter @shopnetic/db db:seed                          # permissions, system roles, role wiring
 
 cp apps/api/.env.example apps/api/.env
-pnpm --filter @shopnetic/api dev                             # http://localhost:4000/healthz
+cp apps/storefront/.env.example apps/storefront/.env
+pnpm --filter @shopnetic/api dev                             # API  → http://localhost:4000/healthz
+pnpm --filter @shopnetic/storefront dev                      # web  → http://localhost:3000
 ```
+
+## Try it in the browser
+
+With the API + storefront running, open **http://localhost:3000** (→ `/en`):
+
+1. **Create account** → any email + password (≥ 8 chars).
+2. Open **http://localhost:8025** (Mailpit) → click the confirm link in the email.
+3. **Sign in** → the home strip shows "Signed in as …" + Sign out.
+
+`apps/storefront/README.md` has the full flow (unverified-login, resend, rate
+limits); `apps/api/README.md` has the raw `curl` recipe and the endpoint list.
 
 ## Common commands (run from repo root)
 
