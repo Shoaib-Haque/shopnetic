@@ -1,7 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
 import { ConfigModule } from './config/config.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { RedisModule } from './redis/redis.module.js';
+import { CryptoModule } from './crypto/crypto.module.js';
+import { IdentityModule } from './identity/identity.module.js';
 import { HealthController } from './health/health.controller.js';
+import { CorrelationMiddleware } from './common/correlation.middleware.js';
 
 /**
  * Root module. Bounded-context modules (identity, catalog, orders, …) are
@@ -9,8 +13,11 @@ import { HealthController } from './health/health.controller.js';
  * plan/23-project-structure.md.
  */
 @Module({
-  imports: [ConfigModule, PrismaModule],
+  imports: [ConfigModule, PrismaModule, RedisModule, CryptoModule, IdentityModule],
   controllers: [HealthController],
-  providers: [],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(CorrelationMiddleware).forRoutes('*');
+  }
+}

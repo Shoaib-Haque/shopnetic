@@ -4,9 +4,10 @@
  * (plan/24-i18n-localization.md §4). Never return a human sentence as the
  * primary error.
  *
- * STUB — extended as endpoints are built.
+ * Extended as endpoints are built. Keys are stable once shipped.
  */
 export const ErrorCode = {
+  // Generic / transport
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   UNAUTHENTICATED: 'UNAUTHENTICATED',
   FORBIDDEN: 'FORBIDDEN',
@@ -14,6 +15,16 @@ export const ErrorCode = {
   CONFLICT: 'CONFLICT',
   RATE_LIMITED: 'RATE_LIMITED',
   INTERNAL: 'INTERNAL',
+
+  // Auth / identity
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  EMAIL_NOT_VERIFIED: 'EMAIL_NOT_VERIFIED',
+  VERIFICATION_TOKEN_INVALID: 'VERIFICATION_TOKEN_INVALID',
+  VERIFICATION_TOKEN_EXPIRED: 'VERIFICATION_TOKEN_EXPIRED',
+  REFRESH_TOKEN_INVALID: 'REFRESH_TOKEN_INVALID',
+  SESSION_REVOKED: 'SESSION_REVOKED',
+  PASSWORD_BREACHED: 'PASSWORD_BREACHED',
+  ACCOUNT_LOCKED: 'ACCOUNT_LOCKED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
