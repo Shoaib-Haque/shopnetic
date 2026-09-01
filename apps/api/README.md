@@ -30,6 +30,7 @@ pnpm --filter @shopnetic/api start
 | POST   | `/identity/v1/auth/login`               | `{ email, password }` → sets `sn_rt` httpOnly cookie + access token; `403 EMAIL_NOT_VERIFIED` until verified |
 | POST   | `/identity/v1/auth/token/refresh`       | rotates the refresh cookie; reuse → `401` + family revoked                                                   |
 | POST   | `/identity/v1/auth/logout`              | revokes the session, clears the cookie, `204`                                                                |
+| GET    | `/identity/v1/auth/session`             | current user for a valid refresh cookie (no rotation); `401` if not signed in                                |
 
 Responses use the envelope from `@shopnetic/contracts` (`{ data, meta }` /
 `{ error }`, RFC-9457). Auth routes are per-IP rate limited (`X-RateLimit-*`,

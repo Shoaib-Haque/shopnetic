@@ -58,9 +58,17 @@ app/
   client generated from OpenAPI (`@shopnetic/contracts`).
 - **Client**: TanStack Query; query keys mirror resource URLs; optimistic updates
   for cart/wishlist; global error + auth-refresh interceptor.
-- **Auth on client**: access token in memory, refresh via httpOnly cookie +
-  silent refresh; 401 → refresh once → retry → else redirect to login preserving
-  `returnTo`.
+- **Auth BFF**: the browser only ever calls the storefront's own
+  `/api/auth/*` route handlers. Those call the identity API server-side and own a
+  storefront-scoped httpOnly `sn_rt` refresh cookie. As of the buyer-auth slice
+  the **access token never leaves the server** — sign-in state is resolved via
+  `GET /api/auth/session`. When the client needs to call a protected API
+  directly (later), the BFF attaches a freshly-minted access token per request
+  (or an in-memory token + silent refresh is introduced then). 401 → refresh
+  once → retry → else redirect to login preserving `returnTo`.
+- Per-viewer state on an otherwise static/ISR page (sign-in strip, cart badge)
+  is a **client island** that fetches after load — it never makes the page
+  dynamic.
 - No secrets or service URLs in client bundle; everything via BFF.
 
 ## 4. State management
