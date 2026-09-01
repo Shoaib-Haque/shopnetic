@@ -1,0 +1,10 @@
+{
+  "extends": "@shopnetic/config/tsconfig/react-lib.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "types": ["react", "react-dom"]
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.next
+.turbo
+coverage
+pnpm-lock.yaml
+packages/db/src/generated
+**/next-env.d.ts
+
+# Hand-maintained design docs — kept at a fixed 80-col wrap, not Prettier's job.
+plan/

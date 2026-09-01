@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Allow post-install build scripts only for tools that genuinely need them.
+allowBuilds:
+  esbuild: true
+  lefthook: true
+  "@parcel/watcher": false
+  "@swc/core": false

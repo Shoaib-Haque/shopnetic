@@ -1,0 +1,12 @@
+{
+  "common": {
+    "appName": "Shopnetic Admin",
+    "signIn": "Sign in",
+    "loginStub": "Staff login is stubbed. Identity & Access lands in Phase 0.",
+    "dashboard": "Dashboard",
+    "dashboardStub": "Back-office modules land from Phase 2 (plan/06, plan/21).",
+    "errorTitle": "Something went wrong",
+    "errorBody": "Please try again in a moment.",
+    "retry": "Try again"
+  }
+}

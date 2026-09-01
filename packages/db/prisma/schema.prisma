@@ -1,0 +1,23 @@
+// Shopnetic database schema.
+//
+// One Prisma schema, but models are grouped by bounded context and each context
+// owns its own PostgreSQL schema (`@@schema("identity")`, etc.) — see
+// plan/02-architecture.md §5 and plan/07-data-model.md. No cross-schema foreign
+// keys; cross-context links are id-only + events.
+//
+// Migration + evolution rules: plan/25-database-conventions.md (expand/contract,
+// soft-delete defaults, FK behaviour, transactions).
+//
+// STUB — no models yet. Identity & Access models land in the next Phase 0 PR.
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../src/generated/client"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["identity", "catalog", "inventory", "orders", "payments"]
+}

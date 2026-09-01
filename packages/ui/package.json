@@ -1,0 +1,37 @@
+{
+  "name": "@shopnetic/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./tailwind": "./src/tailwind-preset.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "echo \"@shopnetic/ui: no tests\" && exit 0",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "0.469.0",
+    "tailwind-merge": "2.6.0"
+  },
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@shopnetic/config": "workspace:*",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "eslint": "9.18.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.7.3"
+  }
+}

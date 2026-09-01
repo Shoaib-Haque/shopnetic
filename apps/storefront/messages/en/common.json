@@ -1,0 +1,13 @@
+{
+  "common": {
+    "appName": "Shopnetic",
+    "tagline": "A marketplace skeleton. Nothing to buy yet — the shop is still being built.",
+    "browse": "Browse products",
+    "loading": "Loading",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "That page doesn't exist (yet).",
+    "errorTitle": "Something went wrong",
+    "errorBody": "Please try again in a moment.",
+    "retry": "Try again"
+  }
+}
