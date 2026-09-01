@@ -22,6 +22,14 @@ export const ARGON2_PARAMS = {
   parallelism: ARGON2_OPTIONS.parallelism,
 } as const;
 
+/**
+ * A fixed, valid argon2id hash. Verify against this for a login attempt on an
+ * unknown account so response timing doesn't reveal whether the email exists
+ * (plan/16 §5). The plaintext is throwaway.
+ */
+export const DUMMY_PASSWORD_HASH =
+  '$argon2id$v=19$m=19456,t=2,p=1$Ra9d1ke2DlNvKtXmSLP5+Q$q/nSwxrwJ6+syK/niY6qIdBF6+qNOt99/TN14fjJdFk';
+
 export async function hashPassword(plain: string): Promise<string> {
   return hash(plain, ARGON2_OPTIONS);
 }

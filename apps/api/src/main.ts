@@ -1,15 +1,21 @@
 import 'reflect-metadata';
+import cookieParser from 'cookie-parser';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { createLogger } from '@shopnetic/observability';
 import { AppModule } from './app.module.js';
 import { loadApiEnv } from './config/env.js';
+import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 
 const log = createLogger({ service: 'api' });
 
 async function bootstrap(): Promise<void> {
   const env = loadApiEnv();
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  app.set('trust proxy', 1);
+  app.use(cookieParser());
+  app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
 
   await app.listen(env.PORT);

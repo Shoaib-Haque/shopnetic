@@ -4,11 +4,41 @@ import { z } from 'zod';
  * API process environment, parsed once at boot (plan/CODING-RULES.md §B4).
  * A missing/invalid var fails startup loudly instead of surfacing later.
  */
+const pemKey = z
+  .string()
+  .min(1)
+  .transform((s) => s.replace(/\\n/g, '\n'));
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().max(65535).default(4000),
-  DATABASE_URL: z.string().url().startsWith('postgres'),
   APP_VERSION: z.string().default('0.0.0'),
+
+  DATABASE_URL: z.string().url().startsWith('postgres'),
+  REDIS_URL: z.string().url().startsWith('redis').default('redis://localhost:6380'),
+
+  // Access-token signing (RS256). Omit both in dev for an ephemeral keypair.
+  JWT_ISSUER: z.string().url().default('https://shopnetic.local'),
+  JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().max(3600).default(900),
+  JWT_PRIVATE_KEY: pemKey.optional(),
+  JWT_PUBLIC_KEY: pemKey.optional(),
+
+  // Refresh sessions + email verification.
+  AUTH_REFRESH_TTL_DAYS: z.coerce.number().int().positive().max(400).default(30),
+  VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().max(168).default(24),
+
+  // Outbound email (Mailpit locally).
+  SMTP_URL: z.string().startsWith('smtp').default('smtp://localhost:1025'),
+  MAIL_FROM: z.string().default('Shopnetic <no-reply@shopnetic.local>'),
+
+  // Where verification/login links point.
+  APP_WEB_URL: z.string().url().default('http://localhost:3000'),
+
+  // Have I Been Pwned k-anonymity check on new passwords.
+  PASSWORD_BREACH_CHECK: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
