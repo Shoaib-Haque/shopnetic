@@ -31,10 +31,14 @@ pnpm --filter @shopnetic/api start
 | POST   | `/identity/v1/auth/token/refresh`       | rotates the refresh cookie; reuse → `401` + family revoked                                                   |
 | POST   | `/identity/v1/auth/logout`              | revokes the session, clears the cookie, `204`                                                                |
 | GET    | `/identity/v1/auth/session`             | current user for a valid refresh cookie (no rotation); `401` if not signed in                                |
+| GET    | `/identity/v1/me`                       | **Bearer** — the actor: plane, grants, flattened permissions                                                 |
+| GET    | `/identity/v1/audit-events`             | **Bearer** + `auditlog:read` — newest-first, cursor-paginated (`?cursor=&limit=`)                            |
 
 Responses use the envelope from `@shopnetic/contracts` (`{ data, meta }` /
 `{ error }`, RFC-9457). Auth routes are per-IP rate limited (`X-RateLimit-*`,
-`429` + `Retry-After`).
+`429` + `Retry-After`). Protected routes need `Authorization: Bearer <access-jwt>`;
+`AuthGuard` verifies it and `@RequirePermission` + `PermissionGuard` enforce
+permissions (`403` on denial). The `Actor` is rebuilt from the DB per request.
 
 ### Try it
 
@@ -56,14 +60,28 @@ src/
   common/    AppError + RFC-9457 exception filter, Zod body pipe, correlation-id
              middleware, Redis rate-limit guard/decorator, success envelope
   redis/     @Global RedisModule (ioredis)
-  crypto/    @Global CryptoModule — JwksService (RS256) + /.well-known/jwks.json
+  crypto/    @Global CryptoModule — JwksService (RS256 sign + verify) + /.well-known/jwks.json
+  auth/      @Global AuthModule — ActorService, AuthGuard, @RequirePermission +
+             PermissionGuard, @CurrentActor
+  audit/     @Global AuditModule — AuditService (append-only identity.audit_event)
   prisma/    PrismaService (extends the @shopnetic/db client) + @Global PrismaModule
-  identity/  IdentityModule — register/verify/login/refresh/logout, password,
-             sessions (refresh rotation + reuse detection), email verification,
-             transactional mail (Mailpit)
+  identity/  IdentityModule — register/verify/login/refresh/logout/session,
+             /me, /audit-events, password, sessions (rotation + reuse detection),
+             email verification, transactional mail (Mailpit)
   health/    health controller
   main.ts    parses env, wires cookie-parser + the global filter, boots Nest
 ```
+
+## Tests
+
+```bash
+pnpm --filter @shopnetic/api test              # unit (no DB) — runs in `turbo test`
+pnpm --filter @shopnetic/api test:integration  # *.integration.test.ts — needs DATABASE_URL
+```
+
+Integration specs run against a migrated + seeded Postgres (CI provides one; the
+`integration` job in `.github/workflows/ci.yml`). They create `itest-*` accounts
+and clean up after themselves.
 
 ## Env
 
@@ -74,6 +92,6 @@ ephemeral pair; prod: required), `AUTH_REFRESH_TTL_DAYS`, `VERIFICATION_TTL_HOUR
 
 ## Not yet
 
-DB-integration tests + a Postgres service in CI (unit tests only for now:
-JWT mint/verify, opaque-token hashing). RBAC guard + access-token verification.
-Outbox writes on register. Staff-plane auth.
+Outbox writes on register (event publishing). Staff-plane auth (separate login
+surface, `aud=admin`, TOTP). Auto-audit interceptor (audit is explicit calls for
+now). Short-lived `Actor` cache. Object-level `404`-masking helpers.

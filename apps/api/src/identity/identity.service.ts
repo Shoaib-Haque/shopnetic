@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ARGON2_PARAMS } from '@shopnetic/auth';
+import { ARGON2_PARAMS, Role } from '@shopnetic/auth';
 import type {
   LoginRequest,
   RegisterRequest,
@@ -11,6 +11,7 @@ import type { Account } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { API_ENV, type ApiEnv } from '../config/env.js';
 import { AppError } from '../common/app-error.js';
+import { AuditService } from '../audit/audit.service.js';
 import { PasswordService } from './password.service.js';
 import { VerificationService } from './verification.service.js';
 import { MailService } from './mail.service.js';
@@ -23,6 +24,19 @@ export interface LoginResult {
   session: IssuedSession;
 }
 
+/** Request metadata carried into audit rows. */
+export interface RequestMeta {
+  ip?: string;
+  correlationId?: string;
+}
+
+function auditMeta(meta: RequestMeta): { ip?: string; correlationId?: string } {
+  return {
+    ...(meta.ip !== undefined ? { ip: meta.ip } : {}),
+    ...(meta.correlationId !== undefined ? { correlationId: meta.correlationId } : {}),
+  };
+}
+
 @Injectable()
 export class IdentityService {
   constructor(
@@ -33,10 +47,14 @@ export class IdentityService {
     private readonly mail: MailService,
     private readonly sessions: SessionService,
     private readonly accessTokens: AccessTokenService,
+    private readonly audit: AuditService,
   ) {}
 
   /** Enumeration-safe: same response whether or not the email is already taken. */
-  async register(input: RegisterRequest): Promise<{ email: string; verificationRequired: true }> {
+  async register(
+    input: RegisterRequest,
+    meta: RequestMeta = {},
+  ): Promise<{ email: string; verificationRequired: true }> {
     await this.passwords.assertNotBreached(input.password);
 
     const existing = await this.prisma.account.findUnique({ where: { email: input.email } });
@@ -46,23 +64,44 @@ export class IdentityService {
     }
 
     const passwordHash = await this.passwords.hash(input.password);
+    const buyerRole = await this.prisma.role.findUniqueOrThrow({ where: { key: Role.BUYER } });
     const account = await this.prisma.account.create({
       data: {
         email: input.email,
         plane: 'marketplace',
         status: 'active',
         credential: { create: { passwordHash, hashAlgo: 'argon2id', params: ARGON2_PARAMS } },
+        grants: { create: { roleId: buyerRole.id, scopeType: 'self', scopeId: null } },
       },
     });
 
     // TODO(outbox): write identity.account_registered inside this write path.
+    await this.audit.record({
+      actorAccountId: account.id,
+      action: 'identity.account_registered',
+      targetType: 'account',
+      targetId: account.id,
+      after: { email: account.email, plane: account.plane },
+      ...auditMeta(meta),
+    });
+
     const token = await this.verification.issue(account.id);
     await this.mail.sendVerification(input.email, this.verifyUrl(token));
     return { email: input.email, verificationRequired: true };
   }
 
-  async verifyEmail(input: VerifyEmailRequest): Promise<{ verified: true }> {
-    await this.verification.consume(input.token);
+  async verifyEmail(
+    input: VerifyEmailRequest,
+    meta: RequestMeta = {},
+  ): Promise<{ verified: true }> {
+    const { accountId } = await this.verification.consume(input.token);
+    await this.audit.record({
+      actorAccountId: accountId,
+      action: 'identity.email_verified',
+      targetType: 'account',
+      targetId: accountId,
+      ...auditMeta(meta),
+    });
     return { verified: true };
   }
 
@@ -86,6 +125,14 @@ export class IdentityService {
       : await this.passwords.verifyDummy(input.password).then(() => false);
 
     if (!account || !account.credential || !passwordOk) {
+      await this.audit.record({
+        actorAccountId: account?.id ?? null,
+        action: 'identity.login_failed',
+        targetType: 'email',
+        targetId: input.email,
+        reason: account ? 'wrong password' : 'no such account',
+        ...auditMeta(ctx),
+      });
       throw new AppError('INVALID_CREDENTIALS', 401, { detail: 'email or password is wrong' });
     }
     if (account.status !== 'active') {
@@ -106,6 +153,13 @@ export class IdentityService {
 
     const session = await this.sessions.create(account.id, ctx);
     const tokens = await this.accessTokens.issue(account.id, session.sessionId);
+    await this.audit.record({
+      actorAccountId: account.id,
+      action: 'identity.session_created',
+      targetType: 'session',
+      targetId: session.sessionId,
+      ...auditMeta(ctx),
+    });
     return { tokens, user: toSessionUser(account), session };
   }
 

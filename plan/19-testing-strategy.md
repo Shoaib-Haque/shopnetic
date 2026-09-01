@@ -70,8 +70,12 @@ money/trust journeys. Every bug fixed gets a regression test.
   coupons, feature flags.
 - **Factories** (per entity) for building state in tests; no shared mutable
   fixtures across tests.
-- **Testcontainers** for integration — real engines, ephemeral, parallel-safe
-  (schema-per-worker or DB-per-worker).
+- **Integration specs** are named `*.integration.test.ts`, excluded from the
+  default `test` task (kept DB-free and fast), and run via `test:integration`
+  against a migrated + seeded Postgres. Locally that's the compose DB; in CI a
+  dedicated `integration` job provides a `postgres`/`redis` service (see
+  `.github/workflows/ci.yml`). They self-clean (`itest-*` rows). Testcontainers
+  + schema-per-worker isolation is the target once the suite grows.
 - **Fake providers**: test doubles for payment (programmable outcomes: success,
   decline, 3DS, timeout, webhook replay), shipping (tracking events on demand),
   email (Mailpit), search (real Meili container).

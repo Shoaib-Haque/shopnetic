@@ -38,8 +38,55 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Test
+      - name: Test (unit)
         run: pnpm test
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shopnetic
+          POSTGRES_PASSWORD: shopnetic
+          POSTGRES_DB: shopnetic
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U shopnetic"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://shopnetic:shopnetic@localhost:5432/shopnetic
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Migrate + seed
+        run: |
+          pnpm --filter @shopnetic/db exec prisma migrate deploy
+          pnpm --filter @shopnetic/db run db:seed
+
+      - name: Build (deps for integration specs)
+        run: pnpm build
+
+      - name: Test (integration)
+        run: pnpm --filter @shopnetic/api run test:integration
 
   commitlint:
     runs-on: ubuntu-latest

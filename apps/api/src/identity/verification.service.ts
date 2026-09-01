@@ -25,8 +25,8 @@ export class VerificationService {
     return token;
   }
 
-  /** Marks the account verified. Idempotent-ish: a second use of the same token fails. */
-  async consume(token: string): Promise<void> {
+  /** Marks the account verified; returns its id. A second use of the token fails. */
+  async consume(token: string): Promise<{ accountId: string }> {
     const row = await this.prisma.emailVerification.findUnique({
       where: { tokenHash: hashOpaqueToken(token) },
     });
@@ -51,5 +51,6 @@ export class VerificationService {
         data: { emailVerifiedAt: new Date() },
       }),
     ]);
+    return { accountId: row.accountId };
   }
 }

@@ -1,12 +1,15 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
   SignJWT,
+  createLocalJWKSet,
   exportJWK,
   generateKeyPair,
   importPKCS8,
   importSPKI,
+  jwtVerify,
   calculateJwkThumbprint,
   type JWK,
+  type JWTVerifyGetKey,
   type KeyLike,
 } from 'jose';
 import { API_ENV, type ApiEnv } from '../config/env.js';
@@ -33,6 +36,7 @@ export class JwksService implements OnModuleInit {
   private privateKey!: KeyLike;
   private publicJwk!: JWK;
   private kid!: string;
+  private keySet!: JWTVerifyGetKey;
 
   constructor(@Inject(API_ENV) private readonly env: ApiEnv) {}
 
@@ -53,10 +57,32 @@ export class JwksService implements OnModuleInit {
 
     this.kid = await calculateJwkThumbprint(this.publicJwk);
     this.publicJwk = { ...this.publicJwk, kid: this.kid, alg: ALG, use: 'sig' };
+    this.keySet = createLocalJWKSet({ keys: [this.publicJwk] });
   }
 
   jwks(): { keys: JWK[] } {
     return { keys: [this.publicJwk] };
+  }
+
+  /**
+   * Verify an access token against the local public key. Throws (any jose
+   * error) on a bad signature, wrong issuer/audience, or expiry.
+   */
+  async verifyAccessToken(
+    token: string,
+    audience: string,
+  ): Promise<{ accountId: string; sessionId: string }> {
+    const { payload } = await jwtVerify(token, this.keySet, {
+      issuer: this.env.JWT_ISSUER,
+      audience,
+      algorithms: [ALG],
+    });
+    const accountId = payload.sub;
+    const sessionId = payload['sid'];
+    if (typeof accountId !== 'string' || typeof sessionId !== 'string') {
+      throw new Error('access token missing sub/sid');
+    }
+    return { accountId, sessionId };
   }
 
   async signAccessToken(input: SignInput): Promise<string> {

@@ -3,6 +3,8 @@ import { ConfigModule } from './config/config.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { CryptoModule } from './crypto/crypto.module.js';
+import { AuthModule } from './auth/auth.module.js';
+import { AuditModule } from './audit/audit.module.js';
 import { IdentityModule } from './identity/identity.module.js';
 import { HealthController } from './health/health.controller.js';
 import { CorrelationMiddleware } from './common/correlation.middleware.js';
@@ -13,7 +15,15 @@ import { CorrelationMiddleware } from './common/correlation.middleware.js';
  * plan/23-project-structure.md.
  */
 @Module({
-  imports: [ConfigModule, PrismaModule, RedisModule, CryptoModule, IdentityModule],
+  imports: [
+    ConfigModule,
+    PrismaModule,
+    RedisModule,
+    CryptoModule,
+    AuthModule,
+    AuditModule,
+    IdentityModule,
+  ],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {

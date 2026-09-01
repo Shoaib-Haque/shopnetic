@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdentityController } from './identity.controller.js';
+import { MeController } from './me.controller.js';
+import { AuditController } from './audit.controller.js';
 import { IdentityService } from './identity.service.js';
 import { PasswordService } from './password.service.js';
 import { VerificationService } from './verification.service.js';
@@ -9,10 +11,10 @@ import { AccessTokenService } from './access-token.service.js';
 
 /**
  * Identity & Access context (plan/03). Depends on the global Prisma, Redis,
- * Config and Crypto modules.
+ * Config, Crypto, Auth and Audit modules.
  */
 @Module({
-  controllers: [IdentityController],
+  controllers: [IdentityController, MeController, AuditController],
   providers: [
     IdentityService,
     PasswordService,
