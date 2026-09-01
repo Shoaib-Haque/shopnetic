@@ -79,6 +79,13 @@ export type Role = (typeof Role)[keyof typeof Role];
 
 export const SYSTEM_ROLES: readonly Role[] = Object.values(Role);
 
+/** Roles that only exist on the staff plane (invite-only, `aud=admin`). */
+export const STAFF_ROLES: readonly Role[] = [Role.SERVICE_ADMIN, Role.ADMIN, Role.SUPER_ADMIN];
+
+export function isStaffRole(role: string): role is Role {
+  return (STAFF_ROLES as readonly string[]).includes(role);
+}
+
 const P = Permission;
 
 const BUYER_PERMS: Permission[] = [

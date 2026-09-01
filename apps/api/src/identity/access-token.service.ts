@@ -3,8 +3,9 @@ import type { AuthTokens } from '@shopnetic/contracts';
 import { API_ENV, type ApiEnv } from '../config/env.js';
 import { JwksService } from '../crypto/jwks.service.js';
 
-/** Audience claim for storefront (marketplace-plane) access tokens (plan/16 §2). */
+/** Audience claims per plane (plan/16 §2). A token is only valid for its plane. */
 export const STOREFRONT_AUDIENCE = 'storefront';
+export const STAFF_AUDIENCE = 'admin';
 
 @Injectable()
 export class AccessTokenService {
@@ -13,12 +14,16 @@ export class AccessTokenService {
     private readonly jwks: JwksService,
   ) {}
 
-  async issue(accountId: string, sessionId: string): Promise<AuthTokens> {
+  async issue(
+    accountId: string,
+    sessionId: string,
+    audience: string = STOREFRONT_AUDIENCE,
+  ): Promise<AuthTokens> {
     const expiresIn = this.env.JWT_ACCESS_TTL_SECONDS;
     const accessToken = await this.jwks.signAccessToken({
       subject: accountId,
       sessionId,
-      audience: STOREFRONT_AUDIENCE,
+      audience,
       expiresInSeconds: expiresIn,
     });
     return { accessToken, tokenType: 'Bearer', expiresIn };

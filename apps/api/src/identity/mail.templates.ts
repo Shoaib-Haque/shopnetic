@@ -10,13 +10,14 @@ export type MailLocale = 'en';
 
 interface MailTemplate {
   subject: string;
-  /** `{link}` is substituted. */
+  /** `{link}` and `{role}` are substituted. */
   text: string;
 }
 
 interface IdentityMailCatalog {
   verifyEmail: MailTemplate;
   alreadyRegistered: MailTemplate;
+  staffInvite: MailTemplate;
 }
 
 const CATALOG: Record<MailLocale, IdentityMailCatalog> = {
@@ -43,6 +44,18 @@ const CATALOG: Record<MailLocale, IdentityMailCatalog> = {
         'If you have forgotten your password, use the "Forgot password" link on that page.',
       ].join('\n'),
     },
+    staffInvite: {
+      subject: 'You have been invited to the Shopnetic back office',
+      text: [
+        'You have been invited to join the Shopnetic staff as {role}.',
+        '',
+        'Set your password and finish setup here (you will also configure an',
+        'authenticator app for two-factor sign-in):',
+        '{link}',
+        '',
+        'This invite expires in 7 days. If you were not expecting it, ignore this email.',
+      ].join('\n'),
+    },
   },
 };
 
@@ -52,10 +65,13 @@ export function identityMail(locale: MailLocale = 'en'): IdentityMailCatalog {
 
 export function renderTemplate(
   tpl: MailTemplate,
-  vars: { link: string },
+  vars: { link: string; role?: string },
 ): {
   subject: string;
   text: string;
 } {
-  return { subject: tpl.subject, text: tpl.text.replaceAll('{link}', vars.link) };
+  return {
+    subject: tpl.subject,
+    text: tpl.text.replaceAll('{link}', vars.link).replaceAll('{role}', vars.role ?? ''),
+  };
 }

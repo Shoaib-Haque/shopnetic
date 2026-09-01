@@ -25,14 +25,21 @@ const envSchema = z.object({
 
   // Refresh sessions + email verification.
   AUTH_REFRESH_TTL_DAYS: z.coerce.number().int().positive().max(400).default(30),
+  AUTH_STAFF_REFRESH_TTL_HOURS: z.coerce.number().int().positive().max(72).default(8),
   VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().max(168).default(24),
+
+  // Staff TOTP: AES-256-GCM key for the stored seed (32 bytes, base64). Dev may omit.
+  TOTP_ENC_KEY: z.string().optional(),
+  TOTP_ISSUER: z.string().default('Shopnetic'),
 
   // Outbound email (Mailpit locally).
   SMTP_URL: z.string().startsWith('smtp').default('smtp://localhost:1025'),
   MAIL_FROM: z.string().default('Shopnetic <no-reply@shopnetic.local>'),
 
-  // Where verification/login links point.
+  // Where email links point.
   APP_WEB_URL: z.string().url().default('http://localhost:3000'),
+  ADMIN_WEB_URL: z.string().url().default('http://localhost:3002'),
+  ADMIN_BASE_PATH: z.string().default('x7f2k9t3m1qp'),
 
   // Have I Been Pwned k-anonymity check on new passwords.
   PASSWORD_BREACH_CHECK: z

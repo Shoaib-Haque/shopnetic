@@ -17,6 +17,16 @@ A single human may hold a Buyer account *and* a Seller account (same login,
 multiple role grants) — but a staff account is always a distinct account. Never
 let a storefront token authenticate against the admin API.
 
+**Implemented (staff plane):** endpoints under `/identity/v1/staff/*`; access
+tokens carry `aud=admin`; `StaffAuthGuard` requires `aud=admin` **and**
+`plane=staff` (a storefront token gets `401` there, and an admin token gets
+`401` on storefront routes). Onboarding is invite-only: `POST
+/identity/v1/staff/invites` (needs `staff:manage` — Super Admin only) emails a
+link to `${ADMIN_WEB_URL}/…/accept-invite?token=`; `POST
+…/staff/invites/accept` `{ token, password }` creates the `staff` account +
+credential + global grant (email counts as verified — the link proved control).
+The invited address must not already exist as any account.
+
 ## 2. Model: roles + permissions + scopes
 
 We use **RBAC with fine-grained permissions**, not hard-coded role checks in
@@ -152,8 +162,16 @@ Platform owner. Everything, plus the things Admins can't:
   small and stale grants are impossible.
 - Refresh token: opaque, httpOnly cookie, 30-day sliding, **rotated on every
   use**, family-revoked on reuse detection.
-- Staff sessions: shorter refresh (8h), mandatory TOTP 2FA, step-up re-auth for
-  sensitive actions.
+- Staff sessions: shorter refresh (8h, `sn_srt` cookie), **mandatory TOTP**
+  (implemented), step-up re-auth for sensitive actions (deferred until the first
+  such action exists). Staff login is two-legged: `POST …/staff/auth/login`
+  `{ email, password }` → if not yet enrolled, returns a TOTP enrolment
+  challenge (secret + `otpauth://` URI); `POST …/staff/auth/totp/confirm`
+  `{ email, password, code }` confirms the authenticator and returns one-time
+  **recovery codes** + a session. Thereafter `login` requires `code` (a TOTP
+  code or a single-use recovery code); missing → `401 MFA_REQUIRED`, wrong →
+  `401 MFA_INVALID`. TOTP seeds are AES-256-GCM encrypted at rest
+  (`TOTP_ENC_KEY`).
 - Enforcement (implemented, `apps/api/src/auth/`): `AuthGuard` verifies the
   bearer token (signature + `iss` + `aud`) and loads the `Actor`
   (`ActorService`: grants → roles → permissions). `@RequirePermission(perm,
@@ -165,7 +183,10 @@ Platform owner. Everything, plus the things Admins can't:
 - **Every privileged mutation emits an `audit_event`** (`AuditService`): who,
   what, target, before/after, IP, correlation ID. Append-only. Auth events
   (`identity.account_registered` / `email_verified` / `session_created` /
-  `login_failed` / `token_reuse_detected`) are recorded too.
+  `login_failed` / `token_reuse_detected`, and on the staff side
+  `staff_invited` / `staff_invite_accepted` / `totp_enrolled` /
+  `staff_session_created` / `staff_login_failed` / `staff_mfa_failed`) are
+  recorded too.
 
 ## 6. Edge cases to handle
 
