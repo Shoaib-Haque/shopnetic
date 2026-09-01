@@ -364,8 +364,23 @@ the ADR/ticket. Delete commented-out code. No `TODO` without a ticket ref.
 (`feat(checkout): ...`). Small, reviewable commits. Green CI before merge.
 
 ### J5. Keep the plan current
-If the change alters a decision or contract documented in `plan/`, update that
-file (and add an ADR for a real decision) in the same PR.
+If the change alters, contradicts, or completes anything documented in `plan/` —
+a decision, an API contract, a data-model table, a flow, a status tag, or an
+open question in `22-risks-and-open-questions.md` — update that file in the
+**same PR**. A real decision also gets an ADR (`plan/adr/`). A PR whose code and
+`plan/` disagree does not merge: `plan/` is the spec, and code that silently
+drifts from it is a bug even when it runs. If the plan is wrong, fix the plan in
+the PR — don't leave the contradiction for the next person to discover.
+
+### J6. Keep READMEs and `.env.example` true
+Every app and package has a `README.md` (what it is, how to run it, its env
+vars, its layout) and every app has a `.env.example`. When a change affects any
+of that — a new or renamed env var, a new script, a moved/renamed directory, a
+new or changed endpoint, a different port, a new dependency a dev must install —
+update the affected `README.md` **and** `.env.example` (every var documented
+with a one-line comment; no real secrets) in the same PR. The root `README.md`
+covers repo-wide setup and commands; keep it in step too. Stale setup docs cost
+every new contributor an hour and erode trust in all the docs.
 
 ---
 
@@ -576,7 +591,8 @@ partial failure produces one effect, not two (`08` §6).
 - [ ] Tests at the right layer; invariants covered; regression test for any bug fixed.
 - [ ] Cache reads have invalidation; contract changes versioned.
 - [ ] Admin visibility/moderation + reporting hooks added if user-facing.
-- [ ] plan/ docs + ADR updated if a decision or contract changed.
+- [ ] plan/ docs + ADR updated if a decision, contract, data model, flow, or open question changed (J5).
+- [ ] README(s) + .env.example updated for any new/renamed env var, script, moved path, changed port, or new dep (J6).
 - [ ] CI green.
 ```
 
@@ -589,3 +605,6 @@ partial failure produces one effect, not two (`08` §6).
 - 2026-08-31 — Added L (i18n/copy), M (migrations), N (deletion), O (logging),
   P (validation/verification), Q (transactions), from the founder's second rule
   set. Checklist extended.
+- 2026-09-01 — Strengthened J5 (plan/ kept in lockstep with code, not just for
+  "decisions") and added J6 (README.md + .env.example must track code changes).
+  Checklist updated.
