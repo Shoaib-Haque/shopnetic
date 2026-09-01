@@ -1,0 +1,30 @@
+{
+  "name": "shopnetic",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Shopnetic — multi-vendor e-commerce marketplace (monorepo)",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,css}\"",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "prepare": "lefthook install || true"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "19.6.1",
+    "@commitlint/config-conventional": "19.6.0",
+    "lefthook": "1.10.10",
+    "prettier": "3.4.2",
+    "turbo": "2.10.12",
+    "typescript": "5.7.3"
+  }
+}

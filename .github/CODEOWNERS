@@ -1,0 +1,11 @@
+# Default owner for everything
+*                       @sukantocodelab
+
+# Shared packages need extra care (a bad change ripples everywhere)
+/packages/contracts/    @sukantocodelab
+/packages/auth/         @sukantocodelab
+/packages/ui/           @sukantocodelab
+/packages/db/           @sukantocodelab
+
+# Plan + rules
+/plan/                  @sukantocodelab

@@ -1,0 +1,33 @@
+/**
+ * Design tokens as CSS variables — one source for storefront, seller, admin.
+ * Redefine under a dark scope; components only ever reference var(--token)
+ * (plan/CODING-RULES.md §G1/§G4, plan/09 §5).
+ */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --primary: 222 47% 31%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 222 47% 31%;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  --primary: 210 40% 98%;
+  --primary-foreground: 222 47% 11%;
+  --muted: 217 33% 18%;
+  --muted-foreground: 215 20% 65%;
+  --destructive: 0 63% 45%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 33% 22%;
+  --input: 217 33% 22%;
+  --ring: 213 27% 84%;
+}

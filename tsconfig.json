@@ -1,0 +1,9 @@
+{
+  "//": "Root tsconfig for editor tooling only. Each app/package has its own tsconfig that extends @shopnetic/config. Turbo runs `typecheck` per-package.",
+  "extends": "./packages/config/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [],
+  "exclude": ["node_modules", "**/dist", "**/.next", "**/build"]
+}

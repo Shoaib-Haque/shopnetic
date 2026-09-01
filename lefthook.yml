@@ -1,0 +1,22 @@
+# Git hooks — run `pnpm lefthook install` once after cloning.
+# See plan/CODING-RULES.md §A / §J.
+
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      glob: "*.{ts,tsx,js,jsx,mjs,cjs,json,md,css}"
+      run: pnpm prettier --write {staged_files} && git add {staged_files}
+    lint:
+      glob: "*.{ts,tsx,js,jsx}"
+      run: pnpm turbo run lint --filter="...[HEAD]" -- --max-warnings=0
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm commitlint --edit {1}
+
+pre-push:
+  commands:
+    typecheck:
+      run: pnpm turbo run typecheck

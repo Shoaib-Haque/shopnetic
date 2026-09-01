@@ -1,0 +1,9 @@
+{
+  "common": {
+    "appName": "Shopnetic Seller",
+    "sellerCenter": "Seller center — skeleton. Shop, catalog and order tools land in Phase 2.",
+    "errorTitle": "Something went wrong",
+    "errorBody": "Please try again in a moment.",
+    "retry": "Try again"
+  }
+}
