@@ -1,18 +1,15 @@
 import type { CookieOptions, Response } from 'express';
 
-/** Marketplace-plane refresh cookie. Staff plane will use a separate name. */
+/** Marketplace-plane refresh cookie. */
 export const REFRESH_COOKIE = 'sn_rt';
-
-/** Scope the cookie to the refresh + logout routes only. */
 export const REFRESH_COOKIE_PATH = '/identity/v1/auth';
 
-function baseOptions(isProd: boolean): CookieOptions {
-  return {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax',
-    path: REFRESH_COOKIE_PATH,
-  };
+/** Staff-plane refresh cookie — separate name + path so the two never mix. */
+export const STAFF_REFRESH_COOKIE = 'sn_srt';
+export const STAFF_REFRESH_COOKIE_PATH = '/identity/v1/staff/auth';
+
+function baseOptions(path: string, isProd: boolean): CookieOptions {
+  return { httpOnly: true, secure: isProd, sameSite: 'lax', path };
 }
 
 export function setRefreshCookie(
@@ -21,9 +18,28 @@ export function setRefreshCookie(
   expiresAt: Date,
   isProd: boolean,
 ): void {
-  res.cookie(REFRESH_COOKIE, token, { ...baseOptions(isProd), expires: expiresAt });
+  res.cookie(REFRESH_COOKIE, token, {
+    ...baseOptions(REFRESH_COOKIE_PATH, isProd),
+    expires: expiresAt,
+  });
 }
 
 export function clearRefreshCookie(res: Response, isProd: boolean): void {
-  res.clearCookie(REFRESH_COOKIE, baseOptions(isProd));
+  res.clearCookie(REFRESH_COOKIE, baseOptions(REFRESH_COOKIE_PATH, isProd));
+}
+
+export function setStaffRefreshCookie(
+  res: Response,
+  token: string,
+  expiresAt: Date,
+  isProd: boolean,
+): void {
+  res.cookie(STAFF_REFRESH_COOKIE, token, {
+    ...baseOptions(STAFF_REFRESH_COOKIE_PATH, isProd),
+    expires: expiresAt,
+  });
+}
+
+export function clearStaffRefreshCookie(res: Response, isProd: boolean): void {
+  res.clearCookie(STAFF_REFRESH_COOKIE, baseOptions(STAFF_REFRESH_COOKIE_PATH, isProd));
 }

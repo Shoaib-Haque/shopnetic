@@ -33,12 +33,22 @@ pnpm --filter @shopnetic/api start
 | GET    | `/identity/v1/auth/session`             | current user for a valid refresh cookie (no rotation); `401` if not signed in                                |
 | GET    | `/identity/v1/me`                       | **Bearer** — the actor: plane, grants, flattened permissions                                                 |
 | GET    | `/identity/v1/audit-events`             | **Bearer** + `auditlog:read` — newest-first, cursor-paginated (`?cursor=&limit=`)                            |
+| POST   | `/identity/v1/staff/auth/login`         | `{ email, password, code? }` → TOTP enrolment challenge (first time) or `sn_srt` cookie + `aud=admin` token  |
+| POST   | `/identity/v1/staff/auth/totp/confirm`  | `{ email, password, code }` → confirms the authenticator, returns recovery codes + a session                 |
+| POST   | `/identity/v1/staff/auth/token/refresh` | rotates `sn_srt` (8h lifetime)                                                                               |
+| POST   | `/identity/v1/staff/auth/logout`        | `204`                                                                                                        |
+| GET    | `/identity/v1/staff/auth/session`       | current staff user for a valid `sn_srt` cookie                                                               |
+| POST   | `/identity/v1/staff/invites`            | **staff Bearer** + `staff:manage` — `{ email, role }` → emails an invite link, `202`                         |
+| POST   | `/identity/v1/staff/invites/accept`     | `{ token, password }` → creates the staff account, `202`                                                     |
 
 Responses use the envelope from `@shopnetic/contracts` (`{ data, meta }` /
 `{ error }`, RFC-9457). Auth routes are per-IP rate limited (`X-RateLimit-*`,
-`429` + `Retry-After`). Protected routes need `Authorization: Bearer <access-jwt>`;
-`AuthGuard` verifies it and `@RequirePermission` + `PermissionGuard` enforce
-permissions (`403` on denial). The `Actor` is rebuilt from the DB per request.
+`429` + `Retry-After`). Protected routes need `Authorization: Bearer <access-jwt>`.
+`AuthGuard` covers the storefront (`aud=storefront`); `StaffAuthGuard` covers the
+admin API (`aud=admin` and `plane=staff`). Both load the `Actor`, then
+`@RequirePermission` + `PermissionGuard` enforce permissions (`403` on denial).
+The `Actor` is rebuilt from the DB per request, and a token is only ever valid
+for its own plane.
 
 ### Try it
 
@@ -65,9 +75,11 @@ src/
              PermissionGuard, @CurrentActor
   audit/     @Global AuditModule — AuditService (append-only identity.audit_event)
   prisma/    PrismaService (extends the @shopnetic/db client) + @Global PrismaModule
-  identity/  IdentityModule — register/verify/login/refresh/logout/session,
-             /me, /audit-events, password, sessions (rotation + reuse detection),
-             email verification, transactional mail (Mailpit)
+  identity/  IdentityModule — buyer + staff auth. register/verify/login/refresh/
+             logout/session, /me, /audit-events; staff invite + accept, staff
+             login + TOTP enrol/confirm; password, sessions (rotation + reuse
+             detection), TOTP (otplib + AES-256-GCM seed), email verification,
+             transactional mail (Mailpit)
   health/    health controller
   main.ts    parses env, wires cookie-parser + the global filter, boots Nest
 ```
@@ -87,11 +99,14 @@ and clean up after themselves.
 
 See `.env.example`. Key ones: `DATABASE_URL`, `REDIS_URL`, `JWT_ISSUER`,
 `JWT_ACCESS_TTL_SECONDS`, `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` (dev: omit for an
-ephemeral pair; prod: required), `AUTH_REFRESH_TTL_DAYS`, `VERIFICATION_TTL_HOURS`,
-`SMTP_URL`, `MAIL_FROM`, `APP_WEB_URL`, `PASSWORD_BREACH_CHECK`.
+ephemeral pair; prod: required), `AUTH_REFRESH_TTL_DAYS`,
+`AUTH_STAFF_REFRESH_TTL_HOURS`, `VERIFICATION_TTL_HOURS`, `TOTP_ENC_KEY` (dev may
+omit; prod required), `TOTP_ISSUER`, `SMTP_URL`, `MAIL_FROM`, `APP_WEB_URL`,
+`ADMIN_WEB_URL`, `ADMIN_BASE_PATH`, `PASSWORD_BREACH_CHECK`.
 
 ## Not yet
 
-Outbox writes on register (event publishing). Staff-plane auth (separate login
-surface, `aud=admin`, TOTP). Auto-audit interceptor (audit is explicit calls for
-now). Short-lived `Actor` cache. Object-level `404`-masking helpers.
+Admin login UI (the staff API is done; `apps/admin` still stubs the pages).
+Step-up re-auth for sensitive staff actions. Outbox writes + a dispatcher.
+Auto-audit interceptor (audit is explicit calls for now). Short-lived `Actor`
+cache. Object-level `404`-masking helpers.

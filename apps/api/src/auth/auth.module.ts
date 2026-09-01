@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { ActorService } from '../identity/actor.service.js';
 import { AuthGuard } from './auth.guard.js';
+import { StaffAuthGuard } from './staff-auth.guard.js';
 import { PermissionGuard } from './permission.guard.js';
 
 /**
@@ -9,7 +10,7 @@ import { PermissionGuard } from './permission.guard.js';
  */
 @Global()
 @Module({
-  providers: [ActorService, AuthGuard, PermissionGuard],
-  exports: [ActorService, AuthGuard, PermissionGuard],
+  providers: [ActorService, AuthGuard, StaffAuthGuard, PermissionGuard],
+  exports: [ActorService, AuthGuard, StaffAuthGuard, PermissionGuard],
 })
 export class AuthModule {}

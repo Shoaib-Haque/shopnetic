@@ -34,10 +34,15 @@ export class SessionService {
     private readonly audit: AuditService,
   ) {}
 
-  async create(accountId: string, ctx: SessionContext): Promise<IssuedSession> {
+  /** `refreshTtlMs` overrides the default (buyer) 30-day lifetime — staff pass 8h. */
+  async create(
+    accountId: string,
+    ctx: SessionContext,
+    refreshTtlMs: number = this.defaultRefreshTtlMs(),
+  ): Promise<IssuedSession> {
     const refreshToken = generateOpaqueToken();
-    const refreshExpiresAt = this.refreshExpiry();
     const now = new Date();
+    const refreshExpiresAt = new Date(now.getTime() + refreshTtlMs);
     const session = await this.prisma.session.create({
       data: {
         accountId,
@@ -81,8 +86,10 @@ export class SessionService {
     }
 
     const refreshToken = generateOpaqueToken();
-    const refreshExpiresAt = this.refreshExpiry();
     const now = new Date();
+    // Preserve the session family's lifetime kind (buyer 30d vs staff 8h).
+    const lifetimeMs = session.expiresAt.getTime() - session.issuedAt.getTime();
+    const refreshExpiresAt = new Date(now.getTime() + lifetimeMs);
 
     const next = await this.prisma.$transaction(async (tx) => {
       const created = await tx.session.create({
@@ -145,7 +152,7 @@ export class SessionService {
     });
   }
 
-  private refreshExpiry(): Date {
-    return new Date(Date.now() + this.env.AUTH_REFRESH_TTL_DAYS * 86_400_000);
+  private defaultRefreshTtlMs(): number {
+    return this.env.AUTH_REFRESH_TTL_DAYS * 86_400_000;
   }
 }
