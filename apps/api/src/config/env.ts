@@ -48,6 +48,14 @@ const envSchema = z.object({
     .enum(['true', 'false', '1', '0'])
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
+
+  // DEV ONLY: skip TOTP for staff login and skip the email-verified gate for
+  // buyer login. Never active in `test` (CI always runs the real flow); a boot
+  // check rejects it in `production`. Password, tokens and RBAC are unchanged.
+  DEV_AUTH_RELAXED: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -62,5 +70,13 @@ export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
       .join('\n');
     throw new Error(`Invalid API environment:\n${issues}`);
   }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_AUTH_RELAXED) {
+    throw new Error('DEV_AUTH_RELAXED must not be set in production');
+  }
   return parsed.data;
+}
+
+/** True only in `development` with the flag on — MFA / email-verify gates skipped. */
+export function authRelaxed(env: Pick<ApiEnv, 'NODE_ENV' | 'DEV_AUTH_RELAXED'>): boolean {
+  return env.NODE_ENV === 'development' && env.DEV_AUTH_RELAXED;
 }

@@ -159,8 +159,9 @@ shared module. Copy-paste is a review blocker.
 
 ### D3. One way to do a common thing
 Money formatting, dates, addresses, ratings, price display, empty states,
-error banners, page headers, data tables, pagination — **one** shared component
-each. No local reinventions.
+error banners, page headers, data tables, pagination, **password fields**
+(`@shopnetic/ui` `PasswordInput` — has the show/hide toggle) — **one** shared
+component each. No local reinventions.
 
 ### D4. Components are dumb about data source
 A component takes props; it doesn't know about `fetch`, the BFF, or the store.
@@ -567,6 +568,41 @@ partial failure produces one effect, not two (`08` §6).
 
 ---
 
+## R. Configuration & environment
+
+### R1. One validated schema, no scattered `process.env`
+Every process reads env through a single Zod schema (`config/env.ts` /
+`loadDbEnv` / `server-env.ts`). Feature code never touches `process.env`
+directly. Invalid/missing config fails the process at boot with a clear message,
+not later at runtime (`B4`).
+
+### R2. Every new/changed var updates `.env.example` **in the same change**
+The `.env.example` for that app is the contract. A new var, a rename, a removal,
+a changed default → edit `.env.example` (one-line comment each; real secrets
+never committed) and the app's README env table in the same PR (`J6`). Say in
+the comment which environments need it and any dev-vs-prod difference.
+
+### R3. Behaviour flags default to the safe/production behaviour
+A flag that changes how the app behaves is **off** by default and off means
+"act like production". Turning it on is an explicit dev choice.
+
+### R4. A dev shortcut that weakens security cannot reach production
+If a flag relaxes auth, skips verification, disables a check, seeds test data,
+or exposes internals: (a) it is **inert unless `NODE_ENV=development`**;
+(b) `loadEnv` **throws at boot** if it is set with `NODE_ENV=production`;
+(c) it has **no effect when `NODE_ENV=test`** so CI always exercises the real
+path; (d) it is **logged at `warn` on boot** when active. It never changes the
+password check, token issuance/verification, RBAC, or plane separation — only
+the specific gate it names (e.g. `DEV_AUTH_RELAXED` skips staff TOTP + the
+buyer email-verified gate, nothing else). Note it in `16-security.md`.
+
+### R5. Ports, URLs and hosts are configuration
+No hard-coded `localhost:xxxx`, service URL, or DB host in feature code — it
+comes from env (`I3`). Local defaults live only in `.env.example` and the
+compose file.
+
+---
+
 ## K. PR checklist (paste into every PR description)
 
 ```
@@ -593,6 +629,7 @@ partial failure produces one effect, not two (`08` §6).
 - [ ] Admin visibility/moderation + reporting hooks added if user-facing.
 - [ ] plan/ docs + ADR updated if a decision, contract, data model, flow, or open question changed (J5).
 - [ ] README(s) + .env.example updated for any new/renamed env var, script, moved path, changed port, or new dep (J6).
+- [ ] New config goes through the validated env schema; behaviour/dev flags are safe-by-default, prod-rejected, test-inert, boot-logged (R).
 - [ ] CI green.
 ```
 
@@ -605,6 +642,9 @@ partial failure produces one effect, not two (`08` §6).
 - 2026-08-31 — Added L (i18n/copy), M (migrations), N (deletion), O (logging),
   P (validation/verification), Q (transactions), from the founder's second rule
   set. Checklist extended.
+- 2026-09-03 — Added R (configuration & environment: validated env schema,
+  .env.example discipline, safe-by-default behaviour flags, dev shortcuts that
+  cannot reach production). D3 lists PasswordInput. Checklist updated.
 - 2026-09-01 — Strengthened J5 (plan/ kept in lockstep with code, not just for
   "decisions") and added J6 (README.md + .env.example must track code changes).
   Checklist updated.

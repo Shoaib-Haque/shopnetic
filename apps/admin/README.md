@@ -40,6 +40,10 @@ Enforcement order (`plan/23` §3): `src/proxy.ts` → `(protected)/layout.tsx`
 server session check → `@RequirePermission` on the API. The obfuscated segment is
 defense-in-depth only.
 
+Password fields use `@shopnetic/ui` `PasswordInput` (show/hide toggle). Set
+`DEV_AUTH_RELAXED=true` on the API (dev only) to sign in with just email +
+password — no TOTP (see `apps/api/README.md`).
+
 ## Env
 
 | Var               | Purpose                                         |

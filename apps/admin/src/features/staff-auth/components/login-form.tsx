@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { staffLoginRequestSchema } from '@shopnetic/contracts';
-import { Button, Field, Input } from '@shopnetic/ui';
+import { Button, Field, Input, PasswordInput } from '@shopnetic/ui';
 import { postJson } from '../submit';
 import { staffErrorKey, extractErrorCode } from '../error-copy';
 
@@ -212,11 +212,12 @@ export function StaffLoginForm({ locale, basePath }: { locale: string; basePath:
         htmlFor="staff-password"
         error={errors.password ? t('fields.passwordRequired') : undefined}
       >
-        <Input
+        <PasswordInput
           id="staff-password"
-          type="password"
           autoComplete="current-password"
           invalid={Boolean(errors.password)}
+          showLabel={t('fields.showPassword')}
+          hideLabel={t('fields.hidePassword')}
           {...register('password')}
         />
       </Field>

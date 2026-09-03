@@ -48,5 +48,9 @@ future protected routes.
 
 ## Not yet
 
+Password fields use `@shopnetic/ui` `PasswordInput` (show/hide toggle). Set
+`DEV_AUTH_RELAXED=true` on the API in dev to sign in without email verification
+(see `apps/api/README.md`).
+
 RTL component tests (only the pure `parse-set-cookie` / `error-copy` helpers are
 unit-tested). Password reset. Protected routes / middleware auth gate.

@@ -1,7 +1,8 @@
 {
   "staff": {
-    "shell": { "appName": "Shopnetic Admin" },
-
+    "shell": {
+      "appName": "Shopnetic Admin"
+    },
     "fields": {
       "email": "Email",
       "emailInvalid": "Enter a valid email address.",
@@ -10,9 +11,10 @@
       "newPassword": "Create a password",
       "passwordHint": "At least 8 characters.",
       "passwordTooShort": "Use at least 8 characters.",
-      "code": "Authenticator code"
+      "code": "Authenticator code",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password"
     },
-
     "login": {
       "title": "Staff sign in",
       "submit": "Sign in",
@@ -20,11 +22,9 @@
       "inviteHint": "Have an invite link but ended up here?",
       "inviteLink": "Accept an invite"
     },
-
     "mfa": {
       "intro": "Enter the 6-digit code from your authenticator app (or a recovery code)."
     },
-
     "enrol": {
       "intro": "First sign-in: add this account to an authenticator app, then enter a code to finish.",
       "secretLabel": "Secret (manual entry)",
@@ -32,13 +32,11 @@
       "submit": "Confirm and sign in",
       "submitting": "Confirming…"
     },
-
     "recovery": {
       "intro": "Save these one-time recovery codes somewhere safe — each works once if you lose your authenticator.",
       "warning": "They will not be shown again.",
       "continue": "Continue to the dashboard"
     },
-
     "accept": {
       "title": "Accept your staff invite",
       "intro": "Set a password for your new staff account.",
@@ -47,9 +45,10 @@
       "done": "Your account is ready.",
       "goToLogin": "Go to sign in"
     },
-
-    "logout": { "submit": "Sign out", "submitting": "Signing out…" },
-
+    "logout": {
+      "submit": "Sign out",
+      "submitting": "Signing out…"
+    },
     "errors": {
       "generic": "Something went wrong. Please try again.",
       "network": "We couldn't reach the server. Check your connection and try again.",

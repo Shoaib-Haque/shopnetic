@@ -9,7 +9,7 @@ import type {
 } from '@shopnetic/contracts';
 import type { Account } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { API_ENV, type ApiEnv } from '../config/env.js';
+import { API_ENV, authRelaxed, type ApiEnv } from '../config/env.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { PasswordService } from './password.service.js';
@@ -70,6 +70,7 @@ export class IdentityService {
         email: input.email,
         plane: 'marketplace',
         status: 'active',
+        ...(authRelaxed(this.env) ? { emailVerifiedAt: new Date() } : {}),
         credential: { create: { passwordHash, hashAlgo: 'argon2id', params: ARGON2_PARAMS } },
         grants: { create: { roleId: buyerRole.id, scopeType: 'self', scopeId: null } },
       },
@@ -138,7 +139,7 @@ export class IdentityService {
     if (account.status !== 'active') {
       throw new AppError('ACCOUNT_LOCKED', 403, { detail: `account status is ${account.status}` });
     }
-    if (account.emailVerifiedAt === null) {
+    if (account.emailVerifiedAt === null && !authRelaxed(this.env)) {
       throw new AppError('EMAIL_NOT_VERIFIED', 403, {
         detail: 'confirm your email before signing in',
       });

@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { loginRequestSchema, type LoginRequest } from '@shopnetic/contracts';
-import { Button, Field, Input } from '@shopnetic/ui';
+import { Button, Field, Input, PasswordInput } from '@shopnetic/ui';
 import { postJson } from '../submit';
 import { authErrorKey, extractErrorCode } from '../error-copy';
 import { ResendVerification } from './resend-verification';
@@ -66,11 +66,12 @@ export function LoginForm({ locale }: { locale: string }) {
           htmlFor="login-password"
           error={errors.password ? t('fields.passwordRequired') : undefined}
         >
-          <Input
+          <PasswordInput
             id="login-password"
-            type="password"
             autoComplete="current-password"
             invalid={Boolean(errors.password)}
+            showLabel={t('fields.showPassword')}
+            hideLabel={t('fields.hidePassword')}
             {...register('password')}
           />
         </Field>

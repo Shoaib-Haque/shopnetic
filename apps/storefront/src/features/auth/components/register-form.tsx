@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { registerRequestSchema, type RegisterRequest } from '@shopnetic/contracts';
-import { Button, Field, Input } from '@shopnetic/ui';
+import { Button, Field, Input, PasswordInput } from '@shopnetic/ui';
 import { postJson } from '../submit';
 import { authErrorKey, extractErrorCode } from '../error-copy';
 
@@ -68,11 +68,12 @@ export function RegisterForm() {
         hint={t('fields.passwordHint')}
         error={errors.password ? t('fields.passwordTooShort') : undefined}
       >
-        <Input
+        <PasswordInput
           id="register-password"
-          type="password"
           autoComplete="new-password"
           invalid={Boolean(errors.password)}
+          showLabel={t('fields.showPassword')}
+          hideLabel={t('fields.hidePassword')}
           {...register('password')}
         />
       </Field>
