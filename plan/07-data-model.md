@@ -72,9 +72,9 @@ raw-SQL migration.
 | `value_set` / `value_set_item` | name / (value_set_id, option_value_id, position) | Managed value lists (e.g. "Apparel sizes"). |
 | `category_option` | category_id, option_type_id, applicability (`required/optional/not_applicable`), is_variant_axis, value_source (`predefined/open/hybrid`), value_set_id, price_impact, position | Admin config: which options apply to a category and how. `is_variant_axis=false` ⇒ it's an attribute (spec/facet), not a buyable choice. |
 | `attribute` / `attribute_value` | code, name_i18n, data_type, unit / (attribute_id, value, position) | Non-variant facts (Fabric, Impedance, Origin). |
-| `brand` | name, slug, display_name_i18n, logo_key, status (`pending/active/rejected`), merged_into_brand_id, deleted_at | Optional per product (see `category.brand_requirement`). |
-| `brand_alias` | brand_id, alias | Dedupe / merge ("JBL" = "jbl" = "JBL Audio"). |
-| `brand_request` | seller_id, proposed_name, proposed_logo_key, evidence (jsonb), status, reviewed_by, reject_reason, resulting_brand_id | Seller-proposed unlisted brand → admin moderation. |
+| `brand` | name, slug (unique), display_name_i18n, logo_key, status (`pending/active/rejected`), merged_into_brand_id, deleted_at | Built. Optional per product. Admin CRUD: `/admin/v1/brands` (`brand:manage`). Merge: `POST …/:id/merge` moves the source's aliases to the target, adds the source name/slug as aliases, sets `merged_into_brand_id` + soft-deletes the source. |
+| `brand_alias` | brand_id, alias (`citext`, globally unique) | Built. Dedupe / merge ("JBL" = "jbl" = "JBL Audio"). Add/remove: `…/:id/aliases`. |
+| `brand_request` | seller_id, proposed_name, proposed_logo_key, evidence (jsonb), status, reviewed_by, reject_reason, resulting_brand_id | **Deferred** — needs the seller context. Seller-proposed unlisted brand → admin moderation. |
 | `product` | category_id, brand_id (nullable), title_i18n, description_i18n, slug, status (`draft/pending/active/archived`), base_price_minor (nullable), currency, spec (jsonb), proposed_by_seller_id, deleted_at | Shared catalog concept across sellers. |
 | `product_option` | product_id, option_type_id, position, required_value_id (nullable) | Which option types THIS product uses + order. `required_value_id` set for the "single value / One Size" case (UI skips the picker). |
 | `product_option_value` | product_id, option_type_id, option_value_id, position | The subset of values this product offers on each axis. |

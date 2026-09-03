@@ -1,5 +1,5 @@
 export { getPrismaClient, PrismaClient } from './client.js';
-export type { Prisma } from './client.js';
+export { Prisma } from '@prisma/client';
 export { loadDbEnv, type DbEnv } from './env.js';
 
 /**
@@ -21,6 +21,8 @@ export type {
   AuditEvent,
   Outbox,
   Category,
+  Brand,
+  BrandAlias,
   CatalogOutbox,
 } from '@prisma/client';
 
@@ -31,6 +33,7 @@ export {
   SessionRevokedReason,
   GrantScopeType,
   CategoryBrandRequirement,
+  BrandStatus,
 } from '@prisma/client';
 
 /**

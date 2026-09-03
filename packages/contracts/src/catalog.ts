@@ -65,3 +65,57 @@ export const categorySchema = z.object({
   updatedAt: z.string(),
 });
 export type Category = z.infer<typeof categorySchema>;
+
+// ── Brands ───────────────────────────────────────────────────────────────────
+
+export const brandStatusSchema = z.enum(['pending', 'active', 'rejected']);
+export type BrandStatus = z.infer<typeof brandStatusSchema>;
+
+const brandNameSchema = z.string().trim().min(1).max(120);
+
+export const brandAliasSchema = z.object({
+  id: z.string(),
+  alias: z.string(),
+  createdAt: z.string(),
+});
+export type BrandAlias = z.infer<typeof brandAliasSchema>;
+
+export const brandSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  displayName: localizedTextSchema.nullable(),
+  logoKey: z.string().nullable(),
+  status: brandStatusSchema,
+  mergedIntoBrandId: z.string().nullable(),
+  aliases: z.array(brandAliasSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type Brand = z.infer<typeof brandSchema>;
+
+export const createBrandRequestSchema = z.object({
+  name: brandNameSchema,
+  slug: slugSchema.optional(),
+  displayName: localizedTextSchema.optional(),
+  status: brandStatusSchema.optional(),
+  aliases: z.array(brandNameSchema).max(50).optional(),
+});
+export type CreateBrandRequest = z.infer<typeof createBrandRequestSchema>;
+
+export const updateBrandRequestSchema = z
+  .object({
+    name: brandNameSchema,
+    slug: slugSchema,
+    displayName: localizedTextSchema.nullable(),
+    logoKey: z.string().max(500).nullable(),
+    status: brandStatusSchema,
+  })
+  .partial();
+export type UpdateBrandRequest = z.infer<typeof updateBrandRequestSchema>;
+
+export const addBrandAliasRequestSchema = z.object({ alias: brandNameSchema });
+export type AddBrandAliasRequest = z.infer<typeof addBrandAliasRequestSchema>;
+
+export const mergeBrandRequestSchema = z.object({ intoBrandId: z.string().uuid() });
+export type MergeBrandRequest = z.infer<typeof mergeBrandRequestSchema>;

@@ -13,7 +13,7 @@ migrations, soft-delete by default, explicit FK behaviour, short transactions.
 | Schema     | Models                                                                                                                                                                              |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `identity` | `account`, `credential`, `email_verification`, `session`, `totp_secret`, `recovery_code`, `role`, `permission`, `role_permission`, `grant`, `staff_invite`, `audit_event`, `outbox` |
-| `catalog`  | `category` (ltree `path`), `outbox` — more entities land one at a time                                                                                                              |
+| `catalog`  | `category` (ltree `path`), `brand`, `brand_alias`, `outbox` — more entities land one at a time                                                                                      |
 
 Other context schemas (`inventory`, `orders`, `seller`, …) are added to the
 generator's `schemas` list as their models land — Prisma rejects an empty schema.
@@ -52,7 +52,7 @@ const prisma = getPrismaClient(); // singleton; global-cached off-prod
   `DATABASE_URL` at it. `db:migrate` (dev) offers to create a missing database;
   `db:migrate:deploy` (CI/prod) does **not**.
 
-The `identity` schema and all tables are created by the migration, not by hand.
+The `identity` + `catalog` schemas and their tables are created by migrations, not by hand.
 
 ## Commands
 
