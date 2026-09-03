@@ -378,3 +378,50 @@ model CatalogOutbox {
   @@map("outbox")
   @@schema("catalog")
 }
+
+/// A brand. `name` is the canonical form used for matching; `display_name_i18n`
+/// is optional localized display (`24` §5). Flat (no tree). `logo_key` is an
+/// object-storage key — upload lands later. Merge sets `merged_into_brand_id`
+/// and moves aliases to the target (plan/26 §brands).
+model Brand {
+  id                String       @id @default(uuid(7)) @db.Uuid
+  name              String
+  slug              String       @unique
+  displayNameI18n   Json?        @map("display_name_i18n")
+  logoKey           String?      @map("logo_key")
+  status            BrandStatus  @default(active)
+  mergedIntoBrandId String?      @map("merged_into_brand_id") @db.Uuid
+  mergedInto        Brand?       @relation("BrandMerge", fields: [mergedIntoBrandId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  mergedFrom        Brand[]      @relation("BrandMerge")
+  aliases           BrandAlias[]
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("brand")
+  @@schema("catalog")
+}
+
+/// Alternate spellings that resolve to one brand ("JBL" = "jbl" = "JBL Audio").
+/// `alias` is `citext` and globally unique — an alias maps to exactly one brand.
+model BrandAlias {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  brandId   String   @map("brand_id") @db.Uuid
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  alias     String   @unique @db.Citext
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([brandId])
+  @@map("brand_alias")
+  @@schema("catalog")
+}
+
+enum BrandStatus {
+  pending
+  active
+  rejected
+
+  @@schema("catalog")
+}

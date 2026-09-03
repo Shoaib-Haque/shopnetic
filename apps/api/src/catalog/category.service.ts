@@ -10,6 +10,7 @@ import type { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
+import { writeCatalogOutbox } from './catalog-outbox.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 
 interface RawCategory {
@@ -82,7 +83,7 @@ export class CategoryService {
         path,
         row.id,
       );
-      await writeOutbox(tx, 'category.created', row.id, {
+      await writeCatalogOutbox(tx, 'category', 'category.created', row.id, {
         id: row.id,
         slug: row.slug,
         parentId: row.parentId,
@@ -124,7 +125,10 @@ export class CategoryService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.category.update({ where: { id }, data });
-      await writeOutbox(tx, 'category.updated', id, { id, fields: Object.keys(data) });
+      await writeCatalogOutbox(tx, 'category', 'category.updated', id, {
+        id,
+        fields: Object.keys(data),
+      });
     });
 
     const view = await this.get(id);
@@ -184,7 +188,7 @@ export class CategoryService {
         where: { id },
         data: { parentId: parent?.id ?? null, position: input.position ?? 0 },
       });
-      await writeOutbox(tx, 'category.moved', id, {
+      await writeCatalogOutbox(tx, 'category', 'category.moved', id, {
         id,
         fromParentId: self.parent_id,
         toParentId: parent?.id ?? null,
@@ -215,7 +219,7 @@ export class CategoryService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.category.update({ where: { id }, data: { deletedAt: new Date() } });
-      await writeOutbox(tx, 'category.deleted', id, { id });
+      await writeCatalogOutbox(tx, 'category', 'category.deleted', id, { id });
     });
 
     await this.audit.record({
@@ -315,22 +319,6 @@ function toView(r: RawCategory): Category {
     createdAt: r.created_at.toISOString(),
     updatedAt: r.updated_at.toISOString(),
   };
-}
-
-async function writeOutbox(
-  tx: Prisma.TransactionClient,
-  eventType: string,
-  aggregateId: string,
-  payload: Record<string, unknown>,
-): Promise<void> {
-  await tx.catalogOutbox.create({
-    data: {
-      aggregateType: 'category',
-      aggregateId,
-      eventType,
-      payload: payload as Prisma.InputJsonValue,
-    },
-  });
 }
 
 function pick(meta: RequestMeta): { ip?: string; correlationId?: string } {
