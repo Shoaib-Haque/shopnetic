@@ -1,0 +1,69 @@
+{
+  "staff": {
+    "shell": { "appName": "Shopnetic Admin" },
+
+    "fields": {
+      "email": "Email",
+      "emailInvalid": "Enter a valid email address.",
+      "password": "Password",
+      "passwordRequired": "Enter your password.",
+      "newPassword": "Create a password",
+      "passwordHint": "At least 8 characters.",
+      "passwordTooShort": "Use at least 8 characters.",
+      "code": "Authenticator code"
+    },
+
+    "login": {
+      "title": "Staff sign in",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "inviteHint": "Have an invite link but ended up here?",
+      "inviteLink": "Accept an invite"
+    },
+
+    "mfa": {
+      "intro": "Enter the 6-digit code from your authenticator app (or a recovery code)."
+    },
+
+    "enrol": {
+      "intro": "First sign-in: add this account to an authenticator app, then enter a code to finish.",
+      "secretLabel": "Secret (manual entry)",
+      "uriLabel": "otpauth URI",
+      "submit": "Confirm and sign in",
+      "submitting": "Confirming…"
+    },
+
+    "recovery": {
+      "intro": "Save these one-time recovery codes somewhere safe — each works once if you lose your authenticator.",
+      "warning": "They will not be shown again.",
+      "continue": "Continue to the dashboard"
+    },
+
+    "accept": {
+      "title": "Accept your staff invite",
+      "intro": "Set a password for your new staff account.",
+      "submit": "Create account",
+      "submitting": "Creating…",
+      "done": "Your account is ready.",
+      "goToLogin": "Go to sign in"
+    },
+
+    "logout": { "submit": "Sign out", "submitting": "Signing out…" },
+
+    "errors": {
+      "generic": "Something went wrong. Please try again.",
+      "network": "We couldn't reach the server. Check your connection and try again.",
+      "validation": "Please check the highlighted fields and try again.",
+      "invalidCredentials": "That email and password don't match.",
+      "mfaRequired": "Enter your authenticator code.",
+      "mfaInvalid": "That code isn't right. Try again.",
+      "mfaAlreadyEnrolled": "An authenticator is already set up for this account.",
+      "accountLocked": "This account isn't available. Contact another Super Admin.",
+      "rateLimited": "Too many attempts. Please wait a bit and try again.",
+      "inviteInvalid": "This invite link is invalid or has already been used.",
+      "inviteExpired": "This invite link has expired.",
+      "inviteEmailTaken": "An account with this email already exists.",
+      "passwordBreached": "This password has appeared in a data breach. Choose a different one."
+    }
+  }
+}

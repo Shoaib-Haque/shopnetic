@@ -159,6 +159,14 @@ apps/admin/src/app/[locale]/
 - The segment is obfuscation only. Enforcement order: `proxy.ts` (reject
   non-staff, no session → login) → `(protected)/layout.tsx` (server-side grant
   check) → each server action / API route (`authorize()` per `16` §2).
+- **One segment for all staff — not one per role.** Super Admin, Admin and
+  Service Admin share this base path, one login surface, one `aud=admin` token.
+  Differentiation is by **permission-gated route + nav**, computed from the
+  actor at request time — e.g. `staff/**` and `config/**` need `staff:manage` /
+  `config:manage` (Super Admin only), `disputes/**` needs `dispute:work`.
+  Per-role segments would add no security (a leaked `ADMIN` path is as bad as a
+  Super Admin one), triple the routing/layouts/i18n/BFF, and can't cover the
+  custom staff roles a Super Admin defines at runtime (`03` §2).
 - Seller app uses a normal readable path (`/dashboard`, `/products`) — sellers
   are a known audience — but the same three enforcement layers.
 

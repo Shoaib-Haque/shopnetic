@@ -106,7 +106,6 @@ omit; prod required), `TOTP_ISSUER`, `SMTP_URL`, `MAIL_FROM`, `APP_WEB_URL`,
 
 ## Not yet
 
-Admin login UI (the staff API is done; `apps/admin` still stubs the pages).
 Step-up re-auth for sensitive staff actions. Outbox writes + a dispatcher.
 Auto-audit interceptor (audit is explicit calls for now). Short-lived `Actor`
 cache. Object-level `404`-masking helpers.
