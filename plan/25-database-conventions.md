@@ -70,6 +70,11 @@ exists.
   supply `id`. Revisit (DB default via `uuidv7()`) when on PG18+.
 - Case-insensitive text (emails, slugs where wanted): the `citext` extension,
   enabled in the migration that first needs it.
+- Tree paths: the `ltree` extension + a materialized `path` column of
+  **dash-stripped uuid** segments (ltree labels are `[A-Za-z0-9_]` only, so
+  slugs/uuids-with-dashes can't be labels). `path` is `Unsupported("ltree")` in
+  Prisma — read/written via raw SQL in the owning service; its GiST index is
+  hand-added to the migration (Prisma won't manage it).
 - Timestamps: `created_at timestamptz not null default now()`,
   `updated_at timestamptz not null` (trigger or ORM-managed).
 - Soft delete: `deleted_at timestamptz null` (see Part 2).

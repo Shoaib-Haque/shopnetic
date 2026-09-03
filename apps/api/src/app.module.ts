@@ -6,6 +6,7 @@ import { CryptoModule } from './crypto/crypto.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { IdentityModule } from './identity/identity.module.js';
+import { CatalogModule } from './catalog/catalog.module.js';
 import { HealthController } from './health/health.controller.js';
 import { CorrelationMiddleware } from './common/correlation.middleware.js';
 
@@ -23,6 +24,7 @@ import { CorrelationMiddleware } from './common/correlation.middleware.js';
     AuthModule,
     AuditModule,
     IdentityModule,
+    CatalogModule,
   ],
   controllers: [HealthController],
 })

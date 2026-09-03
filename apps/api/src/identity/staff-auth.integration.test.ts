@@ -23,6 +23,7 @@ const env = {
   AUTH_REFRESH_TTL_DAYS: 30,
   AUTH_STAFF_REFRESH_TTL_HOURS: 8,
   TOTP_ISSUER: 'Shopnetic',
+  TOTP_WINDOW_STEPS: 1,
   ADMIN_WEB_URL: 'http://localhost:3002',
   ADMIN_BASE_PATH: 'x7f2k9t3m1qp',
   PASSWORD_BREACH_CHECK: false,
