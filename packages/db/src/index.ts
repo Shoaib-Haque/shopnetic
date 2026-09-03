@@ -20,6 +20,8 @@ export type {
   StaffInvite,
   AuditEvent,
   Outbox,
+  Category,
+  CatalogOutbox,
 } from '@prisma/client';
 
 export {
@@ -28,6 +30,7 @@ export {
   EmailVerificationPurpose,
   SessionRevokedReason,
   GrantScopeType,
+  CategoryBrandRequirement,
 } from '@prisma/client';
 
 /**
@@ -35,4 +38,4 @@ export {
  * context as its models land (plan/07). Planned full set: identity, catalog,
  * inventory, orders, payments, seller, cart, promo, …
  */
-export const DATABASE_SCHEMAS = ['identity'] as const;
+export const DATABASE_SCHEMAS = ['identity', 'catalog'] as const;

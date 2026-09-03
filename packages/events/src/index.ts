@@ -11,6 +11,10 @@ export const DomainEvent = {
   ACCOUNT_REGISTERED: 'identity.account_registered',
   ACCOUNT_ANONYMIZED: 'identity.account_anonymized',
   // catalog
+  CATEGORY_CREATED: 'catalog.category_created',
+  CATEGORY_UPDATED: 'catalog.category_updated',
+  CATEGORY_MOVED: 'catalog.category_moved',
+  CATEGORY_DELETED: 'catalog.category_deleted',
   PRODUCT_APPROVED: 'catalog.product_approved',
   PRODUCT_ARCHIVED: 'catalog.product_archived',
   // inventory

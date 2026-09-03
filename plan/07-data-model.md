@@ -60,10 +60,13 @@ raw-SQL migration.
 > Full modeling + all corner cases: **`26-catalog-options-variants-brands.md`**.
 > User-facing names/descriptions/labels are **localized fields** (`24` §5) —
 > shown below as `*_i18n`.
+>
+> **Built so far:** `category` (+ an `outbox` per `1.5`). The rest lands one
+> entity at a time.
 
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
-| `category` | parent_id, name_i18n, slug, path (ltree), position, is_active, brand_requirement (`required/optional/none`), deleted_at | Tree; `path` for fast subtree queries. |
+| `category` | parent_id, name_i18n, slug, path (ltree), position, is_active, brand_requirement (`required/optional/none`), deleted_at | Tree. `path` is a materialized ltree of **dash-stripped uuid** segments (root→self) — ltree labels can't hold `-`/slugs; a GiST index on `path` powers subtree ops. Maintained by the catalog service in a tx (raw SQL). Sibling `(parent_id, slug)` unique (roots de-duped in code). Admin CRUD: `/admin/v1/categories` + `…/:id/move`, gated by `category:manage`. |
 | `option_type` | code, name_i18n, data_type (`enum/text/number/bool/swatch`), has_swatch | Global, reusable axis of choice (Color, Size, Storage, Carrier…). |
 | `option_value` | option_type_id, code, label_i18n, swatch_hex, swatch_image_key, position, status (`active/deprecated`) | Allowed value; deprecate, never hard-delete if used. |
 | `value_set` / `value_set_item` | name / (value_set_id, option_value_id, position) | Managed value lists (e.g. "Apparel sizes"). |

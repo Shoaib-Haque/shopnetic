@@ -19,7 +19,7 @@ export class TotpService {
     @Inject(API_ENV) private readonly env: ApiEnv,
   ) {
     // Clock-skew tolerance: accept a code from ±N 30s steps (RFC 6238 §5.2).
-    authenticator.options = { window: env.TOTP_WINDOW_STEPS };
+    authenticator.options = { window: env.TOTP_WINDOW_STEPS ?? 1 };
   }
 
   async isEnrolled(accountId: string): Promise<boolean> {
