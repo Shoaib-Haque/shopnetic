@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { staffInviteAcceptRequestSchema } from '@shopnetic/contracts';
-import { Button, Field, Input } from '@shopnetic/ui';
+import { Button, Field, PasswordInput } from '@shopnetic/ui';
 import { postJson } from '../submit';
 import { staffErrorKey, extractErrorCode } from '../error-copy';
 
@@ -78,11 +78,12 @@ export function AcceptInviteForm({
         hint={t('fields.passwordHint')}
         error={errors.password ? t('fields.passwordTooShort') : undefined}
       >
-        <Input
+        <PasswordInput
           id="accept-password"
-          type="password"
           autoComplete="new-password"
           invalid={Boolean(errors.password)}
+          showLabel={t('fields.showPassword')}
+          hideLabel={t('fields.hidePassword')}
           {...register('password')}
         />
       </Field>

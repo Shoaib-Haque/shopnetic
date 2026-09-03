@@ -100,12 +100,23 @@ and clean up after themselves.
 
 ## Env
 
-See `.env.example`. Key ones: `DATABASE_URL`, `REDIS_URL`, `JWT_ISSUER`,
+Everything goes through the validated schema in `src/config/env.ts`
+(CODING-RULES §R). See `.env.example` — each var carries a comment and any
+dev-vs-prod difference. Key ones: `DATABASE_URL`, `REDIS_URL`, `JWT_ISSUER`,
 `JWT_ACCESS_TTL_SECONDS`, `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` (dev: omit for an
 ephemeral pair; prod: required), `AUTH_REFRESH_TTL_DAYS`,
 `AUTH_STAFF_REFRESH_TTL_HOURS`, `VERIFICATION_TTL_HOURS`, `TOTP_ENC_KEY` (dev may
-omit; prod required), `TOTP_ISSUER`, `SMTP_URL`, `MAIL_FROM`, `APP_WEB_URL`,
-`ADMIN_WEB_URL`, `ADMIN_BASE_PATH`, `PASSWORD_BREACH_CHECK`.
+omit; prod required), `TOTP_ISSUER`, `TOTP_WINDOW_STEPS` (skew tolerance,
+default 1), `SMTP_URL`, `MAIL_FROM`, `APP_WEB_URL`, `ADMIN_WEB_URL`,
+`ADMIN_BASE_PATH`, `PASSWORD_BREACH_CHECK`.
+
+### Dev shortcuts
+
+`DEV_AUTH_RELAXED=true` (development only) skips staff TOTP and the buyer
+email-verified gate — sign in with email + password alone. It is **rejected at
+boot in production** and **ignored under `NODE_ENV=test`** so integration tests
+always run the real flow. Flip it to `false` to test like production. Password,
+tokens, RBAC and plane separation are unchanged either way.
 
 ## Not yet
 

@@ -8,7 +8,7 @@ import type {
 } from '@shopnetic/contracts';
 import type { Account } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { API_ENV, type ApiEnv } from '../config/env.js';
+import { API_ENV, authRelaxed, type ApiEnv } from '../config/env.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { PasswordService } from './password.service.js';
@@ -40,6 +40,11 @@ export class StaffAuthService {
   /** Step 1: password. Returns a session, or a TOTP challenge if not yet enrolled. */
   async login(input: StaffLoginRequest, ctx: SessionContext): Promise<LoginOutcome> {
     const account = await this.authenticatePassword(input.email, input.password, ctx);
+
+    if (authRelaxed(this.env)) {
+      const relaxed = await this.startSession(account, ctx);
+      return { kind: 'session', ...relaxed };
+    }
 
     if (!(await this.totp.isEnrolled(account.id))) {
       const { secret, otpauthUri } = await this.totp.beginEnrolment(account.id, account.email);

@@ -28,10 +28,17 @@ Related: `03-users-and-rbac.md`, `08-api-design.md`, `13-payments-and-payouts.md
 
 ### MFA
 - TOTP (RFC 6238) + recovery codes. Optional for buyers, **mandatory for all
-  staff and for sellers before first payout**.
+  staff and for sellers before first payout**. TOTP acceptance window is
+  `TOTP_WINDOW_STEPS` × 30s each side (default 1; clock-skew tolerance).
 - Step-up re-auth for sensitive actions (change email/bank, refund > cap,
   staff/role changes, break-glass).
 - WebAuthn/passkeys as a later stronger option.
+- **`DEV_AUTH_RELAXED`** (dev only) skips staff TOTP + the buyer email-verified
+  gate for faster local iteration. It is inert unless `NODE_ENV=development`,
+  has no effect under `NODE_ENV=test` (CI always runs the real flow), makes the
+  process **fail at boot** under `NODE_ENV=production`, logs a `warn` when
+  active, and never touches the password check, tokens, RBAC, or plane
+  separation (CODING-RULES §R4).
 
 ### Sessions & devices
 - Session list in account settings (device, IP, last seen), revoke individually.
