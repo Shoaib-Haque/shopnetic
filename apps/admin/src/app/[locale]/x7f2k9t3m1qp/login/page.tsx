@@ -1,17 +1,25 @@
-import { setRequestLocale, getTranslations } from 'next-intl/server';
+import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { ADMIN_BASE_PATH } from '@/config/site';
+import { getCurrentStaff } from '@/features/staff-auth/current-actor';
+import { StaffLoginForm } from '@/features/staff-auth/components/login-form';
 
 type Props = { params: Promise<{ locale: string }> };
 
-/** Staff login. STUB — the real form + server action land with Identity & Access. */
-export default async function AdminLogin({ params }: Props) {
+export const metadata: Metadata = { title: 'Sign in', robots: { index: false, follow: false } };
+
+export default async function AdminLoginPage({ params }: Props) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const t = await getTranslations('common');
 
+  if (await getCurrentStaff()) redirect(`/${locale}/${ADMIN_BASE_PATH}`);
+
+  const t = await getTranslations('staff');
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-4 px-4">
-      <h1 className="text-xl font-semibold">{t('signIn')}</h1>
-      <p className="text-sm text-muted-foreground">{t('loginStub')}</p>
+    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 px-4">
+      <h1 className="text-xl font-semibold">{t('login.title')}</h1>
+      <StaffLoginForm locale={locale} basePath={ADMIN_BASE_PATH} />
     </main>
   );
 }

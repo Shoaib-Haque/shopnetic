@@ -31,6 +31,8 @@ const envSchema = z.object({
   // Staff TOTP: AES-256-GCM key for the stored seed (32 bytes, base64). Dev may omit.
   TOTP_ENC_KEY: z.string().optional(),
   TOTP_ISSUER: z.string().default('Shopnetic'),
+  // Accept a code from ±N 30s steps (clock skew tolerance). 1 = RFC default.
+  TOTP_WINDOW_STEPS: z.coerce.number().int().min(0).max(20).default(1),
 
   // Outbound email (Mailpit locally).
   SMTP_URL: z.string().startsWith('smtp').default('smtp://localhost:1025'),

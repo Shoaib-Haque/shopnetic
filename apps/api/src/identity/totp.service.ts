@@ -17,7 +17,10 @@ export class TotpService {
     private readonly prisma: PrismaService,
     private readonly box: SecretBoxService,
     @Inject(API_ENV) private readonly env: ApiEnv,
-  ) {}
+  ) {
+    // Clock-skew tolerance: accept a code from ±N 30s steps (RFC 6238 §5.2).
+    authenticator.options = { window: env.TOTP_WINDOW_STEPS };
+  }
 
   async isEnrolled(accountId: string): Promise<boolean> {
     const row = await this.prisma.totpSecret.findUnique({ where: { accountId } });
