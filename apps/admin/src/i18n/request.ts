@@ -6,19 +6,20 @@ type MessageModule = { default: Record<string, unknown> };
 
 /**
  * Per-request i18n config. Namespaces split per area (plan/24 §3): `common`
- * (chrome) + `staff` (login / invite / MFA).
+ * (chrome) + `staff` (login / invite / MFA) + `catalog` (back-office catalog).
  */
 export default getRequestConfig(async ({ requestLocale }) => {
   const requested = await requestLocale;
   const locale = hasLocale(routing.locales, requested) ? requested : routing.defaultLocale;
 
-  const [common, staff] = (await Promise.all([
+  const [common, staff, catalog] = (await Promise.all([
     import(`../../messages/${locale}/common.json`),
     import(`../../messages/${locale}/staff.json`),
-  ])) as [MessageModule, MessageModule];
+    import(`../../messages/${locale}/catalog.json`),
+  ])) as [MessageModule, MessageModule, MessageModule];
 
   return {
     locale,
-    messages: { ...common.default, ...staff.default },
+    messages: { ...common.default, ...staff.default, ...catalog.default },
   };
 });
