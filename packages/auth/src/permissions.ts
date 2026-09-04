@@ -37,6 +37,7 @@ export const Permission = {
 
   // Catalog governance (staff)
   PRODUCT_APPROVE: 'product:approve',
+  PRODUCT_MANAGE: 'product:manage',
   CATEGORY_MANAGE: 'category:manage',
   BRAND_MANAGE: 'brand:manage',
   ATTRIBUTE_MANAGE: 'attribute:manage',
@@ -120,6 +121,7 @@ const SERVICE_ADMIN_PERMS: Permission[] = [
 const ADMIN_PERMS: Permission[] = [
   ...SERVICE_ADMIN_PERMS,
   P.PRODUCT_APPROVE,
+  P.PRODUCT_MANAGE,
   P.CATEGORY_MANAGE,
   P.BRAND_MANAGE,
   P.ATTRIBUTE_MANAGE,

@@ -62,8 +62,10 @@ raw-SQL migration.
 > shown below as `*_i18n`.
 >
 > **Built so far:** `category`, `brand` (+ `brand_alias`), `option_type`
-> (+ `option_value`), `value_set` (+ `value_set_item`), `category_option`, and an
-> `outbox` per `1.5`. The rest lands one entity at a time.
+> (+ `option_value`), `value_set` (+ `value_set_item`), `category_option`,
+> `product` (+ `product_option`, `product_option_value`, `variant`,
+> `variant_option_value`), and an `outbox` per `1.5`. `offer` and the rest of the
+> Inventory context land one entity at a time once the seller context exists.
 
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
@@ -76,11 +78,11 @@ raw-SQL migration.
 | `brand` | name, slug (unique), display_name_i18n, logo_key, status (`pending/active/rejected`), merged_into_brand_id, deleted_at | Built. Optional per product. Admin CRUD: `/admin/v1/brands` (`brand:manage`). Merge: `POST …/:id/merge` moves the source's aliases to the target, adds the source name/slug as aliases, sets `merged_into_brand_id` + soft-deletes the source. |
 | `brand_alias` | brand_id, alias (`citext`, globally unique) | Built. Dedupe / merge ("JBL" = "jbl" = "JBL Audio"). Add/remove: `…/:id/aliases`. |
 | `brand_request` | seller_id, proposed_name, proposed_logo_key, evidence (jsonb), status, reviewed_by, reject_reason, resulting_brand_id | **Deferred** — needs the seller context. Seller-proposed unlisted brand → admin moderation. |
-| `product` | category_id, brand_id (nullable), title_i18n, description_i18n, slug, status (`draft/pending/active/archived`), base_price_minor (nullable), currency, spec (jsonb), proposed_by_seller_id, deleted_at | Shared catalog concept across sellers. |
-| `product_option` | product_id, option_type_id, position, required_value_id (nullable) | Which option types THIS product uses + order. `required_value_id` set for the "single value / One Size" case (UI skips the picker). |
-| `product_option_value` | product_id, option_type_id, option_value_id, position | The subset of values this product offers on each axis. |
-| `variant` (SKU) | product_id, sku_code, gtin, weight_g, dims (jsonb), combo_signature (unique per product), status, position, deleted_at | One concrete combination; **created lazily** only for combos a seller offers. `combo_signature` = ordered concat of (option_type:option_value) — prevents dup combos. |
-| `variant_option_value` | variant_id, option_type_id, option_value_id — PK (variant_id, option_type_id) | The set of these rows **is** the variant's combination (0..n axes, no schema change). |
+| `product` | category_id (FK Restrict), brand_id (nullable, FK SetNull), title_i18n, description_i18n (nullable), slug (unique), status (`draft/pending/active/archived`), base_price_minor (bigint, nullable), currency (char3, nullable), spec (jsonb), proposed_by_seller_id (id-only, no FK), deleted_at | Built. Shared catalog concept across sellers. Admin CRUD: `/admin/v1/products` (`product:manage`). Category is fixed after creation; brand is validated against `category.brand_requirement`; `currency` required when `base_price_minor` is set. |
+| `product_option` | product_id (FK Cascade), option_type_id (FK Restrict), position, required_value_id (nullable) — PK (product_id, option_type_id) | Built. Upsert: `PUT /admin/v1/products/:productId/options/:optionTypeId`. Only addable when the category has a `category_option` for it that is not `not_applicable`. |
+| `product_option_value` | product_id, option_type_id, option_value_id, position — PK (all three); composite FK → `product_option` (Cascade) | Built. Replace-all: `PUT …/options/:optionTypeId/values`. Values must be active and of the type; for a `predefined` `category_option` they must be in its value set. |
+| `variant` (SKU) | product_id (FK Cascade), sku_code, gtin, weight_g, dims (jsonb), combo_signature, status (`active/inactive`), position, deleted_at — unique (product_id, combo_signature) and (product_id, sku_code) | Built. `/admin/v1/products/:productId/variants` (`product:manage`). One value per **variant-axis** (`category_option.is_variant_axis`) product option; selections are immutable (delete + recreate). `combo_signature` = sorted `optionTypeId:optionValueId` join; `''` for the no-axis product (exactly one variant). |
+| `variant_option_value` | variant_id (FK Cascade), option_type_id, option_value_id — PK (variant_id, option_type_id) | Built. The set of these rows **is** the variant's combination (0..n axes, no schema change). |
 | `media_asset` | owner_type (`product/offer`), owner_id, kind (`image/video`), file_key, poster_key, width, height, duration_s, blurhash, alt_i18n, position, status | `product`-owned = shared/curated; `offer`-owned = seller's own shots. |
 | `media_option_tag` | media_asset_id, option_type_id, option_value_id | 0..n. Tags an asset to option value(s) (e.g. Color=White) so the gallery swaps per selected variant (`26` §5). Untagged = default/all. |
 | `product_edit_request` | product_id or new, seller_id, kind (`new_product/edit/new_variant/shared_media`), payload (jsonb), status | Moderation queue for seller-proposed catalog data. |
@@ -95,7 +97,7 @@ Price resolution for (seller, variant):
 
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
-| `offer` | seller_id, variant_id, price_minor, sale_price_minor, sale_starts/ends, compare_at_minor, condition, handling_days, status, min_qty, max_qty, deleted_at | A seller's sellable instance of a variant. Unique (seller_id, variant_id) where not deleted. |
+| `offer` | seller_id, variant_id, price_minor, sale_price_minor, sale_starts/ends, compare_at_minor, condition, handling_days, status, min_qty, max_qty, deleted_at | **Deferred** — needs the seller context (`seller_id`). A seller's sellable instance of a variant. Unique (seller_id, variant_id) where not deleted. |
 | `offer_media` | see `media_asset` with `owner_type='offer'` | Seller-specific images/videos for their listing. |
 | `warehouse` | seller_id, name, address (jsonb) | |
 | `stock` | offer_id, warehouse_id, on_hand, reserved, safety_stock, backorder, restock_eta | Available = on_hand − reserved (invariant ≥ 0). Per offer = per seller per variant. |

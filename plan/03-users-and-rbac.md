@@ -140,6 +140,7 @@ Platform owner. Everything, plus the things Admins can't:
 | `order:place` | ✅ | — | — | — | — |
 | `offer:manage` (own) | — | ✅ | — | — | — |
 | `product:approve` (new base) | — | — | — | ✅ | ✅ |
+| `product:manage` (base products, options, variants) | — | — | — | ✅ | ✅ |
 | `review:moderate` | — | — | ✅ | ✅ | ✅ |
 | `report:resolve` | — | — | ✅ | ✅ | ✅ |
 | `dispute:refund` (≤ cap) | — | — | ✅ | ✅ | ✅ |
