@@ -340,6 +340,7 @@ model Category {
   position         Int                      @default(0)
   isActive         Boolean                  @default(true) @map("is_active")
   brandRequirement CategoryBrandRequirement @default(optional) @map("brand_requirement")
+  options          CategoryOption[]
   createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime?                @map("deleted_at") @db.Timestamptz(6)
@@ -433,16 +434,17 @@ enum BrandStatus {
 /// hard-deleted, once products reference it — `deleted_at` is a soft-delete for
 /// the not-yet-referenced case.
 model OptionType {
-  id        String           @id @default(uuid(7)) @db.Uuid
-  code      String           @unique
-  nameI18n  Json             @map("name_i18n")
-  dataType  OptionDataType   @default(select) @map("data_type")
-  hasSwatch Boolean          @default(false) @map("has_swatch")
-  status    OptionTypeStatus @default(active)
-  values    OptionValue[]
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  id              String           @id @default(uuid(7)) @db.Uuid
+  code            String           @unique
+  nameI18n        Json             @map("name_i18n")
+  dataType        OptionDataType   @default(select) @map("data_type")
+  hasSwatch       Boolean          @default(false) @map("has_swatch")
+  status          OptionTypeStatus @default(active)
+  values          OptionValue[]
+  categoryOptions CategoryOption[]
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?        @map("deleted_at") @db.Timestamptz(6)
 
   @@index([status])
   @@index([deletedAt])
@@ -480,6 +482,7 @@ model OptionValue {
   swatchImageKey String?           @map("swatch_image_key")
   position       Int               @default(0)
   status         OptionValueStatus @default(active)
+  valueSetItems  ValueSetItem[]
   createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -492,6 +495,79 @@ model OptionValue {
 enum OptionValueStatus {
   active
   deprecated
+
+  @@schema("catalog")
+}
+
+/// A managed, named, ordered list of option values (plan/26 §2.1) — e.g.
+/// "Apparel sizes" (S…3XL). Referenced by `category_option.value_set_id` for the
+/// `predefined` / `hybrid` value sources. Not bound to an option type in the
+/// schema; the category-option wiring endpoint checks every item belongs to the
+/// option type it is attached to.
+model ValueSet {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  name      String           @unique
+  items     ValueSetItem[]
+  usedBy    CategoryOption[]
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("value_set")
+  @@schema("catalog")
+}
+
+model ValueSetItem {
+  valueSetId    String      @map("value_set_id") @db.Uuid
+  valueSet      ValueSet    @relation(fields: [valueSetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  optionValueId String      @map("option_value_id") @db.Uuid
+  optionValue   OptionValue @relation(fields: [optionValueId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  position      Int         @default(0)
+
+  @@id([valueSetId, optionValueId])
+  @@index([optionValueId])
+  @@map("value_set_item")
+  @@schema("catalog")
+}
+
+/// Admin config: which option types apply to a category and how (plan/26 §2.1).
+/// One row per (category, option type). `is_variant_axis = false` ⇒ the option is
+/// an attribute / spec / facet, not a buyable choice. Additive in practice — a
+/// row referenced by products should be deprecated, not deleted (guard lands
+/// with `product_option`).
+model CategoryOption {
+  categoryId    String              @map("category_id") @db.Uuid
+  category      Category            @relation(fields: [categoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  optionTypeId  String              @map("option_type_id") @db.Uuid
+  optionType    OptionType          @relation(fields: [optionTypeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  applicability OptionApplicability @default(optional)
+  isVariantAxis Boolean             @default(true) @map("is_variant_axis")
+  valueSource   ValueSource         @default(open) @map("value_source")
+  valueSetId    String?             @map("value_set_id") @db.Uuid
+  valueSet      ValueSet?           @relation(fields: [valueSetId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  priceImpact   Boolean             @default(false) @map("price_impact")
+  position      Int                 @default(0)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([categoryId, optionTypeId])
+  @@index([optionTypeId])
+  @@index([valueSetId])
+  @@map("category_option")
+  @@schema("catalog")
+}
+
+enum OptionApplicability {
+  required
+  optional
+  not_applicable
+
+  @@schema("catalog")
+}
+
+enum ValueSource {
+  predefined
+  open
+  hybrid
 
   @@schema("catalog")
 }

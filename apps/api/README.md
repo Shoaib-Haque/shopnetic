@@ -19,30 +19,32 @@ pnpm --filter @shopnetic/api start
 
 ## Endpoints
 
-| Method | Path                                                                      | Purpose                                                                                                      |
-| ------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| GET    | `/healthz`                                                                | liveness — process is up (no dependency checks)                                                              |
-| GET    | `/readyz`                                                                 | readiness — `200` when the DB answers, `503` otherwise                                                       |
-| GET    | `/.well-known/jwks.json`                                                  | public keys for verifying access tokens                                                                      |
-| POST   | `/identity/v1/auth/register`                                              | `{ email, password }` → always `202` (no account enumeration)                                                |
-| POST   | `/identity/v1/auth/verify`                                                | `{ token }` → marks the email verified                                                                       |
-| POST   | `/identity/v1/auth/verification/resend`                                   | `{ email }` → always `202`                                                                                   |
-| POST   | `/identity/v1/auth/login`                                                 | `{ email, password }` → sets `sn_rt` httpOnly cookie + access token; `403 EMAIL_NOT_VERIFIED` until verified |
-| POST   | `/identity/v1/auth/token/refresh`                                         | rotates the refresh cookie; reuse → `401` + family revoked                                                   |
-| POST   | `/identity/v1/auth/logout`                                                | revokes the session, clears the cookie, `204`                                                                |
-| GET    | `/identity/v1/auth/session`                                               | current user for a valid refresh cookie (no rotation); `401` if not signed in                                |
-| GET    | `/identity/v1/me`                                                         | **Bearer** — the actor: plane, grants, flattened permissions                                                 |
-| GET    | `/identity/v1/audit-events`                                               | **Bearer** + `auditlog:read` — newest-first, cursor-paginated (`?cursor=&limit=`)                            |
-| POST   | `/identity/v1/staff/auth/login`                                           | `{ email, password, code? }` → TOTP enrolment challenge (first time) or `sn_srt` cookie + `aud=admin` token  |
-| POST   | `/identity/v1/staff/auth/totp/confirm`                                    | `{ email, password, code }` → confirms the authenticator, returns recovery codes + a session                 |
-| POST   | `/identity/v1/staff/auth/token/refresh`                                   | rotates `sn_srt` (8h lifetime)                                                                               |
-| POST   | `/identity/v1/staff/auth/logout`                                          | `204`                                                                                                        |
-| GET    | `/identity/v1/staff/auth/session`                                         | current staff user for a valid `sn_srt` cookie                                                               |
-| POST   | `/identity/v1/staff/invites`                                              | **staff Bearer** + `staff:manage` — `{ email, role }` → emails an invite link, `202`                         |
-| POST   | `/identity/v1/staff/invites/accept`                                       | `{ token, password }` → creates the staff account, `202`                                                     |
-| \*     | `/admin/v1/categories` (+ `…/:id`, `…/:id/move`)                          | **staff Bearer** + `category:manage` — category tree CRUD (ltree `path`, reparent, soft-delete)              |
-| \*     | `/admin/v1/brands` (+ `…/:id`, `…/:id/aliases[/:aliasId]`, `…/:id/merge`) | **staff Bearer** + `brand:manage` — brand CRUD, aliases, merge (moves aliases, soft-deletes source)          |
-| \*     | `/admin/v1/option-types` (+ `…/:id`, `…/:id/values[/:valueId]`)           | **staff Bearer** + `attribute:manage` — global option-type + option-value catalog (Color, Size, Storage…)    |
+| Method         | Path                                                                      | Purpose                                                                                                       |
+| -------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| GET            | `/healthz`                                                                | liveness — process is up (no dependency checks)                                                               |
+| GET            | `/readyz`                                                                 | readiness — `200` when the DB answers, `503` otherwise                                                        |
+| GET            | `/.well-known/jwks.json`                                                  | public keys for verifying access tokens                                                                       |
+| POST           | `/identity/v1/auth/register`                                              | `{ email, password }` → always `202` (no account enumeration)                                                 |
+| POST           | `/identity/v1/auth/verify`                                                | `{ token }` → marks the email verified                                                                        |
+| POST           | `/identity/v1/auth/verification/resend`                                   | `{ email }` → always `202`                                                                                    |
+| POST           | `/identity/v1/auth/login`                                                 | `{ email, password }` → sets `sn_rt` httpOnly cookie + access token; `403 EMAIL_NOT_VERIFIED` until verified  |
+| POST           | `/identity/v1/auth/token/refresh`                                         | rotates the refresh cookie; reuse → `401` + family revoked                                                    |
+| POST           | `/identity/v1/auth/logout`                                                | revokes the session, clears the cookie, `204`                                                                 |
+| GET            | `/identity/v1/auth/session`                                               | current user for a valid refresh cookie (no rotation); `401` if not signed in                                 |
+| GET            | `/identity/v1/me`                                                         | **Bearer** — the actor: plane, grants, flattened permissions                                                  |
+| GET            | `/identity/v1/audit-events`                                               | **Bearer** + `auditlog:read` — newest-first, cursor-paginated (`?cursor=&limit=`)                             |
+| POST           | `/identity/v1/staff/auth/login`                                           | `{ email, password, code? }` → TOTP enrolment challenge (first time) or `sn_srt` cookie + `aud=admin` token   |
+| POST           | `/identity/v1/staff/auth/totp/confirm`                                    | `{ email, password, code }` → confirms the authenticator, returns recovery codes + a session                  |
+| POST           | `/identity/v1/staff/auth/token/refresh`                                   | rotates `sn_srt` (8h lifetime)                                                                                |
+| POST           | `/identity/v1/staff/auth/logout`                                          | `204`                                                                                                         |
+| GET            | `/identity/v1/staff/auth/session`                                         | current staff user for a valid `sn_srt` cookie                                                                |
+| POST           | `/identity/v1/staff/invites`                                              | **staff Bearer** + `staff:manage` — `{ email, role }` → emails an invite link, `202`                          |
+| POST           | `/identity/v1/staff/invites/accept`                                       | `{ token, password }` → creates the staff account, `202`                                                      |
+| \*             | `/admin/v1/categories` (+ `…/:id`, `…/:id/move`)                          | **staff Bearer** + `category:manage` — category tree CRUD (ltree `path`, reparent, soft-delete)               |
+| GET/PUT/DELETE | `/admin/v1/categories/:categoryId/options[/:optionTypeId]`                | **staff Bearer** + `category:manage` — per-category option config (applicability, variant-axis, value source) |
+| \*             | `/admin/v1/brands` (+ `…/:id`, `…/:id/aliases[/:aliasId]`, `…/:id/merge`) | **staff Bearer** + `brand:manage` — brand CRUD, aliases, merge (moves aliases, soft-deletes source)           |
+| \*             | `/admin/v1/option-types` (+ `…/:id`, `…/:id/values[/:valueId]`)           | **staff Bearer** + `attribute:manage` — global option-type + option-value catalog (Color, Size, Storage…)     |
+| \*             | `/admin/v1/value-sets` (+ `…/:id`, `…/:id/items[/:optionValueId]`)        | **staff Bearer** + `attribute:manage` — managed value lists ("Apparel sizes"); backs `predefined`/`hybrid`    |
 
 Responses use the envelope from `@shopnetic/contracts` (`{ data, meta }` /
 `{ error }`, RFC-9457). Auth routes are per-IP rate limited (`X-RateLimit-*`,
@@ -80,8 +82,9 @@ src/
   prisma/    PrismaService (extends the @shopnetic/db client) + @Global PrismaModule
   catalog/   CatalogModule — CategoryService (/admin/v1/categories, ltree tree,
              raw-SQL path maintenance) + BrandService (/admin/v1/brands, aliases,
-             merge) + OptionTypeService (/admin/v1/option-types, nested values);
-             shared catalog outbox helper
+             merge) + OptionTypeService (/admin/v1/option-types, nested values) +
+             ValueSetService (/admin/v1/value-sets) + CategoryOptionService
+             (per-category option config, upsert); shared catalog outbox helper
   identity/  IdentityModule — buyer + staff auth. register/verify/login/refresh/
              logout/session, /me, /audit-events; staff invite + accept, staff
              login + TOTP enrol/confirm; password, sessions (rotation + reuse

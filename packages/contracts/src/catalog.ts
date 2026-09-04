@@ -213,3 +213,83 @@ export const updateOptionValueRequestSchema = z
   })
   .partial();
 export type UpdateOptionValueRequest = z.infer<typeof updateOptionValueRequestSchema>;
+
+// ── Value sets (managed value lists — plan/26 §2.1) ──────────────────────────
+
+const valueSetNameSchema = z.string().trim().min(1).max(120);
+const positionField = z.number().int().min(0).max(100_000);
+
+export const valueSetItemSchema = z.object({
+  optionValueId: z.string(),
+  optionTypeId: z.string(),
+  code: z.string(),
+  label: localizedTextSchema,
+  position: z.number().int(),
+});
+export type ValueSetItem = z.infer<typeof valueSetItemSchema>;
+
+export const valueSetSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  items: z.array(valueSetItemSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ValueSet = z.infer<typeof valueSetSchema>;
+
+const valueSetItemInputSchema = z.object({
+  optionValueId: z.string().uuid(),
+  position: positionField.optional(),
+});
+
+export const createValueSetRequestSchema = z.object({
+  name: valueSetNameSchema,
+  items: z.array(valueSetItemInputSchema).max(1000).optional(),
+});
+export type CreateValueSetRequest = z.infer<typeof createValueSetRequestSchema>;
+
+export const updateValueSetRequestSchema = z.object({ name: valueSetNameSchema });
+export type UpdateValueSetRequest = z.infer<typeof updateValueSetRequestSchema>;
+
+export const addValueSetItemRequestSchema = valueSetItemInputSchema;
+export type AddValueSetItemRequest = z.infer<typeof addValueSetItemRequestSchema>;
+
+// ── Category options (per-category option config — plan/26 §2.1) ─────────────
+
+export const optionApplicabilitySchema = z.enum(['required', 'optional', 'not_applicable']);
+export type OptionApplicability = z.infer<typeof optionApplicabilitySchema>;
+
+export const valueSourceSchema = z.enum(['predefined', 'open', 'hybrid']);
+export type ValueSource = z.infer<typeof valueSourceSchema>;
+
+export const categoryOptionSchema = z.object({
+  categoryId: z.string(),
+  optionTypeId: z.string(),
+  /** The option type's `code`, denormalised for display. */
+  optionTypeCode: z.string(),
+  applicability: optionApplicabilitySchema,
+  isVariantAxis: z.boolean(),
+  valueSource: valueSourceSchema,
+  valueSetId: z.string().nullable(),
+  priceImpact: z.boolean(),
+  position: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type CategoryOption = z.infer<typeof categoryOptionSchema>;
+
+/**
+ * Upsert body for `PUT …/categories/:categoryId/options/:optionTypeId`. All
+ * fields optional; on first write the model defaults apply (`optional`,
+ * `is_variant_axis = true`, `value_source = open`, no set, no price impact).
+ * A non-`open` source requires `valueSetId`; `open` forbids it (server-checked).
+ */
+export const putCategoryOptionRequestSchema = z.object({
+  applicability: optionApplicabilitySchema.optional(),
+  isVariantAxis: z.boolean().optional(),
+  valueSource: valueSourceSchema.optional(),
+  valueSetId: z.string().uuid().nullable().optional(),
+  priceImpact: z.boolean().optional(),
+  position: positionField.optional(),
+});
+export type PutCategoryOptionRequest = z.infer<typeof putCategoryOptionRequestSchema>;

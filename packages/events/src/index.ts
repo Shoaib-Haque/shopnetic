@@ -22,6 +22,11 @@ export const DomainEvent = {
   OPTION_TYPE_CREATED: 'catalog.option_type_created',
   OPTION_TYPE_UPDATED: 'catalog.option_type_updated',
   OPTION_TYPE_DELETED: 'catalog.option_type_deleted',
+  VALUE_SET_CREATED: 'catalog.value_set_created',
+  VALUE_SET_UPDATED: 'catalog.value_set_updated',
+  VALUE_SET_DELETED: 'catalog.value_set_deleted',
+  CATEGORY_OPTION_SET: 'catalog.category_option_set',
+  CATEGORY_OPTION_REMOVED: 'catalog.category_option_removed',
   PRODUCT_APPROVED: 'catalog.product_approved',
   PRODUCT_ARCHIVED: 'catalog.product_archived',
   // inventory
