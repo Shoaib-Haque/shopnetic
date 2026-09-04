@@ -10,10 +10,10 @@ migrations, soft-delete by default, explicit FK behaviour, short transactions.
 
 ## Contexts present
 
-| Schema     | Models                                                                                                                                                                                                                                                                  |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `identity` | `account`, `credential`, `email_verification`, `session`, `totp_secret`, `recovery_code`, `role`, `permission`, `role_permission`, `grant`, `staff_invite`, `audit_event`, `outbox`                                                                                     |
-| `catalog`  | `category` (ltree `path`), `brand`, `brand_alias`, `option_type`, `option_value`, `value_set`, `value_set_item`, `category_option`, `product`, `product_option`, `product_option_value`, `variant`, `variant_option_value`, `outbox` — more entities land one at a time |
+| Schema     | Models                                                                                                                                                                                                                                                                                                     |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `identity` | `account`, `credential`, `email_verification`, `session`, `totp_secret`, `recovery_code`, `role`, `permission`, `role_permission`, `grant`, `staff_invite`, `audit_event`, `outbox`                                                                                                                        |
+| `catalog`  | `category` (ltree `path`), `brand`, `brand_alias`, `option_type`, `option_value`, `value_set`, `value_set_item`, `category_option`, `product`, `product_option`, `product_option_value`, `variant`, `variant_option_value`, `media_asset`, `media_option_tag`, `outbox` — more entities land one at a time |
 
 Other context schemas (`inventory`, `orders`, `seller`, …) are added to the
 generator's `schemas` list as their models land — Prisma rejects an empty schema.

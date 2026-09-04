@@ -36,6 +36,9 @@ export const DomainEvent = {
   VARIANT_CREATED: 'catalog.variant_created',
   VARIANT_UPDATED: 'catalog.variant_updated',
   VARIANT_DELETED: 'catalog.variant_deleted',
+  MEDIA_CREATED: 'catalog.media_created',
+  MEDIA_UPDATED: 'catalog.media_updated',
+  MEDIA_DELETED: 'catalog.media_deleted',
   // inventory
   OFFER_PRICE_CHANGED: 'inventory.offer_price_changed',
   OFFER_STOCK_CHANGED: 'inventory.offer_stock_changed',

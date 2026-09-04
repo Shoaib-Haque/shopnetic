@@ -13,9 +13,14 @@ Related: `07-data-model.md`, `11-search-and-catalog.md`, `05-features-seller.md`
 `/admin/v1/option-types`, `/admin/v1/value-sets`. `data_type` ships as
 `select|text|number|bool|swatch` (`select` in place of this doc's `enum`).
 Variant selections are immutable and cover exactly the `is_variant_axis` product
-options; `combo_signature` blocks duplicate combinations.
-**Deferred:** `offer` / `stock` / `warehouse` / `buybox` (Inventory context) —
-need `seller_id`; `media_asset` / `media_option_tag` (§5); `brand_request` (§6).
+options; `combo_signature` blocks duplicate combinations. **`media_asset` +
+`media_option_tag` (§5)** are built for `product` owners — `/admin/v1/products/
+:productId/media`, `/admin/v1/media/:id` (+ `…/tags/:optionTypeId`), one tag per
+axis per asset, `pending` status = not shown.
+**Deferred:** `offer` / `stock` / `warehouse` / `buybox` (Inventory context) and
+`offer`-owned media — need `seller_id`; `brand_request` (§6); moderation queue,
+per-category media rules (min/max, aspect ratio) and render-time gallery
+resolution (§5).
 Next once the seller context exists: `offer` → `stock` → `buybox`.
 
 This is the hardest modeling problem in the platform. Reference screenshots:
