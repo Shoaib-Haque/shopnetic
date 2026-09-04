@@ -1,7 +1,8 @@
-import { Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
+import { Inject, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request, Response } from 'express';
 import { RedisService } from '../redis/redis.service.js';
+import { API_ENV, rateLimitDisabled, type ApiEnv } from '../config/env.js';
 import { AppError } from './app-error.js';
 import { RATE_LIMIT_KEY, type RateLimitRule } from './rate-limit.decorator.js';
 
@@ -9,16 +10,20 @@ import { RATE_LIMIT_KEY, type RateLimitRule } from './rate-limit.decorator.js';
  * Per-IP fixed-window limiter for routes tagged with `@RateLimit`. Sets
  * `X-RateLimit-*` headers; a breach throws `RATE_LIMITED` (429 + `Retry-After`).
  * If Redis is unavailable the request is allowed through (fail-open) and the
- * error surfaces via the Redis client's own logging.
+ * error surfaces via the Redis client's own logging. `DEV_RATE_LIMIT_DISABLED`
+ * (development only) turns the whole guard off.
  */
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly redis: RedisService,
+    @Inject(API_ENV) private readonly env: ApiEnv,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    if (rateLimitDisabled(this.env)) return true;
+
     const rule = this.reflector.getAllAndOverride<RateLimitRule | undefined>(RATE_LIMIT_KEY, [
       ctx.getHandler(),
       ctx.getClass(),

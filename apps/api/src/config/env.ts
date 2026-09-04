@@ -56,6 +56,11 @@ const envSchema = z.object({
     .enum(['true', 'false', '1', '0'])
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
+  // DEV ONLY — turn off every `@RateLimit` guard so local testing isn't throttled.
+  DEV_RATE_LIMIT_DISABLED: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -73,10 +78,20 @@ export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
   if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_AUTH_RELAXED) {
     throw new Error('DEV_AUTH_RELAXED must not be set in production');
   }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_RATE_LIMIT_DISABLED) {
+    throw new Error('DEV_RATE_LIMIT_DISABLED must not be set in production');
+  }
   return parsed.data;
 }
 
 /** True only in `development` with the flag on — MFA / email-verify gates skipped. */
 export function authRelaxed(env: Pick<ApiEnv, 'NODE_ENV' | 'DEV_AUTH_RELAXED'>): boolean {
   return env.NODE_ENV === 'development' && env.DEV_AUTH_RELAXED;
+}
+
+/** True only in `development` with the flag on — every `@RateLimit` guard is skipped. */
+export function rateLimitDisabled(
+  env: Pick<ApiEnv, 'NODE_ENV' | 'DEV_RATE_LIMIT_DISABLED'>,
+): boolean {
+  return env.NODE_ENV === 'development' && env.DEV_RATE_LIMIT_DISABLED;
 }
