@@ -1,5 +1,5 @@
 # Git hooks — run `pnpm lefthook install` once after cloning.
-# See plan/CODING-RULES.md §A / §J.
+# See plan/CODING-RULES.md section A / section J.
 
 pre-commit:
   parallel: true

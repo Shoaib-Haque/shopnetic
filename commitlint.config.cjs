@@ -1,5 +1,5 @@
 /**
- * Conventional Commits — see plan/CODING-RULES.md §J4.
+ * Conventional Commits — see plan/CODING-RULES.md section J4.
  * Example: feat(checkout): add address step
  */
 module.exports = {

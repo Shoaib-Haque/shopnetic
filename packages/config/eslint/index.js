@@ -5,8 +5,8 @@ import globals from 'globals';
 
 /**
  * Shared flat ESLint config. See plan/CODING-RULES.md — key enforced rules:
- *  - no `any` (§B1)
- *  - no `console.*` in app code (§O1)
+ *  - no `any` (section B1)
+ *  - no `console.*` in app code (section O1)
  * Framework-specific configs (next, nest) extend this array.
  *
  * @type {import('eslint').Linter.Config[]}
@@ -41,7 +41,7 @@ export const base = [
         'error',
         {
           selector: 'TSAsExpression > TSUnknownKeyword',
-          message: 'Avoid `as unknown as` casts (CODING-RULES §B5).',
+          message: 'Avoid `as unknown as` casts (CODING-RULES section B5).',
         },
       ],
     },
