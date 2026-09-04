@@ -20,7 +20,7 @@ const withItems = {
 type ValueSetRow = Prisma.ValueSetGetPayload<{ include: typeof withItems }>;
 
 /**
- * Managed value lists (plan/26 §2.1) — e.g. "Apparel sizes". A set is a bag of
+ * Managed value lists (plan/26 section 2.1) — e.g. "Apparel sizes". A set is a bag of
  * option values; it is not bound to an option type here. `CategoryOptionService`
  * checks type consistency when a set is attached to a (category, option type).
  */

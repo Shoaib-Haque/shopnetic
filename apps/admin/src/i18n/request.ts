@@ -5,7 +5,7 @@ import { routing } from './routing';
 type MessageModule = { default: Record<string, unknown> };
 
 /**
- * Per-request i18n config. Namespaces split per area (plan/24 §3): `common`
+ * Per-request i18n config. Namespaces split per area (plan/24 section 3): `common`
  * (chrome) + `staff` (login / invite / MFA) + `catalog` (back-office catalog).
  */
 export default getRequestConfig(async ({ requestLocale }) => {

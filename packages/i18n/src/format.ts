@@ -2,7 +2,7 @@ import type { Locale } from './config.js';
 
 /**
  * All number / money / date formatting goes through `Intl` — never string
- * concatenation (plan/CODING-RULES.md §L, plan/24 §6). Money is always integer
+ * concatenation (plan/CODING-RULES.md section L, plan/24 section 6). Money is always integer
  * minor units + an ISO currency code.
  */
 

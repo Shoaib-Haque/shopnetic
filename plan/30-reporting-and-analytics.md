@@ -6,7 +6,7 @@ Related: `27-merchandising-and-ranking.md`, `18-observability.md`, `07-data-mode
 **Business reporting** for Admins (platform-wide) and Sellers (their shop):
 sales, traffic, clicks, conversion, inventory, finance — by day/week/month/
 quarter/year and by many dimensions. This is *not* `18-observability` (that is
-system health / SLOs). Both draw from the **same event pipeline** (`27` §3).
+system health / SLOs). Both draw from the **same event pipeline** (`27` section 3).
 
 ## 1. Consumers & scope
 
@@ -46,7 +46,7 @@ are their slice only.
 - Rating average & distribution, review volume & recency.
 - Return rate, cancellation rate (buyer vs seller initiated), dispute rate,
   "not as described" rate, on-time-ship %, response time.
-- Seller health score trend (`05` §7).
+- Seller health score trend (`05` section 7).
 
 ### Inventory
 - Stock on hand (units + retail value), by product/variant/warehouse.
@@ -103,14 +103,14 @@ domain events (order.placed, refund.completed, review.published,               �
 
 - **Provisional vs final**: "today" and the current period are labeled
   *provisional* (from hourly rollups + Redis counters). A period is marked
-  *final* after day-close + payment reconciliation (`13` §8).
+  *final* after day-close + payment reconciliation (`13` section 8).
 - **Restatement**: a refund/cancellation/chargeback is attributed to the period
   of the **original order** (net sales for last month can change when a return
   lands this month). Reports show "net (as of {date})" and a changelog of
   restatements for closed periods.
 - **Money must tie to the ledger.** A CI/periodic check asserts
   `Σ report_daily_finance == ledger` for each closed period; drift raises an
-  alert and blocks finalization (`18` §9).
+  alert and blocks finalization (`18` section 9).
 - Timezone: rollup day boundary is a configured business timezone; seller reports
   can display in the seller's timezone with a clear label.
 
@@ -123,7 +123,7 @@ domain events (order.placed, refund.completed, review.published,               �
 - **Scheduled reports**: seller/admin can schedule a weekly/monthly email digest
   or export.
 - Charts follow the `dataviz` skill conventions when built; consistent with the
-  design system (`CODING-RULES.md` §G, admin = denser).
+  design system (`CODING-RULES.md` section G, admin = denser).
 - All labels/units via i18n + `Intl` (`24`).
 
 ## 6. Event schema governance
@@ -134,14 +134,14 @@ domain events (order.placed, refund.completed, review.published,               �
   in `15`).
 - Client events are sampled/batched; server/domain events are authoritative for
   anything money- or outcome-related.
-- Bot/self/internal traffic filtered before rollups (`27` §3).
+- Bot/self/internal traffic filtered before rollups (`27` section 3).
 
 ## 7. Privacy
 
 - Seller/admin reports are **aggregates**; no buyer PII in report outputs.
 - Cohort/segment reports use non-identifying buckets (new vs returning, region,
   device class), gated by consent for anything user-level.
-- Raw event retention per `20` §5; summary tables kept long-term (small).
+- Raw event retention per `20` section 5; summary tables kept long-term (small).
 - Per-user analytics (for personalization, `27`) are a separate consented store,
   not exposed in business reports.
 

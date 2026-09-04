@@ -12,4 +12,4 @@ Shared build/lint/format/style configuration. No runtime code.
 | `@shopnetic/config/tailwind`                | Tailwind preset (design tokens) for all frontends                                      |
 
 Strict TS everywhere (`strict`, `noUncheckedIndexedAccess`,
-`exactOptionalPropertyTypes`) — see `plan/CODING-RULES.md` §B2.
+`exactOptionalPropertyTypes`) — see `plan/CODING-RULES.md` section B2.

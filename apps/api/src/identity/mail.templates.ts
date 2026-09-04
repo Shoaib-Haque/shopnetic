@@ -4,7 +4,7 @@
  * TODO(i18n): move to a proper message catalog (`messages/<locale>/identity.*`)
  * once the API gets an ICU/next-intl runtime. Until then this typed record is
  * the API-side equivalent — copy still lives in one place, keyed, not inlined at
- * the call site (plan/CODING-RULES.md §L3).
+ * the call site (plan/CODING-RULES.md section L3).
  */
 export type MailLocale = 'en';
 

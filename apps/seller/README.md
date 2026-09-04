@@ -1,7 +1,7 @@
 # @shopnetic/seller
 
 Seller panel. Next.js (App Router). Readable route paths (`/dashboard`,
-`/products`), same 3-layer auth enforcement as admin (`plan/23` §3).
+`/products`), same 3-layer auth enforcement as admin (`plan/23` section 3).
 
 ```bash
 pnpm --filter @shopnetic/seller dev     # http://localhost:3001

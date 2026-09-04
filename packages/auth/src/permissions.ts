@@ -1,5 +1,5 @@
 /**
- * Permission + role model — plan/03-users-and-rbac.md §2–4, plan/CODING-RULES.md §I1.
+ * Permission + role model — plan/03-users-and-rbac.md section 2–4, plan/CODING-RULES.md section I1.
  *
  * Business code checks *permissions*, never role strings. Roles are just named
  * bundles of permissions, seeded into the `identity.role` / `identity.permission`
@@ -66,7 +66,7 @@ export const PERMISSIONS: readonly Permission[] = Object.values(Permission);
 
 /**
  * System roles. `is_system = true` in the DB — a Super Admin can add *custom*
- * staff roles later (plan/03 §2) but cannot delete these.
+ * staff roles later (plan/03 section 2) but cannot delete these.
  */
 export const Role = {
   BUYER: 'BUYER',
@@ -171,7 +171,7 @@ export interface Grant {
   permissions: Permission[];
 }
 
-/** Two account planes that never cross (plan/03 §1). */
+/** Two account planes that never cross (plan/03 section 1). */
 export type AccountPlane = 'marketplace' | 'staff';
 
 export interface Actor {

@@ -9,7 +9,7 @@ import { setActor } from './actor-request.js';
 /**
  * Like `AuthGuard` but for the staff plane: the token must carry `aud=admin`
  * **and** the account must be on the `staff` plane. A storefront token can never
- * satisfy this (plan/03 §1).
+ * satisfy this (plan/03 section 1).
  */
 @Injectable()
 export class StaffAuthGuard implements CanActivate {

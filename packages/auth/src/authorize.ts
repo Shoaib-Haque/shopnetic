@@ -8,7 +8,7 @@ export interface ResourceContext {
 }
 
 /**
- * The single authorization entry point (plan/03 §2, plan/CODING-RULES.md §I1).
+ * The single authorization entry point (plan/03 section 2, plan/CODING-RULES.md section I1).
  * **Deny by default.** True only when the actor holds a grant that (a) carries
  * `permission` and (b) whose scope covers `ctx`:
  *

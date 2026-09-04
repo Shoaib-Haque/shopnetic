@@ -2,7 +2,7 @@
 
 Prisma schema, the generated client, and the process-wide client singleton. One
 schema file; models are grouped by bounded context and each context owns a
-Postgres schema (`@@schema(...)`) — `plan/02-architecture.md` §5,
+Postgres schema (`@@schema(...)`) — `plan/02-architecture.md` section 5,
 `plan/07-data-model.md`.
 
 Evolution rules: **`plan/25-database-conventions.md`** — expand/contract

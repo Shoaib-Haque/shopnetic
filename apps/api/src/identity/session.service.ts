@@ -20,7 +20,7 @@ export interface IssuedSession {
 }
 
 /**
- * Refresh-token sessions with rotation and reuse detection (plan/16 §1).
+ * Refresh-token sessions with rotation and reuse detection (plan/16 section 1).
  * One row per issued token; a `family_id` links a rotation chain. Presenting a
  * token that was already rotated out revokes the whole family.
  */

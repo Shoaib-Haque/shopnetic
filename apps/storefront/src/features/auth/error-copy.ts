@@ -1,7 +1,7 @@
 /**
  * Maps an identity-API error `code` to a message key **within the `auth`
  * namespace** (used with `useTranslations('auth')`). Never show the server's own
- * text (plan/CODING-RULES.md §F2); keys, not English (§L1). Unknown codes fall
+ * text (plan/CODING-RULES.md section F2); keys, not English (section L1). Unknown codes fall
  * back to a generic message.
  */
 const CODE_TO_KEY: Record<string, string> = {

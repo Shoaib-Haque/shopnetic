@@ -8,5 +8,5 @@ const log = createLogger({ service: 'api' });
 log.info({ orderId }, 'order placed');
 ```
 
-STUB — see `plan/18-observability.md` and `plan/CODING-RULES.md` §O. Redaction
+STUB — see `plan/18-observability.md` and `plan/CODING-RULES.md` section O. Redaction
 allow-list, OTel correlation, and request-scoped child loggers are pending.

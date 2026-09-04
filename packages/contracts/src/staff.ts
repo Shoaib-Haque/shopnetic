@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { emailSchema, passwordSchema, authTokensSchema, sessionUserSchema } from './auth.js';
 
 /**
- * Staff-plane contracts (plan/03 §1). Invite-only; tokens carry `aud=admin`;
+ * Staff-plane contracts (plan/03 section 1). Invite-only; tokens carry `aud=admin`;
  * TOTP is mandatory.
  */
 

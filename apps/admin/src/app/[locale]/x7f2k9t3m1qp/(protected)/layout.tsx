@@ -8,7 +8,7 @@ import { LogoutButton } from '@/features/staff-auth/components/logout-button';
 
 /**
  * Protected admin shell. Server Component: no valid staff session → redirect to
- * the login page (plan/23 §3). Nav from the actor's permissions lands with the
+ * the login page (plan/23 section 3). Nav from the actor's permissions lands with the
  * first back-office module.
  */
 export default async function ProtectedLayout({

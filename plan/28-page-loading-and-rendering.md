@@ -1,7 +1,7 @@
 # 28 — Page Loading & Rendering Strategy
 
 Status: DRAFT
-Related: `09-frontend-architecture.md`, `10-seo-strategy.md`, `27-merchandising-and-ranking.md`, `CODING-RULES.md` §C/§E
+Related: `09-frontend-architecture.md`, `10-seo-strategy.md`, `27-merchandising-and-ranking.md`, `CODING-RULES.md` section C/section E
 
 How each page type loads: what renders first, what streams in, how lists paginate,
 and how "sections only appear if they have data".
@@ -12,11 +12,11 @@ and how "sections only appear if they have data".
   React Suspense). The user sees product name, image, price fast; heavier
   sections fill in.
 - **One skeleton per streamed region**, shaped like the final content → no layout
-  shift (CLS budget `09` §7).
+  shift (CLS budget `09` section 7).
 - **Progressive, not blocking**: a slow "related items" query must never delay the
   buy box.
 - Client JS is for interaction only; navigation between pages keeps server
-  rendering (`CODING-RULES.md` §C).
+  rendering (`CODING-RULES.md` section C).
 
 ## 2. Product Detail Page (PDP) — progressive sections
 
@@ -24,17 +24,17 @@ Render order (each later group in its own `<Suspense>` boundary, streamed):
 
 | Priority | Region | Data source | Notes |
 |----------|--------|-------------|-------|
-| **1 — in initial HTML, blocking** | Breadcrumbs, title, brand, primary image (LCP), price / buy-box, variant pickers, rating summary, key attributes, primary CTA, canonical + metadata + `Product`/`Offer` JSON-LD | Single server fetch `getProductView(slug, variantId)` from the PDP read model (denormalized, `26` §3) | Must be fast: read model is pre-joined; target TTFB `20` §1. Above-the-fold is complete without JS. |
+| **1 — in initial HTML, blocking** | Breadcrumbs, title, brand, primary image (LCP), price / buy-box, variant pickers, rating summary, key attributes, primary CTA, canonical + metadata + `Product`/`Offer` JSON-LD | Single server fetch `getProductView(slug, variantId)` from the PDP read model (denormalized, `26` section 3) | Must be fast: read model is pre-joined; target TTFB `20` section 1. Above-the-fold is complete without JS. |
 | **2 — streamed, high** | Full image/video gallery (beyond first image), full description, spec table, delivery/returns panel | Same read model / lazy media list | Gallery thumbnails lazy; first image `priority`. |
 | **3 — streamed** | Reviews & ratings (first page), Q&A | Reviews service | Paginated; "see all" → own route or client load-more. |
-| **4 — streamed, low** | "Customers also viewed", "Also bought / frequently bought together", "Related to this item", "More from this seller", "Compare similar" | `product_related` read model (`27` §7) — precomputed, fast | Each its own boundary; independent failure (one erroring section shows nothing, page fine). |
+| **4 — streamed, low** | "Customers also viewed", "Also bought / frequently bought together", "Related to this item", "More from this seller", "Compare similar" | `product_related` read model (`27` section 7) — precomputed, fast | Each its own boundary; independent failure (one erroring section shows nothing, page fine). |
 | **5 — client, after hydration** | "Recently viewed" (personal), live stock ticker, "N people viewing", personalized re-rank of section 4 | Client fetch / realtime (`15`) | Never blocks; hydrates in. |
 
 - **Variant change** (pick a color): updates price, gallery, stock, buy-box via a
   client action that refetches just the variant slice (or uses already-loaded
   variant data) — **no full page reload**, URL updated to `?v=` via
   `history.replaceState` / router `replace` (shallow). Gallery swap uses the
-  media-resolution rules in `26` §5.
+  media-resolution rules in `26` section 5.
 - **Deep link `?v=`**: server resolves the variant and renders section 1 for it
   directly (SEO-accurate).
 
@@ -58,7 +58,7 @@ together", etc.
 Hybrid pagination — SEO-safe first, then progressive:
 
 1. **First page: SSR**, real content in HTML, with **real `<a href>` numbered
-   pagination** in the markup (crawlable, `10` §1/§10) even though it's visually
+   pagination** in the markup (crawlable, `10` section 1/section 10) even though it's visually
    secondary.
 2. After the first page, a **"Load more" button** appends the next page (client
    fetch, keeps scroll position, updates URL `?page=` via shallow replace).
@@ -80,9 +80,9 @@ Hybrid pagination — SEO-safe first, then progressive:
 - **Shell + first 1–2 rails SSR** (hero/campaign + `trending`/`for_you`) in the
   initial HTML.
 - Remaining rails each in a `<Suspense>` boundary, **streamed** — each rail is an
-  independent server fetch of its candidate generator (`27` §4), so a slow rail
+  independent server fetch of its candidate generator (`27` section 4), so a slow rail
   doesn't hold the page.
-- Rails with no candidates render nothing (§3 rule).
+- Rails with no candidates render nothing (section 3 rule).
 - Personalized rails for signed-in users render server-side per request
   (`no-store`, short per-user memo); anon rails come from the short-TTL cached
   slice.
@@ -92,7 +92,7 @@ Hybrid pagination — SEO-safe first, then progressive:
 
 - `no-store`, SSR the current state, minimal streaming (these are small).
 - Cart: server-render lines + totals; quantity/remove are client actions with
-  optimistic update + rollback (`CODING-RULES.md` §E2) and server re-price.
+  optimistic update + rollback (`CODING-RULES.md` section E2) and server re-price.
 - Checkout steps: server components per step; the interactive bits (address form,
   payment element) are client leaves; never block a step on an optional lookup
   (e.g. "estimated delivery" streams in).
@@ -116,9 +116,9 @@ Hybrid pagination — SEO-safe first, then progressive:
 - Optimistic route transitions with a top progress bar; keep the old page
   interactive until the new one is ready (`loading.tsx` per segment as fallback).
 - Skeletons match final layout; avoid spinners for full-page loads (skeleton),
-  use spinners for in-place actions (`CODING-RULES.md` §E4).
+  use spinners for in-place actions (`CODING-RULES.md` section E4).
 
-## 9. Budgets & guardrails (enforced, `09` §7)
+## 9. Budgets & guardrails (enforced, `09` section 7)
 
 - Above-the-fold PDP/home/category usable without JS.
 - No `<Suspense>` boundary may wrap primary content (title/price/first image).

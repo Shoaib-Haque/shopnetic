@@ -1,7 +1,7 @@
 import { hash, verify } from '@node-rs/argon2';
 
 /**
- * Password hashing — argon2id, per plan/16-security.md §1.
+ * Password hashing — argon2id, per plan/16-security.md section 1.
  *
  * `@node-rs/argon2` defaults to the argon2id variant; we pin the cost params
  * (OWASP baseline: 19 MiB memory, t=2, p=1). Params are carried in the encoded
@@ -25,7 +25,7 @@ export const ARGON2_PARAMS = {
 /**
  * A fixed, valid argon2id hash. Verify against this for a login attempt on an
  * unknown account so response timing doesn't reveal whether the email exists
- * (plan/16 §5). The plaintext is throwaway.
+ * (plan/16 section 5). The plaintext is throwaway.
  */
 export const DUMMY_PASSWORD_HASH =
   '$argon2id$v=19$m=19456,t=2,p=1$Ra9d1ke2DlNvKtXmSLP5+Q$q/nSwxrwJ6+syK/niY6qIdBF6+qNOt99/TN14fjJdFk';

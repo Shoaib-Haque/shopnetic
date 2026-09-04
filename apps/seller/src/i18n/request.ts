@@ -4,7 +4,7 @@ import { routing } from './routing';
 
 /**
  * Per-request i18n config. Loads only the namespaces a route needs; the skeleton
- * has one file (`common.json`). See plan/24-i18n-localization.md §3.
+ * has one file (`common.json`). See plan/24-i18n-localization.md section 3.
  */
 export default getRequestConfig(async ({ requestLocale }) => {
   const requested = await requestLocale;

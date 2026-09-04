@@ -27,7 +27,7 @@ const seedEnvSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     // Demo catalog data. Defaults on outside production; `false` always skips,
-    // `true` forces it even in production (plan/CODING-RULES.md §R).
+    // `true` forces it even in production (plan/CODING-RULES.md section R).
     SEED_DEMO: z.enum(['true', 'false']).optional(),
     BOOTSTRAP_SUPERADMIN_EMAIL: z.string().email().optional(),
     BOOTSTRAP_SUPERADMIN_PASSWORD: z.string().min(12).optional(),

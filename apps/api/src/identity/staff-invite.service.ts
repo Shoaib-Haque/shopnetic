@@ -12,7 +12,7 @@ import type { RequestMeta } from './identity.service.js';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Invite-only staff onboarding (plan/03 §1). */
+/** Invite-only staff onboarding (plan/03 section 1). */
 @Injectable()
 export class StaffInviteService {
   constructor(
@@ -32,7 +32,7 @@ export class StaffInviteService {
       throw new AppError('VALIDATION_ERROR', 422, { detail: `${input.role} is not a staff role` });
     }
 
-    // A staff address must be distinct from any existing account (plan/03 §6).
+    // A staff address must be distinct from any existing account (plan/03 section 6).
     const existing = await this.prisma.account.findUnique({ where: { email: input.email } });
     if (existing) {
       throw new AppError('INVITE_EMAIL_TAKEN', 409, {

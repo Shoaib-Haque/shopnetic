@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
 /**
- * Prisma client singleton (plan/01-tech-stack.md, plan/25 §3.6).
+ * Prisma client singleton (plan/01-tech-stack.md, plan/25 section 3.6).
  *
  * One instance per process. In dev the instance is stashed on `globalThis` so a
  * watch-mode reload does not open a new pool each time. In prod the connection

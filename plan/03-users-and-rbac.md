@@ -3,6 +3,11 @@
 Status: DRAFT
 Related: `16-security.md`, `06-features-admin.md`
 
+Legend — in the tables below: **✅** = allowed / applies · **—** = not
+applicable / not allowed · **⚠️** = allowed with a caveat (noted in the row).
+Cookie names: **`sn_rt`** = buyer refresh token · **`sn_srt`** = staff refresh
+token · **`sn_sat`** = staff access token (all httpOnly; see `16-security.md`).
+
 ## 1. Actor model
 
 Two account "planes" that must stay separate:
@@ -134,26 +139,50 @@ Platform owner. Everything, plus the things Admins can't:
 
 ## 4. Permission matrix (excerpt — full list generated from `@shopnetic/auth`)
 
-| Permission | Buyer | Seller | Service Admin | Admin | Super Admin |
-|-----------|:-----:|:------:|:-------------:|:-----:|:-----------:|
-| `catalog:browse` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `order:place` | ✅ | — | — | — | — |
-| `offer:manage` (own) | — | ✅ | — | — | — |
-| `product:approve` (new base) | — | — | — | ✅ | ✅ |
-| `product:manage` (base products, options, variants) | — | — | — | ✅ | ✅ |
-| `review:moderate` | — | — | ✅ | ✅ | ✅ |
-| `report:resolve` | — | — | ✅ | ✅ | ✅ |
-| `dispute:refund` (≤ cap) | — | — | ✅ | ✅ | ✅ |
-| `dispute:refund` (> cap) | — | — | — | ✅ | ✅ |
-| `buyer:suspend` | — | — | — | ✅ | ✅ |
-| `seller:approve` | — | — | — | ✅ | ✅ |
-| `coupon:platform:manage` | — | — | — | ✅ | ✅ |
-| `coupon:seller:manage` (own) | — | ✅ | — | ✅ | ✅ |
-| `commission:configure` | — | — | — | — | ✅ |
-| `staff:manage` | — | — | — | — | ✅ |
-| `role:define` | — | — | — | — | ✅ |
-| `featureflag:toggle` | — | — | — | — | ✅ |
-| `auditlog:read` | — | — | partial | partial | ✅ (full) |
+Grid-table trial (borders between every cell). `yes` = role has the permission;
+`—` = not applicable; `partial` / `full` = scoped down / unrestricted in the read
+query. (Emoji are omitted here — they misalign a fixed-width grid; the rest of
+this doc uses ✅ / — / ⚠️, see the legend at the top.)
+
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| Permission                                          | Buyer | Seller | Service Admin | Admin   | Super Admin |
++=====================================================+=======+========+===============+=========+=============+
+| `catalog:browse`                                    | yes   | yes    | yes           | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `order:place`                                       | yes   | —      | —             | —       | —           |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `offer:manage` (own)                                | —     | yes    | —             | —       | —           |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `product:approve` (new base)                        | —     | —      | —             | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `product:manage` (base products, options, variants) | —     | —      | —             | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `review:moderate`                                   | —     | —      | yes           | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `report:resolve`                                    | —     | —      | yes           | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `dispute:refund` (<= cap)                           | —     | —      | yes           | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `dispute:refund` (> cap)                            | —     | —      | —             | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `buyer:suspend`                                     | —     | —      | —             | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `seller:approve`                                    | —     | —      | —             | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `coupon:platform:manage`                            | —     | —      | —             | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `coupon:seller:manage` (own)                        | —     | yes    | —             | yes     | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `commission:configure`                              | —     | —      | —             | —       | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `staff:manage`                                      | —     | —      | —             | —       | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `role:define`                                       | —     | —      | —             | —       | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `featureflag:toggle`                                | —     | —      | —             | —       | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `auditlog:read`                                     | —     | —      | partial       | partial | full        |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
 
 ## 5. Auth mechanics (details in `16-security.md`)
 

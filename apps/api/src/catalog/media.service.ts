@@ -21,7 +21,7 @@ const withTags = {
 type MediaRow = Prisma.MediaAssetGetPayload<{ include: typeof withTags }>;
 
 /**
- * Photos + videos for the catalog (plan/26 §5). Only `product`-owned media is
+ * Photos + videos for the catalog (plan/26 section 5). Only `product`-owned media is
  * writable now; `offer`-owned media waits for the inventory context. Tagging an
  * asset to option values drives the per-variant PDP gallery.
  */

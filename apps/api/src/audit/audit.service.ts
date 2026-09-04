@@ -11,14 +11,14 @@ export interface AuditEntry {
   targetId?: string;
   before?: unknown;
   after?: unknown;
-  /** Required for destructive / GDPR actions (plan/25 §2.5). */
+  /** Required for destructive / GDPR actions (plan/25 section 2.5). */
   reason?: string;
   ip?: string;
   correlationId?: string;
 }
 
 /**
- * Append-only audit trail (plan/16 §8). Never blocks the caller's response on a
+ * Append-only audit trail (plan/16 section 8). Never blocks the caller's response on a
  * failure — a write error is logged, not thrown.
  */
 @Injectable()

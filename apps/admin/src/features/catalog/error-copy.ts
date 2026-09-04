@@ -1,6 +1,6 @@
 /**
  * Maps a catalog API error `code` to a key in the `catalog` message namespace.
- * Never surface the server's own text (plan/CODING-RULES.md §F2).
+ * Never surface the server's own text (plan/CODING-RULES.md section F2).
  */
 const CODE_TO_KEY: Record<string, string> = {
   CATEGORY_SLUG_TAKEN: 'errors.categorySlugTaken',

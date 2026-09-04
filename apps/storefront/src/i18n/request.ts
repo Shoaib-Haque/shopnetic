@@ -6,7 +6,7 @@ type MessageModule = { default: Record<string, unknown> };
 
 /**
  * Per-request i18n config. Namespaces are split per feature area
- * (plan/24-i18n-localization.md §3): `common` (chrome, errors) + `auth`.
+ * (plan/24-i18n-localization.md section 3): `common` (chrome, errors) + `auth`.
  */
 export default getRequestConfig(async ({ requestLocale }) => {
   const requested = await requestLocale;

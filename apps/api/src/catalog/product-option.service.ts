@@ -20,7 +20,7 @@ type ProductOptionRow = Prisma.ProductOptionGetPayload<{ include: typeof withDet
 
 /**
  * Which option types a product uses and which of their values it offers
- * (plan/26 §2.2). An option type can only be added if the product's category has
+ * (plan/26 section 2.2). An option type can only be added if the product's category has
  * a `category_option` row for it that is not `not_applicable`.
  */
 @Injectable()

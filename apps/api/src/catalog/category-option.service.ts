@@ -26,7 +26,7 @@ interface Patch {
 }
 
 /**
- * Per-category option config (plan/26 §2.1). One row per (category, option type):
+ * Per-category option config (plan/26 section 2.1). One row per (category, option type):
  * is the option `required`/`optional`/`not_applicable` here, does a value create a
  * variant (`is_variant_axis`) or just a spec, and where do its values come from
  * (`open` = seller-added, `predefined`/`hybrid` = a managed `value_set`).

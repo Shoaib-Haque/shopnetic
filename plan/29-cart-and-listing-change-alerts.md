@@ -29,7 +29,7 @@ cart_item(
 | Entry point | Mechanism |
 |-------------|-----------|
 | **Event-driven (primary)** | Cart service subscribes to `offer.price_changed`, `offer.stock_changed`, `offer.paused`, `offer.deleted`, `product.archived`, `variant.deleted`, `coupon.expired`, `campaign.ended`. For each event it finds affected active carts/saved lists and writes an **alert row** (idempotent per (item, change-type, new-value)). Runs as a worker, not inline. |
-| **On cart/checkout view** | Every time the cart or checkout is loaded, the service **revalidates every line** against the live offer (price, stock, status, serviceability) and reconciles — this is the authoritative check (`12` §1). Any drift not already alerted becomes an alert row. |
+| **On cart/checkout view** | Every time the cart or checkout is loaded, the service **revalidates every line** against the live offer (price, stock, status, serviceability) and reconciles — this is the authoritative check (`12` section 1). Any drift not already alerted becomes an alert row. |
 | **Background sweep** | A periodic job re-checks carts older than N hours whose items had events, as a safety net for missed events. |
 
 ## 3. Alert model
@@ -92,11 +92,11 @@ cart_item_alert(
   group, never in the payable subtotal.
 - **Checkout**: `action_required` and `blocking` alerts **halt** the step with a
   clear resolve action; `info` alerts show as a passive note. Re-validate again
-  at "place order" (`12` §2 step 1 / §3 step 1) — anything new there stops the
+  at "place order" (`12` section 2 step 1 / section 3 step 1) — anything new there stops the
   saga with a friendly message.
 - **Wishlist / saved items**: same alert model; drives `back_in_stock` and
-  `price_drop` opportunities surfaced on home (`27` §4) and via Notifications.
-- All copy via i18n keys with params (`24` §4), never hard-coded.
+  `price_drop` opportunities surfaced on home (`27` section 4) and via Notifications.
+- All copy via i18n keys with params (`24` section 4), never hard-coded.
 
 ## 6. Relationship to the Notification service (`15`)
 

@@ -1,7 +1,7 @@
 # 23 — Project / Directory Structure
 
 Status: DRAFT
-Related: `adr/0001-monorepo.md`, `17-infrastructure-devops.md`, `09-frontend-architecture.md`, `CODING-RULES.md` §C/§D
+Related: `adr/0001-monorepo.md`, `17-infrastructure-devops.md`, `09-frontend-architecture.md`, `CODING-RULES.md` section C/section D
 
 Reconciles the founder's per-project `src/` layout (from a previous project) with
 the monorepo decision (ADR-0001). **The plan comes first**: we keep the monorepo,
@@ -45,7 +45,7 @@ shopnetic/
 ADR-0001 stands: shared `contracts`/`ui`/`auth`/`events` must not drift, and
 cross-cutting changes (change an API contract, update all 3 frontends) must be one
 reviewed PR. **But** each app in `apps/*` is independently installable and
-runnable (see §4) — you get the "clone one folder, install, run" benefit without
+runnable (see section 4) — you get the "clone one folder, install, run" benefit without
 the type-drift cost.
 
 ## 2. Inside each Next.js app (`apps/storefront`, `apps/seller`, `apps/admin`)
@@ -125,12 +125,12 @@ apps/storefront/
 - **`features/` is domain; `components/` is generic.** A component in
   `components/` must not import from `features/`. `features/` may use `components/`.
 - **`'use client'` lives only in leaf files** inside `features/*/components` or
-  `components/common` (per `CODING-RULES.md` §C). `layout.tsx`, `page.tsx`,
+  `components/common` (per `CODING-RULES.md` section C). `layout.tsx`, `page.tsx`,
   providers stay server components; the one client provider tree is a single small
   leaf mounted in the root layout.
 - **Server actions** co-locate in `features/<domain>/actions.ts`.
 - **Schemas** are imported from `@shopnetic/contracts` and re-exported per feature
-  so the form and the API can't drift (`CODING-RULES.md` §P1).
+  so the form and the API can't drift (`CODING-RULES.md` section P1).
 
 ## 3. The admin app — obfuscated protected segment
 
@@ -158,7 +158,7 @@ apps/admin/src/app/[locale]/
   differs per environment. Same idea for the seller app if desired.
 - The segment is obfuscation only. Enforcement order: `proxy.ts` (reject
   non-staff, no session → login) → `(protected)/layout.tsx` (server-side grant
-  check) → each server action / API route (`authorize()` per `16` §2).
+  check) → each server action / API route (`authorize()` per `16` section 2).
 - **One segment for all staff — not one per role.** Super Admin, Admin and
   Service Admin share this base path, one login surface, one `aud=admin` token.
   Differentiation is by **permission-gated route + nav**, computed from the
@@ -166,7 +166,7 @@ apps/admin/src/app/[locale]/
   `config:manage` (Super Admin only), `disputes/**` needs `dispute:work`.
   Per-role segments would add no security (a leaked `ADMIN` path is as bad as a
   Super Admin one), triple the routing/layouts/i18n/BFF, and can't cover the
-  custom staff roles a Super Admin defines at runtime (`03` §2).
+  custom staff roles a Super Admin defines at runtime (`03` section 2).
 - Seller app uses a normal readable path (`/dashboard`, `/products`) — sellers
   are a known audience — but the same three enforcement layers.
 
@@ -185,7 +185,7 @@ Turborepo still gives one-command "run everything" from the root
 (`pnpm dev`), affected-only CI, and shared build cache. Running a single app:
 `pnpm --filter storefront... dev` (the `...` pulls its workspace deps).
 
-### Env conventions (see also §9 of the founder's list)
+### Env conventions (see also section 9 of the founder's list)
 
 - **Config via env, code reads it once** in `src/config/site.ts` (typed, parsed
   with Zod at boot — fail fast on a missing/invalid var).
@@ -193,17 +193,17 @@ Turborepo still gives one-command "run everything" from the root
   - `CACHE_TTL_*` — per read-model cache TTLs (`14` gives defaults; env overrides
     per environment).
   - `SESSION_IDLE_TIMEOUT`, `SESSION_ABSOLUTE_TIMEOUT`, `REMEMBER_DEVICE_DAYS` —
-    login/device timeouts (`16` §1).
+    login/device timeouts (`16` section 1).
   - `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL`.
   - `ADMIN_BASE_PATH`, cookie names/prefixes, cookie domain.
   - Public base URLs, CDN URL, feature-flag SDK key.
   - Rate-limit tier numbers, pagination max, upload size limits.
 - **Never** in env / never in the client bundle: DB URLs, provider secret keys,
   JWT signing keys, SMTP creds — those come from the secret manager and only the
-  server-side apps (`api`, `workers`) receive them (`16` §3).
+  server-side apps (`api`, `workers`) receive them (`16` section 3).
 - `NEXT_PUBLIC_*` only for values that are genuinely safe in the browser.
 - Env files: `.env` (local, gitignored), `.env.example` (committed), real values
-  per environment injected by the platform / secret manager (`17` §4).
+  per environment injected by the platform / secret manager (`17` section 4).
 
 ## 5. Naming & import rules (enforced by ESLint boundaries)
 

@@ -31,6 +31,9 @@ they call the identity **staff** API server-side and own a `sn_srt` httpOnly
 cookie (8h). No token reaches the browser. Sign-in also stores a short-lived
 `sn_sat` access-token cookie the catalog proxy uses (below).
 
+Cookies: **`sn_srt`** = staff refresh token (8h) · **`sn_sat`** = staff access
+token (~15m, minted/refreshed by the BFF). Both httpOnly, Path `/`.
+
 ## Catalog (back office)
 
 `/[locale]/x7f2k9t3m1qp/(protected)/catalog/…` — currently **Categories**
@@ -50,7 +53,7 @@ no token ever reaches the browser. `attribute:manage` / `category:manage` /
 | `accept-invite?token=`            | set a password for an invited staff account                                                                                   |
 | `(protected)/…`                   | Server-Component layout: no valid staff session → redirect to `login`                                                         |
 
-Enforcement order (`plan/23` §3): `src/proxy.ts` → `(protected)/layout.tsx`
+Enforcement order (`plan/23` section 3): `src/proxy.ts` → `(protected)/layout.tsx`
 server session check → `@RequirePermission` on the API. The obfuscated segment is
 defense-in-depth only.
 

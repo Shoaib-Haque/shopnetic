@@ -10,7 +10,7 @@ type State = { status: 'loading' } | { status: 'anon' } | { status: 'user'; user
 
 /**
  * Per-viewer sign-in state. A client island so the page it sits on stays
- * static/ISR (plan/CODING-RULES.md §C5) — this is not indexable content.
+ * static/ISR (plan/CODING-RULES.md section C5) — this is not indexable content.
  */
 export function AuthStrip({ locale }: { locale: string }) {
   const t = useTranslations('auth');
