@@ -33,6 +33,11 @@ const preset = {
           foreground: 'hsl(var(--success-foreground))',
           muted: 'hsl(var(--success-muted))',
         },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+          muted: 'hsl(var(--warning-muted))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
