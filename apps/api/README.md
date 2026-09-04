@@ -66,6 +66,10 @@ admin API (`aud=admin` and `plane=staff`). Both load the `Actor`, then
 The `Actor` is rebuilt from the DB per request, and a token is only ever valid
 for its own plane.
 
+Cookies: **`sn_rt`** = buyer refresh token · **`sn_srt`** = staff refresh token ·
+**`sn_sat`** = staff access token (set by the admin BFF). `*` in the Method
+column = the row covers GET/POST/PATCH/DELETE for that path.
+
 ### Try it
 
 ```bash
@@ -121,7 +125,7 @@ and clean up after themselves.
 ## Env
 
 Everything goes through the validated schema in `src/config/env.ts`
-(CODING-RULES §R). See `.env.example` — each var carries a comment and any
+(CODING-RULES section R). See `.env.example` — each var carries a comment and any
 dev-vs-prod difference. Key ones: `DATABASE_URL`, `REDIS_URL`, `JWT_ISSUER`,
 `JWT_ACCESS_TTL_SECONDS`, `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` (dev: omit for an
 ephemeral pair; prod: required), `AUTH_REFRESH_TTL_DAYS`,

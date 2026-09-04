@@ -13,7 +13,7 @@ type State = 'checking' | 'ok' | 'failed';
 /**
  * Fires the verification call once on mount (the token arrived via the email
  * link) and reports the outcome. Leaf client component; the page stays a Server
- * Component (plan/CODING-RULES.md §C1).
+ * Component (plan/CODING-RULES.md section C1).
  */
 export function VerifyEmailStatus({ token, locale }: { token: string | null; locale: string }) {
   const t = useTranslations('auth');

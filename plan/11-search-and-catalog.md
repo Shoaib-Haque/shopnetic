@@ -6,20 +6,20 @@ Related: `07-data-model.md`, `02-architecture.md`, `26-catalog-options-variants-
 > Full option/variant/brand/media modeling and all corner cases:
 > **`26-catalog-options-variants-brands.md`**. Result **ordering / ranking** on
 > home, category, and search shares its signal set and event pipeline with
-> **`27-merchandising-and-ranking.md`** — §6 below is the search-specific view.
+> **`27-merchandising-and-ranking.md`** — section 6 below is the search-specific view.
 
 ## 1. Catalog modeling recap
 
 - **Category** tree (ltree `path`); per category, admin configures which
   **Option Types** apply (required/optional, variant-forming or attribute) and
-  the value source — see `26` §2.
+  the value source — see `26` section 2.
 - **Product** = shared catalog concept (localized title/description, brand
   optional, spec jsonb), owned by Catalog context, moderated.
 - **Variant/SKU** = one combination of one Option Value per the product's chosen
   Option Types (0..n axes); modeled as `variant` + `variant_option_value` rows,
-  **not** a JSONB blob in the source of truth (`26` §3).
+  **not** a JSONB blob in the source of truth (`26` section 3).
 - **Brand** is optional per product depending on `category.brand_requirement`;
-  sellers can propose unlisted brands via `brand_request` (`26` §6).
+  sellers can propose unlisted brands via `brand_request` (`26` section 6).
 - **Offer** = a seller's price+stock+condition for a SKU (Inventory context).
 - A PDP shows one Product, its variants, and all active Offers with a **buy-box**
   winner.

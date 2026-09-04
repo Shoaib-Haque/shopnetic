@@ -4,7 +4,7 @@ import { forwardRef, type InputHTMLAttributes } from 'react';
 import { cn } from '../lib/cn';
 
 /**
- * Project text input wrapper (plan/CODING-RULES.md §D1). Owns the `'use client'`
+ * Project text input wrapper (plan/CODING-RULES.md section D1). Owns the `'use client'`
  * boundary and the token-based styling; `invalid` wires `aria-invalid` + the
  * error ring so forms stay consistent.
  */

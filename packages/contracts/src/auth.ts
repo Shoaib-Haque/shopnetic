@@ -3,12 +3,12 @@ import { z } from 'zod';
 /**
  * Auth contracts — shared by the API (validation at the boundary) and the
  * storefront (form validation + typed responses). One schema, both sides
- * (plan/CODING-RULES.md §P1). See plan/03-users-and-rbac.md, plan/16-security.md.
+ * (plan/CODING-RULES.md section P1). See plan/03-users-and-rbac.md, plan/16-security.md.
  */
 
 export const emailSchema = z.string().trim().toLowerCase().min(3).max(254).email();
 
-/** plan/16 §1: length ≥ 8, max 128, no composition rules. */
+/** plan/16 section 1: length ≥ 8, max 128, no composition rules. */
 export const passwordSchema = z.string().min(8).max(128);
 
 export const registerRequestSchema = z.object({

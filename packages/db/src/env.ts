@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Database environment. Parsed once, at the edge (plan/CODING-RULES.md §B4).
+ * Database environment. Parsed once, at the edge (plan/CODING-RULES.md section B4).
  * `DIRECT_URL` is the un-pooled connection Prisma Migrate needs; it falls back
  * to `DATABASE_URL` for local dev where there is no PgBouncer.
  */

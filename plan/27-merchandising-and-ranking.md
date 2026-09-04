@@ -5,7 +5,7 @@ Related: `11-search-and-catalog.md`, `30-reporting-and-analytics.md`, `28-page-l
 
 Covers: what shows first on the landing page and category pages, how it's
 ordered, and the "customers also viewed" / "related to this item" sections.
-Search-result ranking proper lives in `11` §6 — the signal set and event pipeline
+Search-result ranking proper lives in `11` section 6 — the signal set and event pipeline
 here are shared with it.
 
 ## 1. Principles
@@ -41,7 +41,7 @@ here are shared with it.
 | Per-user (signed in / consented) | category affinity, brand affinity, price-band affinity, recently viewed, past purchases, wishlist/follows, search history, location/serviceability |
 | Business | sponsored bid (future), campaign membership, strategic-category boost, margin/commission tier |
 
-All are **read models** built by rollup jobs from the raw event stream (§3) +
+All are **read models** built by rollup jobs from the raw event stream (section 3) +
 transactional events (`order.placed`, `review.published`, `offer.stock_changed`).
 
 ## 3. Event capture pipeline (shared with `30`)
@@ -144,7 +144,7 @@ score =  w_relevance   * text/context match         (search & category only)
   overrides the blend.
 - Same diversity + exploration rules; sub-category interleaving so browsing
   "Electronics" isn't 40 phone cases.
-- Facets from `11` §5.
+- Facets from `11` section 5.
 
 ### Caching
 

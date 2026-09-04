@@ -1,7 +1,7 @@
 import { pino, type Logger } from 'pino';
 
 /**
- * Structured JSON logger — see plan/CODING-RULES.md §O and plan/18-observability.md.
+ * Structured JSON logger — see plan/CODING-RULES.md section O and plan/18-observability.md.
  *
  * STUB: redaction list, OpenTelemetry trace/span correlation, and per-request
  * child loggers land in Phase 0 (Identity & Access) / observability wiring.

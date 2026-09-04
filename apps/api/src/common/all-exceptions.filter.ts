@@ -13,10 +13,10 @@ import { AppError } from './app-error.js';
 const ERROR_BASE = 'https://errors.shopnetic.com/';
 
 /**
- * Turns every thrown error into the RFC-9457 envelope (plan/08 §4). `AppError`
+ * Turns every thrown error into the RFC-9457 envelope (plan/08 section 4). `AppError`
  * carries its own `code`/`status`; a Nest `HttpException` is mapped by status;
  * anything else is a logged `INTERNAL` 500 with no internals leaked
- * (plan/CODING-RULES.md §F2).
+ * (plan/CODING-RULES.md section F2).
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {

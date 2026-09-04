@@ -28,7 +28,7 @@ export class PasswordService {
   }
 
   /**
-   * k-anonymity check against the Have I Been Pwned range API (plan/16 §1).
+   * k-anonymity check against the Have I Been Pwned range API (plan/16 section 1).
    * Off by default; fail-open if the service is unreachable.
    */
   async assertNotBreached(plain: string): Promise<void> {

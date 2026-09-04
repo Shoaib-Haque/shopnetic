@@ -28,11 +28,11 @@ raw-SQL migration.
 
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
-| `account` | email (citext, unique), plane (`marketplace/staff`), status (`active/locked/disabled/anonymized`), email_verified_at, phone, deleted_at | One per human login. Marketplace and staff planes never share a row (`03` §1). |
-| `credential` | account_id (unique), password_hash (argon2id), hash_algo, params (jsonb) | Split from `account` so cost params can be raised + the hash re-written without touching the account row (`16` §1). One password credential per account for now. |
+| `account` | email (citext, unique), plane (`marketplace/staff`), status (`active/locked/disabled/anonymized`), email_verified_at, phone, deleted_at | One per human login. Marketplace and staff planes never share a row (`03` section 1). |
+| `credential` | account_id (unique), password_hash (argon2id), hash_algo, params (jsonb) | Split from `account` so cost params can be raised + the hash re-written without touching the account row (`16` section 1). One password credential per account for now. |
 | `email_verification` | account_id, purpose (`verify_email/password_reset`), token_hash (unique), expires_at, consumed_at | Single-use; only the hash is stored. |
 | `oauth_identity` | account_id, provider, provider_uid | **Planned, not built** — social login. |
-| `session` | account_id, family_id, refresh_token_hash (unique), replaced_by_id, user_agent, ip, issued_at, last_used_at, expires_at, revoked_at, revoked_reason | One row per issued refresh token; rotation chains rows via `replaced_by_id` within a `family_id` (`16` §1). |
+| `session` | account_id, family_id, refresh_token_hash (unique), replaced_by_id, user_agent, ip, issued_at, last_used_at, expires_at, revoked_at, revoked_reason | One row per issued refresh token; rotation chains rows via `replaced_by_id` within a `family_id` (`16` section 1). |
 | `totp_secret` | account_id (unique), secret_encrypted, confirmed_at | TOTP MFA; mandatory for staff. Secret encrypted at the app layer. |
 | `recovery_code` | account_id, code_hash, used_at | One-time MFA recovery codes; hash only. Unique `(account_id, code_hash)`. |
 | `role` | key (unique), name, description, is_system | `BUYER/SELLER/SERVICE_ADMIN/ADMIN/SUPER_ADMIN` + custom staff roles. |
@@ -41,7 +41,7 @@ raw-SQL migration.
 | `grant` | account_id, role_id, scope_type (`self/seller/global`), scope_id | An account's effective authority. Natural-key unique index does not cover the all-NULL scope; writers de-dupe explicitly. |
 | `staff_invite` | email (citext), role_id, invited_by_account_id, token_hash (unique), expires_at, accepted_at, accepted_account_id | Invite-only staff plane. |
 | `audit_event` | actor_account_id, action, target_type, target_id, before, after, reason, ip, correlation_id, created_at | Append-only (no `updated_at`), never deleted. Monthly partitioning added later. |
-| `outbox` | aggregate_type, aggregate_id, event_type, payload, headers, attempts, published_at | Per-schema transactional outbox (`02` §4). Dispatcher lands with the workers slice. |
+| `outbox` | aggregate_type, aggregate_id, event_type, payload, headers, attempts, published_at | Per-schema transactional outbox (`02` section 4). Dispatcher lands with the workers slice. |
 
 ## Context: Seller (`seller`)
 
@@ -58,7 +58,7 @@ raw-SQL migration.
 ## Context: Catalog (`catalog`)
 
 > Full modeling + all corner cases: **`26-catalog-options-variants-brands.md`**.
-> User-facing names/descriptions/labels are **localized fields** (`24` §5) —
+> User-facing names/descriptions/labels are **localized fields** (`24` section 5) —
 > shown below as `*_i18n`.
 >
 > **Built so far:** `category`, `brand` (+ `brand_alias`), `option_type`
@@ -85,9 +85,9 @@ raw-SQL migration.
 | `variant` (SKU) | product_id (FK Cascade), sku_code, gtin, weight_g, dims (jsonb), combo_signature, status (`active/inactive`), position, deleted_at — unique (product_id, combo_signature) and (product_id, sku_code) | Built. `/admin/v1/products/:productId/variants` (`product:manage`). One value per **variant-axis** (`category_option.is_variant_axis`) product option; selections are immutable (delete + recreate). `combo_signature` = sorted `optionTypeId:optionValueId` join; `''` for the no-axis product (exactly one variant). |
 | `variant_option_value` | variant_id (FK Cascade), option_type_id, option_value_id — PK (variant_id, option_type_id) | Built. The set of these rows **is** the variant's combination (0..n axes, no schema change). |
 | `media_asset` | owner_type (`product/offer`), owner_id (polymorphic, **no FK**), kind (`image/video`), file_key, poster_key, width, height, duration_s, blurhash, alt_i18n, position, status (`pending/active/rejected`) | Built (**`product` owner only** until the inventory context exists). `product`-owned = shared/curated; `offer`-owned = seller's own shots. `GET/POST /admin/v1/products/:productId/media`, `GET/PATCH/DELETE /admin/v1/media/:id` (`product:manage`). `pending` = awaiting moderation, not shown. |
-| `media_option_tag` | media_asset_id (FK Cascade), option_type_id, option_value_id — PK (media_asset_id, option_type_id) | Built. One value per axis per asset; `PUT/DELETE /admin/v1/media/:id/tags/:optionTypeId`. Tags an asset to option value(s) (e.g. Color=White) so the gallery swaps per selected variant (`26` §5). No tags = default/all. |
+| `media_option_tag` | media_asset_id (FK Cascade), option_type_id, option_value_id — PK (media_asset_id, option_type_id) | Built. One value per axis per asset; `PUT/DELETE /admin/v1/media/:id/tags/:optionTypeId`. Tags an asset to option value(s) (e.g. Color=White) so the gallery swaps per selected variant (`26` section 5). No tags = default/all. |
 | `product_edit_request` | product_id or new, seller_id, kind (`new_product/edit/new_variant/shared_media`), payload (jsonb), status | Moderation queue for seller-proposed catalog data. |
-| `product_related` | product_id, related_product_id, kind (`also_viewed/also_bought/fbt/related/more_from_seller`), score, rank, computed_at | Precomputed by jobs (`27` §7); served straight to the PDP. |
+| `product_related` | product_id, related_product_id, kind (`also_viewed/also_bought/fbt/related/more_from_seller`), score, rank, computed_at | Precomputed by jobs (`27` section 7); served straight to the PDP. |
 
 Price resolution for (seller, variant):
 `offer.sale_price ?? offer.price ?? (product.base_price + variant delta)`.
@@ -104,7 +104,7 @@ Price resolution for (seller, variant):
 | `stock` | offer_id, warehouse_id, on_hand, reserved, safety_stock, backorder, restock_eta | Available = on_hand − reserved (invariant ≥ 0). Per offer = per seller per variant. |
 | `stock_reservation` | offer_id, cart_id/order_id, qty, expires_at, state (`held/committed/released`) | TTL holds during checkout. |
 | `stock_ledger` | offer_id, delta, reason, ref_type, ref_id | Auditable stock movements. |
-| `buybox` | variant_id, winning_offer_id, computed_at | Cached buy-box result (`11` §7). |
+| `buybox` | variant_id, winning_offer_id, computed_at | Cached buy-box result (`11` section 7). |
 
 ## Context: Cart (`cart`)
 
@@ -214,9 +214,9 @@ Price resolution for (seller, variant):
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
 | `interaction_event` | ts, session_id, account_id (nullable), anon_id (nullable), type (`impression/product_click/pdp_view/add_to_cart/search/filter_apply/media_open/dwell/…`), surface, slot, product_ids (jsonb), context (jsonb) | Client-emitted, sampled/batched. Partitioned by day. Bot/self-traffic filtered before rollups. |
-| `ranking_feature_product` | product_id / variant_id, scope, window, impressions, clicks, ctr, pdp_views, atc, orders, units, gmv_minor, sales_velocity_decayed, rating_avg, rating_count, return_rate, computed_at | Read model for scoring (`27` §5). |
+| `ranking_feature_product` | product_id / variant_id, scope, window, impressions, clicks, ctr, pdp_views, atc, orders, units, gmv_minor, sales_velocity_decayed, rating_avg, rating_count, return_rate, computed_at | Read model for scoring (`27` section 5). |
 | `user_affinity` | account_id, dimension (`category/brand/price_band`), key, score, updated_at | Consented personalization signals only. |
-| `report_daily_product` / `_seller` / `_category` / `_campaign` / `_finance` | date, dimension ids, additive measures (units, gmv_minor, net_minor, refunds_minor, commission_minor, fees_minor, …) | Pre-aggregated, read-replica-served, partitioned by date. Reprocessable. Money ties to ledger (`30` §4). |
+| `report_daily_product` / `_seller` / `_category` / `_campaign` / `_finance` | date, dimension ids, additive measures (units, gmv_minor, net_minor, refunds_minor, commission_minor, fees_minor, …) | Pre-aggregated, read-replica-served, partitioned by date. Reprocessable. Money ties to ledger (`30` section 4). |
 | `report_export_job` | requested_by, scope, params (jsonb), status, file_key, created_at | Async CSV/XLSX exports. |
 
 ## Key invariants (enforce in DB + code)
@@ -232,7 +232,7 @@ Price resolution for (seller, variant):
 - A `variant` has exactly one `variant_option_value` per `option_type` in its product's `product_option` set; `combo_signature` unique per product (no duplicate combinations).
 - Every `option_value` referenced by a live `variant` is `active` (deprecate, never delete in use).
 - `product.brand_id` may be null only where `category.brand_requirement <> 'required'`.
-- Closed-period `report_daily_finance` sums reconcile to the ledger for that period (`30` §4).
+- Closed-period `report_daily_finance` sums reconcile to the ledger for that period (`30` section 4).
 
 ## Indexing / performance notes (first pass)
 
@@ -248,7 +248,7 @@ Price resolution for (seller, variant):
 - `product_related(product_id, kind, rank)` — PDP sections.
 - `interaction_event`, `audit_event`, `ledger_entry`, `tracking_event` — monthly/range partitions.
 - `report_daily_*` partitioned by date, PK (date, dimension ids).
-- Soft-deletable tables: partial unique indexes `… WHERE deleted_at IS NULL` (`25` §2.2).
+- Soft-deletable tables: partial unique indexes `… WHERE deleted_at IS NULL` (`25` section 2.2).
 - Full-text/search + facets live in the search engine, not Postgres (`11`).
 
 ## Changelog

@@ -5,7 +5,7 @@ import { Button } from '@shopnetic/ui';
 
 /**
  * Tiny client leaf demonstrating the pattern: the page is a Server Component,
- * only this interactive bit is `'use client'` (plan/CODING-RULES.md §C1/§D1/§E1).
+ * only this interactive bit is `'use client'` (plan/CODING-RULES.md section C1/section D1/section E1).
  * The `label` is passed in already-translated from the server.
  */
 export function BrowseButton({ label }: { label: string }) {

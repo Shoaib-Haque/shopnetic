@@ -13,7 +13,7 @@ const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 
 /**
- * The shared catalog product (plan/26 §1–2). Admin-authored base products;
+ * The shared catalog product (plan/26 section 1–2). Admin-authored base products;
  * seller-proposed ones arrive through a moderation queue later. Price/stock are
  * per-seller `offer` rows (inventory context) — not here.
  */

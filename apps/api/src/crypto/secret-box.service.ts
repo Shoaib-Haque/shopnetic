@@ -7,7 +7,7 @@ const IV_LEN = 12;
 
 /**
  * Symmetric encryption for secrets kept in the DB (TOTP seeds, payout account
- * refs, …) — plan/16 §7. AES-256-GCM; the ciphertext string is
+ * refs, …) — plan/16 section 7. AES-256-GCM; the ciphertext string is
  * `v1.<iv>.<tag>.<data>` (all base64url).
  *
  * Key comes from `TOTP_ENC_KEY` (32 bytes, base64). In non-production a fixed

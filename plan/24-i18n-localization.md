@@ -1,11 +1,11 @@
 # 24 — Internationalization & Localization
 
 Status: DRAFT
-Related: `CODING-RULES.md` §L, `09-frontend-architecture.md`, `10-seo-strategy.md`, `26-catalog-options-variants-brands.md`
+Related: `CODING-RULES.md` section L, `09-frontend-architecture.md`, `10-seo-strategy.md`, `26-catalog-options-variants-brands.md`
 
 **Launch: English only.** But every screen, message, email, and error is built on
 the i18n layer from day one so adding a locale later is config + translation, not
-a refactor. This is a hard rule (`CODING-RULES.md` §L).
+a refactor. This is a hard rule (`CODING-RULES.md` section L).
 
 ## 1. Two kinds of "text" — never confuse them
 
@@ -15,7 +15,7 @@ a refactor. This is a hard rule (`CODING-RULES.md` §L).
 | **Content** — product titles/descriptions, category & option names, brand names, CMS pages, seller shop text, review text, buyer names | Entered as data by sellers/admins/buyers | **Localized DB fields** (`{ "en": "...", "bn": "..." }` JSONB or a `*_translation` table) | fall back to the default-locale value |
 
 Numbers, prices, dates, quantities are neither — they are formatted through
-`Intl` (§6), not translated.
+`Intl` (section 6), not translated.
 
 ## 2. Library & routing
 
@@ -58,7 +58,7 @@ apps/<app>/messages/
 This is the part teams usually get wrong. Our contract:
 
 1. The **server never returns a human sentence** as the primary error. It returns
-   the `08` §4 envelope: a stable machine `code` (`CART_ITEM_OUT_OF_STOCK`) plus
+   the `08` section 4 envelope: a stable machine `code` (`CART_ITEM_OUT_OF_STOCK`) plus
    structured `params` (`{ max: 5, available: 2 }`).
 2. `errors.json` maps each `code` → an ICU message:
    `"CART_ITEM_OUT_OF_STOCK": "Only {available} left — reduce the quantity."`
@@ -86,14 +86,14 @@ For catalog/CMS data that must be translatable:
   `bn` is a data operation.
 - Option names, option values, category names, attribute labels, brand display
   names → same treatment (`26`). Slugs stay locale-independent at launch;
-  per-locale slugs + `hreflang` come with multi-locale (`10` §6).
+  per-locale slugs + `hreflang` come with multi-locale (`10` section 6).
 - Seller UI: at launch, one input per field (implicitly `en`). Later: a
   locale switcher per field, default-locale required, others optional.
 
 ## 6. Formatting — always through `Intl`
 
 - Money: `formatMoney({ amount, currency }, locale)` — **never** string-concat a
-  symbol. Amount stays integer minor units end to end (`07` §Principles).
+  symbol. Amount stays integer minor units end to end (`07` section Principles).
 - Numbers, percentages, dates, times, relative time ("2 days ago"), lists
   ("A, B, and C"), units → `Intl.*` via shared helpers in `@shopnetic/i18n`.
 - Timezone: store UTC, display in the user's zone; scheduling (payouts, quiet
@@ -111,7 +111,7 @@ For catalog/CMS data that must be translatable:
   the root layout's client provider leaf; only the namespaces a route needs are
   sent to the client (keep the payload small).
 - The active locale is available to both; client code never picks copy language
-  from `navigator.language` (`CODING-RULES.md` §L5).
+  from `navigator.language` (`CODING-RULES.md` section L5).
 
 ## 8. SEO (ties to `10`)
 
@@ -137,7 +137,7 @@ For catalog/CMS data that must be translatable:
 - No key deletion without checking usage; renaming a key is add-new +
   migrate-usages + remove-old in one PR.
 
-## 10. Checklist for any new UI (subset of `CODING-RULES.md` §K)
+## 10. Checklist for any new UI (subset of `CODING-RULES.md` section K)
 
 - [ ] No literal user-visible string anywhere — all via `t()`.
 - [ ] Error path returns a `code` + params; message added to `errors.json`.

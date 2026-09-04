@@ -3,7 +3,7 @@ import type { AuthTokens } from '@shopnetic/contracts';
 import { API_ENV, type ApiEnv } from '../config/env.js';
 import { JwksService } from '../crypto/jwks.service.js';
 
-/** Audience claims per plane (plan/16 §2). A token is only valid for its plane. */
+/** Audience claims per plane (plan/16 section 2). A token is only valid for its plane. */
 export const STOREFRONT_AUDIENCE = 'storefront';
 export const STAFF_AUDIENCE = 'admin';
 

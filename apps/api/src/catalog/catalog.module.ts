@@ -19,7 +19,7 @@ import { MediaController } from './media.controller.js';
 import { MediaService } from './media.service.js';
 
 /**
- * Catalog context (plan/07 §"catalog", plan/26). So far: categories, brands,
+ * Catalog context (plan/07 section "catalog", plan/26). So far: categories, brands,
  * option types + values, value sets, per-category option config, products with
  * options / offered values / variants, and product media + option tags.
  * `offer` (price + stock) lands with the inventory context.

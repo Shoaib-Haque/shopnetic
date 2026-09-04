@@ -89,7 +89,7 @@ schema linter.
 
 ## 7. Performance = ranking (Core Web Vitals)
 
-Budgets enforced (see `09` §7). LCP image `priority` + preload; fonts subset +
+Budgets enforced (see `09` section 7). LCP image `priority` + preload; fonts subset +
 preload; no CLS (reserved media/ad slots); minimal blocking JS; edge SSR; HTTP/2
 or /3; `Cache-Control` + CDN for public pages. Monitor field data (CrUX / RUM),
 not just lab.

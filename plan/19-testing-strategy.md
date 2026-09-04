@@ -90,7 +90,7 @@ money/trust journeys. Every bug fixed gets a regression test.
 - MSW to mock the typed API client at the network boundary.
 - Playwright: mobile + desktop viewports; iOS Safari + Android Chrome in CI;
   test loading/empty/error states explicitly.
-- Lighthouse-CI budget gate (`09` §7) + `axe` on key pages; block merge on
+- Lighthouse-CI budget gate (`09` section 7) + `axe` on key pages; block merge on
   regression.
 - Contract: generated client types checked against current OpenAPI in CI.
 
@@ -120,7 +120,7 @@ meaningful behavior.
   bounded, autoscaling reacts, cost acceptable.
 - Run against staging with prod-like data + infra sizing.
 
-## 8. CI wiring (see `17` §7)
+## 8. CI wiring (see `17` section 7)
 
 Affected-only via Turbo; unit/component/contract on every push; integration
 tagged and on PR + merge; E2E smoke on preview, full on merge; nightly = full

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Catalog contracts. User-facing names are **localized fields** (`24` §5):
+ * Catalog contracts. User-facing names are **localized fields** (`24` section 5):
  * `{ "en": "Phones" }` — the default locale (`en`) is required.
  */
 export const localizedTextSchema = z
@@ -120,7 +120,7 @@ export type AddBrandAliasRequest = z.infer<typeof addBrandAliasRequestSchema>;
 export const mergeBrandRequestSchema = z.object({ intoBrandId: z.string().uuid() });
 export type MergeBrandRequest = z.infer<typeof mergeBrandRequestSchema>;
 
-// ── Option types & values (plan/26 §1, §3) ───────────────────────────────────
+// ── Option types & values (plan/26 section 1, section 3) ───────────────────────────────────
 
 /** `select` = fixed value list; `swatch` = same, with a colour/image chip. */
 export const optionDataTypeSchema = z.enum(['select', 'text', 'number', 'bool', 'swatch']);
@@ -214,7 +214,7 @@ export const updateOptionValueRequestSchema = z
   .partial();
 export type UpdateOptionValueRequest = z.infer<typeof updateOptionValueRequestSchema>;
 
-// ── Value sets (managed value lists — plan/26 §2.1) ──────────────────────────
+// ── Value sets (managed value lists — plan/26 section 2.1) ──────────────────────────
 
 const valueSetNameSchema = z.string().trim().min(1).max(120);
 const positionField = z.number().int().min(0).max(100_000);
@@ -254,7 +254,7 @@ export type UpdateValueSetRequest = z.infer<typeof updateValueSetRequestSchema>;
 export const addValueSetItemRequestSchema = valueSetItemInputSchema;
 export type AddValueSetItemRequest = z.infer<typeof addValueSetItemRequestSchema>;
 
-// ── Category options (per-category option config — plan/26 §2.1) ─────────────
+// ── Category options (per-category option config — plan/26 section 2.1) ─────────────
 
 export const optionApplicabilitySchema = z.enum(['required', 'optional', 'not_applicable']);
 export type OptionApplicability = z.infer<typeof optionApplicabilitySchema>;
@@ -294,7 +294,7 @@ export const putCategoryOptionRequestSchema = z.object({
 });
 export type PutCategoryOptionRequest = z.infer<typeof putCategoryOptionRequestSchema>;
 
-// ── Products (plan/26 §1–2) ─────────────────────────────────────────────────
+// ── Products (plan/26 section 1–2) ─────────────────────────────────────────────────
 
 export const productStatusSchema = z.enum(['draft', 'pending', 'active', 'archived']);
 export type ProductStatus = z.infer<typeof productStatusSchema>;
@@ -355,7 +355,7 @@ export const updateProductRequestSchema = z
   .partial();
 export type UpdateProductRequest = z.infer<typeof updateProductRequestSchema>;
 
-// ── Product options (plan/26 §2.2) ─────────────────────────────────────────
+// ── Product options (plan/26 section 2.2) ─────────────────────────────────────────
 
 export const productOptionValueRefSchema = z.object({
   optionValueId: z.string(),
@@ -387,7 +387,7 @@ export const setProductOptionValuesRequestSchema = z.object({
 });
 export type SetProductOptionValuesRequest = z.infer<typeof setProductOptionValuesRequestSchema>;
 
-// ── Variants (plan/26 §2.3) ────────────────────────────────────────────────
+// ── Variants (plan/26 section 2.3) ────────────────────────────────────────────────
 
 export const variantStatusSchema = z.enum(['active', 'inactive']);
 export type VariantStatus = z.infer<typeof variantStatusSchema>;
@@ -455,7 +455,7 @@ export const updateVariantRequestSchema = z
   .partial();
 export type UpdateVariantRequest = z.infer<typeof updateVariantRequestSchema>;
 
-// ── Media assets (plan/26 §5) ──────────────────────────────────────────────
+// ── Media assets (plan/26 section 5) ──────────────────────────────────────────────
 
 export const mediaKindSchema = z.enum(['image', 'video']);
 export type MediaKind = z.infer<typeof mediaKindSchema>;

@@ -10,7 +10,7 @@ import { API_ENV, type ApiEnv } from '../config/env.js';
 
 /**
  * Thin wrapper over a single ioredis connection. Used for rate-limit buckets now
- * (plan/08 §8); cache read-models and the session denylist later.
+ * (plan/08 section 8); cache read-models and the session denylist later.
  */
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {

@@ -200,7 +200,7 @@ revert the UI **and** show an error toast explaining what happened.
 
 ### E3. Prevent double submit at every layer
 Disabled button (UX) **and** idempotency key on the request (correctness, see
-`08` §6). Never rely on the disabled button alone.
+`08` section 6). Never rely on the disabled button alone.
 
 ### E4. Skeletons for first load, spinners for actions
 Route/section first load → skeleton matching final layout (no CLS).
@@ -226,7 +226,7 @@ A PR adding a data view without these is incomplete.
 ### F2. Never leak internals to the UI
 No raw exception text, no SQL, no service names, no `undefined is not a
 function`, no HTTP 500 body. The frontend maps error `code`s (from the API error
-envelope, `08` §4) to friendly copy via one shared mapper.
+envelope, `08` section 4) to friendly copy via one shared mapper.
 
 ### F3. Handle the failure where you can do something about it
 Catch to add context, retry, compensate, or convert to a user message — not to
@@ -286,7 +286,7 @@ per-feature CSS.
 ### G6. Accessibility is part of "consistent"
 Every interactive element: keyboard reachable, visible focus ring (token-based),
 correct role/label, `aria-busy`/`aria-live` where state changes. Target WCAG 2.2
-AA (`20` §7). Color is never the only signal.
+AA (`20` section 7). Color is never the only signal.
 
 ---
 
@@ -295,13 +295,13 @@ AA (`20` §7). Color is never the only signal.
 ### H1. Contract first
 Change the Zod schema in `@shopnetic/contracts` → regenerate types/client →
 update producers and consumers in the same PR. A breaking API change needs a
-version bump (`08` §2).
+version bump (`08` section 2).
 
 ### H2. Follow the API conventions
 Response envelope, error shape, pagination (cursor), idempotency headers, status
 codes — exactly as `08-api-design.md`. No bespoke response shapes.
 
-### H3. State lives in the right place (`09` §4)
+### H3. State lives in the right place (`09` section 4)
 Server cache → RSC/TanStack Query. URL state (filters, tab, page) → `searchParams`.
 Ephemeral UI → local state. No global store as a junk drawer. Never duplicate
 server data into client state "to be safe".
@@ -383,6 +383,16 @@ with a one-line comment; no real secrets) in the same PR. The root `README.md`
 covers repo-wide setup and commands; keep it in step too. Stale setup docs cost
 every new contributor an hour and erode trust in all the docs.
 
+### J7. Doc notation is spelled out and legended
+- Write **"section 4"**, **"section R4"** — not `§`.
+- Any doc (plan file, README, long comment) that leans on shorthand symbols or
+  short codes — table marks like `✅ / — / ⚠️`, cookie names (`sn_rt` …), SQL
+  casts (`$1::uuid`), status tags — carries a **one-line legend at first use**
+  in that file (see `03-users-and-rbac.md` top, `26` section 7). Don't make the
+  reader reverse-engineer a glyph.
+- Cross-references use `` `NN` section M `` (e.g. `` `16` section 4 ``) or the
+  full filename; keep them clickable/greppable.
+
 ---
 
 ## L. Internationalization & copy  (see `24-i18n-localization.md`)
@@ -420,7 +430,7 @@ follows the active locale.
 
 ### L6. Seller/admin-authored content is data, translated separately
 User-generated catalog/CMS content uses **localized fields** in the DB
-(`24` §5 / `26`), not the UI message catalog. A missing translation for such
+(`24` section 5 / `26`), not the UI message catalog. A missing translation for such
 content falls back to the default-locale value.
 
 ---
@@ -455,7 +465,7 @@ committed data, the change does not merge.
 
 ---
 
-## N. Data deletion  (see `25-database-conventions.md` §Deletion)
+## N. Data deletion  (see `25-database-conventions.md` section Deletion)
 
 ### N1. Default is soft delete
 User-facing entities (products, offers, shops, reviews, categories, accounts,
@@ -466,7 +476,7 @@ filter excludes soft-deleted rows; unique indexes are partial
 ### N2. Some records are never hard-deleted
 Orders, sub-orders, order lines, invoices, ledger entries, payouts, audit
 events, dispute records. Legal/financial retention wins over a delete request —
-those are anonymized (PII stripped), not removed (`16` §7, `20` §5).
+those are anonymized (PII stripped), not removed (`16` section 7, `20` section 5).
 
 ### N3. Every relation declares its delete behavior explicitly
 For each FK, decide and document: `RESTRICT` (block delete while children
@@ -483,7 +493,7 @@ admin purge) touches, step by step, across services via events. Order snapshots
 (`07`, `12`) keep history intact when a product/seller is later removed.
 
 ### N5. Deletes are authorized, audited, and reason-tagged
-Same as any privileged mutation (`16` §8). Bulk deletes are async jobs with a
+Same as any privileged mutation (`16` section 8). Bulk deletes are async jobs with a
 per-row result report.
 
 ---
@@ -516,7 +526,7 @@ endpoints. No tokens, passwords, card data, full addresses, KYC contents.
 
 ---
 
-## P. Validation & verification  (see `08` §9, `16` §4)
+## P. Validation & verification  (see `08` section 9, `16` section 4)
 
 ### P1. One schema, both sides
 The Zod schema for a form/endpoint lives in `@shopnetic/contracts` and is used
@@ -541,7 +551,7 @@ form-level message.
 
 ---
 
-## Q. Transactions & atomic writes  (see `25` §Transactions, `12` §3)
+## Q. Transactions & atomic writes  (see `25` section Transactions, `12` section 3)
 
 ### Q1. A multi-table write is one transaction
 If saving a form/action touches 2+ tables **in the same service/database**, wrap
@@ -550,7 +560,7 @@ is a bug, not an edge case. Roll back the whole thing and return one error.
 
 ### Q2. Cross-service "transactions" are sagas, not distributed locks
 When the write spans services/databases, use the outbox + saga pattern with
-explicit compensation for every step (`02` §4, `12` §3). Never a 2-phase commit.
+explicit compensation for every step (`02` section 4, `12` section 3). Never a 2-phase commit.
 
 ### Q3. Keep transactions short and side-effect-free
 No network calls, no queue publishes, no email sends inside a DB transaction.
@@ -559,12 +569,12 @@ hold locks or leave you half-committed.
 
 ### Q4. Choose isolation deliberately for money/stock
 Stock decrement and coupon redemption use atomic conditional updates or
-`SELECT … FOR UPDATE` / `SERIALIZABLE` (`12` §8). Document the isolation level
+`SELECT … FOR UPDATE` / `SERIALIZABLE` (`12` section 8). Document the isolation level
 and the concurrency argument in the PR.
 
 ### Q5. Idempotency alongside atomicity
 An action that could be retried carries an idempotency key so a retry after a
-partial failure produces one effect, not two (`08` §6).
+partial failure produces one effect, not two (`08` section 6).
 
 ---
 
@@ -630,6 +640,7 @@ compose file.
 - [ ] Admin visibility/moderation + reporting hooks added if user-facing.
 - [ ] plan/ docs + ADR updated if a decision, contract, data model, flow, or open question changed (J5).
 - [ ] README(s) + .env.example updated for any new/renamed env var, script, moved path, changed port, or new dep (J6).
+- [ ] Docs use "section N" (not `§`); any new shorthand symbol/code is legended at first use (J7).
 - [ ] New config goes through the validated env schema; behaviour/dev flags are safe-by-default, prod-rejected, test-inert, boot-logged (R).
 - [ ] CI green.
 ```
@@ -646,6 +657,12 @@ compose file.
 - 2026-09-03 — Added R (configuration & environment: validated env schema,
   .env.example discipline, safe-by-default behaviour flags, dev shortcuts that
   cannot reach production). D3 lists PasswordInput. Checklist updated.
+- 2026-09-04 — R4 example list gains `DEV_RATE_LIMIT_DISABLED` (dev-only bypass
+  of the `@RateLimit` guards, same safeguards).
+- 2026-09-04 — Added J7 (doc notation: write "section N" not `§`; every doc
+  legends its shorthand at first use). Repo-wide `§` → "section". Role/tier ×
+  capability matrices (`03` section 4, `26` section 7) rewritten as ASCII grid
+  tables; prose tables stay GFM.
 - 2026-09-01 — Strengthened J5 (plan/ kept in lockstep with code, not just for
   "decisions") and added J6 (README.md + .env.example must track code changes).
   Checklist updated.

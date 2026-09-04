@@ -56,7 +56,7 @@ Orchestrated (a `checkout` process manager holds state). Steps + compensation:
 | # | Step | On failure → compensate |
 |---|------|-------------------------|
 | 1 | Re-validate session (prices, stock reservations still `held`, coupons still valid) | Abort, release reservations, tell user what changed |
-| 2 | Capture/confirm payment (or authorize now, capture on ship — see §7) | Abort, release reservations |
+| 2 | Capture/confirm payment (or authorize now, capture on ship — see section 7) | Abort, release reservations |
 | 3 | Create `order` (with `idempotency_key`) + `sub_order` per seller + `order_line` snapshots | Refund payment, release reservations |
 | 4 | Commit stock: reservations `held → committed`, decrement `on_hand` | Refund, restore stock, cancel order |
 | 5 | Write ledger journal: buyer→escrow (grand total), record platform commission accrual per sub-order | Reverse journal, refund, restore stock, cancel order |

@@ -2,7 +2,7 @@ import createMiddleware from 'next-intl/middleware';
 import { routing } from './i18n/routing';
 
 /**
- * Next 16 request middleware (file is `proxy.ts`, plan/23 §2). Currently just
+ * Next 16 request middleware (file is `proxy.ts`, plan/23 section 2). Currently just
  * locale negotiation + redirect to `/[locale]/...`. Auth gating for the
  * (account) route group is added with Identity & Access (Phase 0).
  */

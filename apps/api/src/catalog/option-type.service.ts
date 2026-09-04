@@ -18,7 +18,7 @@ import { writeCatalogOutbox } from './catalog-outbox.js';
 type OptionTypeWithValues = OptionTypeRow & { values: OptionValueRow[] };
 
 /**
- * Global option-type catalog (plan/26 §3). Option types + their allowed values,
+ * Global option-type catalog (plan/26 section 3). Option types + their allowed values,
  * reusable across categories. Per-category behaviour (`is_variant_axis`,
  * `value_source`, …) is configured later in `category_option`.
  */

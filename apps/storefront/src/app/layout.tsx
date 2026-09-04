@@ -4,7 +4,7 @@ import '@/styles/globals.css';
 
 /**
  * Root layout. `<html>`/`<body>` live in `[locale]/layout.tsx` so `lang` can be
- * set from the route locale (plan/24 §8). This file only passes children through.
+ * set from the route locale (plan/24 section 8). This file only passes children through.
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return children;

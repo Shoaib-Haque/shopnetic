@@ -71,7 +71,7 @@ pages pass CWV + SEO checks; nothing is purchasable yet.
   address serviceability, shipping options (flat/table rates first), tax
   (single-jurisdiction), idempotent confirm, full compensation paths.
 - **Payments & Ledger**: one marketplace-capable provider, authorize/capture
-  (capture-on-ship or capture-now per `12` §7 decision), double-entry ledger,
+  (capture-on-ship or capture-now per `12` section 7 decision), double-entry ledger,
   escrow, refunds, webhooks + reconciliation job.
 - **Order lifecycle**: seller confirm/pack/ship + tracking entry, buyer tracking
   page, cancel (pre-ship) + refund saga, invoices (PDF).
@@ -91,7 +91,7 @@ pages pass CWV + SEO checks; nothing is purchasable yet.
 - **Hardening**: rate limits, WAF, security headers, CSP, pen-test round 1, load
   test, DR drill, runbooks.
 
-**Exit / launch gate:** all Phase-2 E2E journeys green (`19` §2), load test at
+**Exit / launch gate:** all Phase-2 E2E journeys green (`19` section 2), load test at
 Phase-1 scale targets passes, ledger reconciliation clean, security sign-off,
 rollback tested, on-call ready.
 

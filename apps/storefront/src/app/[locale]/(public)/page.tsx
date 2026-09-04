@@ -24,7 +24,7 @@ export default async function HomePage({ params }: Props) {
 
   return (
     <main className="flex flex-col items-start gap-6">
-      {/* Per-viewer auth state — a client island so this page stays static (plan/10, CODING-RULES §C5). */}
+      {/* Per-viewer auth state — a client island so this page stays static (plan/10, CODING-RULES section C5). */}
       <AuthStrip locale={locale} />
 
       <h1 className="text-3xl font-semibold tracking-tight">{t('appName')}</h1>

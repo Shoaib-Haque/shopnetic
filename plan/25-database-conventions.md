@@ -1,7 +1,7 @@
 # 25 — Database Conventions (Schema Evolution, Deletion, Transactions)
 
 Status: DRAFT
-Related: `07-data-model.md`, `CODING-RULES.md` §M/§N/§Q, `02-architecture.md`, `17-infrastructure-devops.md` §6
+Related: `07-data-model.md`, `CODING-RULES.md` section M/section N/section Q, `02-architecture.md`, `17-infrastructure-devops.md` section 6
 
 `07` lists *what* the tables are. This file is *how we change and operate them
 without losing data*. Prisma + PostgreSQL, one schema per bounded context.
@@ -74,7 +74,9 @@ exists.
   **dash-stripped uuid** segments (ltree labels are `[A-Za-z0-9_]` only, so
   slugs/uuids-with-dashes can't be labels). `path` is `Unsupported("ltree")` in
   Prisma — read/written via raw SQL in the owning service; its GiST index is
-  hand-added to the migration (Prisma won't manage it).
+  hand-added to the migration (Prisma won't manage it). In that raw SQL,
+  `$1::uuid` / `$2::ltree` / `path::text` are Postgres bind-parameter and
+  column **type casts** (`value::type`), not Prisma syntax.
 - Timestamps: `created_at timestamptz not null default now()`,
   `updated_at timestamptz not null` (trigger or ORM-managed).
 - Soft delete: `deleted_at timestamptz null` (see Part 2).
@@ -86,14 +88,14 @@ exists.
 - Every foreign key column is indexed.
 - JSONB for genuinely flexible/sparse data (product spec, address snapshot,
   localized fields) — not as an escape hatch for things that should be columns.
-- One `outbox` table per schema (event publishing, `02` §4).
+- One `outbox` table per schema (event publishing, `02` section 4).
 - Partition high-growth tables from the start: `order_events`, `ledger_entry`,
   `audit_event`, `tracking_event`, `interaction_event` — by month/range.
 
 ### 1.6 Read models & denormalization
 
 - Cross-context data is **copied** via events into a local read-model table
-  (only the fields needed), never a cross-schema FK/join (`02` §5).
+  (only the fields needed), never a cross-schema FK/join (`02` section 5).
 - PDP / search / listing denormalized documents are read models — rebuildable,
   not sources of truth. Rebuild jobs + drift-repair jobs exist for each.
 
@@ -107,9 +109,9 @@ exists.
 |--------|-------------|-------|
 | `account` (buyer/seller/staff) | **Soft** + anonymize on erasure request | Never hard-deleted while orders/disputes/ledger reference it; PII scrubbed, row kept |
 | `address`, `payment_method` | Soft | Referenced by historical orders via *snapshot*, so the live row can go |
-| `product`, `variant` | Soft (`archived`/`deleted_at`) | Order lines hold snapshots; PDP can 410/redirect (`10` §5) |
+| `product`, `variant` | Soft (`archived`/`deleted_at`) | Order lines hold snapshots; PDP can 410/redirect (`10` section 5) |
 | `offer`, `stock` | Soft | Removing a listing ≠ deleting sales history |
-| `shop` | Soft | Offboarding saga (`05` §8) archives; keep for statements/retention |
+| `shop` | Soft | Offboarding saga (`05` section 8) archives; keep for statements/retention |
 | `category`, `brand` | Soft + reparent/relink flow | Never orphan products silently; admin must reassign or `SET NULL` |
 | `option_type`, `option_value` | Soft, additive-only in practice (`26`) | Cannot remove a value that variants use |
 | `review`, `message`, `thread` | Soft (redact for T&S) | Moderation may redact content but keep the record |
@@ -147,7 +149,7 @@ exists.
 context boundary or touches money, orders, or audit. Cascades hide blast radius
 and make "one bad delete" catastrophic.
 
-### 2.4 Deletion chains — write them before building the delete button (`CODING-RULES.md` §N4)
+### 2.4 Deletion chains — write them before building the delete button (`CODING-RULES.md` section N4)
 
 For each actor × target, the PR documents the full chain. Examples:
 
@@ -157,7 +159,7 @@ For each actor × target, the PR documents the full chain. Examples:
   unaffected (snapshots) → nothing financial changes.
 - **Admin soft-deletes a product** (policy violation): soft-delete `product` +
   cascade to `variant`/`offer`/`media` → `product.archived` event → PDP returns
-  410 + shows alternatives (`10` §5) → Search drop → carts/wishlists flagged →
+  410 + shows alternatives (`10` section 5) → Search drop → carts/wishlists flagged →
   existing orders untouched.
 - **Admin removes a category**: **blocked** unless products are reassigned;
   provide a "move children to category X" step; then soft-delete; emit
@@ -167,7 +169,7 @@ For each actor × target, the PR documents the full chain. Examples:
   (name/email/phone/addresses scrubbed, replaced with tombstone values), auth
   disabled, sessions revoked; `order`/`ledger` rows **retained** with the
   anonymized reference; reviews either anonymized ("A verified buyer") or
-  redacted per policy; propagate erasure to subprocessors (`16` §7).
+  redacted per policy; propagate erasure to subprocessors (`16` section 7).
 - **Brand removed / merged**: `SET NULL` or relink products to the surviving
   brand via a merge tool + alias (`26`); never leave products pointing at a
   deleted brand id.
@@ -176,7 +178,7 @@ For each actor × target, the PR documents the full chain. Examples:
 
 Authorized (`authorize()`), audited (`audit_event` with before-state + reason —
 reason **required** for hard/GDPR deletes), rate-limited, and — for bulk — an
-async job with a per-row result report (`CODING-RULES.md` §N5).
+async job with a per-row result report (`CODING-RULES.md` section N5).
 
 ---
 
@@ -189,7 +191,7 @@ in a single `prisma.$transaction`. Partial success is a defect. If seller
 onboarding writes `seller` + `shop` + `shop_policy` + `agreement_acceptance` and
 the policy insert fails, **nothing** persists and the API returns one error.
 
-### 3.2 Keep transactions short and side-effect-free (`CODING-RULES.md` §Q3)
+### 3.2 Keep transactions short and side-effect-free (`CODING-RULES.md` section Q3)
 
 Inside a transaction: only DB reads/writes. **No** HTTP calls, no queue publish,
 no email, no cache write, no file upload. External effects happen *after* commit,
@@ -200,7 +202,7 @@ must never hold a row lock.
 
 When the write spans contexts/databases (checkout, refund, seller offboarding),
 use the **outbox + orchestrated saga** with an explicit compensation per step
-(`02` §4, `12` §3). No 2-phase commit, no cross-DB locks.
+(`02` section 4, `12` section 3). No 2-phase commit, no cross-DB locks.
 
 ### 3.4 Concurrency for money & stock
 
@@ -215,7 +217,7 @@ use the **outbox + orchestrated saga** with an explicit compensation per step
   40001 serialization failures (bounded retries, jittered). Document the choice
   in the PR.
 
-### 3.5 Idempotency (`08` §6)
+### 3.5 Idempotency (`08` section 6)
 
 Any externally-triggered write that could be retried (checkout confirm, webhook,
 refund, admin bulk action) carries an idempotency key; the handler records

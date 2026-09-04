@@ -113,7 +113,7 @@ irreplaceable stores — strongest backup guarantees.
 - Keyboard-complete for every core flow; screen-reader tested on checkout.
 - Works on last 2 versions of Chrome/Firefox/Safari/Edge + iOS Safari + Android
   Chrome; functional (degraded) without JS for primary content on indexable pages.
-- Storefront usable on 3G / low-end mobile (budgets in `09` §7).
+- Storefront usable on 3G / low-end mobile (budgets in `09` section 7).
 
 ## 8. Internationalization readiness
 
@@ -130,7 +130,7 @@ irreplaceable stores — strongest backup guarantees.
 - Change failure rate < 15%; MTTR < 1h.
 - Every service: health/readiness endpoints, dashboard, SLOs, alerts, runbook,
   owner.
-- Test coverage floors per `19` §6; 100% on money-critical modules.
+- Test coverage floors per `19` section 6; 100% on money-critical modules.
 - Infra 100% in code (Terraform + GitOps); no click-ops in prod.
 - Documentation: this `plan/` kept current; ADRs for decisions; per-service README.
 

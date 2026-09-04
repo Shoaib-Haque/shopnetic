@@ -18,7 +18,7 @@ type VariantRow = Prisma.VariantGetPayload<{ include: typeof withValues }>;
 
 /**
  * A variant (SKU) — one concrete combination of one value per variant-axis
- * option of its product (plan/26 §2.3). Selections are immutable; `combo_signature`
+ * option of its product (plan/26 section 2.3). Selections are immutable; `combo_signature`
  * is unique per product.
  */
 @Injectable()

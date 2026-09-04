@@ -14,7 +14,7 @@ export const REQUIRE_PERMISSION = 'shopnetic:require-permission';
 
 /**
  * Gate a handler (or a whole controller) on a permission (plan/CODING-RULES.md
- * §I1). Optionally pass a scope resolver so `PermissionGuard` can do the
+ * section I1). Optionally pass a scope resolver so `PermissionGuard` can do the
  * object-level check too. Requires `AuthGuard` / `StaffAuthGuard` earlier.
  */
 export const RequirePermission = (

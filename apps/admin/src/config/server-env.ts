@@ -1,7 +1,7 @@
 import 'server-only';
 import { z } from 'zod';
 
-/** Server-only env, parsed once (plan/CODING-RULES.md §B4/§I3). Never import from a client component. */
+/** Server-only env, parsed once (plan/CODING-RULES.md section B4/section I3). Never import from a client component. */
 const schema = z.object({
   API_BASE_URL: z.string().url().default('http://localhost:4000'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

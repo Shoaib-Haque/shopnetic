@@ -9,7 +9,7 @@ import { setActor } from './actor-request.js';
 /**
  * Requires a valid `Authorization: Bearer <access-jwt>`. Verifies the signature
  * + issuer + audience, loads the `Actor` (grants → permissions), attaches it to
- * the request. Any failure → `401 UNAUTHENTICATED` (plan/16 §2).
+ * the request. Any failure → `401 UNAUTHENTICATED` (plan/16 section 2).
  */
 @Injectable()
 export class AuthGuard implements CanActivate {

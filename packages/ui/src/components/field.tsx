@@ -3,7 +3,7 @@ import { cn } from '../lib/cn';
 
 /**
  * Label + control + hint/error row. No interactivity, so no `'use client'` — it
- * composes fine inside a client form. One shared field layout (plan/CODING-RULES.md §D3).
+ * composes fine inside a client form. One shared field layout (plan/CODING-RULES.md section D3).
  */
 export interface FieldProps {
   label: string;

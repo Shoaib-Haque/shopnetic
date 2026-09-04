@@ -10,7 +10,7 @@ import { hashOpaqueToken } from './opaque-token.js';
 const RECOVERY_CODE_COUNT = 10;
 const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1
 
-/** TOTP (RFC 6238) + one-time recovery codes for staff MFA (plan/16 §1). */
+/** TOTP (RFC 6238) + one-time recovery codes for staff MFA (plan/16 section 1). */
 @Injectable()
 export class TotpService {
   constructor(
@@ -18,7 +18,7 @@ export class TotpService {
     private readonly box: SecretBoxService,
     @Inject(API_ENV) private readonly env: ApiEnv,
   ) {
-    // Clock-skew tolerance: accept a code from ±N 30s steps (RFC 6238 §5.2).
+    // Clock-skew tolerance: accept a code from ±N 30s steps (RFC 6238 section 5.2).
     authenticator.options = { window: env.TOTP_WINDOW_STEPS ?? 1 };
   }
 

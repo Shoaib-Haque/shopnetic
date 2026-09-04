@@ -1,7 +1,7 @@
 /**
  * Stable machine-readable error codes. The server returns one of these + params;
  * the client renders the localized message via `t(\`errors.${code}\`, params)`
- * (plan/24-i18n-localization.md §4). Never return a human sentence as the
+ * (plan/24-i18n-localization.md section 4). Never return a human sentence as the
  * primary error.
  *
  * Extended as endpoints are built. Keys are stable once shipped.

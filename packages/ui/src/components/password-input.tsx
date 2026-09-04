@@ -5,7 +5,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '../lib/cn';
 
 /**
- * Password field with a show/hide toggle (plan/CODING-RULES.md §D1/§D3). The
+ * Password field with a show/hide toggle (plan/CODING-RULES.md section D1/section D3). The
  * toggle's `aria-label` is passed in already-translated (like `Button`'s
  * `loadingText`) so the shared library stays framework-agnostic.
  */

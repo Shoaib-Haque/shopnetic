@@ -1,6 +1,6 @@
 /**
  * Domain event names + payload types shared across bounded contexts
- * (plan/02-architecture.md §4). Producers write these to their outbox; consumers
+ * (plan/02-architecture.md section 4). Producers write these to their outbox; consumers
  * subscribe. Names are `context.thing_happened`, past tense.
  *
  * STUB — populated as contexts are built. Payload schemas will move to Zod in

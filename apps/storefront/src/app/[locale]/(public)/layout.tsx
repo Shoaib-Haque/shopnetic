@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 /**
- * Public route group — guest-visible, SSR/ISR, indexable (plan/23 §2, plan/10).
+ * Public route group — guest-visible, SSR/ISR, indexable (plan/23 section 2, plan/10).
  * Shared storefront header/footer land here as `@shopnetic/ui` / `components/layout`
  * pieces are built.
  */

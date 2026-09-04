@@ -27,7 +27,7 @@ interface SignInput {
 
 /**
  * Holds the RS256 signing key and publishes the public half as a JWKS
- * (plan/16 §1). In non-production, if no key is configured, an ephemeral pair is
+ * (plan/16 section 1). In non-production, if no key is configured, an ephemeral pair is
  * generated at boot — tokens then don't survive a restart, which is fine for dev.
  */
 @Injectable()

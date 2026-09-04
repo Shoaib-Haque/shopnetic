@@ -43,7 +43,7 @@ gateway capture, collected on delivery, reconciled manually), store credit,
 split (store credit + one other method). No raw PAN ever touches our servers —
 tokenization / hosted fields / provider SDK only. PCI scope kept to SAQ-A.
 
-## 4. Money flow (capture-on-ship variant — see `12` §7)
+## 4. Money flow (capture-on-ship variant — see `12` section 7)
 
 ```
 Order placed:
@@ -125,7 +125,7 @@ buyer / store_credit), proportionally for partials and split payments.
   fees, refunds, chargeback losses), seller statements, tax reports.
 - Every ledger journal references its source (`ref_type`, `ref_id`) for traceability.
 
-## 9. Refunds (money side; flow in `12` §6)
+## 9. Refunds (money side; flow in `12` section 6)
 
 - Source of funds priority: seller escrow → seller available → seller reserve →
   platform (last resort, flag seller).

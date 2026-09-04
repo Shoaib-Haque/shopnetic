@@ -6,7 +6,7 @@ import { JwksService } from './jwks.service.js';
 export class JwksController {
   constructor(private readonly jwks: JwksService) {}
 
-  /** Public keys for verifying access tokens (plan/16 §1). */
+  /** Public keys for verifying access tokens (plan/16 section 1). */
   @Get('.well-known/jwks.json')
   @Header('Cache-Control', 'public, max-age=300')
   keys(): { keys: JWK[] } {

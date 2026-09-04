@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * API process environment, parsed once at boot (plan/CODING-RULES.md §B4).
+ * API process environment, parsed once at boot (plan/CODING-RULES.md section B4).
  * A missing/invalid var fails startup loudly instead of surfacing later.
  */
 const pemKey = z

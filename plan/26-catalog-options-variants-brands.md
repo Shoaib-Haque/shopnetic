@@ -3,24 +3,24 @@
 Status: DRAFT
 Related: `07-data-model.md`, `11-search-and-catalog.md`, `05-features-seller.md`, `06-features-admin.md`, `25-database-conventions.md`
 
-**Build progress:** built so far — `brand` (+ `brand_alias`, §6); the global
-`option_type` / `option_value` catalog (§3); `value_set` (+ `value_set_item`,
-§2.1); `category_option` (§2.1) as an upsert at
+**Build progress:** built so far — `brand` (+ `brand_alias`, section 6); the global
+`option_type` / `option_value` catalog (section 3); `value_set` (+ `value_set_item`,
+section 2.1); `category_option` (section 2.1) as an upsert at
 `PUT /admin/v1/categories/:categoryId/options/:optionTypeId`; and `product`
 (+ `product_option`, `product_option_value`, `variant`, `variant_option_value`,
-§2.2–2.3) — admin CRUD at `/admin/v1/products`, `…/:id/options/:optionTypeId`
+section 2.2–2.3) — admin CRUD at `/admin/v1/products`, `…/:id/options/:optionTypeId`
 (+ `/values`), `…/:id/variants`. Admin CRUD also at `/admin/v1/brands`,
 `/admin/v1/option-types`, `/admin/v1/value-sets`. `data_type` ships as
 `select|text|number|bool|swatch` (`select` in place of this doc's `enum`).
 Variant selections are immutable and cover exactly the `is_variant_axis` product
 options; `combo_signature` blocks duplicate combinations. **`media_asset` +
-`media_option_tag` (§5)** are built for `product` owners — `/admin/v1/products/
+`media_option_tag` (section 5)** are built for `product` owners — `/admin/v1/products/
 :productId/media`, `/admin/v1/media/:id` (+ `…/tags/:optionTypeId`), one tag per
 axis per asset, `pending` status = not shown.
 **Deferred:** `offer` / `stock` / `warehouse` / `buybox` (Inventory context) and
-`offer`-owned media — need `seller_id`; `brand_request` (§6); moderation queue,
+`offer`-owned media — need `seller_id`; `brand_request` (section 6); moderation queue,
 per-category media rules (min/max, aspect ratio) and render-time gallery
-resolution (§5).
+resolution (section 5).
 Next once the seller context exists: `offer` → `stock` → `buybox`.
 
 This is the hardest modeling problem in the platform. Reference screenshots:
@@ -44,11 +44,11 @@ denormalized read model (PDP/search), never as the source of truth.
 | **Product Option** | Which Option Types *this* product actually uses, and in what order. | This shirt uses `Color`, `Size`. That phone uses `Storage`, `Color`, `Carrier`. |
 | **Variant (SKU)** | One concrete combination of one Option Value per Product Option. Also the "no options" degenerate case (exactly one variant). | shirt `{Color: Sport Grey, Size: Large}` |
 | **Offer** | A *seller's* sellable instance of a Variant: price, stock, condition, handling time. | Seller A sells that shirt variant for $14.99, 40 in stock |
-| **Buy‑box** | The default winning Offer shown for a Variant when multiple sellers offer it. | `11` §7 |
+| **Buy‑box** | The default winning Offer shown for a Variant when multiple sellers offer it. | `11` section 7 |
 
 Key separation: **Options/Variants are on the Product (shared). Price/Stock are on
 the Offer (per seller).** Media can attach to either, and can be tagged to Option
-Values (§5).
+Values (section 5).
 
 ---
 
@@ -74,7 +74,7 @@ Admin curates, per category, the catalog of Option Types and how they behave:
 - Admin also manages **Attributes** (non-variant facts: `Fabric type`, `Form
   Factor`, `Origin`). Attributes and non-variant Option Types overlap — treat
   `is_variant_axis = false` entries as attributes.
-- Changing category option config is **additive-only** in practice (`25` §1.1):
+- Changing category option config is **additive-only** in practice (`25` section 1.1):
   you can add an optional Option Type, or add values to an `open`/`hybrid` set;
   you cannot remove one that existing products/variants use — deprecate instead.
 
@@ -110,9 +110,9 @@ variants:
   are 30 variants. This keeps the combinatorial blow-up bounded.
 - Per variant the seller sets: **SKU code, price (or "same as base" + optional
   delta), sale price + schedule, stock per warehouse, GTIN/barcode, weight/dims,
-  variant‑specific media selection** (§5), status.
+  variant‑specific media selection** (section 5), status.
 - Bulk: CSV/grid editor for the variant matrix (like a spreadsheet), with
-  row-level validation and an async import job (`05` §3).
+  row-level validation and an async import job (`05` section 3).
 
 ---
 
@@ -178,7 +178,7 @@ model).
   `stock.on_hand - reserved > 0` exist for the `variant` whose
   `variant_option_value` set matches the picked values".
 - JSONB appears only in `variant`/`product` denormalized copy pushed to the PDP
-  read model and the search index (`11` §3) for fast rendering — rebuildable.
+  read model and the search index (`11` section 3) for fast rendering — rebuildable.
 
 ---
 
@@ -192,7 +192,7 @@ Mirrors Amazon's "twister":
    color chip or thumbnail (`option_value.swatch_*`); others render buttons
    (`Small … 3X-Large`) or a dropdown (storage).
 3. As the buyer picks values, the UI resolves the matching `variant` and updates
-   price, media (§5), stock badge, delivery estimate, buy-box.
+   price, media (section 5), stock badge, delivery estimate, buy-box.
 4. **Partial availability** (iphone screenshot): a value that has **no
    in-stock/serviceable offer** given the current other selections is shown
    disabled/greyed with a reason ("Unavailable", "Can't ship to your address",
@@ -204,7 +204,7 @@ Mirrors Amazon's "twister":
    just "product + options as text".
 7. Deep link / SEO: canonical PDP is the product; each meaningful variant gets a
    `?v=` URL that sets the right selection server-side and emits variant-accurate
-   `Offer` JSON-LD and metadata (`10` §4). Not every variant is separately
+   `Offer` JSON-LD and metadata (`10` section 4). Not every variant is separately
    indexed — curated/representative ones only, rest `?v=` with canonical → base.
 
 ---
@@ -265,10 +265,10 @@ Rules:
 - Two sellers, same product, different `offer` media → PDP shows the buy-box
   seller's + shared media prominently; others under "from other sellers".
 - Image fails moderation → stays `status = under_review`, not shown, seller
-  notified; the offer can still be `under_review` overall (`05` §3).
+  notified; the offer can still be `under_review` overall (`05` section 3).
 - Option value deprecated but old media tagged to it → media hidden with the
   value; not deleted.
-- EXIF/GPS stripped, re-encoded, served from cookieless CDN domain (`16` §4).
+- EXIF/GPS stripped, re-encoded, served from cookieless CDN domain (`16` section 4).
 
 ---
 
@@ -307,10 +307,10 @@ category      (... , brand_requirement)   -- required | optional | none
   `product.brand_id` from B to A via a job, emit `brand.merged` (search reindex,
   cache purge). B kept (soft) for audit/redirects.
 - **Remove a brand**: only via merge or, if truly unused, soft-delete with
-  `product.brand_id → SET NULL` for any stragglers (`25` §2.3). Brand storefront
+  `product.brand_id → SET NULL` for any stragglers (`25` section 2.3). Brand storefront
   page then 410s/redirects.
 - Restricted brands (counterfeit-prone) can be flagged so new listings under them
-  need extra verification (`16` §6).
+  need extra verification (`16` section 6).
 - Brand display name is a localized field; `name`/`slug` are canonical/latin for
   matching and URLs.
 
@@ -318,23 +318,43 @@ category      (... , brand_requirement)   -- required | optional | none
 
 ## 7. Admin vs Seller vs Buyer — capability matrix
 
-| Capability | Admin | Seller | Buyer |
-|------------|:-----:|:------:|:-----:|
-| Define Option Types & global value sets | ✅ | — | — |
-| Configure category options (required/optional, variant-axis, value source, price impact) | ✅ | — | — |
-| Add values to a `predefined` set | ✅ | — | — |
-| Propose a new value for an `open`/`hybrid` axis (e.g. a color) | ✅ | ✅ (→ normalize/moderate) | — |
-| Choose which options a product uses + their order | ✅ (on base product) | ✅ (own products) | — |
-| Choose which values a product offers per axis | ✅ | ✅ | — |
-| Generate / prune variants | ✅ | ✅ (own) | — |
-| Set price / sale / stock per variant | — | ✅ (own offer) | — |
-| Upload & tag media to option values | curate shared | ✅ (own + propose shared) | — |
-| Set swatch chip for a value | ✅ (predefined) | ✅ (proposed value) | — |
-| Pick / propose brand | ✅ | ✅ | — |
-| Approve brand requests, merge brands | ✅ | — | — |
-| Approve new base products / shared media / values | ✅ | — | — |
-| Select options, see resolved variant/price/media/stock | — | — | ✅ |
-| Filter search by option facets (color, size, storage…) | — | — | ✅ (`11` §5) |
+Grid table (borders between every cell), matching `03-users-and-rbac.md`
+section 4. `yes` = can do it; `—` = cannot / not applicable; a parenthetical
+(e.g. `yes (own)`, `yes (→ moderate)`) narrows or qualifies it.
+
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Capability                                                                               | Admin                 | Seller                     | Buyer                    |
++==========================================================================================+=======================+============================+==========================+
+| Define Option Types & global value sets                                                  | yes                   | —                          | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Configure category options (required/optional, variant-axis, value source, price impact) | yes                   | —                          | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Add values to a `predefined` set                                                         | yes                   | —                          | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Propose a new value for an `open`/`hybrid` axis (e.g. a color)                           | yes                   | yes (→ normalize/moderate) | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Choose which options a product uses + their order                                        | yes (on base product) | yes (own products)         | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Choose which values a product offers per axis                                            | yes                   | yes                        | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Generate / prune variants                                                                | yes                   | yes (own)                  | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Set price / sale / stock per variant                                                     | —                     | yes (own offer)            | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Upload & tag media to option values                                                      | curate shared         | yes (own + propose shared) | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Set swatch chip for a value                                                              | yes (predefined)      | yes (proposed value)       | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Pick / propose brand                                                                     | yes                   | yes                        | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Approve brand requests, merge brands                                                     | yes                   | —                          | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Approve new base products / shared media / values                                        | yes                   | —                          | —                        |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Select options, see resolved variant/price/media/stock                                   | —                     | —                          | yes                      |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
+| Filter search by option facets (color, size, storage…)                                   | —                     | —                          | yes (see `11` section 5) |
++------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
 
 ---
 
@@ -347,7 +367,7 @@ category      (... , brand_requirement)   -- required | optional | none
   (keeps search facets + data consistent).
 - **Combinatorial explosion**: lazy variant creation; grid editor caps
   (warn > N; hard limit configurable); search index is per-variant but
-  deduplicates display (`11` §3, §10 open question).
+  deduplicates display (`11` section 3, section 10 open question).
 - **Same product, different sellers, different option sets**: options live on the
   **product**, so all sellers share them. A seller who only stocks some
   combinations just creates fewer offers. A seller who needs a combination that

@@ -51,7 +51,7 @@ export class MailService implements OnModuleInit {
   }
 }
 
-/** Never log a full address (plan/CODING-RULES.md §O5). */
+/** Never log a full address (plan/CODING-RULES.md section O5). */
 function maskEmail(email: string): string {
   const [user, domain] = email.split('@');
   if (!user || !domain) return '***';

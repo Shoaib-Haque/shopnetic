@@ -6,7 +6,7 @@ import type { NextFunction, Request, Response } from 'express';
  * Ensures every request carries an `X-Correlation-Id` and `X-Request-Id`,
  * accepting an inbound correlation id and echoing both on the response so a
  * client error message can quote one id and support can find everything
- * (plan/08 §7, plan/CODING-RULES.md §O2).
+ * (plan/08 section 7, plan/CODING-RULES.md section O2).
  */
 @Injectable()
 export class CorrelationMiddleware implements NestMiddleware {

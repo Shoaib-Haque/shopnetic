@@ -1,6 +1,6 @@
 /**
  * Maps an identity-API error `code` to a key within the `staff` message
- * namespace. Never surface the server's own text (plan/CODING-RULES.md §F2).
+ * namespace. Never surface the server's own text (plan/CODING-RULES.md section F2).
  */
 const CODE_TO_KEY: Record<string, string> = {
   INVALID_CREDENTIALS: 'errors.invalidCredentials',

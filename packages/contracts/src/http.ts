@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Shared HTTP envelope + error shape — see plan/08-api-design.md §4.
+ * Shared HTTP envelope + error shape — see plan/08-api-design.md section 4.
  * These types are the contract between every service, the BFF, and the frontend.
  */
 
@@ -20,7 +20,7 @@ export function collectionSchema<T extends z.ZodTypeAny>(item: T) {
   return z.object({ data: z.array(item), meta: requestMetaSchema });
 }
 
-/** Field-level validation problem. `message` is an i18n key, not English (plan/24 §4). */
+/** Field-level validation problem. `message` is an i18n key, not English (plan/24 section 4). */
 export const fieldErrorSchema = z.object({
   field: z.string(),
   rule: z.string(),
