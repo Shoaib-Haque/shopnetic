@@ -10,12 +10,18 @@ docker compose -f ../../infra/docker/docker-compose.yml up -d   # Postgres :5433
 cp .env.example .env
 pnpm --filter @shopnetic/db db:migrate                          # first time / after schema changes
 
-pnpm --filter @shopnetic/api dev      # tsx watch, http://localhost:4000
+pnpm --filter @shopnetic/api dev      # node --watch + SWC, http://localhost:4000
 pnpm --filter @shopnetic/api build
 pnpm --filter @shopnetic/api start
 ```
 
 `dev` / `start` load `.env` if present (`--env-file-if-exists`).
+
+`dev` runs `node --watch` with the `@swc-node/register` ESM loader — SWC
+transpiles TS **and emits `emitDecoratorMetadata`**, which NestJS DI needs.
+(`tsx`/esbuild does not emit it, so the app can't wire up under tsx.) SWC reads
+the decorator flags from `tsconfig.json`; there is no `.swcrc`. `build` (`tsc`)
+and `start` (`node dist/`) are unaffected.
 
 ## Endpoints
 
