@@ -64,8 +64,9 @@ raw-SQL migration.
 > **Built so far:** `category`, `brand` (+ `brand_alias`), `option_type`
 > (+ `option_value`), `value_set` (+ `value_set_item`), `category_option`,
 > `product` (+ `product_option`, `product_option_value`, `variant`,
-> `variant_option_value`), and an `outbox` per `1.5`. `offer` and the rest of the
-> Inventory context land one entity at a time once the seller context exists.
+> `variant_option_value`), `media_asset` (+ `media_option_tag`), and an `outbox`
+> per `1.5`. `offer` and the rest of the Inventory context land one entity at a
+> time once the seller context exists.
 
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
@@ -83,8 +84,8 @@ raw-SQL migration.
 | `product_option_value` | product_id, option_type_id, option_value_id, position — PK (all three); composite FK → `product_option` (Cascade) | Built. Replace-all: `PUT …/options/:optionTypeId/values`. Values must be active and of the type; for a `predefined` `category_option` they must be in its value set. |
 | `variant` (SKU) | product_id (FK Cascade), sku_code, gtin, weight_g, dims (jsonb), combo_signature, status (`active/inactive`), position, deleted_at — unique (product_id, combo_signature) and (product_id, sku_code) | Built. `/admin/v1/products/:productId/variants` (`product:manage`). One value per **variant-axis** (`category_option.is_variant_axis`) product option; selections are immutable (delete + recreate). `combo_signature` = sorted `optionTypeId:optionValueId` join; `''` for the no-axis product (exactly one variant). |
 | `variant_option_value` | variant_id (FK Cascade), option_type_id, option_value_id — PK (variant_id, option_type_id) | Built. The set of these rows **is** the variant's combination (0..n axes, no schema change). |
-| `media_asset` | owner_type (`product/offer`), owner_id, kind (`image/video`), file_key, poster_key, width, height, duration_s, blurhash, alt_i18n, position, status | `product`-owned = shared/curated; `offer`-owned = seller's own shots. |
-| `media_option_tag` | media_asset_id, option_type_id, option_value_id | 0..n. Tags an asset to option value(s) (e.g. Color=White) so the gallery swaps per selected variant (`26` §5). Untagged = default/all. |
+| `media_asset` | owner_type (`product/offer`), owner_id (polymorphic, **no FK**), kind (`image/video`), file_key, poster_key, width, height, duration_s, blurhash, alt_i18n, position, status (`pending/active/rejected`) | Built (**`product` owner only** until the inventory context exists). `product`-owned = shared/curated; `offer`-owned = seller's own shots. `GET/POST /admin/v1/products/:productId/media`, `GET/PATCH/DELETE /admin/v1/media/:id` (`product:manage`). `pending` = awaiting moderation, not shown. |
+| `media_option_tag` | media_asset_id (FK Cascade), option_type_id, option_value_id — PK (media_asset_id, option_type_id) | Built. One value per axis per asset; `PUT/DELETE /admin/v1/media/:id/tags/:optionTypeId`. Tags an asset to option value(s) (e.g. Color=White) so the gallery swaps per selected variant (`26` §5). No tags = default/all. |
 | `product_edit_request` | product_id or new, seller_id, kind (`new_product/edit/new_variant/shared_media`), payload (jsonb), status | Moderation queue for seller-proposed catalog data. |
 | `product_related` | product_id, related_product_id, kind (`also_viewed/also_bought/fbt/related/more_from_seller`), score, rank, computed_at | Precomputed by jobs (`27` §7); served straight to the PDP. |
 

@@ -15,12 +15,14 @@ import { ProductOptionController } from './product-option.controller.js';
 import { ProductOptionService } from './product-option.service.js';
 import { VariantController } from './variant.controller.js';
 import { VariantService } from './variant.service.js';
+import { MediaController } from './media.controller.js';
+import { MediaService } from './media.service.js';
 
 /**
  * Catalog context (plan/07 §"catalog", plan/26). So far: categories, brands,
  * option types + values, value sets, per-category option config, products with
- * options / offered values / variants. `offer` (price + stock) lands with the
- * inventory context.
+ * options / offered values / variants, and product media + option tags.
+ * `offer` (price + stock) lands with the inventory context.
  */
 @Module({
   controllers: [
@@ -32,6 +34,7 @@ import { VariantService } from './variant.service.js';
     ProductController,
     ProductOptionController,
     VariantController,
+    MediaController,
   ],
   providers: [
     CategoryService,
@@ -42,6 +45,7 @@ import { VariantService } from './variant.service.js';
     ProductService,
     ProductOptionService,
     VariantService,
+    MediaService,
   ],
   exports: [
     CategoryService,
@@ -52,6 +56,7 @@ import { VariantService } from './variant.service.js';
     ProductService,
     ProductOptionService,
     VariantService,
+    MediaService,
   ],
 })
 export class CatalogModule {}

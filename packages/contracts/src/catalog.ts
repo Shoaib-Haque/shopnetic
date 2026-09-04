@@ -454,3 +454,79 @@ export const updateVariantRequestSchema = z
   })
   .partial();
 export type UpdateVariantRequest = z.infer<typeof updateVariantRequestSchema>;
+
+// ── Media assets (plan/26 §5) ──────────────────────────────────────────────
+
+export const mediaKindSchema = z.enum(['image', 'video']);
+export type MediaKind = z.infer<typeof mediaKindSchema>;
+
+export const mediaOwnerTypeSchema = z.enum(['product', 'offer']);
+export type MediaOwnerType = z.infer<typeof mediaOwnerTypeSchema>;
+
+/** `pending` = awaiting moderation (not shown); `active` = shown; `rejected`. */
+export const mediaStatusSchema = z.enum(['pending', 'active', 'rejected']);
+export type MediaStatus = z.infer<typeof mediaStatusSchema>;
+
+export const mediaOptionTagSchema = z.object({
+  optionTypeId: z.string(),
+  optionTypeCode: z.string(),
+  optionValueId: z.string(),
+  code: z.string(),
+});
+export type MediaOptionTag = z.infer<typeof mediaOptionTagSchema>;
+
+export const mediaAssetSchema = z.object({
+  id: z.string(),
+  ownerType: mediaOwnerTypeSchema,
+  ownerId: z.string(),
+  kind: mediaKindSchema,
+  fileKey: z.string(),
+  posterKey: z.string().nullable(),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+  durationS: z.number().int().nullable(),
+  blurhash: z.string().nullable(),
+  alt: localizedTextSchema.nullable(),
+  position: z.number().int(),
+  status: mediaStatusSchema,
+  tags: z.array(mediaOptionTagSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type MediaAsset = z.infer<typeof mediaAssetSchema>;
+
+const objectKeySchema = z.string().trim().min(1).max(1024);
+const pixelSchema = z.number().int().min(1).max(100_000);
+
+export const createMediaRequestSchema = z.object({
+  kind: mediaKindSchema,
+  fileKey: objectKeySchema,
+  posterKey: objectKeySchema.nullish(),
+  width: pixelSchema.nullish(),
+  height: pixelSchema.nullish(),
+  durationS: z.number().int().min(0).max(86_400).nullish(),
+  blurhash: z.string().trim().max(128).nullish(),
+  alt: localizedTextSchema.optional(),
+  position: positionField.optional(),
+  status: mediaStatusSchema.optional(),
+});
+export type CreateMediaRequest = z.infer<typeof createMediaRequestSchema>;
+
+export const updateMediaRequestSchema = z
+  .object({
+    fileKey: objectKeySchema,
+    posterKey: objectKeySchema.nullable(),
+    width: pixelSchema.nullable(),
+    height: pixelSchema.nullable(),
+    durationS: z.number().int().min(0).max(86_400).nullable(),
+    blurhash: z.string().trim().max(128).nullable(),
+    alt: localizedTextSchema.nullable(),
+    position: positionField,
+    status: mediaStatusSchema,
+  })
+  .partial();
+export type UpdateMediaRequest = z.infer<typeof updateMediaRequestSchema>;
+
+/** Upsert a tag on one axis: `PUT …/media/:id/tags/:optionTypeId`. */
+export const putMediaTagRequestSchema = z.object({ optionValueId: z.string().uuid() });
+export type PutMediaTagRequest = z.infer<typeof putMediaTagRequestSchema>;

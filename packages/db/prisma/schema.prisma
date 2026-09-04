@@ -489,6 +489,7 @@ model OptionValue {
   requiredForProductOptions ProductOption[]      @relation("ProductOptionRequiredValue")
   productOptionValues       ProductOptionValue[]
   variantOptionValues       VariantOptionValue[]
+  mediaOptionTags           MediaOptionTag[]
   createdAt                 DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -703,5 +704,75 @@ model VariantOptionValue {
   @@id([variantId, optionTypeId])
   @@index([optionValueId])
   @@map("variant_option_value")
+  @@schema("catalog")
+}
+
+/// A photo or video (plan/26 §5). `owner_type` + `owner_id` is polymorphic —
+/// `product` = shared catalog media, `offer` = a seller's own shots (inventory
+/// context, later) — so there is no FK on `owner_id`; the service checks the
+/// owner exists. `file_key` / `poster_key` are object-storage keys (upload lands
+/// later). Tagging to option values (`media_option_tag`) drives the per-variant
+/// gallery swap.
+model MediaAsset {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  ownerType MediaOwnerType   @map("owner_type")
+  ownerId   String           @map("owner_id") @db.Uuid
+  kind      MediaKind
+  fileKey   String           @map("file_key")
+  posterKey String?          @map("poster_key")
+  width     Int?
+  height    Int?
+  durationS Int?             @map("duration_s")
+  blurhash  String?
+  altI18n   Json?            @map("alt_i18n")
+  position  Int              @default(0)
+  status    MediaAssetStatus @default(pending)
+  tags      MediaOptionTag[]
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerType, ownerId])
+  @@index([status])
+  @@map("media_asset")
+  @@schema("catalog")
+}
+
+enum MediaOwnerType {
+  product
+  offer
+
+  @@schema("catalog")
+}
+
+enum MediaKind {
+  image
+  video
+
+  @@schema("catalog")
+}
+
+/// `pending` ≈ plan/26's "under_review" (not shown); `active` = approved/shown;
+/// `rejected` = failed moderation.
+enum MediaAssetStatus {
+  pending
+  active
+  rejected
+
+  @@schema("catalog")
+}
+
+/// Tags an asset to an option value so the PDP gallery swaps per selected
+/// variant (plan/26 §5). PK (asset, option type) — one value per axis per asset;
+/// no tags = default/all. `option_type_id` is denormalised from the value.
+model MediaOptionTag {
+  mediaAssetId  String      @map("media_asset_id") @db.Uuid
+  mediaAsset    MediaAsset  @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  optionTypeId  String      @map("option_type_id") @db.Uuid
+  optionValueId String      @map("option_value_id") @db.Uuid
+  optionValue   OptionValue @relation(fields: [optionValueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([mediaAssetId, optionTypeId])
+  @@index([optionValueId])
+  @@map("media_option_tag")
   @@schema("catalog")
 }

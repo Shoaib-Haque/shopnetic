@@ -33,6 +33,8 @@ export type {
   ProductOptionValue,
   Variant,
   VariantOptionValue,
+  MediaAsset,
+  MediaOptionTag,
   CatalogOutbox,
 } from '@prisma/client';
 
@@ -51,6 +53,9 @@ export {
   ValueSource,
   ProductStatus,
   VariantStatus,
+  MediaOwnerType,
+  MediaKind,
+  MediaAssetStatus,
 } from '@prisma/client';
 
 /**

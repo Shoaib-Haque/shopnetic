@@ -48,6 +48,8 @@ pnpm --filter @shopnetic/api start
 | \*             | `/admin/v1/products` (+ `…/:id`)                                          | **staff Bearer** + `product:manage` — base product CRUD (category fixed, brand checked vs category rule)      |
 | GET/PUT/DELETE | `/admin/v1/products/:productId/options/:optionTypeId` (+ `/values`)       | **staff Bearer** + `product:manage` — which option types the product uses + the values it offers per axis     |
 | \*             | `/admin/v1/products/:productId/variants` (+ `…/:id`)                      | **staff Bearer** + `product:manage` — variant (SKU) CRUD; selections = one value per variant-axis option      |
+| GET/POST       | `/admin/v1/products/:productId/media`                                     | **staff Bearer** + `product:manage` — a product's photos/videos (`product`-owned only for now)                |
+| \*             | `/admin/v1/media/:id` (+ `…/tags/:optionTypeId`)                          | **staff Bearer** + `product:manage` — media metadata/status + option-value tags (per-variant gallery)         |
 
 Responses use the envelope from `@shopnetic/contracts` (`{ data, meta }` /
 `{ error }`, RFC-9457). Auth routes are per-IP rate limited (`X-RateLimit-*`,
@@ -86,9 +88,10 @@ src/
   catalog/   CatalogModule — Category / Brand / OptionType / ValueSet /
              CategoryOption services (see the endpoint table) + ProductService
              (/admin/v1/products) + ProductOptionService (product option config +
-             offered values) + VariantService (SKUs, combo signature); shared
-             catalog outbox helper. `offer` (price + stock) is the inventory
-             context, not built.
+             offered values) + VariantService (SKUs, combo signature) +
+             MediaService (product photos/videos + option-value tags); shared
+             catalog outbox helper. `offer` (price + stock) and offer-owned
+             media are the inventory context, not built.
   identity/  IdentityModule — buyer + staff auth. register/verify/login/refresh/
              logout/session, /me, /audit-events; staff invite + accept, staff
              login + TOTP enrol/confirm; password, sessions (rotation + reuse
