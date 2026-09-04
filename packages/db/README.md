@@ -69,14 +69,21 @@ pnpm --filter @shopnetic/db db:reset         # drop, re-migrate, re-seed
 
 The seed is **idempotent** and, for system roles, authoritative — a
 `role_permission` row not in `@shopnetic/auth`'s `ROLE_PERMISSIONS` is removed.
+It also seeds a small **demo catalog** (`prisma/seed-catalog.ts`: a category
+tree, brands, option types + value sets, per-category option config, and two
+products with variants) — on by default outside production, keyed by
+slug/code so re-runs are safe. `SEED_DEMO=false` skips it; `SEED_DEMO=true`
+forces it in production.
 
 ### Env
 
-| Var                             | Required | Purpose                                                                    |
-| ------------------------------- | -------- | -------------------------------------------------------------------------- |
-| `DATABASE_URL`                  | yes      | Postgres connection string                                                 |
-| `DIRECT_URL`                    | no       | un-pooled URL for `migrate` (falls back to `DATABASE_URL`)                 |
-| `BOOTSTRAP_SUPERADMIN_EMAIL`    | no\*     | seed a first staff Super Admin (`account` + `credential` + global `grant`) |
-| `BOOTSTRAP_SUPERADMIN_PASSWORD` | no\*     | min length 12                                                              |
+| Var                             | Required | Purpose                                                                      |
+| ------------------------------- | -------- | ---------------------------------------------------------------------------- |
+| `DATABASE_URL`                  | yes      | Postgres connection string                                                   |
+| `DIRECT_URL`                    | no       | un-pooled URL for `migrate` (falls back to `DATABASE_URL`)                   |
+| `BOOTSTRAP_SUPERADMIN_EMAIL`    | no\*     | seed a first staff Super Admin (`account` + `credential` + global `grant`)   |
+| `BOOTSTRAP_SUPERADMIN_PASSWORD` | no\*     | min length 12                                                                |
+| `SEED_DEMO`                     | no       | `true`/`false` — demo catalog data. Default: on unless `NODE_ENV=production` |
+| `NODE_ENV`                      | no       | gates `SEED_DEMO`'s default (seed only)                                      |
 
 \* set both or neither.

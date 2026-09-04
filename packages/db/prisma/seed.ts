@@ -19,11 +19,16 @@ import {
 import { createLogger } from '@shopnetic/observability';
 import { getPrismaClient } from '../src/index.js';
 import { loadDbEnv } from '../src/env.js';
+import { seedCatalogDemo } from './seed-catalog.js';
 
 const log = createLogger({ service: 'db-seed' });
 
-const bootstrapSchema = z
+const seedEnvSchema = z
   .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    // Demo catalog data. Defaults on outside production; `false` always skips,
+    // `true` forces it even in production (plan/CODING-RULES.md §R).
+    SEED_DEMO: z.enum(['true', 'false']).optional(),
     BOOTSTRAP_SUPERADMIN_EMAIL: z.string().email().optional(),
     BOOTSTRAP_SUPERADMIN_PASSWORD: z.string().min(12).optional(),
   })
@@ -38,7 +43,7 @@ const bootstrapSchema = z
 
 async function main(): Promise<void> {
   loadDbEnv();
-  const bootstrap = bootstrapSchema.parse(process.env);
+  const seedEnv = seedEnvSchema.parse(process.env);
   const prisma = getPrismaClient();
 
   // 1. Permission catalog
@@ -84,10 +89,10 @@ async function main(): Promise<void> {
   }
 
   // 4. Optional bootstrap Super Admin
-  if (!bootstrap.BOOTSTRAP_SUPERADMIN_EMAIL || !bootstrap.BOOTSTRAP_SUPERADMIN_PASSWORD) {
+  if (!seedEnv.BOOTSTRAP_SUPERADMIN_EMAIL || !seedEnv.BOOTSTRAP_SUPERADMIN_PASSWORD) {
     log.info('no BOOTSTRAP_SUPERADMIN_* env set — skipping bootstrap account');
   } else {
-    const email = bootstrap.BOOTSTRAP_SUPERADMIN_EMAIL;
+    const email = seedEnv.BOOTSTRAP_SUPERADMIN_EMAIL;
     const superRole = await prisma.role.findUniqueOrThrow({ where: { key: Role.SUPER_ADMIN } });
 
     const account = await prisma.account.upsert({
@@ -100,7 +105,7 @@ async function main(): Promise<void> {
         emailVerifiedAt: new Date(),
         credential: {
           create: {
-            passwordHash: await hashPassword(bootstrap.BOOTSTRAP_SUPERADMIN_PASSWORD),
+            passwordHash: await hashPassword(seedEnv.BOOTSTRAP_SUPERADMIN_PASSWORD),
             hashAlgo: 'argon2id',
             params: ARGON2_PARAMS,
           },
@@ -117,6 +122,16 @@ async function main(): Promise<void> {
       });
     }
     log.info({ email, created: account.createdAt }, 'bootstrap Super Admin ensured');
+  }
+
+  // 5. Demo catalog data (idempotent; gated)
+  const runDemo =
+    seedEnv.SEED_DEMO === 'true' ||
+    (seedEnv.SEED_DEMO !== 'false' && seedEnv.NODE_ENV !== 'production');
+  if (runDemo) {
+    await seedCatalogDemo(prisma, log);
+  } else {
+    log.info({ nodeEnv: seedEnv.NODE_ENV }, 'SEED_DEMO off — skipping demo catalog data');
   }
 
   log.info('seed complete');
