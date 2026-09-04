@@ -1,9 +1,5 @@
 {
   "catalog": {
-    "nav": {
-      "dashboard": "Dashboard",
-      "categories": "Categories"
-    },
     "categories": {
       "title": "Categories",
       "new": "New category",

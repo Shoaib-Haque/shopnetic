@@ -1,0 +1,30 @@
+{
+  "admin": {
+    "shell": {
+      "appName": "Shopnetic Admin",
+      "openMenu": "Open menu",
+      "closeMenu": "Close menu",
+      "toggleSidebar": "Collapse or expand sidebar",
+      "search": "Search…",
+      "searchSoon": "Search is coming soon",
+      "notifications": "Notifications",
+      "account": "Account menu",
+      "signOut": "Sign out",
+      "signingOut": "Signing out…",
+      "soon": "Soon"
+    },
+    "nav": {
+      "sections": { "overview": "Overview", "catalog": "Catalog" },
+      "dashboard": "Dashboard",
+      "categories": "Categories",
+      "brands": "Brands",
+      "optionTypes": "Option types",
+      "valueSets": "Value sets",
+      "products": "Products",
+      "media": "Media"
+    },
+    "footer": {
+      "text": "© 2026 Shopnetic — Admin"
+    }
+  }
+}

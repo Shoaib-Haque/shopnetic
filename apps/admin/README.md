@@ -34,6 +34,17 @@ cookie (8h). No token reaches the browser. Sign-in also stores a short-lived
 Cookies: **`sn_srt`** = staff refresh token (8h) · **`sn_sat`** = staff access
 token (~15m, minted/refreshed by the BFF). Both httpOnly, Path `/`.
 
+## Shell
+
+`(protected)/layout.tsx` (Server Component, session guard) renders
+`components/layout/AdminShell` (client): a fixed **topbar** (app name, search
+placeholder, account dropdown → sign out), a **collapsible sidebar**
+(`components/layout/nav-config.ts`; collapse state in `localStorage`, mobile
+drawer, sign-out pinned at its bottom), a scrollable **main column**, and a
+**footer**. Only the main column scrolls; the sidebar scrolls on its own.
+Toasts: `@shopnetic/ui` `<Toaster/>` is mounted here; call `notify.saved(msg)` /
+`notify.error(msg)`.
+
 ## Catalog (back office)
 
 `/[locale]/x7f2k9t3m1qp/(protected)/catalog/…` — currently **Categories**

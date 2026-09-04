@@ -1,6 +1,6 @@
 /**
  * Shared Tailwind preset — design tokens live here so storefront, seller and
- * admin share one visual language (plan/CODING-RULES.md §G, plan/09 §5).
+ * admin share one visual language (plan/CODING-RULES.md section G, plan/09 section 5).
  * Colors reference CSS variables defined in @shopnetic/ui tokens.css so
  * theming / dark mode work everywhere.
  *
@@ -27,6 +27,11 @@ const preset = {
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
+        },
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+          muted: 'hsl(var(--success-muted))',
         },
       },
       borderRadius: {
