@@ -13,7 +13,7 @@ migrations, soft-delete by default, explicit FK behaviour, short transactions.
 | Schema     | Models                                                                                                                                                                              |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `identity` | `account`, `credential`, `email_verification`, `session`, `totp_secret`, `recovery_code`, `role`, `permission`, `role_permission`, `grant`, `staff_invite`, `audit_event`, `outbox` |
-| `catalog`  | `category` (ltree `path`), `brand`, `brand_alias`, `outbox` — more entities land one at a time                                                                                      |
+| `catalog`  | `category` (ltree `path`), `brand`, `brand_alias`, `option_type`, `option_value`, `outbox` — more entities land one at a time                                                       |
 
 Other context schemas (`inventory`, `orders`, `seller`, …) are added to the
 generator's `schemas` list as their models land — Prisma rejects an empty schema.

@@ -61,14 +61,15 @@ raw-SQL migration.
 > User-facing names/descriptions/labels are **localized fields** (`24` §5) —
 > shown below as `*_i18n`.
 >
-> **Built so far:** `category` (+ an `outbox` per `1.5`). The rest lands one
-> entity at a time.
+> **Built so far:** `category`, `brand` (+ `brand_alias`), `option_type`
+> (+ `option_value`), and an `outbox` per `1.5`. The rest lands one entity at a
+> time.
 
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
 | `category` | parent_id, name_i18n, slug, path (ltree), position, is_active, brand_requirement (`required/optional/none`), deleted_at | Tree. `path` is a materialized ltree of **dash-stripped uuid** segments (root→self) — ltree labels can't hold `-`/slugs; a GiST index on `path` powers subtree ops. Maintained by the catalog service in a tx (raw SQL). Sibling `(parent_id, slug)` unique (roots de-duped in code). Admin CRUD: `/admin/v1/categories` + `…/:id/move`, gated by `category:manage`. |
-| `option_type` | code, name_i18n, data_type (`enum/text/number/bool/swatch`), has_swatch | Global, reusable axis of choice (Color, Size, Storage, Carrier…). |
-| `option_value` | option_type_id, code, label_i18n, swatch_hex, swatch_image_key, position, status (`active/deprecated`) | Allowed value; deprecate, never hard-delete if used. |
+| `option_type` | code (unique), name_i18n, data_type (`select/text/number/bool/swatch`), has_swatch, status (`active/deprecated`), deleted_at | Built. Global, reusable axis of choice (Color, Size, Storage, Carrier…). Admin CRUD: `/admin/v1/option-types` (+ `…/:id/values[/:valueId]`), gated by `attribute:manage`. Soft-deleted; deprecate once products reference it. (`data_type` uses `select` where `26` says `enum` — `enum` is not a safe Prisma enum member.) |
+| `option_value` | option_type_id, code (unique per type), label_i18n, swatch_hex (`#rrggbb`), swatch_image_key, position, status (`active/deprecated`) | Built. Nested under its type in the API. Hard-deletable only while unreferenced; deprecate once a product uses it. |
 | `value_set` / `value_set_item` | name / (value_set_id, option_value_id, position) | Managed value lists (e.g. "Apparel sizes"). |
 | `category_option` | category_id, option_type_id, applicability (`required/optional/not_applicable`), is_variant_axis, value_source (`predefined/open/hybrid`), value_set_id, price_impact, position | Admin config: which options apply to a category and how. `is_variant_axis=false` ⇒ it's an attribute (spec/facet), not a buyable choice. |
 | `attribute` / `attribute_value` | code, name_i18n, data_type, unit / (attribute_id, value, position) | Non-variant facts (Fabric, Impedance, Origin). |

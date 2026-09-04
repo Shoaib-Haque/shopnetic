@@ -119,3 +119,97 @@ export type AddBrandAliasRequest = z.infer<typeof addBrandAliasRequestSchema>;
 
 export const mergeBrandRequestSchema = z.object({ intoBrandId: z.string().uuid() });
 export type MergeBrandRequest = z.infer<typeof mergeBrandRequestSchema>;
+
+// ── Option types & values (plan/26 §1, §3) ───────────────────────────────────
+
+/** `select` = fixed value list; `swatch` = same, with a colour/image chip. */
+export const optionDataTypeSchema = z.enum(['select', 'text', 'number', 'bool', 'swatch']);
+export type OptionDataType = z.infer<typeof optionDataTypeSchema>;
+
+export const optionStatusSchema = z.enum(['active', 'deprecated']);
+export type OptionStatus = z.infer<typeof optionStatusSchema>;
+
+/** Latin slug for matching/URLs: lowercase, digits, single `-`/`_` between. */
+const optionCodeSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1)
+  .max(60)
+  .regex(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, 'lowercase letters, digits and single - or _ only');
+
+const swatchHexSchema = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'a #rrggbb hex colour')
+  .transform((v) => v.toLowerCase());
+
+export const optionValueSchema = z.object({
+  id: z.string(),
+  optionTypeId: z.string(),
+  code: z.string(),
+  label: localizedTextSchema,
+  swatchHex: z.string().nullable(),
+  swatchImageKey: z.string().nullable(),
+  position: z.number().int(),
+  status: optionStatusSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type OptionValue = z.infer<typeof optionValueSchema>;
+
+export const optionTypeSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  name: localizedTextSchema,
+  dataType: optionDataTypeSchema,
+  hasSwatch: z.boolean(),
+  status: optionStatusSchema,
+  values: z.array(optionValueSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type OptionType = z.infer<typeof optionTypeSchema>;
+
+const optionValueInputSchema = z.object({
+  code: optionCodeSchema,
+  label: localizedTextSchema,
+  swatchHex: swatchHexSchema.nullish(),
+  swatchImageKey: z.string().max(500).nullish(),
+  position: z.number().int().min(0).max(100_000).optional(),
+});
+
+export const createOptionTypeRequestSchema = z.object({
+  code: optionCodeSchema,
+  name: localizedTextSchema,
+  dataType: optionDataTypeSchema.optional(),
+  hasSwatch: z.boolean().optional(),
+  values: z.array(optionValueInputSchema).max(500).optional(),
+});
+export type CreateOptionTypeRequest = z.infer<typeof createOptionTypeRequestSchema>;
+
+export const updateOptionTypeRequestSchema = z
+  .object({
+    code: optionCodeSchema,
+    name: localizedTextSchema,
+    dataType: optionDataTypeSchema,
+    hasSwatch: z.boolean(),
+    status: optionStatusSchema,
+  })
+  .partial();
+export type UpdateOptionTypeRequest = z.infer<typeof updateOptionTypeRequestSchema>;
+
+export const addOptionValueRequestSchema = optionValueInputSchema;
+export type AddOptionValueRequest = z.infer<typeof addOptionValueRequestSchema>;
+
+export const updateOptionValueRequestSchema = z
+  .object({
+    code: optionCodeSchema,
+    label: localizedTextSchema,
+    swatchHex: swatchHexSchema.nullable(),
+    swatchImageKey: z.string().max(500).nullable(),
+    position: z.number().int().min(0).max(100_000),
+    status: optionStatusSchema,
+  })
+  .partial();
+export type UpdateOptionValueRequest = z.infer<typeof updateOptionValueRequestSchema>;

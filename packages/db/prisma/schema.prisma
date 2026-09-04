@@ -35,25 +35,25 @@ datasource db {
 /// One per human login. Marketplace and staff accounts never share a row and
 /// never share a token audience (plan/03 §1).
 model Account {
-  id              String    @id @default(uuid(7)) @db.Uuid
-  email           String    @unique @db.Citext
+  id              String        @id @default(uuid(7)) @db.Uuid
+  email           String        @unique @db.Citext
   plane           AccountPlane
   status          AccountStatus @default(active)
   emailVerifiedAt DateTime?     @map("email_verified_at") @db.Timestamptz(6)
   phone           String?
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?     @map("deleted_at") @db.Timestamptz(6)
 
   credential         Credential?
   grants             Grant[]
   sessions           Session[]
-  emailVerifications  EmailVerification[]
+  emailVerifications EmailVerification[]
   totpSecret         TotpSecret?
   recoveryCodes      RecoveryCode[]
-  invitesSent        StaffInvite[]      @relation("InviteInvitedBy")
-  inviteAccepted     StaffInvite?       @relation("InviteAcceptedBy")
-  auditEvents        AuditEvent[]       @relation("AuditActor")
+  invitesSent        StaffInvite[]       @relation("InviteInvitedBy")
+  inviteAccepted     StaffInvite?        @relation("InviteAcceptedBy")
+  auditEvents        AuditEvent[]        @relation("AuditActor")
 
   @@index([deletedAt])
   @@map("account")
@@ -79,14 +79,14 @@ model Credential {
 /// Single-use tokens for email verification and password reset. Only the hash
 /// is stored.
 model EmailVerification {
-  id         String   @id @default(uuid(7)) @db.Uuid
-  accountId  String   @map("account_id") @db.Uuid
-  account    Account  @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  id         String                   @id @default(uuid(7)) @db.Uuid
+  accountId  String                   @map("account_id") @db.Uuid
+  account    Account                  @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   purpose    EmailVerificationPurpose
-  tokenHash  String   @unique @map("token_hash")
-  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
-  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tokenHash  String                   @unique @map("token_hash")
+  expiresAt  DateTime                 @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime?                @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([accountId])
   @@map("email_verification")
@@ -97,23 +97,23 @@ model EmailVerification {
 /// `family_id` and points the old row's `replaced_by_id` at it; presenting a
 /// already-rotated token revokes the whole family (plan/16 §1).
 model Session {
-  id               String   @id @default(uuid(7)) @db.Uuid
-  accountId        String   @map("account_id") @db.Uuid
-  account          Account  @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  familyId         String   @map("family_id") @db.Uuid
-  refreshTokenHash String   @unique @map("refresh_token_hash")
-  userAgent        String?  @map("user_agent")
-  ip               String?  @db.Inet
-  issuedAt         DateTime @default(now()) @map("issued_at") @db.Timestamptz(6)
-  lastUsedAt       DateTime? @map("last_used_at") @db.Timestamptz(6)
-  expiresAt        DateTime @map("expires_at") @db.Timestamptz(6)
-  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  id               String                @id @default(uuid(7)) @db.Uuid
+  accountId        String                @map("account_id") @db.Uuid
+  account          Account               @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  familyId         String                @map("family_id") @db.Uuid
+  refreshTokenHash String                @unique @map("refresh_token_hash")
+  userAgent        String?               @map("user_agent")
+  ip               String?               @db.Inet
+  issuedAt         DateTime              @default(now()) @map("issued_at") @db.Timestamptz(6)
+  lastUsedAt       DateTime?             @map("last_used_at") @db.Timestamptz(6)
+  expiresAt        DateTime              @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime?             @map("revoked_at") @db.Timestamptz(6)
   revokedReason    SessionRevokedReason? @map("revoked_reason")
-  replacedById     String?  @unique @map("replaced_by_id") @db.Uuid
-  replacedBy       Session? @relation("SessionRotation", fields: [replacedById], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  replaces         Session? @relation("SessionRotation")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  replacedById     String?               @unique @map("replaced_by_id") @db.Uuid
+  replacedBy       Session?              @relation("SessionRotation", fields: [replacedById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  replaces         Session?              @relation("SessionRotation")
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([accountId])
   @@index([familyId])
@@ -124,13 +124,13 @@ model Session {
 /// TOTP shared secret (encrypted at the application layer). Mandatory for staff,
 /// optional for buyers (plan/16 §1).
 model TotpSecret {
-  id              String   @id @default(uuid(7)) @db.Uuid
-  accountId       String   @unique @map("account_id") @db.Uuid
-  account         Account  @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  secretEncrypted String   @map("secret_encrypted")
+  id              String    @id @default(uuid(7)) @db.Uuid
+  accountId       String    @unique @map("account_id") @db.Uuid
+  account         Account   @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  secretEncrypted String    @map("secret_encrypted")
   confirmedAt     DateTime? @map("confirmed_at") @db.Timestamptz(6)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("totp_secret")
   @@schema("identity")
@@ -138,12 +138,12 @@ model TotpSecret {
 
 /// One-time MFA recovery codes; only the hash is stored.
 model RecoveryCode {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  accountId String   @map("account_id") @db.Uuid
-  account   Account  @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  codeHash  String   @map("code_hash")
+  id        String    @id @default(uuid(7)) @db.Uuid
+  accountId String    @map("account_id") @db.Uuid
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  codeHash  String    @map("code_hash")
   usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([accountId, codeHash])
   @@index([accountId])
@@ -184,8 +184,8 @@ model Permission {
 }
 
 model RolePermission {
-  roleId       String @map("role_id") @db.Uuid
-  permissionId String @map("permission_id") @db.Uuid
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
@@ -198,15 +198,15 @@ model RolePermission {
 /// An account's effective authority: this role over this data boundary.
 /// `scope_id` holds the sellerId for `seller` scope; null for `self` / `global`.
 model Grant {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  accountId String   @map("account_id") @db.Uuid
-  account   Account  @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  roleId    String   @map("role_id") @db.Uuid
-  role      Role     @relation(fields: [roleId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  id        String         @id @default(uuid(7)) @db.Uuid
+  accountId String         @map("account_id") @db.Uuid
+  account   Account        @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  roleId    String         @map("role_id") @db.Uuid
+  role      Role           @relation(fields: [roleId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   scopeType GrantScopeType @map("scope_type")
-  scopeId   String?  @map("scope_id")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  scopeId   String?        @map("scope_id")
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // NOTE: Postgres treats NULLs as distinct, so this does not block a duplicate
   // (account, role, global, NULL). The seed and grant-writer paths de-dupe
@@ -219,19 +219,19 @@ model Grant {
 
 /// Invite-only staff onboarding (plan/03 §1). Only the token hash is stored.
 model StaffInvite {
-  id                  String   @id @default(uuid(7)) @db.Uuid
-  email               String   @db.Citext
-  roleId              String   @map("role_id") @db.Uuid
-  role                Role     @relation(fields: [roleId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  invitedByAccountId  String   @map("invited_by_account_id") @db.Uuid
-  invitedBy           Account  @relation("InviteInvitedBy", fields: [invitedByAccountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  tokenHash           String   @unique @map("token_hash")
-  expiresAt           DateTime @map("expires_at") @db.Timestamptz(6)
-  acceptedAt          DateTime? @map("accepted_at") @db.Timestamptz(6)
-  acceptedAccountId   String?  @unique @map("accepted_account_id") @db.Uuid
-  acceptedAccount     Account? @relation("InviteAcceptedBy", fields: [acceptedAccountId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  email              String    @db.Citext
+  roleId             String    @map("role_id") @db.Uuid
+  role               Role      @relation(fields: [roleId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  invitedByAccountId String    @map("invited_by_account_id") @db.Uuid
+  invitedBy          Account   @relation("InviteInvitedBy", fields: [invitedByAccountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  tokenHash          String    @unique @map("token_hash")
+  expiresAt          DateTime  @map("expires_at") @db.Timestamptz(6)
+  acceptedAt         DateTime? @map("accepted_at") @db.Timestamptz(6)
+  acceptedAccountId  String?   @unique @map("accepted_account_id") @db.Uuid
+  acceptedAccount    Account?  @relation("InviteAcceptedBy", fields: [acceptedAccountId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([email])
   @@map("staff_invite")
@@ -265,14 +265,14 @@ model AuditEvent {
 /// Transactional outbox for the identity context (plan/02 §4). A dispatcher
 /// (apps/workers, later) publishes unpublished rows and sets `published_at`.
 model Outbox {
-  id            String   @id @default(uuid(7)) @db.Uuid
-  aggregateType String   @map("aggregate_type")
-  aggregateId   String   @map("aggregate_id")
-  eventType     String   @map("event_type")
+  id            String    @id @default(uuid(7)) @db.Uuid
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
   payload       Json
   headers       Json?
-  attempts      Int      @default(0)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
 
   @@index([publishedAt])
@@ -422,6 +422,76 @@ enum BrandStatus {
   pending
   active
   rejected
+
+  @@schema("catalog")
+}
+
+/// A named axis of choice, reusable across categories (plan/26 §1, §3). Whether a
+/// value creates a distinct SKU or is just a spec is decided per-category later
+/// (`category_option.is_variant_axis`). `code` is a stable latin slug for
+/// matching/URLs; `name_i18n` is localized display (`24` §5). Deprecated, never
+/// hard-deleted, once products reference it — `deleted_at` is a soft-delete for
+/// the not-yet-referenced case.
+model OptionType {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  code      String           @unique
+  nameI18n  Json             @map("name_i18n")
+  dataType  OptionDataType   @default(select) @map("data_type")
+  hasSwatch Boolean          @default(false) @map("has_swatch")
+  status    OptionTypeStatus @default(active)
+  values    OptionValue[]
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime?        @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("option_type")
+  @@schema("catalog")
+}
+
+enum OptionDataType {
+  select // a fixed list of values (Color, Size, Storage)
+  text
+  number
+  bool
+  swatch // like `select`, but each value carries a colour/image chip
+
+  @@schema("catalog")
+}
+
+enum OptionTypeStatus {
+  active
+  deprecated
+
+  @@schema("catalog")
+}
+
+/// An allowed value of an `OptionType` (plan/26 §3). `code` is unique within the
+/// type. `swatch_hex` / `swatch_image_key` render the picker chip for swatch
+/// types. Values are deprecated, not deleted, once referenced by a product.
+model OptionValue {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  optionTypeId   String            @map("option_type_id") @db.Uuid
+  optionType     OptionType        @relation(fields: [optionTypeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  code           String
+  labelI18n      Json              @map("label_i18n")
+  swatchHex      String?           @map("swatch_hex")
+  swatchImageKey String?           @map("swatch_image_key")
+  position       Int               @default(0)
+  status         OptionValueStatus @default(active)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([optionTypeId, code])
+  @@index([optionTypeId])
+  @@map("option_value")
+  @@schema("catalog")
+}
+
+enum OptionValueStatus {
+  active
+  deprecated
 
   @@schema("catalog")
 }
