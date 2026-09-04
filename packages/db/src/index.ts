@@ -25,6 +25,9 @@ export type {
   BrandAlias,
   OptionType,
   OptionValue,
+  ValueSet,
+  ValueSetItem,
+  CategoryOption,
   CatalogOutbox,
 } from '@prisma/client';
 
@@ -39,6 +42,8 @@ export {
   OptionDataType,
   OptionTypeStatus,
   OptionValueStatus,
+  OptionApplicability,
+  ValueSource,
 } from '@prisma/client';
 
 /**

@@ -5,11 +5,36 @@ import { BrandController } from './brand.controller.js';
 import { BrandService } from './brand.service.js';
 import { OptionTypeController } from './option-type.controller.js';
 import { OptionTypeService } from './option-type.service.js';
+import { ValueSetController } from './value-set.controller.js';
+import { ValueSetService } from './value-set.service.js';
+import { CategoryOptionController } from './category-option.controller.js';
+import { CategoryOptionService } from './category-option.service.js';
 
-/** Catalog context (plan/07 §"catalog", plan/26). Categories + brands + option types so far. */
+/**
+ * Catalog context (plan/07 §"catalog", plan/26). So far: categories, brands,
+ * option types + values, value sets, per-category option config.
+ */
 @Module({
-  controllers: [CategoryController, BrandController, OptionTypeController],
-  providers: [CategoryService, BrandService, OptionTypeService],
-  exports: [CategoryService, BrandService, OptionTypeService],
+  controllers: [
+    CategoryController,
+    BrandController,
+    OptionTypeController,
+    ValueSetController,
+    CategoryOptionController,
+  ],
+  providers: [
+    CategoryService,
+    BrandService,
+    OptionTypeService,
+    ValueSetService,
+    CategoryOptionService,
+  ],
+  exports: [
+    CategoryService,
+    BrandService,
+    OptionTypeService,
+    ValueSetService,
+    CategoryOptionService,
+  ],
 })
 export class CatalogModule {}
