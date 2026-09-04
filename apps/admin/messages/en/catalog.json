@@ -2,11 +2,16 @@
   "catalog": {
     "categories": {
       "title": "Categories",
+      "subtitle": "Organise the storefront tree — reparent by editing a category’s parent.",
       "new": "New category",
       "empty": "No categories yet.",
+      "noMatch": "No categories match your search.",
       "loading": "Loading…",
       "inactive": "inactive",
       "showInactive": "Show inactive",
+      "searchPlaceholder": "Search categories…",
+      "cols": { "name": "Name", "brand": "Brand" },
+      "tree": { "expand": "Expand", "collapse": "Collapse" },
       "brandReq": {
         "required": "brand required",
         "optional": "brand optional",
@@ -14,8 +19,14 @@
       },
       "edit": "Edit",
       "delete": "Delete",
-      "confirm": "Confirm delete",
       "cancel": "Cancel",
+      "deleteTitle": "Delete category?",
+      "deleteMessage": "“{name}” will be archived. Move or delete its children first if it has any.",
+      "toast": {
+        "created": "Category “{name}” created.",
+        "updated": "Category “{name}” saved.",
+        "deleted": "Category “{name}” deleted."
+      },
       "form": {
         "createTitle": "New category",
         "editTitle": "Edit category",
@@ -31,16 +42,18 @@
         "brandOptional": "Optional",
         "brandNone": "None",
         "save": "Save",
-        "saving": "Saving…",
-        "back": "Back to categories",
         "required": "Required."
       }
     },
     "errors": {
       "categorySlugTaken": "That slug is already used by a sibling category.",
+      "categoryNameTaken": "A sibling category already has that name (names are case-insensitive).",
       "categoryParentInvalid": "The chosen parent category was not found.",
       "categoryHasChildren": "Move or delete the child categories first.",
       "categoryCycle": "A category cannot be moved under its own descendant.",
+      "brandSlugTaken": "That brand slug is already in use.",
+      "brandNameTaken": "A brand with that name already exists (names are case-insensitive).",
+      "conflict": "That action conflicts with the current state — reload and try again.",
       "validation": "Please check the highlighted fields.",
       "unauthenticated": "Your session expired. Please sign in again.",
       "forbidden": "You do not have permission to do that.",

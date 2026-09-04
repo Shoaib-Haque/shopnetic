@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type FormEventHandler, type ReactNode } from 'react';
 import {
   Button,
   Modal,
@@ -36,7 +36,7 @@ export function FormModal({
   title: ReactNode;
   description?: ReactNode;
   children: ReactNode;
-  onSubmit: (e: FormEvent<HTMLFormElement>) => void;
+  onSubmit: FormEventHandler<HTMLFormElement>;
   submitting?: boolean;
   submitLabel: string;
   dirty?: boolean;
