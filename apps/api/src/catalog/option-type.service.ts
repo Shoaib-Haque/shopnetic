@@ -57,7 +57,9 @@ export class OptionTypeService {
     meta: RequestMeta,
   ): Promise<OptionType> {
     await this.assertCodeFree(input.code, null);
+    await this.assertNameFree(input.name['en'] ?? '', null);
     const values = dedupeByCode(input.values ?? []);
+    assertLabelsDistinct(values);
 
     const created = await this.prisma.$transaction(async (tx) => {
       const row = await tx.optionType.create({
@@ -100,6 +102,13 @@ export class OptionTypeService {
   ): Promise<OptionType> {
     const current = await this.rowOrThrow(id);
     if (input.code && input.code !== current.code) await this.assertCodeFree(input.code, id);
+    if (input.name !== undefined) {
+      const nextName = input.name['en'] ?? '';
+      const currentName = (current.nameI18n as Record<string, string>)['en'] ?? '';
+      if (nextName.toLowerCase() !== currentName.toLowerCase()) {
+        await this.assertNameFree(nextName, id);
+      }
+    }
 
     const data: Prisma.OptionTypeUpdateInput = {};
     if (input.code !== undefined) data.code = input.code;
@@ -148,6 +157,7 @@ export class OptionTypeService {
         detail: `"${input.code}" is already a value of this option type`,
       });
     }
+    assertLabelFree(type.values, input.label['en'] ?? '', null);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.optionValue.create({
@@ -188,6 +198,9 @@ export class OptionTypeService {
       throw new AppError('OPTION_VALUE_CODE_TAKEN', 409, {
         detail: `"${input.code}" is already a value of this option type`,
       });
+    }
+    if (input.label !== undefined) {
+      assertLabelFree(type.values, input.label['en'] ?? '', valueId);
     }
 
     const data: Prisma.OptionValueUpdateInput = {};
@@ -256,6 +269,23 @@ export class OptionTypeService {
     }
   }
 
+  /** Case-insensitive `name.en` uniqueness across live option types. */
+  private async assertNameFree(nameEn: string, exceptId: string | null): Promise<void> {
+    const params: unknown[] = [nameEn];
+    let sql = `SELECT id FROM catalog.option_type
+                WHERE deleted_at IS NULL AND lower(name_i18n->>'en') = lower($1)`;
+    if (exceptId) {
+      params.push(exceptId);
+      sql += ` AND id <> $2::uuid`;
+    }
+    const rows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(`${sql} LIMIT 1`, ...params);
+    if (rows.length > 0) {
+      throw new AppError('OPTION_TYPE_NAME_TAKEN', 409, {
+        detail: `an option type is already named "${nameEn}" (names are case-insensitive)`,
+      });
+    }
+  }
+
   private async record(
     actor: Actor,
     action: string,
@@ -311,4 +341,35 @@ function dedupeByCode<T extends { code: string }>(xs: T[]): T[] {
     seen.add(x.code);
     return true;
   });
+}
+
+const labelEn = (v: { labelI18n: unknown }): string =>
+  ((v.labelI18n as Record<string, string> | null)?.['en'] ?? '').toLowerCase();
+
+/** Reject a value label that (case-insensitively) matches another value of the type. */
+function assertLabelFree(
+  existing: OptionValueRow[],
+  candidate: string,
+  exceptId: string | null,
+): void {
+  const wanted = candidate.toLowerCase();
+  if (existing.some((v) => v.id !== exceptId && labelEn(v) === wanted)) {
+    throw new AppError('OPTION_VALUE_LABEL_TAKEN', 409, {
+      detail: `"${candidate}" is already a value label of this option type (case-insensitive)`,
+    });
+  }
+}
+
+/** Reject nested create input that carries two values with the same label. */
+function assertLabelsDistinct(values: { label: Record<string, string> }[]): void {
+  const seen = new Set<string>();
+  for (const v of values) {
+    const key = (v.label['en'] ?? '').toLowerCase();
+    if (seen.has(key)) {
+      throw new AppError('OPTION_VALUE_LABEL_TAKEN', 409, {
+        detail: `two values share the label "${v.label['en'] ?? ''}" (case-insensitive)`,
+      });
+    }
+    seen.add(key);
+  }
 }

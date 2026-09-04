@@ -8,7 +8,6 @@ import { CategoryOptionService } from './category-option.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
-const name = (en: string): Record<string, string> => ({ en });
 
 describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
   let prisma: PrismaClient;
@@ -18,6 +17,7 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
   let actor: Actor;
   const stamp = Date.now();
   const s = (x: string): string => `itest-co-${stamp}-${x}`;
+  const name = (en: string): Record<string, string> => ({ en: s(en) });
 
   // shared fixtures
   let sizeTypeId: string;
@@ -113,6 +113,10 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
     await expect(valueSets.create({ name: s('apparel-sizes') }, actor, {})).rejects.toMatchObject({
       code: 'VALUE_SET_NAME_TAKEN',
     });
+    // case-insensitive
+    await expect(
+      valueSets.create({ name: s('apparel-sizes').toUpperCase() }, actor, {}),
+    ).rejects.toMatchObject({ code: 'VALUE_SET_NAME_TAKEN' });
   });
 
   it('adds and removes value set items; rejects a duplicate', async () => {

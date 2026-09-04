@@ -179,13 +179,19 @@ export class ValueSetService {
     return row;
   }
 
+  /** Case-insensitive value-set name uniqueness. */
   private async assertNameFree(name: string, exceptId: string | null): Promise<void> {
     const clash = await this.prisma.valueSet.findFirst({
-      where: { name, ...(exceptId ? { id: { not: exceptId } } : {}) },
+      where: {
+        name: { equals: name, mode: 'insensitive' },
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
       select: { id: true },
     });
     if (clash) {
-      throw new AppError('VALUE_SET_NAME_TAKEN', 409, { detail: `name "${name}" is in use` });
+      throw new AppError('VALUE_SET_NAME_TAKEN', 409, {
+        detail: `name "${name}" is in use (names are case-insensitive)`,
+      });
     }
   }
 

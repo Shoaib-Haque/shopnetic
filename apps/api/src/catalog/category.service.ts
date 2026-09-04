@@ -65,6 +65,7 @@ export class CategoryService {
   async create(input: CreateCategoryRequest, actor: Actor, meta: RequestMeta): Promise<Category> {
     const parent = input.parentId ? await this.parentOrThrow(input.parentId) : null;
     await this.assertSlugFree(parent?.id ?? null, input.slug, null);
+    await this.assertNameFree(parent?.id ?? null, input.name['en'] ?? '', null);
 
     const view = await this.prisma.$transaction(async (tx) => {
       const row = await tx.category.create({
@@ -114,6 +115,12 @@ export class CategoryService {
     const current = await this.rowOrThrow(id);
     if (input.slug && input.slug !== current.slug) {
       await this.assertSlugFree(current.parent_id, input.slug, id);
+    }
+    if (input.name !== undefined) {
+      const nextName = input.name['en'] ?? '';
+      if (nextName.toLowerCase() !== (current.name_i18n['en'] ?? '').toLowerCase()) {
+        await this.assertNameFree(current.parent_id, nextName, id);
+      }
     }
 
     const data: Prisma.CategoryUpdateInput = {};
@@ -169,6 +176,7 @@ export class CategoryService {
       }
     }
     await this.assertSlugFree(parent?.id ?? null, self.slug, id);
+    await this.assertNameFree(parent?.id ?? null, self.name_i18n['en'] ?? '', id);
 
     await this.prisma.$transaction(async (tx) => {
       const newSelfPath = parent ? `${parent.path}.${label(id)}` : label(id);
@@ -275,6 +283,35 @@ export class CategoryService {
     if (clash) {
       throw new AppError('CATEGORY_SLUG_TAKEN', 409, {
         detail: `a sibling already uses "${slug}"`,
+      });
+    }
+  }
+
+  /** Case-insensitive `name.en` uniqueness among live siblings (same parent). */
+  private async assertNameFree(
+    parentId: string | null,
+    nameEn: string,
+    exceptId: string | null,
+  ): Promise<void> {
+    const where = ['deleted_at IS NULL', "lower(name_i18n->>'en') = lower($1)"];
+    const params: unknown[] = [nameEn];
+    if (parentId === null) {
+      where.push('parent_id IS NULL');
+    } else {
+      params.push(parentId);
+      where.push(`parent_id = $${params.length}::uuid`);
+    }
+    if (exceptId) {
+      params.push(exceptId);
+      where.push(`id <> $${params.length}::uuid`);
+    }
+    const rows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id FROM catalog.category WHERE ${where.join(' AND ')} LIMIT 1`,
+      ...params,
+    );
+    if (rows.length > 0) {
+      throw new AppError('CATEGORY_NAME_TAKEN', 409, {
+        detail: `a sibling category is already named "${nameEn}" (names are case-insensitive)`,
       });
     }
   }

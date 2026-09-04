@@ -7,7 +7,6 @@ import { MediaService } from './media.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
-const t = (en: string): Record<string, string> => ({ en });
 
 describe.skipIf(!hasDb)('MediaService (integration)', () => {
   let prisma: PrismaClient;
@@ -15,6 +14,7 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
   let actor: Actor;
   const stamp = Date.now();
   const s = (x: string): string => `itest-md-${stamp}-${x}`;
+  const t = (en: string): Record<string, string> => ({ en: s(en) });
 
   let productId: string;
   let categoryId: string;
@@ -139,7 +139,7 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     );
     expect(up.status).toBe('active');
     expect(up.blurhash).toBe('LKO2');
-    expect(up.alt).toEqual({ en: 'a shoe' });
+    expect(up.alt).toEqual(t('a shoe'));
   });
 
   it('tags an asset to an option value and rejects a cross-type value', async () => {

@@ -154,6 +154,12 @@ in place yet — track these before relying on it:
   `P2002` at INSERT. Fix when the restore flow ships: partial indexes
   `WHERE deleted_at IS NULL` (hand-added to the migration; Prisma `@@unique`
   can't express `WHERE`), or slug-mangle on archive.
+- Catalog **name** uniqueness (case-insensitive `name.en` / `label.en` — `07`
+  "Catalog naming / uniqueness") is **app-level only**: an `assertNameFree` /
+  `assertLabelFree` check in the owning service, with a small TOCTOU window under
+  concurrent writes. DB-level hardening later: `citext` columns for the plain
+  strings (`brand.name`, `value_set.name` — like `brand_alias.alias`), and a
+  `lower((name_i18n->>'en'))` expression unique index for the JSON names.
 - No `restore` endpoints yet, and `outbox` events are written but not dispatched.
 - **Deferred** (need infra or other contexts, plan when they land): hard
   **purge / GDPR erasure** path; **bulk reassign** products to another

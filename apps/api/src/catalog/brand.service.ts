@@ -64,6 +64,7 @@ export class BrandService {
     const slug = input.slug ?? slugify(input.name);
     if (!slug) throw new AppError('VALIDATION_ERROR', 422, { detail: 'name yields an empty slug' });
     await this.assertSlugFree(slug, null);
+    await this.assertNameFree(input.name, null);
 
     const aliases = dedupe([...(input.aliases ?? [])].map((a) => a.trim()).filter(Boolean));
     await this.assertAliasesFree(aliases, null);
@@ -99,6 +100,9 @@ export class BrandService {
   ): Promise<Brand> {
     const current = await this.rowOrThrow(id);
     if (input.slug && input.slug !== current.slug) await this.assertSlugFree(input.slug, id);
+    if (input.name !== undefined && input.name.toLowerCase() !== current.name.toLowerCase()) {
+      await this.assertNameFree(input.name, id);
+    }
 
     const data: Prisma.BrandUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
@@ -235,6 +239,23 @@ export class BrandService {
       select: { id: true },
     });
     if (clash) throw new AppError('BRAND_SLUG_TAKEN', 409, { detail: `slug "${slug}" is in use` });
+  }
+
+  /** Case-insensitive brand-name uniqueness across live brands. */
+  private async assertNameFree(name: string, exceptId: string | null): Promise<void> {
+    const clash = await this.prisma.brand.findFirst({
+      where: {
+        name: { equals: name, mode: 'insensitive' },
+        deletedAt: null,
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (clash) {
+      throw new AppError('BRAND_NAME_TAKEN', 409, {
+        detail: `a brand is already named "${name}" (names are case-insensitive)`,
+      });
+    }
   }
 
   private async assertAliasesFree(aliases: string[], exceptBrandId: string | null): Promise<void> {

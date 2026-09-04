@@ -123,6 +123,25 @@ Not yet implemented: the `category`→products and `brand`→products guards, th
 soft-deleted slug currently blocks re-creating it), and the purge / bulk-reassign
 paths. See `25` Part 2.2 "Current state vs. target".
 
+### Catalog naming / uniqueness
+
+Names and slugs are **case-insensitively** unique. Slugs are lowercased by the
+contract; name checks are **app-level** in the owning service (a small
+TOCTOU window under concurrent writes — DB-level `citext` / expression-unique
+indexes are the later hardening, see `25` Part 2.2).
+
+| Entity | Unique field | Scope |
+|--------|--------------|-------|
+| category | `name.en`, `slug` | among live siblings (same parent) |
+| brand | `name`, `slug`, `alias` | global (`alias` is `citext`) |
+| option_type | `code`, `name.en` | global (`code` also lowercased) |
+| option_value | `code`, `label.en` | within its option type |
+| value_set | `name` | global |
+| product | `slug` | global. `title.en` is **not** blocked — the admin UI shows a soft "title already used" warning; a hard `(seller, title)` rule lands with seller-proposed products. |
+
+Errors: `CATEGORY_NAME_TAKEN`, `BRAND_NAME_TAKEN`, `OPTION_TYPE_NAME_TAKEN`,
+`OPTION_VALUE_LABEL_TAKEN`, `VALUE_SET_NAME_TAKEN` (all `409`).
+
 Price resolution for (seller, variant):
 `offer.sale_price ?? offer.price ?? (product.base_price + variant delta)`.
 **Price and stock are per `offer` (per seller), options/variants are per

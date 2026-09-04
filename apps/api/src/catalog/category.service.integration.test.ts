@@ -7,14 +7,13 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
 
-const name = (en: string): Record<string, string> => ({ en });
-
 describe.skipIf(!hasDb)('CategoryService (integration)', () => {
   let prisma: PrismaClient;
   let svc: CategoryService;
   let actor: Actor;
   const stamp = Date.now();
   const s = (x: string): string => `itest-${stamp}-${x}`;
+  const name = (en: string): Record<string, string> => ({ en: s(en) });
 
   beforeAll(async () => {
     prisma = getPrismaClient();
@@ -76,6 +75,16 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     await expect(
       svc.create({ slug: s('dup'), name: name('z'), parentId: b.id }, actor, {}),
     ).resolves.toMatchObject({ slug: s('dup') });
+  });
+
+  it('rejects a case-variant duplicate name among siblings, allows it under another parent', async () => {
+    const root = await svc.create({ slug: s('nm-root'), name: name('Gadgets') }, actor, {});
+    await expect(
+      svc.create({ slug: s('nm-2'), name: name('gadgets') }, actor, {}),
+    ).rejects.toMatchObject({ code: 'CATEGORY_NAME_TAKEN' });
+    await expect(
+      svc.create({ slug: s('nm-child'), name: name('GADGETS'), parentId: root.id }, actor, {}),
+    ).resolves.toMatchObject({ slug: s('nm-child') });
   });
 
   it('move rewrites the whole subtree and blocks cycles', async () => {

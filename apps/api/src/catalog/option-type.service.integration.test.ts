@@ -7,14 +7,13 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
 
-const name = (en: string): Record<string, string> => ({ en });
-
 describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
   let prisma: PrismaClient;
   let svc: OptionTypeService;
   let actor: Actor;
   const stamp = Date.now();
   const s = (x: string): string => `itest-opt-${stamp}-${x}`;
+  const name = (en: string): Record<string, string> => ({ en: s(en) });
 
   beforeAll(async () => {
     prisma = getPrismaClient();
@@ -89,6 +88,26 @@ describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
     await expect(
       svc.addValue(t2.id, { code: s('128'), label: name('128') }, actor, {}),
     ).resolves.toMatchObject({ id: t2.id });
+  });
+
+  it('rejects a case-variant duplicate type name and value label', async () => {
+    await svc.create({ code: s('finish-a'), name: name('Finish') }, actor, {});
+    await expect(
+      svc.create({ code: s('finish-b'), name: name('finish') }, actor, {}),
+    ).rejects.toMatchObject({ code: 'OPTION_TYPE_NAME_TAKEN' });
+
+    const t = await svc.create(
+      {
+        code: s('coating'),
+        name: name('Coating'),
+        values: [{ code: s('matte'), label: name('Matte') }],
+      },
+      actor,
+      {},
+    );
+    await expect(
+      svc.addValue(t.id, { code: s('matte-2'), label: name('MATTE') }, actor, {}),
+    ).rejects.toMatchObject({ code: 'OPTION_VALUE_LABEL_TAKEN' });
   });
 
   it('adds, updates (deprecate) and removes a value', async () => {

@@ -10,7 +10,6 @@ import { VariantService } from './variant.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
-const t = (en: string): Record<string, string> => ({ en });
 
 describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () => {
   let prisma: PrismaClient;
@@ -20,6 +19,7 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
   let actor: Actor;
   const stamp = Date.now();
   const s = (x: string): string => `itest-pr-${stamp}-${x}`;
+  const t = (en: string): Record<string, string> => ({ en: s(en) });
 
   let catOptionalId: string;
   let catNoneId: string;

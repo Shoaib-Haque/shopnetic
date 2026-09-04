@@ -68,6 +68,13 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     });
   });
 
+  it('rejects a case-variant duplicate brand name', async () => {
+    await svc.create({ name: `${s('zenith')} Audio`, slug: s('zenith-b') }, actor, {});
+    await expect(
+      svc.create({ name: `${s('ZENITH')} AUDIO`, slug: s('zenith-c') }, actor, {}),
+    ).rejects.toMatchObject({ code: 'BRAND_NAME_TAKEN' });
+  });
+
   it('merges: aliases move to the target, source name becomes an alias, source is flagged', async () => {
     // target already carries an alias equal to the source's slug → merge must
     // not create a duplicate for it.
