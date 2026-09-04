@@ -89,6 +89,40 @@ raw-SQL migration.
 | `product_edit_request` | product_id or new, seller_id, kind (`new_product/edit/new_variant/shared_media`), payload (jsonb), status | Moderation queue for seller-proposed catalog data. |
 | `product_related` | product_id, related_product_id, kind (`also_viewed/also_bought/fbt/related/more_from_seller`), score, rank, computed_at | Precomputed by jobs (`27` section 7); served straight to the PDP. |
 
+### Catalog deletion (doctrine + full detail in `25-database-conventions.md` Part 2)
+
+Catalog "delete" means **archive** — soft-delete, excluded from normal reads,
+kept so orders/analytics still resolve it. Archiving is **blocked** when a live
+dependency would be orphaned; the API error names the blocker + count and the
+way out. **Hard purge** is a separate, rare, permission-gated admin action
+(not built yet), never for a row an order touched.
+
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+| Entity          | Delete mode                                             | Blocked while (live deps)                                       | Restore |
++=================+=========================================================+=================================================================+=========+
+| category        | soft                                                    | has child categories · has products                             | yes     |
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+| brand           | soft (real "remove" is merge)                           | has products → use the merge tool                               | yes     |
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+| option_type     | soft                                                    | used by a category_option / product_option                      | yes     |
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+| option_value    | hard while unused → soft (`deprecated`) once referenced | by product_option_value / variant_option_value / value_set_item | —       |
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+| value_set       | hard                                                    | referenced by a category_option                                 | —       |
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+| category_option | hard                                                    | (later) a product in the category uses that axis                | —       |
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+| product         | soft (`archived`)                                       | (later) in an order → keep forever; in a cart → `29`            | yes     |
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+| variant         | soft                                                    | (later) referenced by an offer / order                          | yes     |
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+| media_asset     | hard                                                    | —                                                               | —       |
++-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+Not yet implemented: the `category`→products and `brand`→products guards, the
+`restore` endpoints, partial unique indexes (`WHERE deleted_at IS NULL` — a
+soft-deleted slug currently blocks re-creating it), and the purge / bulk-reassign
+paths. See `25` Part 2.2 "Current state vs. target".
+
 Price resolution for (seller, variant):
 `offer.sale_price ?? offer.price ?? (product.base_price + variant delta)`.
 **Price and stock are per `offer` (per seller), options/variants are per

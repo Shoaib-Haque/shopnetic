@@ -112,8 +112,13 @@ exists.
 | `product`, `variant` | Soft (`archived`/`deleted_at`) | Order lines hold snapshots; PDP can 410/redirect (`10` section 5) |
 | `offer`, `stock` | Soft | Removing a listing ≠ deleting sales history |
 | `shop` | Soft | Offboarding saga (`05` section 8) archives; keep for statements/retention |
-| `category`, `brand` | Soft + reparent/relink flow | Never orphan products silently; admin must reassign or `SET NULL` |
-| `option_type`, `option_value` | Soft, additive-only in practice (`26`) | Cannot remove a value that variants use |
+| `category` | Soft + reparent flow | Blocked while it has live child categories **or** live products; admin moves/reassigns first, then archive. Restore supported. |
+| `brand` | Soft; **merge** is the real "remove" | Blocked while live products reference it — use the merge tool (`26`), which relinks + adds an alias. Restore supported. |
+| `option_type` | Soft, additive-only in practice (`26`) | Blocked once a `category_option` or `product_option` uses it (deprecate instead). Restore supported. |
+| `option_value` | **Hard while unreferenced**, soft (`deprecated` status) once a `product_option_value` / `variant_option_value` / `value_set_item` points at it | Cannot remove a value a product/variant uses. |
+| `value_set`, `category_option` | **Hard** | `value_set` blocked while a `category_option` references it. `category_option` will block once a product in the category uses that axis (guard lands with `product_option` usage tracking). |
+| `product`, `variant` | Soft (`archived` / `deleted_at`) | Order lines hold snapshots; PDP can 410/redirect (`10` section 5). In a cart → `29` alerts the buyer. In an order → keep forever. Restore supported (re-validates slug). |
+| `media_asset` | **Hard** (DB row); object-storage blob GC'd later | No historical value once detached. |
 | `review`, `message`, `thread` | Soft (redact for T&S) | Moderation may redact content but keep the record |
 | `cart`, `cart_item`, `saved_item` | **Hard** (or TTL sweep) | No historical value; guest carts expire |
 | `stock_reservation` | Hard on release/expiry | Transient |
@@ -135,6 +140,25 @@ exists.
   event (`X.soft_deleted`) so other contexts react.
 - **Restore** is supported for anything soft-deleted (set `deleted_at = null`,
   emit `X.restored`). Design features assuming restore can happen.
+
+**Current state vs. target (2026-09, Catalog):** the target above is not fully
+in place yet — track these before relying on it:
+
+- No global soft-delete middleware/extension yet — every catalog service adds
+  `deleted_at IS NULL` **by hand** in its queries. A future `@shopnetic/db`
+  client extension centralizes it.
+- Unique indexes are still **full**, not partial (`slug @unique`,
+  `@@unique([parent_id, slug])`, `@@unique([option_type_id, code])`). The
+  services' `assertSlugFree` checks filter `deleted_at IS NULL`, but the DB
+  constraint does not — so re-creating the slug of a **soft-deleted** row throws
+  `P2002` at INSERT. Fix when the restore flow ships: partial indexes
+  `WHERE deleted_at IS NULL` (hand-added to the migration; Prisma `@@unique`
+  can't express `WHERE`), or slug-mangle on archive.
+- No `restore` endpoints yet, and `outbox` events are written but not dispatched.
+- **Deferred** (need infra or other contexts, plan when they land): hard
+  **purge / GDPR erasure** path; **bulk reassign** products to another
+  category/brand before archiving; cart/order-aware product retirement (design
+  is in `29`, nothing to build until `cart`/`order` exist).
 
 ### 2.3 FK behavior matrix (decide per relation, document in `07`)
 
