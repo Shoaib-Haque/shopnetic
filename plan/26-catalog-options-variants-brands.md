@@ -5,14 +5,18 @@ Related: `07-data-model.md`, `11-search-and-catalog.md`, `05-features-seller.md`
 
 **Build progress:** built so far — `brand` (+ `brand_alias`, §6); the global
 `option_type` / `option_value` catalog (§3); `value_set` (+ `value_set_item`,
-§2.1); and `category_option` (§2.1) as an upsert at
-`PUT /admin/v1/categories/:categoryId/options/:optionTypeId`. Admin CRUD also at
-`/admin/v1/brands`, `/admin/v1/option-types`, `/admin/v1/value-sets`. `data_type`
-ships as `select|text|number|bool|swatch` (`select` in place of this doc's
-`enum`). `value_set` is not type-bound in the schema; the `category_option`
-endpoint checks every item belongs to the chosen option type, and rejects a
-value set on an `open` source / requires one for `predefined`/`hybrid`.
-Next: `product` → `product_option` → `product_option_value` → `variant` → `offer`.
+§2.1); `category_option` (§2.1) as an upsert at
+`PUT /admin/v1/categories/:categoryId/options/:optionTypeId`; and `product`
+(+ `product_option`, `product_option_value`, `variant`, `variant_option_value`,
+§2.2–2.3) — admin CRUD at `/admin/v1/products`, `…/:id/options/:optionTypeId`
+(+ `/values`), `…/:id/variants`. Admin CRUD also at `/admin/v1/brands`,
+`/admin/v1/option-types`, `/admin/v1/value-sets`. `data_type` ships as
+`select|text|number|bool|swatch` (`select` in place of this doc's `enum`).
+Variant selections are immutable and cover exactly the `is_variant_axis` product
+options; `combo_signature` blocks duplicate combinations.
+**Deferred:** `offer` / `stock` / `warehouse` / `buybox` (Inventory context) —
+need `seller_id`; `media_asset` / `media_option_tag` (§5); `brand_request` (§6).
+Next once the seller context exists: `offer` → `stock` → `buybox`.
 
 This is the hardest modeling problem in the platform. Reference screenshots:
 `tmp/amazon_shirt_options.png` (Color + Size + pack qty), `tmp/amazon_iphone_options.png`

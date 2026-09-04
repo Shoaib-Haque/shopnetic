@@ -45,6 +45,9 @@ pnpm --filter @shopnetic/api start
 | \*             | `/admin/v1/brands` (+ `…/:id`, `…/:id/aliases[/:aliasId]`, `…/:id/merge`) | **staff Bearer** + `brand:manage` — brand CRUD, aliases, merge (moves aliases, soft-deletes source)           |
 | \*             | `/admin/v1/option-types` (+ `…/:id`, `…/:id/values[/:valueId]`)           | **staff Bearer** + `attribute:manage` — global option-type + option-value catalog (Color, Size, Storage…)     |
 | \*             | `/admin/v1/value-sets` (+ `…/:id`, `…/:id/items[/:optionValueId]`)        | **staff Bearer** + `attribute:manage` — managed value lists ("Apparel sizes"); backs `predefined`/`hybrid`    |
+| \*             | `/admin/v1/products` (+ `…/:id`)                                          | **staff Bearer** + `product:manage` — base product CRUD (category fixed, brand checked vs category rule)      |
+| GET/PUT/DELETE | `/admin/v1/products/:productId/options/:optionTypeId` (+ `/values`)       | **staff Bearer** + `product:manage` — which option types the product uses + the values it offers per axis     |
+| \*             | `/admin/v1/products/:productId/variants` (+ `…/:id`)                      | **staff Bearer** + `product:manage` — variant (SKU) CRUD; selections = one value per variant-axis option      |
 
 Responses use the envelope from `@shopnetic/contracts` (`{ data, meta }` /
 `{ error }`, RFC-9457). Auth routes are per-IP rate limited (`X-RateLimit-*`,
@@ -80,11 +83,12 @@ src/
              PermissionGuard, @CurrentActor
   audit/     @Global AuditModule — AuditService (append-only identity.audit_event)
   prisma/    PrismaService (extends the @shopnetic/db client) + @Global PrismaModule
-  catalog/   CatalogModule — CategoryService (/admin/v1/categories, ltree tree,
-             raw-SQL path maintenance) + BrandService (/admin/v1/brands, aliases,
-             merge) + OptionTypeService (/admin/v1/option-types, nested values) +
-             ValueSetService (/admin/v1/value-sets) + CategoryOptionService
-             (per-category option config, upsert); shared catalog outbox helper
+  catalog/   CatalogModule — Category / Brand / OptionType / ValueSet /
+             CategoryOption services (see the endpoint table) + ProductService
+             (/admin/v1/products) + ProductOptionService (product option config +
+             offered values) + VariantService (SKUs, combo signature); shared
+             catalog outbox helper. `offer` (price + stock) is the inventory
+             context, not built.
   identity/  IdentityModule — buyer + staff auth. register/verify/login/refresh/
              logout/session, /me, /audit-events; staff invite + accept, staff
              login + TOTP enrol/confirm; password, sessions (rotation + reuse

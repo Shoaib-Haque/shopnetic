@@ -28,6 +28,11 @@ export type {
   ValueSet,
   ValueSetItem,
   CategoryOption,
+  Product,
+  ProductOption,
+  ProductOptionValue,
+  Variant,
+  VariantOptionValue,
   CatalogOutbox,
 } from '@prisma/client';
 
@@ -44,6 +49,8 @@ export {
   OptionValueStatus,
   OptionApplicability,
   ValueSource,
+  ProductStatus,
+  VariantStatus,
 } from '@prisma/client';
 
 /**

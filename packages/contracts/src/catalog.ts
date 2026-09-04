@@ -293,3 +293,164 @@ export const putCategoryOptionRequestSchema = z.object({
   position: positionField.optional(),
 });
 export type PutCategoryOptionRequest = z.infer<typeof putCategoryOptionRequestSchema>;
+
+// ── Products (plan/26 §1–2) ─────────────────────────────────────────────────
+
+export const productStatusSchema = z.enum(['draft', 'pending', 'active', 'archived']);
+export type ProductStatus = z.infer<typeof productStatusSchema>;
+
+export const currencySchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{3}$/, 'a 3-letter ISO-4217 code');
+
+/** Non-negative integer minor units (cents). Carried as a string in views. */
+const priceMinorSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const specSchema = z.record(z.string(), z.unknown());
+
+export const productSchema = z.object({
+  id: z.string(),
+  categoryId: z.string(),
+  brandId: z.string().nullable(),
+  title: localizedTextSchema,
+  description: localizedTextSchema.nullable(),
+  slug: z.string(),
+  status: productStatusSchema,
+  basePriceMinor: z.string().nullable(),
+  currency: z.string().nullable(),
+  spec: specSchema,
+  proposedBySellerId: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type Product = z.infer<typeof productSchema>;
+
+export const createProductRequestSchema = z.object({
+  categoryId: z.string().uuid(),
+  brandId: z.string().uuid().nullish(),
+  title: localizedTextSchema,
+  description: localizedTextSchema.optional(),
+  slug: slugSchema,
+  status: productStatusSchema.optional(),
+  basePriceMinor: priceMinorSchema.nullish(),
+  currency: currencySchema.nullish(),
+  spec: specSchema.optional(),
+  proposedBySellerId: z.string().uuid().nullish(),
+});
+export type CreateProductRequest = z.infer<typeof createProductRequestSchema>;
+
+/** Category is fixed after creation (it scopes the option config). */
+export const updateProductRequestSchema = z
+  .object({
+    brandId: z.string().uuid().nullable(),
+    title: localizedTextSchema,
+    description: localizedTextSchema.nullable(),
+    slug: slugSchema,
+    status: productStatusSchema,
+    basePriceMinor: priceMinorSchema.nullable(),
+    currency: currencySchema.nullable(),
+    spec: specSchema,
+  })
+  .partial();
+export type UpdateProductRequest = z.infer<typeof updateProductRequestSchema>;
+
+// ── Product options (plan/26 §2.2) ─────────────────────────────────────────
+
+export const productOptionValueRefSchema = z.object({
+  optionValueId: z.string(),
+  code: z.string(),
+  position: z.number().int(),
+});
+
+export const productOptionSchema = z.object({
+  productId: z.string(),
+  optionTypeId: z.string(),
+  optionTypeCode: z.string(),
+  position: z.number().int(),
+  requiredValueId: z.string().nullable(),
+  values: z.array(productOptionValueRefSchema),
+});
+export type ProductOption = z.infer<typeof productOptionSchema>;
+
+export const putProductOptionRequestSchema = z.object({
+  position: positionField.optional(),
+  requiredValueId: z.string().uuid().nullable().optional(),
+});
+export type PutProductOptionRequest = z.infer<typeof putProductOptionRequestSchema>;
+
+/** Replaces the full set of values this product offers on the axis. */
+export const setProductOptionValuesRequestSchema = z.object({
+  values: z
+    .array(z.object({ optionValueId: z.string().uuid(), position: positionField.optional() }))
+    .max(500),
+});
+export type SetProductOptionValuesRequest = z.infer<typeof setProductOptionValuesRequestSchema>;
+
+// ── Variants (plan/26 §2.3) ────────────────────────────────────────────────
+
+export const variantStatusSchema = z.enum(['active', 'inactive']);
+export type VariantStatus = z.infer<typeof variantStatusSchema>;
+
+export const variantSelectionSchema = z.object({
+  optionTypeId: z.string(),
+  optionValueId: z.string(),
+});
+export type VariantSelection = z.infer<typeof variantSelectionSchema>;
+
+const dimsSchema = z.record(z.string(), z.unknown());
+
+export const variantSchema = z.object({
+  id: z.string(),
+  productId: z.string(),
+  skuCode: z.string().nullable(),
+  gtin: z.string().nullable(),
+  weightG: z.number().int().nullable(),
+  dims: dimsSchema.nullable(),
+  comboSignature: z.string(),
+  status: variantStatusSchema,
+  position: z.number().int(),
+  selections: z.array(variantSelectionSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type Variant = z.infer<typeof variantSchema>;
+
+export const createVariantRequestSchema = z.object({
+  skuCode: z.string().trim().min(1).max(64).nullish(),
+  gtin: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{8,14}$/, '8–14 digits')
+    .nullish(),
+  weightG: z.number().int().min(0).max(10_000_000).nullish(),
+  dims: dimsSchema.nullish(),
+  status: variantStatusSchema.optional(),
+  position: positionField.optional(),
+  selections: z
+    .array(
+      variantSelectionSchema.extend({
+        optionTypeId: z.string().uuid(),
+        optionValueId: z.string().uuid(),
+      }),
+    )
+    .max(20),
+});
+export type CreateVariantRequest = z.infer<typeof createVariantRequestSchema>;
+
+/** The combination is immutable — change it by deleting and recreating. */
+export const updateVariantRequestSchema = z
+  .object({
+    skuCode: z.string().trim().min(1).max(64).nullable(),
+    gtin: z
+      .string()
+      .trim()
+      .regex(/^[0-9]{8,14}$/, '8–14 digits')
+      .nullable(),
+    weightG: z.number().int().min(0).max(10_000_000).nullable(),
+    dims: dimsSchema.nullable(),
+    status: variantStatusSchema,
+    position: positionField,
+  })
+  .partial();
+export type UpdateVariantRequest = z.infer<typeof updateVariantRequestSchema>;

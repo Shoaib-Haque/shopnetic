@@ -341,6 +341,7 @@ model Category {
   isActive         Boolean                  @default(true) @map("is_active")
   brandRequirement CategoryBrandRequirement @default(optional) @map("brand_requirement")
   options          CategoryOption[]
+  products         Product[]
   createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime?                @map("deleted_at") @db.Timestamptz(6)
@@ -395,6 +396,7 @@ model Brand {
   mergedInto        Brand?       @relation("BrandMerge", fields: [mergedIntoBrandId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   mergedFrom        Brand[]      @relation("BrandMerge")
   aliases           BrandAlias[]
+  products          Product[]
   createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt         DateTime?    @map("deleted_at") @db.Timestamptz(6)
@@ -442,6 +444,7 @@ model OptionType {
   status          OptionTypeStatus @default(active)
   values          OptionValue[]
   categoryOptions CategoryOption[]
+  productOptions  ProductOption[]
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt       DateTime?        @map("deleted_at") @db.Timestamptz(6)
@@ -473,18 +476,21 @@ enum OptionTypeStatus {
 /// type. `swatch_hex` / `swatch_image_key` render the picker chip for swatch
 /// types. Values are deprecated, not deleted, once referenced by a product.
 model OptionValue {
-  id             String            @id @default(uuid(7)) @db.Uuid
-  optionTypeId   String            @map("option_type_id") @db.Uuid
-  optionType     OptionType        @relation(fields: [optionTypeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  code           String
-  labelI18n      Json              @map("label_i18n")
-  swatchHex      String?           @map("swatch_hex")
-  swatchImageKey String?           @map("swatch_image_key")
-  position       Int               @default(0)
-  status         OptionValueStatus @default(active)
-  valueSetItems  ValueSetItem[]
-  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                        String               @id @default(uuid(7)) @db.Uuid
+  optionTypeId              String               @map("option_type_id") @db.Uuid
+  optionType                OptionType           @relation(fields: [optionTypeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  code                      String
+  labelI18n                 Json                 @map("label_i18n")
+  swatchHex                 String?              @map("swatch_hex")
+  swatchImageKey            String?              @map("swatch_image_key")
+  position                  Int                  @default(0)
+  status                    OptionValueStatus    @default(active)
+  valueSetItems             ValueSetItem[]
+  requiredForProductOptions ProductOption[]      @relation("ProductOptionRequiredValue")
+  productOptionValues       ProductOptionValue[]
+  variantOptionValues       VariantOptionValue[]
+  createdAt                 DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([optionTypeId, code])
   @@index([optionTypeId])
@@ -569,5 +575,133 @@ enum ValueSource {
   open
   hybrid
 
+  @@schema("catalog")
+}
+
+/// The shared catalog concept — one row per real-world product, across all
+/// sellers (plan/26 §1). Options/variants hang off this; price + stock live on
+/// per-seller `offer` rows (inventory context, later). `base_price_minor` is an
+/// optional catalog reference price (bigint minor units + `currency`). `spec` is
+/// denormalised non-variant facts for rendering. `proposed_by_seller_id` is a
+/// cross-context id (no FK).
+model Product {
+  id                 String          @id @default(uuid(7)) @db.Uuid
+  categoryId         String          @map("category_id") @db.Uuid
+  category           Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  brandId            String?         @map("brand_id") @db.Uuid
+  brand              Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  titleI18n          Json            @map("title_i18n")
+  descriptionI18n    Json?           @map("description_i18n")
+  slug               String          @unique
+  status             ProductStatus   @default(draft)
+  basePriceMinor     BigInt?         @map("base_price_minor")
+  currency           String?         @db.Char(3)
+  spec               Json            @default("{}")
+  proposedBySellerId String?         @map("proposed_by_seller_id") @db.Uuid
+  options            ProductOption[]
+  variants           Variant[]
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime?       @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("product")
+  @@schema("catalog")
+}
+
+enum ProductStatus {
+  draft
+  pending
+  active
+  archived
+
+  @@schema("catalog")
+}
+
+/// Which option types THIS product uses and in what order (plan/26 §2.2). PK
+/// (product, option type). `required_value_id` is set for the degenerate "one
+/// value / One Size" case so the PDP can skip the picker.
+model ProductOption {
+  productId       String               @map("product_id") @db.Uuid
+  product         Product              @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  optionTypeId    String               @map("option_type_id") @db.Uuid
+  optionType      OptionType           @relation(fields: [optionTypeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  position        Int                  @default(0)
+  requiredValueId String?              @map("required_value_id") @db.Uuid
+  requiredValue   OptionValue?         @relation("ProductOptionRequiredValue", fields: [requiredValueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  values          ProductOptionValue[]
+
+  @@id([productId, optionTypeId])
+  @@index([optionTypeId])
+  @@index([requiredValueId])
+  @@map("product_option")
+  @@schema("catalog")
+}
+
+/// The subset of an option type's values that THIS product offers on that axis
+/// (plan/26 §2.2). Composite FK back to `product_option`.
+model ProductOptionValue {
+  productId     String        @map("product_id") @db.Uuid
+  optionTypeId  String        @map("option_type_id") @db.Uuid
+  optionValueId String        @map("option_value_id") @db.Uuid
+  position      Int           @default(0)
+  productOption ProductOption @relation(fields: [productId, optionTypeId], references: [productId, optionTypeId], onDelete: Cascade, onUpdate: Cascade)
+  optionValue   OptionValue   @relation(fields: [optionValueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([productId, optionTypeId, optionValueId])
+  @@index([optionValueId])
+  @@map("product_option_value")
+  @@schema("catalog")
+}
+
+/// One concrete combination — one option value per variant-axis product option
+/// (plan/26 §2.3). Created for the combinations a seller actually offers.
+/// `combo_signature` (ordered `optionTypeId:optionValueId` join) is unique per
+/// product and blocks duplicate combinations.
+model Variant {
+  id             String               @id @default(uuid(7)) @db.Uuid
+  productId      String               @map("product_id") @db.Uuid
+  product        Product              @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  skuCode        String?              @map("sku_code")
+  gtin           String?
+  weightG        Int?                 @map("weight_g")
+  dims           Json?
+  comboSignature String               @map("combo_signature")
+  status         VariantStatus        @default(active)
+  position       Int                  @default(0)
+  optionValues   VariantOptionValue[]
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  @@unique([productId, comboSignature])
+  @@unique([productId, skuCode])
+  @@index([productId])
+  @@map("variant")
+  @@schema("catalog")
+}
+
+enum VariantStatus {
+  active
+  inactive
+
+  @@schema("catalog")
+}
+
+/// The set of these rows IS a variant's combination — one value per option type
+/// (plan/26 §2.3). PK (variant, option type).
+model VariantOptionValue {
+  variantId     String      @map("variant_id") @db.Uuid
+  variant       Variant     @relation(fields: [variantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  optionTypeId  String      @map("option_type_id") @db.Uuid
+  optionValueId String      @map("option_value_id") @db.Uuid
+  optionValue   OptionValue @relation(fields: [optionValueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([variantId, optionTypeId])
+  @@index([optionValueId])
+  @@map("variant_option_value")
   @@schema("catalog")
 }
