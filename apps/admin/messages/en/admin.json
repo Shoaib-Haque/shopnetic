@@ -25,6 +25,32 @@
     },
     "footer": {
       "text": "© 2026 Shopnetic — Admin"
+    },
+    "actions": {
+      "new": "New",
+      "edit": "Edit",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "export": "Export",
+      "restore": "Restore",
+      "confirm": "Confirm",
+      "more": "More actions"
+    },
+    "form": {
+      "discardTitle": "Discard changes?",
+      "discardMessage": "You have unsaved changes. If you close now, they will be lost.",
+      "discardConfirm": "Discard"
+    },
+    "list": {
+      "loading": "Loading…",
+      "empty": "Nothing here yet.",
+      "search": "Search…",
+      "noMore": "No more items",
+      "loadError": "Couldn’t load the list.",
+      "retry": "Try again",
+      "showingCount": "{count, plural, one {# item} other {# items}}"
     }
   }
 }
