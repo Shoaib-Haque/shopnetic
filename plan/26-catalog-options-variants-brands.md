@@ -3,6 +3,12 @@
 Status: DRAFT
 Related: `07-data-model.md`, `11-search-and-catalog.md`, `05-features-seller.md`, `06-features-admin.md`, `25-database-conventions.md`
 
+**Build progress:** `brand` (+ `brand_alias`, §6) and the global `option_type` /
+`option_value` catalog (§2.1 first half, §3) are built — admin CRUD at
+`/admin/v1/brands` and `/admin/v1/option-types`. `data_type` ships as
+`select|text|number|bool|swatch` (`select` in place of this doc's `enum`).
+Next: `category_option` (§2.1), then `product` → `product_option` → `variant`.
+
 This is the hardest modeling problem in the platform. Reference screenshots:
 `tmp/amazon_shirt_options.png` (Color + Size + pack qty), `tmp/amazon_iphone_options.png`
 (Storage + Color + Carrier + Grade, with unavailable combos), `tmp/amazon_headphone_options.png`

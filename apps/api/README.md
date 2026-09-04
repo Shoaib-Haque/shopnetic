@@ -42,6 +42,7 @@ pnpm --filter @shopnetic/api start
 | POST   | `/identity/v1/staff/invites/accept`                                       | `{ token, password }` → creates the staff account, `202`                                                     |
 | \*     | `/admin/v1/categories` (+ `…/:id`, `…/:id/move`)                          | **staff Bearer** + `category:manage` — category tree CRUD (ltree `path`, reparent, soft-delete)              |
 | \*     | `/admin/v1/brands` (+ `…/:id`, `…/:id/aliases[/:aliasId]`, `…/:id/merge`) | **staff Bearer** + `brand:manage` — brand CRUD, aliases, merge (moves aliases, soft-deletes source)          |
+| \*     | `/admin/v1/option-types` (+ `…/:id`, `…/:id/values[/:valueId]`)           | **staff Bearer** + `attribute:manage` — global option-type + option-value catalog (Color, Size, Storage…)    |
 
 Responses use the envelope from `@shopnetic/contracts` (`{ data, meta }` /
 `{ error }`, RFC-9457). Auth routes are per-IP rate limited (`X-RateLimit-*`,
@@ -79,7 +80,8 @@ src/
   prisma/    PrismaService (extends the @shopnetic/db client) + @Global PrismaModule
   catalog/   CatalogModule — CategoryService (/admin/v1/categories, ltree tree,
              raw-SQL path maintenance) + BrandService (/admin/v1/brands, aliases,
-             merge); shared catalog outbox helper
+             merge) + OptionTypeService (/admin/v1/option-types, nested values);
+             shared catalog outbox helper
   identity/  IdentityModule — buyer + staff auth. register/verify/login/refresh/
              logout/session, /me, /audit-events; staff invite + accept, staff
              login + TOTP enrol/confirm; password, sessions (rotation + reuse

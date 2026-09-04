@@ -23,6 +23,8 @@ export type {
   Category,
   Brand,
   BrandAlias,
+  OptionType,
+  OptionValue,
   CatalogOutbox,
 } from '@prisma/client';
 
@@ -34,6 +36,9 @@ export {
   GrantScopeType,
   CategoryBrandRequirement,
   BrandStatus,
+  OptionDataType,
+  OptionTypeStatus,
+  OptionValueStatus,
 } from '@prisma/client';
 
 /**

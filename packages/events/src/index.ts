@@ -19,6 +19,9 @@ export const DomainEvent = {
   BRAND_UPDATED: 'catalog.brand_updated',
   BRAND_MERGED: 'catalog.brand_merged',
   BRAND_DELETED: 'catalog.brand_deleted',
+  OPTION_TYPE_CREATED: 'catalog.option_type_created',
+  OPTION_TYPE_UPDATED: 'catalog.option_type_updated',
+  OPTION_TYPE_DELETED: 'catalog.option_type_deleted',
   PRODUCT_APPROVED: 'catalog.product_approved',
   PRODUCT_ARCHIVED: 'catalog.product_archived',
   // inventory

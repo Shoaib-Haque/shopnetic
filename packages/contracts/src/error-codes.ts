@@ -43,6 +43,8 @@ export const ErrorCode = {
   BRAND_SLUG_TAKEN: 'BRAND_SLUG_TAKEN',
   BRAND_ALIAS_TAKEN: 'BRAND_ALIAS_TAKEN',
   BRAND_MERGE_INVALID: 'BRAND_MERGE_INVALID',
+  OPTION_TYPE_CODE_TAKEN: 'OPTION_TYPE_CODE_TAKEN',
+  OPTION_VALUE_CODE_TAKEN: 'OPTION_VALUE_CODE_TAKEN',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
