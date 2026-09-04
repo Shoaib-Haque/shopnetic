@@ -28,7 +28,21 @@ Admin only); the link (Mailpit) opens `…/x7f2k9t3m1qp/accept-invite`.
 
 The browser only talks to the admin's own `/api/staff-auth/*` route handlers;
 they call the identity **staff** API server-side and own a `sn_srt` httpOnly
-cookie (8h). No token reaches the browser.
+cookie (8h). No token reaches the browser. Sign-in also stores a short-lived
+`sn_sat` access-token cookie the catalog proxy uses (below).
+
+## Catalog (back office)
+
+`/[locale]/x7f2k9t3m1qp/(protected)/catalog/…` — currently **Categories**
+(list / create / edit / reparent / delete). More entities land as follow-up
+slices.
+
+Client components call the API through the BFF proxy at **`/api/admin/<path>`**
+(`src/app/api/admin/[...path]/route.ts`). The proxy attaches the `sn_sat` Bearer
+token and, when it is missing or the API answers `401`, silently refreshes it
+from `sn_srt` (which rotates), retries once and writes the new cookies back — so
+no token ever reaches the browser. `attribute:manage` / `category:manage` /
+`product:manage` on the API decide what actually succeeds.
 
 | Page (`/[locale]/x7f2k9t3m1qp/…`) | What                                                                                                                          |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -53,5 +67,7 @@ password — no TOTP (see `apps/api/README.md`).
 
 ## Not yet
 
-Nav built from the actor's permissions; QR image for enrolment (secret +
-otpauth URI shown as text for now); back-office modules (`plan/06`, Phase 2+).
+Nav built from the actor's permissions (all catalog links shown for now, the API
+enforces); QR image for enrolment (secret + otpauth URI shown as text for now);
+the rest of the catalog UI (brands, option types, value sets, products, media);
+back-office modules (`plan/06`, Phase 2+).

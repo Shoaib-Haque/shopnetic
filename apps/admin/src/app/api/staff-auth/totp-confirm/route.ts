@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { staffTotpConfirmRequestSchema } from '@shopnetic/contracts';
 import { callStaffApi } from '@/features/staff-auth/api-bridge';
-import { setSessionCookie } from '@/features/staff-auth/session-cookie';
+import { setAccessCookie, setSessionCookie } from '@/features/staff-auth/session-cookie';
+import { readTokens } from '@/features/staff-auth/tokens';
 
 export async function POST(req: Request): Promise<NextResponse> {
   const parsed = staffTotpConfirmRequestSchema.safeParse(await req.json().catch(() => null));
@@ -23,6 +24,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       { status: 200 },
     );
     setSessionCookie(res, result.refreshToken);
+    const tokens = readTokens(result.body);
+    if (tokens) setAccessCookie(res, tokens.accessToken, tokens.expiresIn);
     return res;
   }
   return NextResponse.json(result.body, { status: result.status });

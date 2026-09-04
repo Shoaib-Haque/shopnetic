@@ -1,0 +1,54 @@
+{
+  "catalog": {
+    "nav": {
+      "dashboard": "Dashboard",
+      "categories": "Categories"
+    },
+    "categories": {
+      "title": "Categories",
+      "new": "New category",
+      "empty": "No categories yet.",
+      "loading": "Loading…",
+      "inactive": "inactive",
+      "showInactive": "Show inactive",
+      "brandReq": {
+        "required": "brand required",
+        "optional": "brand optional",
+        "none": "no brand"
+      },
+      "edit": "Edit",
+      "delete": "Delete",
+      "confirm": "Confirm delete",
+      "cancel": "Cancel",
+      "form": {
+        "createTitle": "New category",
+        "editTitle": "Edit category",
+        "parent": "Parent",
+        "parentNone": "— none (root) —",
+        "slug": "Slug",
+        "slugHint": "Lowercase letters, digits and single hyphens.",
+        "name": "Name (English)",
+        "position": "Position",
+        "isActive": "Active",
+        "brandRequirement": "Brand requirement",
+        "brandRequired": "Required",
+        "brandOptional": "Optional",
+        "brandNone": "None",
+        "save": "Save",
+        "saving": "Saving…",
+        "back": "Back to categories",
+        "required": "Required."
+      }
+    },
+    "errors": {
+      "categorySlugTaken": "That slug is already used by a sibling category.",
+      "categoryParentInvalid": "The chosen parent category was not found.",
+      "categoryHasChildren": "Move or delete the child categories first.",
+      "categoryCycle": "A category cannot be moved under its own descendant.",
+      "validation": "Please check the highlighted fields.",
+      "unauthenticated": "Your session expired. Please sign in again.",
+      "forbidden": "You do not have permission to do that.",
+      "generic": "Something went wrong. Please try again."
+    }
+  }
+}

@@ -3,9 +3,12 @@ import { NextResponse } from 'next/server';
 import { callStaffApi } from '@/features/staff-auth/api-bridge';
 import {
   SESSION_COOKIE,
+  clearAccessCookie,
   clearSessionCookie,
+  setAccessCookie,
   setSessionCookie,
 } from '@/features/staff-auth/session-cookie';
+import { readTokens } from '@/features/staff-auth/tokens';
 
 export async function POST(): Promise<NextResponse> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
@@ -18,7 +21,13 @@ export async function POST(): Promise<NextResponse> {
   const res = NextResponse.json(result.status === 200 ? { data: { ok: true } } : result.body, {
     status: result.status,
   });
-  if (result.status === 200 && result.refreshToken) setSessionCookie(res, result.refreshToken);
-  else clearSessionCookie(res);
+  if (result.status === 200 && result.refreshToken) {
+    setSessionCookie(res, result.refreshToken);
+    const tokens = readTokens(result.body);
+    if (tokens) setAccessCookie(res, tokens.accessToken, tokens.expiresIn);
+  } else {
+    clearSessionCookie(res);
+    clearAccessCookie(res);
+  }
   return res;
 }
