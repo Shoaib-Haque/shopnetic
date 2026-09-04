@@ -594,7 +594,8 @@ or exposes internals: (a) it is **inert unless `NODE_ENV=development`**;
 path; (d) it is **logged at `warn` on boot** when active. It never changes the
 password check, token issuance/verification, RBAC, or plane separation — only
 the specific gate it names (e.g. `DEV_AUTH_RELAXED` skips staff TOTP + the
-buyer email-verified gate, nothing else). Note it in `16-security.md`.
+buyer email-verified gate; `DEV_RATE_LIMIT_DISABLED` turns off the `@RateLimit`
+guards — nothing else). Note it in `16-security.md`.
 
 ### R5. Ports, URLs and hosts are configuration
 No hard-coded `localhost:xxxx`, service URL, or DB host in feature code — it

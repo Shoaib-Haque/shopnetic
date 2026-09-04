@@ -132,6 +132,11 @@ boot in production** and **ignored under `NODE_ENV=test`** so integration tests
 always run the real flow. Flip it to `false` to test like production. Password,
 tokens, RBAC and plane separation are unchanged either way.
 
+`DEV_RATE_LIMIT_DISABLED=true` (development only) turns off **every** `@RateLimit`
+guard so repeated local login/refresh attempts aren't throttled. Same
+safeguards: rejected at boot in production, no effect under `NODE_ENV=test`,
+logged at `warn` on boot.
+
 ## Not yet
 
 Step-up re-auth for sensitive staff actions. Outbox writes + a dispatcher.

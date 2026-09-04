@@ -38,7 +38,11 @@ Related: `03-users-and-rbac.md`, `08-api-design.md`, `13-payments-and-payouts.md
   has no effect under `NODE_ENV=test` (CI always runs the real flow), makes the
   process **fail at boot** under `NODE_ENV=production`, logs a `warn` when
   active, and never touches the password check, tokens, RBAC, or plane
-  separation (CODING-RULES §R4).
+  separation (CODING-RULES section R4).
+- **`DEV_RATE_LIMIT_DISABLED`** (dev only) turns off every `@RateLimit` guard so
+  local iteration isn't throttled. Same section R4 safeguards: dev-only, no effect
+  under `NODE_ENV=test`, fails the boot under `NODE_ENV=production`, `warn` on
+  boot. Auth, tokens, RBAC and plane separation are unchanged.
 
 ### Sessions & devices
 - Session list in account settings (device, IP, last seen), revoke individually.
