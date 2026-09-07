@@ -481,6 +481,25 @@ logged.
 If a reviewer can construct any sequence of deploy + rollback that loses
 committed data, the change does not merge.
 
+### M6. Seeds: three profiles, split by domain
+`packages/db/prisma/seed/` — one seed system for the whole app, `SEED_PROFILE`
+picks the depth:
+
+- **`minimal`** — the invariant core only (permissions, roles, role→perm wiring,
+  optional bootstrap Super Admin). The production profile.
+- **`demo`** — `minimal` + `demo/*`: a believable catalog + a few accounts you
+  can put in front of a client. **No edge cases** — the moment a 200-char name
+  or an archived-junk row lands here it leaks into a client demo.
+- **`dev`** — `demo` + `fixtures/*`: every UI/UX edge case (deep trees, long /
+  unicode names, archived + inactive rows, every status, combinatorial
+  variants). Dev / CI only; **throws under `NODE_ENV=production`**.
+
+All seeders are idempotent (keyed by slug / code / email). `run.ts` runs domain
+seeders in FK-dependency order; each bounded context adds its own
+`demo/<domain>.ts` + `fixtures/<domain>.ts` **in the same commit as the module**,
+using the shared builders in `factories.ts`. Never `db:reset` / `migrate reset`
+against a database without an explicit instruction — it drops everything.
+
 ---
 
 ## N. Data deletion  (see `25-database-conventions.md` section Deletion)

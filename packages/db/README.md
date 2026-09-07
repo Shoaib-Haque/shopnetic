@@ -62,28 +62,44 @@ cp .env.example .env                         # DATABASE_URL → local Postgres (
 pnpm --filter @shopnetic/db generate         # prisma generate (also runs via turbo)
 pnpm --filter @shopnetic/db db:migrate       # create + apply a dev migration
 pnpm --filter @shopnetic/db db:migrate:deploy # apply pending migrations (CI/prod)
-pnpm --filter @shopnetic/db db:seed          # permissions + system roles + role wiring (+ optional bootstrap Super Admin)
+pnpm --filter @shopnetic/db db:seed          # core (+ bootstrap) + the demo profile
+pnpm --filter @shopnetic/db db:seed:dev      # ... + every UI/UX fixture (SEED_PROFILE=dev)
 pnpm --filter @shopnetic/db db:studio        # Prisma Studio
-pnpm --filter @shopnetic/db db:reset         # drop, re-migrate, re-seed
+pnpm --filter @shopnetic/db db:reset         # drop, re-migrate, re-seed (demo)
+pnpm --filter @shopnetic/db db:reset:dev     # ... re-seed with the dev fixtures
 ```
 
-The seed is **idempotent** and, for system roles, authoritative — a
-`role_permission` row not in `@shopnetic/auth`'s `ROLE_PERMISSIONS` is removed.
-It also seeds a small **demo catalog** (`prisma/seed-catalog.ts`: a category
-tree, brands, option types + value sets, per-category option config, and two
-products with variants) — on by default outside production, keyed by
-slug/code so re-runs are safe. `SEED_DEMO=false` skips it; `SEED_DEMO=true`
-forces it in production.
+The seed is **idempotent** (keyed by slug / code / email) and, for system
+roles, authoritative — a `role_permission` row not in `@shopnetic/auth`'s
+`ROLE_PERMISSIONS` is removed.
+
+### Seed profiles (`prisma/seed/`)
+
+`SEED_PROFILE` selects how much data to load on top of the invariant core
+(permissions, roles, role→perm wiring, optional bootstrap Super Admin):
+
+| Profile   | Adds                                                                                                                          | Where it runs                                          |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `minimal` | nothing                                                                                                                       | production (default there)                             |
+| `demo`    | `seed/demo/*` — a believable, **edge-case-free** catalog + a few accounts                                                     | dev / staging demo (default off prod)                  |
+| `dev`     | `demo` + `seed/fixtures/*` — deep trees, long / unicode names, archived + inactive rows, every status, combinatorial variants | dev / CI only — **throws** under `NODE_ENV=production` |
+
+Structure: `seed/run.ts` runs domain seeders in FK-dependency order
+(identity → catalog → …). `seed/factories.ts` holds the shared idempotent
+builders. A new bounded context adds `demo/<domain>.ts` + `fixtures/<domain>.ts`
+and slots them into `run.ts`. The old `SEED_DEMO` boolean still works
+(`true` → `demo`, `false` → `minimal`).
 
 ### Env
 
-| Var                             | Required | Purpose                                                                      |
-| ------------------------------- | -------- | ---------------------------------------------------------------------------- |
-| `DATABASE_URL`                  | yes      | Postgres connection string                                                   |
-| `DIRECT_URL`                    | no       | un-pooled URL for `migrate` (falls back to `DATABASE_URL`)                   |
-| `BOOTSTRAP_SUPERADMIN_EMAIL`    | no\*     | seed a first staff Super Admin (`account` + `credential` + global `grant`)   |
-| `BOOTSTRAP_SUPERADMIN_PASSWORD` | no\*     | min length 12                                                                |
-| `SEED_DEMO`                     | no       | `true`/`false` — demo catalog data. Default: on unless `NODE_ENV=production` |
-| `NODE_ENV`                      | no       | gates `SEED_DEMO`'s default (seed only)                                      |
+| Var                             | Required | Purpose                                                                        |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------ |
+| `DATABASE_URL`                  | yes      | Postgres connection string                                                     |
+| `DIRECT_URL`                    | no       | un-pooled URL for `migrate` (falls back to `DATABASE_URL`)                     |
+| `BOOTSTRAP_SUPERADMIN_EMAIL`    | no\*     | seed a first staff Super Admin (`account` + `credential` + global `grant`)     |
+| `BOOTSTRAP_SUPERADMIN_PASSWORD` | no\*     | min length 12                                                                  |
+| `SEED_PROFILE`                  | no       | `minimal` / `demo` / `dev` — see Seed profiles above. Default: `demo` off prod |
+| `SEED_DEMO`                     | no       | legacy boolean — `true` → `demo`, `false` → `minimal`                          |
+| `NODE_ENV`                      | no       | gates the default profile, blocks `dev` in production (seed only)              |
 
 \* set both or neither.

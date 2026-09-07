@@ -19,16 +19,13 @@ import {
 import { createLogger } from '@shopnetic/observability';
 import { getPrismaClient } from '../src/index.js';
 import { loadDbEnv } from '../src/env.js';
-import { seedCatalogDemo } from './seed-catalog.js';
+import { resolveProfile } from './seed/profile.js';
+import { runSeedProfile } from './seed/run.js';
 
 const log = createLogger({ service: 'db-seed' });
 
 const seedEnvSchema = z
   .object({
-    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-    // Demo catalog data. Defaults on outside production; `false` always skips,
-    // `true` forces it even in production (plan/CODING-RULES.md section R).
-    SEED_DEMO: z.enum(['true', 'false']).optional(),
     BOOTSTRAP_SUPERADMIN_EMAIL: z.string().email().optional(),
     BOOTSTRAP_SUPERADMIN_PASSWORD: z.string().min(12).optional(),
   })
@@ -124,15 +121,9 @@ async function main(): Promise<void> {
     log.info({ email, created: account.createdAt }, 'bootstrap Super Admin ensured');
   }
 
-  // 5. Demo catalog data (idempotent; gated)
-  const runDemo =
-    seedEnv.SEED_DEMO === 'true' ||
-    (seedEnv.SEED_DEMO !== 'false' && seedEnv.NODE_ENV !== 'production');
-  if (runDemo) {
-    await seedCatalogDemo(prisma, log);
-  } else {
-    log.info({ nodeEnv: seedEnv.NODE_ENV }, 'SEED_DEMO off — skipping demo catalog data');
-  }
+  // 5. Profile data (idempotent) — minimal / demo / dev, see seed/profile.ts
+  const profile = resolveProfile();
+  await runSeedProfile(prisma, log, profile);
 
   log.info('seed complete');
 }
