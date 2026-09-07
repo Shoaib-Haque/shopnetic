@@ -12,7 +12,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { matchScore, tokenize } from '@/lib/search';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
-import { CategoryFlatTable, CategoryTree } from './category-tree';
+import { CategoryCards, CategoryFlatTable, CategoryTree, type CategoryMove } from './category-tree';
 import { CategoryFormModal } from './category-form-modal';
 import { deleteCategory, listCategories, reorderCategories, restoreCategory } from './api';
 
@@ -28,8 +28,6 @@ export function CategoryList() {
   const [q, setQ] = useState('');
   const debouncedQ = useDebouncedValue(q, 250);
   const [modal, setModal] = useState<ModalState>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<Category | null>(null);
   const [restoring, setRestoring] = useState(false);
 
@@ -58,23 +56,29 @@ export function CategoryList() {
   }, [items, tokens]);
 
   const labelOf = (c: Category | null | undefined): string => (c ? (c.name['en'] ?? c.slug) : '');
-
+  const nameOfId = (id: string | null): string => {
+    if (!id) return t('categories.form.parentNone');
+    return labelOf((items ?? []).find((x) => x.id === id));
+  };
   const archivedDescendants = (c: Category): number =>
     (items ?? []).filter((x) => x.archivedAt != null && x.path.startsWith(`${c.path}.`)).length;
 
-  async function confirmDelete(): Promise<void> {
-    if (!deleteTarget) return;
-    setDeleting(true);
+  const err = (e: unknown): void =>
+    notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+
+  // ── delete: soft (archive) + a 30s one-click undo, no confirm dialog ────────
+  async function doDelete(c: Category): Promise<void> {
     try {
-      await deleteCategory(deleteTarget.id);
-      notify.saved(t('categories.toast.deleted', { name: labelOf(deleteTarget) }));
-      setDeleteTarget(null);
-      load();
+      await deleteCategory(c.id);
+      notify.undo(t('categories.toast.deleted', { name: labelOf(c) }), {
+        undoLabel: t('categories.undo'),
+        undoneMessage: t('categories.toast.restored', { name: labelOf(c) }),
+        onUndo: () => restoreCategory(c.id).then(load),
+      });
     } catch (e) {
-      notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
-      setDeleteTarget(null);
+      err(e);
     } finally {
-      setDeleting(false);
+      load();
     }
   }
 
@@ -87,7 +91,7 @@ export function CategoryList() {
       setRestoreTarget(null);
       load();
     } catch (e) {
-      notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+      err(e);
       setRestoreTarget(null);
     } finally {
       setRestoring(false);
@@ -99,17 +103,34 @@ export function CategoryList() {
     load();
   }
 
-  async function handleReorder(parentId: string | null, orderedIds: string[]): Promise<void> {
+  // ── drag reorder / reparent: apply now, offer a 30s undo, no confirm ───────
+  async function applyMove(m: CategoryMove): Promise<void> {
     try {
-      await reorderCategories({ parentId, orderedIds });
-      notify.saved(t('categories.toast.reordered'));
+      await reorderCategories({ parentId: m.parentId, orderedIds: m.orderedIds });
+      notify.undo(
+        m.reparents
+          ? t('categories.toast.moved', { name: nameOfId(m.movedId) })
+          : t('categories.toast.reordered'),
+        {
+          undoLabel: t('categories.undo'),
+          undoneMessage: t('categories.toast.moveUndone'),
+          onUndo: () =>
+            reorderCategories({
+              parentId: m.fromParentId,
+              orderedIds: m.undoOrderedIds,
+            }).then(load),
+        },
+      );
     } catch (e) {
-      notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+      err(e);
     } finally {
-      load(); // re-sync from the server either way
+      load();
     }
   }
 
+  const restoreCount = restoreTarget ? archivedDescendants(restoreTarget) : 0;
+
+  // desktop row actions (the table has room for real buttons)
   const rowActions = (c: Category) =>
     c.archivedAt != null ? (
       <ActionButton
@@ -138,14 +159,32 @@ export function CategoryList() {
           size="sm"
           collapseLabel
           className="text-muted-foreground hover:text-destructive"
-          onClick={() => setDeleteTarget(c)}
+          onClick={() => void doDelete(c)}
         >
           {t('categories.delete')}
         </ActionButton>
       </span>
     );
 
-  const restoreCount = restoreTarget ? archivedDescendants(restoreTarget) : 0;
+  // mobile card action — always Edit; Delete / Restore live inside the modal
+  const cardAction = (c: Category) => (
+    <ActionButton
+      icon={Pencil}
+      variant="outline"
+      size="sm"
+      onClick={() => setModal({ mode: 'edit', category: c })}
+    >
+      {t('categories.edit')}
+    </ActionButton>
+  );
+
+  const flat = matches ?? items ?? [];
+  const emptyMsg =
+    matches !== null && matches.length === 0
+      ? t('categories.noMatch')
+      : (items?.length ?? 0) === 0
+        ? t('categories.empty')
+        : null;
 
   return (
     <section>
@@ -192,24 +231,25 @@ export function CategoryList() {
 
       {items === null ? (
         <p className="text-sm text-muted-foreground">{t('categories.loading')}</p>
-      ) : matches !== null ? (
-        matches.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('categories.noMatch')}</p>
-        ) : (
-          <div className="rounded-md border border-border">
-            <CategoryFlatTable items={matches} renderActions={rowActions} />
-          </div>
-        )
-      ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('categories.empty')}</p>
-      ) : status === 'active' ? (
-        <div className="rounded-md border border-border">
-          <CategoryTree items={items} renderActions={rowActions} onReorder={handleReorder} />
-        </div>
+      ) : emptyMsg ? (
+        <p className="text-sm text-muted-foreground">{emptyMsg}</p>
       ) : (
-        <div className="rounded-md border border-border">
-          <CategoryFlatTable items={items} renderActions={rowActions} />
-        </div>
+        <>
+          {/* desktop: the tree (active + no search) or a flat table */}
+          <div className="hidden rounded-md border border-border sm:block">
+            {matches !== null ? (
+              <CategoryFlatTable items={matches} renderActions={rowActions} />
+            ) : status === 'active' ? (
+              <CategoryTree items={items} renderActions={rowActions} onReorder={applyMove} />
+            ) : (
+              <CategoryFlatTable items={items} renderActions={rowActions} />
+            )}
+          </div>
+          {/* mobile: always a flat card list, parent-then-children order */}
+          <div className="rounded-md border border-border sm:hidden">
+            <CategoryCards items={flat} renderAction={cardAction} />
+          </div>
+        </>
       )}
 
       {modal !== null && (
@@ -222,21 +262,10 @@ export function CategoryList() {
           category={modal.mode === 'edit' ? modal.category : undefined}
           allCategories={(items ?? []).filter((c) => c.archivedAt == null)}
           onSaved={onSaved}
+          onDelete={(c) => void doDelete(c)}
+          onRestore={setRestoreTarget}
         />
       )}
-
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        onOpenChange={(o) => {
-          if (!o) setDeleteTarget(null);
-        }}
-        title={t('categories.deleteTitle')}
-        message={t('categories.deleteMessage', { name: labelOf(deleteTarget) })}
-        confirmLabel={t('categories.delete')}
-        cancelLabel={t('categories.cancel')}
-        loading={deleting}
-        onConfirm={confirmDelete}
-      />
 
       <ConfirmDialog
         open={restoreTarget !== null}

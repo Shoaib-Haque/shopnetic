@@ -48,10 +48,14 @@ Toasts: `@shopnetic/ui` `<Toaster/>` is mounted here; call `notify.saved(msg)` /
 ## Catalog (back office)
 
 `/[locale]/x7f2k9t3m1qp/(protected)/catalog/…` — currently **Categories**
-(tree list / create / edit / reparent / delete / restore). Drag a row onto the
-top third of another to drop it before, the bottom third for after, the middle
-to nest inside — one `POST /admin/v1/categories/reorder` per drop. More entities
-land as follow-up slices.
+(tree list / create / edit / reparent / delete / restore). On desktop, drag a
+row and drop on the top third of another to place it before, the bottom third
+for after, the middle to nest inside — one `POST /admin/v1/categories/reorder`
+per drop. Reorder, reparent and delete apply immediately and show a **30s Undo**
+toast (no confirm); restore keeps its confirm (it names the cascade). Below `sm`
+there's **no tree** — a flat card list in parent-then-children order, each card
+name-only with an **Edit** button; Delete / Restore live inside that Edit modal.
+More entities land as follow-up slices.
 
 Client components call the API through the BFF proxy at **`/api/admin/<path>`**
 (`src/app/api/admin/[...path]/route.ts`). The proxy attaches the `sn_sat` Bearer

@@ -78,6 +78,8 @@ export function CategoryFormModal({
   category,
   allCategories,
   onSaved,
+  onDelete,
+  onRestore,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -85,6 +87,9 @@ export function CategoryFormModal({
   category?: Category | undefined;
   allCategories: Category[];
   onSaved: (action: 'created' | 'updated', c: Category) => void;
+  /** Edit mode only — close the modal, then run the list's delete / restore flow. */
+  onDelete?: (c: Category) => void;
+  onRestore?: (c: Category) => void;
 }) {
   const t = useTranslations('catalog');
   const [formError, setFormError] = useState<string | null>(null);
@@ -219,6 +224,26 @@ export function CategoryFormModal({
   const selectCls =
     'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm';
 
+  const archived = category?.archivedAt != null;
+  const secondaryAction =
+    mode === 'edit' && category && (archived ? onRestore : onDelete) ? (
+      <button
+        type="button"
+        onClick={() => {
+          onOpenChange(false);
+          (archived ? onRestore : onDelete)?.(category);
+        }}
+        className={cn(
+          'rounded-md px-2.5 py-1.5 text-sm font-medium',
+          archived
+            ? 'text-primary hover:bg-primary/10'
+            : 'text-destructive hover:bg-destructive/10',
+        )}
+      >
+        {t(archived ? 'categories.restore' : 'categories.delete')}
+      </button>
+    ) : undefined;
+
   return (
     <FormModal
       open={open}
@@ -227,6 +252,7 @@ export function CategoryFormModal({
       onSubmit={handleSubmit(onSubmit)}
       submitting={isSubmitting}
       submitLabel={t('categories.form.save')}
+      {...(secondaryAction ? { secondaryAction } : {})}
       dirty={isDirty}
     >
       <Field

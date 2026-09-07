@@ -28,6 +28,8 @@ export function FormModal({
   onSubmit,
   submitting = false,
   submitLabel,
+  /** rendered left-aligned in the footer — e.g. a Delete / Restore button */
+  secondaryAction,
   dirty = false,
   size = 'md',
 }: {
@@ -39,6 +41,7 @@ export function FormModal({
   onSubmit: FormEventHandler<HTMLFormElement>;
   submitting?: boolean;
   submitLabel: string;
+  secondaryAction?: ReactNode;
   dirty?: boolean;
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }) {
@@ -63,24 +66,27 @@ export function FormModal({
           </ModalHeader>
           <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
             <ModalBody className="flex flex-col gap-4">{children}</ModalBody>
-            <ModalFooter>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => requestChange(false)}
-                disabled={submitting}
-              >
-                {t('actions.cancel')}
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                loading={submitting}
-                loadingText={t('actions.saving')}
-              >
-                {submitLabel}
-              </Button>
+            <ModalFooter className={secondaryAction ? 'justify-between' : undefined}>
+              {secondaryAction ?? null}
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => requestChange(false)}
+                  disabled={submitting}
+                >
+                  {t('actions.cancel')}
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  loading={submitting}
+                  loadingText={t('actions.saving')}
+                >
+                  {submitLabel}
+                </Button>
+              </div>
             </ModalFooter>
           </form>
         </ModalContent>

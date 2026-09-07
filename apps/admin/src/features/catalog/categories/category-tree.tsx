@@ -246,14 +246,27 @@ function HeadRow() {
   );
 }
 
+/** What a completed drag hands back — enough to apply it, confirm it, and undo it. */
+export interface CategoryMove {
+  /** new parent (root when null) and its full child order after the move */
+  parentId: string | null;
+  orderedIds: string[];
+  movedId: string;
+  fromParentId: string | null;
+  /** true when the drop changed the parent (structural — worth a confirm) */
+  reparents: boolean;
+  /** the child order of `fromParentId` *before* the move, for one-click undo */
+  undoOrderedIds: string[];
+}
+
 /**
  * Category tree as a table with connector lines and a per-row expand/collapse
  * chevron. Default: everything expanded; collapsed node ids persist in
  * `localStorage`.
  *
- * Pass `onReorder` to make rows drag-reorderable: drop on the top third of a row
- * to place before it, the bottom third for after, the middle to nest inside.
- * `orderedIds` is the complete new child list of `parentId`.
+ * Pass `onReorder` to make rows drag-reorderable (desktop only — the drag handle
+ * is hidden below `sm`): drop on the top third of a row to place before it, the
+ * bottom third for after, the middle to nest inside.
  */
 export function CategoryTree({
   items,
@@ -262,7 +275,7 @@ export function CategoryTree({
 }: {
   items: Category[];
   renderActions: (c: Category) => ReactNode;
-  onReorder?: (parentId: string | null, orderedIds: string[]) => void;
+  onReorder?: (move: CategoryMove) => void;
 }) {
   const forest = useMemo(() => buildForest(items), [items]);
 
@@ -334,12 +347,21 @@ export function CategoryTree({
           siblings.splice(drop.zone === 'before' ? idx : idx + 1, 0, dragged);
         }
         const orderedIds = siblings.map((c) => c.id);
+        const fromParentId = dragged.parentId ?? null;
         const currentIds = (childrenOf.get(parentId) ?? []).map((c) => c.id);
         const unchanged =
-          (dragged.parentId ?? null) === parentId &&
+          fromParentId === parentId &&
           currentIds.length === orderedIds.length &&
           currentIds.every((v, i) => v === orderedIds[i]);
-        if (!unchanged) onReorder?.(parentId, orderedIds);
+        if (unchanged) return;
+        onReorder?.({
+          parentId,
+          orderedIds,
+          movedId: id,
+          fromParentId,
+          reparents: fromParentId !== parentId,
+          undoOrderedIds: (childrenOf.get(fromParentId) ?? []).map((c) => c.id),
+        });
       },
       onDragEnd: () => {
         setDragId(null);
@@ -434,5 +456,57 @@ export function CategoryFlatTable({
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+/**
+ * Mobile flat list — no tree, no drag. Rows arrive in `path` order so a parent
+ * sits just above its children; a muted "in X › Y" line gives the context the
+ * indentation would on desktop.
+ */
+export function CategoryCards({
+  items,
+  renderAction,
+}: {
+  items: Category[];
+  renderAction: (c: Category) => ReactNode;
+}) {
+  const t = useTranslations('catalog');
+  const nameByLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of items) m.set(c.id.replace(/-/g, ''), c.name['en'] ?? c.slug);
+    return m;
+  }, [items]);
+  const contextOf = (c: Category): string =>
+    c.path
+      .split('.')
+      .slice(0, -1)
+      .map((l) => nameByLabel.get(l))
+      .filter(Boolean)
+      .join(' › ');
+
+  return (
+    <ul className="divide-y divide-border">
+      {items.map((c) => {
+        const life = lifecycle(c);
+        const ctx = contextOf(c);
+        return (
+          <li key={c.id} className="flex items-start gap-3 px-3 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium" title={`${c.name['en'] ?? c.slug} /${c.slug}`}>
+                {c.name['en'] ?? c.slug}
+                <span className="ml-2 text-xs font-normal text-muted-foreground">/{c.slug}</span>
+              </p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {t(`categories.status.${life.key}`)} ·{' '}
+                {t(`categories.brandReq.${c.brandRequirement}`)}
+                {ctx ? ` · ${t('categories.inPath', { path: ctx })}` : ''}
+              </p>
+            </div>
+            <div className="shrink-0">{renderAction(c)}</div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
