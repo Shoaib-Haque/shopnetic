@@ -8,7 +8,9 @@ import { cn } from '../lib/cn';
  */
 export function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="w-full overflow-x-auto">
+    // `rounded-[inherit]`: an overflow container clips its own box, so without
+    // this the table's square corners bleed past a rounded wrapper's border.
+    <div className="w-full overflow-x-auto rounded-[inherit]">
       <table
         className={cn('w-full caption-bottom border-collapse text-sm', className)}
         {...props}

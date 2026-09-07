@@ -10,13 +10,13 @@ import { cn } from '../lib/cn';
  * already-localized strings (the library stays framework-agnostic).
  *
  * - `notify.saved` — light-green success toast with a shrinking timer bar.
- * - `notify.undo`  — dark toast with an **Undo** button + a 30s timer bar. Only
+ * - `notify.undo`  — dark toast with an **Undo** button + a 20s timer bar. Only
  *   the latest one is live: a fixed toast id means each call replaces the
  *   previous and restarts a full window (plan/CODING-RULES.md section G8).
  */
 
 const DEFAULT_MS = 3000;
-const UNDO_MS = 30_000;
+const UNDO_MS = 20_000;
 const UNDO_ID = 'sn-undo';
 /** neutralises the sonner wrapper so only our own box paints (no border ring) */
 const BARE = { background: 'transparent', border: 'none', boxShadow: 'none', padding: 0 } as const;
