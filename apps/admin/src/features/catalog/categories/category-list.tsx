@@ -14,7 +14,7 @@ import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { CategoryFlatTable, CategoryTree } from './category-tree';
 import { CategoryFormModal } from './category-form-modal';
-import { deleteCategory, listCategories, restoreCategory } from './api';
+import { deleteCategory, listCategories, reorderCategories, restoreCategory } from './api';
 
 type ModalState = { mode: 'create' } | { mode: 'edit'; category: Category } | null;
 const STATUSES: CategoryListStatus[] = ['active', 'archived', 'all'];
@@ -97,6 +97,17 @@ export function CategoryList() {
   function onSaved(action: 'created' | 'updated', c: Category): void {
     notify.saved(t(`categories.toast.${action}`, { name: labelOf(c) }));
     load();
+  }
+
+  async function handleReorder(parentId: string | null, orderedIds: string[]): Promise<void> {
+    try {
+      await reorderCategories({ parentId, orderedIds });
+      notify.saved(t('categories.toast.reordered'));
+    } catch (e) {
+      notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+    } finally {
+      load(); // re-sync from the server either way
+    }
   }
 
   const rowActions = (c: Category) =>
@@ -193,7 +204,7 @@ export function CategoryList() {
         <p className="text-sm text-muted-foreground">{t('categories.empty')}</p>
       ) : status === 'active' ? (
         <div className="rounded-md border border-border">
-          <CategoryTree items={items} renderActions={rowActions} />
+          <CategoryTree items={items} renderActions={rowActions} onReorder={handleReorder} />
         </div>
       ) : (
         <div className="rounded-md border border-border">

@@ -2,7 +2,7 @@
   "catalog": {
     "categories": {
       "title": "Categories",
-      "subtitle": "Organise the storefront tree — reparent by editing a category’s parent.",
+      "subtitle": "Organise the storefront tree — drag a row to move or reorder it, or edit its parent.",
       "new": "New category",
       "empty": "No categories yet.",
       "noMatch": "No categories match your search.",
@@ -34,7 +34,8 @@
         "created": "Category “{name}” created.",
         "updated": "Category “{name}” saved.",
         "deleted": "Category “{name}” deleted.",
-        "restored": "Category “{name}” restored."
+        "restored": "Category “{name}” restored.",
+        "reordered": "Categories reordered."
       },
       "form": {
         "createTitle": "New category",
@@ -51,7 +52,14 @@
         "brandOptional": "Optional",
         "brandNone": "None",
         "save": "Save",
-        "required": "Required."
+        "err": {
+          "required": "This field is required.",
+          "nameLong": "Keep the name to 200 characters or fewer.",
+          "slugLong": "Keep the slug to 80 characters or fewer.",
+          "slugFormat": "Lowercase letters, digits and single hyphens only.",
+          "positionNumber": "Enter a whole number.",
+          "positionRange": "Enter a number between 0 and 100000."
+        }
       }
     },
     "errors": {

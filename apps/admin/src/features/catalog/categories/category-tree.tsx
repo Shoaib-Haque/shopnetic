@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category } from '@shopnetic/contracts';
@@ -32,7 +32,14 @@ function buildForest(items: Category[]): Node[] {
     if (parent) parent.children.push(node);
     else roots.push(node);
   }
-  return roots; // items arrive ordered by (path, position), so children keep that order
+  // `list` sorts by the ltree path (uuid labels), so sibling order is by
+  // `position` only after this pass. Name breaks ties deterministically.
+  const order = (a: Node, b: Node): number =>
+    a.cat.position - b.cat.position ||
+    (a.cat.name['en'] ?? a.cat.slug).localeCompare(b.cat.name['en'] ?? b.cat.slug);
+  roots.sort(order);
+  for (const node of byId.values()) node.children.sort(order);
+  return roots;
 }
 
 const brandTone = (r: Category['brandRequirement']): StatusTone =>
@@ -49,43 +56,145 @@ const lifecycle = (c: Category): Lifecycle =>
       ? { tone: 'warning', key: 'inactive' }
       : { tone: 'success', key: 'active' };
 
+type DropZone = 'before' | 'inside' | 'after';
+
 interface RowProps {
   cat: Category;
   /** Tree metadata; omit for a flat row. */
   tree?: {
     depth: number;
-    rails: boolean[]; // per ancestor: does that ancestor have a following sibling?
+    /** One flag per ancestor level: does that ancestor have a following sibling? */
+    rails: boolean[];
+    /** Is this the last child of its parent? (no spine continues below its elbow) */
     isLast: boolean;
     hasChildren: boolean;
     collapsed: boolean;
     onToggle: () => void;
   };
+  /** Drag-reorder wiring; omit to make the row static. */
+  drag?: {
+    dragging: boolean;
+    hint: DropZone | null;
+    onDragStart: (e: DragEvent<HTMLTableRowElement>) => void;
+    onDragOver: (e: DragEvent<HTMLTableRowElement>) => void;
+    onDragLeave: (e: DragEvent<HTMLTableRowElement>) => void;
+    onDrop: (e: DragEvent<HTMLTableRowElement>) => void;
+    onDragEnd: (e: DragEvent<HTMLTableRowElement>) => void;
+  };
   renderActions: (c: Category) => ReactNode;
 }
 
-function CategoryRow({ cat, tree, renderActions }: RowProps) {
+/** Left inset of the name cell, and one indent level (== the chevron's `size-5`). */
+const PAD = 8;
+const STEP = 20;
+/** Radius of the terminal elbow corner (kept small — just softens the turn). */
+const R = 3;
+/** Connector colour — a touch darker than `border` so the guides read clearly. */
+const LINE = 'bg-muted-foreground/30';
+const EDGE = 'border-muted-foreground/30';
+
+/**
+ * Connector guides drawn as an absolutely-positioned layer that fills the whole
+ * `<td>` (which is always the full row height), so verticals meet across the row
+ * border instead of being clipped inside a flex box. `top/bottom: -1` bridges
+ * the 1px row border. `x(level)` is the centre of that level's chevron slot.
+ *
+ * The vertical is always a plain straight line to (or through) the elbow centre —
+ * only the last `R`px is swapped for a bordered arc on a terminal elbow, so the
+ * parent→child link renders identically whether or not the child is last.
+ */
+function TreeGuides({ tree }: { tree: NonNullable<RowProps['tree']> }) {
+  const x = (level: number): number => PAD + level * STEP + STEP / 2;
+  const parent = tree.depth - 1;
+  const px = x(parent);
+  const hEnd = tree.hasChildren ? PAD + parent * STEP + STEP : PAD + tree.depth * STEP;
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0">
+      {/* ancestor spines that pass straight through this row. `rails[k]` is
+          "ancestor at depth k has a later sibling"; the guide for indent column
+          `i` continues past this row only if the ancestor one level deeper
+          (`rails[i + 1]`) has more children below — hence `slice(1)`. */}
+      {tree.rails
+        .slice(1)
+        .map((on, i) =>
+          on ? (
+            <span
+              key={i}
+              className={cn('absolute w-px', LINE)}
+              style={{ left: x(i), top: -1, bottom: -1 }}
+            />
+          ) : null,
+        )}
+      {tree.depth > 0 && (
+        <>
+          {/* vertical: full-height for a through elbow, stops `R`px short for a
+              terminal one so the arc can round the corner */}
+          <span
+            className={cn('absolute w-px', LINE)}
+            style={{ left: px, top: -1, bottom: tree.isLast ? `calc(50% + ${R}px)` : -1 }}
+          />
+          {tree.isLast && (
+            <span
+              className={cn('absolute rounded-bl-[3px] border-b border-l', EDGE)}
+              style={{ left: px, top: `calc(50% - ${R}px)`, height: R, width: R + 3 }}
+            />
+          )}
+          {/* centre → the toggle / label */}
+          <span
+            className={cn('absolute h-px', LINE)}
+            style={{
+              left: tree.isLast ? px + R : px,
+              top: '50%',
+              width: hEnd - (tree.isLast ? px + R : px),
+            }}
+          />
+        </>
+      )}
+      {/* this row's own spine down to its first child */}
+      {tree.hasChildren && !tree.collapsed && (
+        <span
+          className={cn('absolute w-px', LINE)}
+          style={{ left: x(tree.depth), top: '50%', bottom: -1 }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CategoryRow({ cat, tree, drag, renderActions }: RowProps) {
   const t = useTranslations('catalog');
   const life = lifecycle(cat);
+  const label = cat.name['en'] ?? cat.slug;
   return (
-    <TableRow>
-      <TableCell className="py-0 pl-1 pr-3">
-        <div className="flex items-stretch">
-          {tree?.rails.map((hasRail, i) => (
-            <span key={i} className="relative w-4 shrink-0 self-stretch">
-              {hasRail && <span className="absolute inset-y-0 left-2 w-px bg-border" />}
-            </span>
-          ))}
-          {tree && tree.depth > 0 && (
-            <span className="relative w-4 shrink-0 self-stretch">
-              <span
-                className={cn(
-                  'absolute left-2 top-0 w-px bg-border',
-                  tree.isLast ? 'h-1/2' : 'inset-y-0',
-                )}
-              />
-              <span className="absolute left-2 top-1/2 h-px w-2 bg-border" />
-            </span>
-          )}
+    <TableRow
+      className={cn(
+        drag && 'cursor-grab select-none',
+        drag?.dragging && 'opacity-40',
+        drag?.hint === 'inside' && 'bg-primary/10',
+      )}
+      {...(drag
+        ? {
+            draggable: true,
+            onDragStart: drag.onDragStart,
+            onDragOver: drag.onDragOver,
+            onDragLeave: drag.onDragLeave,
+            onDrop: drag.onDrop,
+            onDragEnd: drag.onDragEnd,
+          }
+        : {})}
+    >
+      <TableCell className="relative p-0">
+        {tree && <TreeGuides tree={tree} />}
+        {drag?.hint === 'before' && (
+          <span className="absolute inset-x-0 top-0 z-10 h-0.5 bg-primary" aria-hidden />
+        )}
+        {drag?.hint === 'after' && (
+          <span className="absolute inset-x-0 bottom-0 z-10 h-0.5 bg-primary" aria-hidden />
+        )}
+        <div
+          className="relative flex min-w-0 items-center overflow-hidden py-2 pr-3"
+          style={{ paddingLeft: PAD + (tree ? tree.depth * STEP : 0) }}
+        >
           {tree?.hasChildren ? (
             <button
               type="button"
@@ -93,7 +202,7 @@ function CategoryRow({ cat, tree, renderActions }: RowProps) {
               aria-label={
                 tree.collapsed ? t('categories.tree.expand') : t('categories.tree.collapse')
               }
-              className="my-2 grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               {tree.collapsed ? (
                 <ChevronRight className="size-4" aria-hidden />
@@ -104,9 +213,9 @@ function CategoryRow({ cat, tree, renderActions }: RowProps) {
           ) : tree ? (
             <span className="w-5 shrink-0" />
           ) : null}
-          <span className="flex min-w-0 items-center gap-2 py-2.5 pl-1.5">
-            <span className="truncate font-medium">{cat.name['en'] ?? cat.slug}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">/{cat.slug}</span>
+          <span className="min-w-0 flex-1 truncate pl-1.5" title={`${label} /${cat.slug}`}>
+            <span className="font-medium">{label}</span>
+            <span className="ml-2 text-xs text-muted-foreground">/{cat.slug}</span>
           </span>
         </div>
       </TableCell>
@@ -118,7 +227,7 @@ function CategoryRow({ cat, tree, renderActions }: RowProps) {
       <TableCell className="w-28">
         <StatusBadge tone={life.tone}>{t(`categories.status.${life.key}`)}</StatusBadge>
       </TableCell>
-      <TableCell className="w-px whitespace-nowrap text-right">{renderActions(cat)}</TableCell>
+      <TableCell className="w-48 whitespace-nowrap text-right">{renderActions(cat)}</TableCell>
     </TableRow>
   );
 }
@@ -128,10 +237,10 @@ function HeadRow() {
   return (
     <TableHeader>
       <TableRow>
-        <TableHead className="pl-1">{t('categories.cols.name')}</TableHead>
+        <TableHead className="pl-2">{t('categories.cols.name')}</TableHead>
         <TableHead className="w-36">{t('categories.cols.brand')}</TableHead>
         <TableHead className="w-28">{t('categories.cols.status')}</TableHead>
-        <TableHead className="w-px" />
+        <TableHead className="w-48" />
       </TableRow>
     </TableHeader>
   );
@@ -141,15 +250,103 @@ function HeadRow() {
  * Category tree as a table with connector lines and a per-row expand/collapse
  * chevron. Default: everything expanded; collapsed node ids persist in
  * `localStorage`.
+ *
+ * Pass `onReorder` to make rows drag-reorderable: drop on the top third of a row
+ * to place before it, the bottom third for after, the middle to nest inside.
+ * `orderedIds` is the complete new child list of `parentId`.
  */
 export function CategoryTree({
   items,
   renderActions,
+  onReorder,
 }: {
   items: Category[];
   renderActions: (c: Category) => ReactNode;
+  onReorder?: (parentId: string | null, orderedIds: string[]) => void;
 }) {
   const forest = useMemo(() => buildForest(items), [items]);
+
+  const catById = useMemo(() => new Map(items.map((c) => [c.id, c])), [items]);
+  const childrenOf = useMemo(() => {
+    const m = new Map<string | null, Category[]>();
+    const visit = (nodes: Node[], pid: string | null): void => {
+      m.set(
+        pid,
+        nodes.map((n) => n.cat),
+      );
+      for (const n of nodes) visit(n.children, n.cat.id);
+    };
+    visit(forest, null);
+    return m;
+  }, [forest]);
+
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [hint, setHint] = useState<{ id: string; zone: DropZone } | null>(null);
+
+  const dragHandlers = (cat: Category): NonNullable<RowProps['drag']> => {
+    const insideOwnSubtree = (targetPath: string): boolean => {
+      const dragged = dragId ? catById.get(dragId) : undefined;
+      return !!dragged && targetPath.startsWith(`${dragged.path}.`);
+    };
+    return {
+      dragging: dragId === cat.id,
+      hint: hint?.id === cat.id ? hint.zone : null,
+      onDragStart: (e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', cat.id);
+        setDragId(cat.id);
+      },
+      onDragOver: (e) => {
+        if (!dragId || dragId === cat.id || insideOwnSubtree(cat.path)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const r = e.currentTarget.getBoundingClientRect();
+        const rel = (e.clientY - r.top) / r.height;
+        const zone: DropZone = rel < 0.3 ? 'before' : rel > 0.7 ? 'after' : 'inside';
+        setHint((h) => (h?.id === cat.id && h.zone === zone ? h : { id: cat.id, zone }));
+      },
+      onDragLeave: (e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as HTMLElement | null)) {
+          setHint((h) => (h?.id === cat.id ? null : h));
+        }
+      },
+      onDrop: (e) => {
+        e.preventDefault();
+        const id = dragId;
+        const drop = hint;
+        setDragId(null);
+        setHint(null);
+        if (!id || !drop || id === cat.id) return;
+        const dragged = catById.get(id);
+        const target = catById.get(cat.id);
+        if (!dragged || !target || target.path.startsWith(`${dragged.path}.`)) return;
+
+        let parentId: string | null;
+        let siblings: Category[];
+        if (drop.zone === 'inside') {
+          parentId = target.id;
+          siblings = (childrenOf.get(target.id) ?? []).filter((c) => c.id !== id);
+          siblings.push(dragged);
+        } else {
+          parentId = target.parentId ?? null;
+          siblings = (childrenOf.get(parentId) ?? []).filter((c) => c.id !== id);
+          const idx = siblings.findIndex((c) => c.id === target.id);
+          siblings.splice(drop.zone === 'before' ? idx : idx + 1, 0, dragged);
+        }
+        const orderedIds = siblings.map((c) => c.id);
+        const currentIds = (childrenOf.get(parentId) ?? []).map((c) => c.id);
+        const unchanged =
+          (dragged.parentId ?? null) === parentId &&
+          currentIds.length === orderedIds.length &&
+          currentIds.every((v, i) => v === orderedIds[i]);
+        if (!unchanged) onReorder?.(parentId, orderedIds);
+      },
+      onDragEnd: () => {
+        setDragId(null);
+        setHint(null);
+      },
+    };
+  };
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -196,7 +393,7 @@ export function CategoryTree({
   walk(forest, 0, []);
 
   return (
-    <Table>
+    <Table className="table-fixed">
       <HeadRow />
       <TableBody>
         {rows.map(({ cat, depth, rails, isLast, hasChildren }) => (
@@ -211,6 +408,7 @@ export function CategoryTree({
               collapsed: collapsed.has(cat.id),
               onToggle: () => toggle(cat.id),
             }}
+            {...(onReorder ? { drag: dragHandlers(cat) } : {})}
             renderActions={renderActions}
           />
         ))}
@@ -228,7 +426,7 @@ export function CategoryFlatTable({
   renderActions: (c: Category) => ReactNode;
 }) {
   return (
-    <Table>
+    <Table className="table-fixed">
       <HeadRow />
       <TableBody>
         {items.map((cat) => (

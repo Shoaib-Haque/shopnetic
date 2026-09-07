@@ -4,6 +4,7 @@ import type {
   CategoryListStatus,
   CreateCategoryRequest,
   MoveCategoryRequest,
+  ReorderCategoriesRequest,
   UpdateCategoryRequest,
 } from '@shopnetic/contracts';
 import { adminApi } from '@/features/admin-api/client';
@@ -29,6 +30,11 @@ export function updateCategory(id: string, body: UpdateCategoryRequest): Promise
 
 export function moveCategory(id: string, body: MoveCategoryRequest): Promise<Category> {
   return adminApi<Category>(`/categories/${id}/move`, { method: 'POST', body });
+}
+
+/** Drag-reorder: `orderedIds` becomes the exact child list of `parentId`. */
+export function reorderCategories(body: ReorderCategoriesRequest): Promise<Category[]> {
+  return adminApi<Category[]>('/categories/reorder', { method: 'POST', body });
 }
 
 export function deleteCategory(id: string): Promise<void> {
