@@ -45,6 +45,20 @@ export function CategoryList() {
   // one reorder request at a time — back-to-back drops would race on the server
   const reordering = useRef(false);
 
+  // "/" jumps to search (unless the user is already typing somewhere)
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // drag needs a precise pointer — a touch tablet in the md–lg band falls back
   // to the Edit form's parent/position fields instead of a broken touch-drag.
   const [canDrag, setCanDrag] = useState(false);
@@ -295,6 +309,7 @@ export function CategoryList() {
 
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <Input
+          ref={searchRef}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t('categories.searchPlaceholder')}
