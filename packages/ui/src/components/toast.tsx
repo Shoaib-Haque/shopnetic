@@ -52,8 +52,10 @@ function SavedToast({ message, ms }: { message: string; ms: number }) {
         'border border-success/30 bg-success-muted px-3.5 py-3 text-sm text-foreground shadow-md',
       )}
     >
-      <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />
-      <span className="min-w-0 flex-1">{message}</span>
+      <CheckCircle2 className="mt-0.5 size-4 shrink-0 self-start text-success" aria-hidden />
+      <span className="line-clamp-2 min-w-0 flex-1" title={message}>
+        {message}
+      </span>
       <TimerBar ms={ms} />
     </div>
   );
@@ -61,7 +63,12 @@ function SavedToast({ message, ms }: { message: string; ms: number }) {
 
 export const notify = {
   saved(message: string, ms: number = DEFAULT_MS): void {
-    toast.custom(() => <SavedToast message={message} ms={ms} />, { duration: ms });
+    // Neutralise the sonner wrapper (it inherits `toastOptions.style` bg/border)
+    // so only the green `SavedToast` box shows — no outer border ring.
+    toast.custom(() => <SavedToast message={message} ms={ms} />, {
+      duration: ms,
+      style: { background: 'transparent', border: 'none', boxShadow: 'none', padding: 0 },
+    });
   },
   error(message: string): void {
     toast.error(message);

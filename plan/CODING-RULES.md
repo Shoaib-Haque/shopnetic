@@ -288,6 +288,24 @@ Every interactive element: keyboard reachable, visible focus ring (token-based),
 correct role/label, `aria-busy`/`aria-live` where state changes. Target WCAG 2.2
 AA (`20` section 7). Color is never the only signal.
 
+### G7. Truncation depends on where the text is shown
+User-authored free text (names, titles, descriptions) can be long. How it renders
+depends on the context, not the field:
+
+- **Width-bounded / dense** — table cells, list rows, toasts, `<select>` option
+  labels, chips, breadcrumbs, sidebar entries, menu items: clamp to the available
+  width. `truncate` (one line) by default; `line-clamp-2` where two lines read
+  better (toasts). Always expose the full value another way — `title=` on the
+  element, or the detail view it links to. A table column that can hold long free
+  text uses `table-fixed` so one cell can never push the others off-screen.
+- **Primary display** — storefront PDP title, an admin *detail* page header, the
+  heading of the modal editing that record: show the whole value, wrap to as many
+  lines as it needs.
+- **Never truncate** — slugs, SKUs, codes, IDs shown so the user can read/copy
+  them (let them wrap or scroll instead); money, dates, counts, status.
+- **Native `<select>`**: also cap the option label strings themselves (~64 chars
+  + `…`) — the open dropdown's width is not CSS-controllable.
+
 ---
 
 ## H. API, data & state
