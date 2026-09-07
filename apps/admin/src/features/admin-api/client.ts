@@ -26,6 +26,9 @@ export async function adminApi<T>(path: string, opts: Options = {}): Promise<T> 
   const init: RequestInit = {
     method,
     headers: {},
+    // admin data is mutable and re-fetched right after every mutation — the
+    // browser must not serve a stale GET from its HTTP cache.
+    cache: 'no-store',
     ...(opts.signal ? { signal: opts.signal } : {}),
   };
   if (opts.body !== undefined) {

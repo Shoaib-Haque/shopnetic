@@ -116,7 +116,7 @@ interface UndoOptions {
   undoLabel?: string;
   /** shown after a successful undo — falls back to "Action undone." */
   undoneMessage?: string;
-  /** shown if `onUndo` rejects — falls back to "Couldn't undo that." */
+  /** shown if `onUndo` rejects; omit and the caller's `onUndo` owns error display */
   errorMessage?: string;
 }
 
@@ -127,7 +127,9 @@ function showUndo(message: string, opts: UndoOptions): void {
     void Promise.resolve()
       .then(opts.onUndo)
       .then(() => showSaved(opts.undoneMessage ?? 'Action undone.'))
-      .catch(() => showError(opts.errorMessage ?? "Couldn't undo that."));
+      .catch(() => {
+        if (opts.errorMessage) showError(opts.errorMessage);
+      });
   };
   toast.custom(
     () => <UndoToast message={message} ms={ms} undoLabel={opts.undoLabel ?? 'Undo'} onUndo={run} />,

@@ -42,6 +42,30 @@ function buildForest(items: Category[]): Node[] {
   return roots;
 }
 
+/**
+ * `(c) => "Fashion › Men's Clothing"` — the ancestor chain of a row, resolved
+ * from its ltree `path` against `pool`. Used where the indentation can't carry
+ * the context: the mobile cards, and the flat table (search / archived views).
+ * Labels that don't resolve in `pool` are skipped, so a partial chain is fine.
+ */
+function useAncestorPath(pool: Category[]): (c: Category) => string {
+  const nameByLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of pool) m.set(c.id.replace(/-/g, ''), c.name['en'] ?? c.slug);
+    return m;
+  }, [pool]);
+  return useCallback(
+    (c: Category): string =>
+      c.path
+        .split('.')
+        .slice(0, -1)
+        .map((l) => nameByLabel.get(l))
+        .filter(Boolean)
+        .join(' › '),
+    [nameByLabel],
+  );
+}
+
 const brandTone = (r: Category['brandRequirement']): StatusTone =>
   r === 'required' ? 'warning' : r === 'none' ? 'neutral' : 'success';
 
@@ -60,6 +84,10 @@ type DropZone = 'before' | 'inside' | 'after';
 
 interface RowProps {
   cat: Category;
+  /** Ancestor chain ("A › B"), shown under the name when the row isn't indented. */
+  context?: string;
+  /** Briefly highlight this row — it was just moved / restored. */
+  flash?: boolean;
   /** Tree metadata; omit for a flat row. */
   tree?: {
     depth: number;
@@ -161,7 +189,7 @@ function TreeGuides({ tree }: { tree: NonNullable<RowProps['tree']> }) {
   );
 }
 
-function CategoryRow({ cat, tree, drag, renderActions }: RowProps) {
+function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProps) {
   const t = useTranslations('catalog');
   const life = lifecycle(cat);
   const label = cat.name['en'] ?? cat.slug;
@@ -171,6 +199,7 @@ function CategoryRow({ cat, tree, drag, renderActions }: RowProps) {
         drag && 'cursor-grab select-none',
         drag?.dragging && 'opacity-40',
         drag?.hint === 'inside' && 'bg-primary/10',
+        flash && 'sn-row-flash',
       )}
       {...(drag
         ? {
@@ -213,9 +242,16 @@ function CategoryRow({ cat, tree, drag, renderActions }: RowProps) {
           ) : tree ? (
             <span className="w-5 shrink-0" />
           ) : null}
-          <span className="min-w-0 flex-1 truncate pl-1.5" title={`${label} /${cat.slug}`}>
-            <span className="font-medium">{label}</span>
-            <span className="ml-2 text-xs text-muted-foreground">/{cat.slug}</span>
+          <span className="flex min-w-0 flex-1 flex-col pl-1.5">
+            <span className="truncate" title={`${label} /${cat.slug}`}>
+              <span className="font-medium">{label}</span>
+              <span className="ml-2 text-xs text-muted-foreground">/{cat.slug}</span>
+            </span>
+            {context ? (
+              <span className="truncate text-xs text-muted-foreground" title={context}>
+                {t('categories.inPath', { path: context })}
+              </span>
+            ) : null}
           </span>
         </div>
       </TableCell>
@@ -274,10 +310,13 @@ export function CategoryTree({
   items,
   renderActions,
   onReorder,
+  flashId,
 }: {
   items: Category[];
   renderActions: (c: Category) => ReactNode;
   onReorder?: (move: CategoryMove) => void;
+  /** id of a row to briefly highlight (just moved / restored). */
+  flashId?: string | null;
 }) {
   const forest = useMemo(() => buildForest(items), [items]);
 
@@ -356,6 +395,7 @@ export function CategoryTree({
           currentIds.length === orderedIds.length &&
           currentIds.every((v, i) => v === orderedIds[i]);
         if (unchanged) return;
+        if (drop.zone === 'inside') expand(target.id);
         onReorder?.({
           parentId,
           orderedIds,
@@ -382,16 +422,32 @@ export function CategoryTree({
     }
   }, []);
 
+  const persist = (next: Set<string>): void => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
+    } catch {
+      /* ignore */
+    }
+  };
+
   const toggle = useCallback((id: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
-      } catch {
-        /* ignore */
-      }
+      persist(next);
+      return next;
+    });
+  }, []);
+
+  // one-way: reveal a node's children after something is dropped inside it,
+  // otherwise the moved row lands out of sight under a still-collapsed parent.
+  const expand = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      persist(next);
       return next;
     });
   }, []);
@@ -424,6 +480,7 @@ export function CategoryTree({
           <CategoryRow
             key={cat.id}
             cat={cat}
+            flash={cat.id === flashId}
             tree={{
               depth,
               rails,
@@ -444,17 +501,30 @@ export function CategoryTree({
 /** Flat (non-nested) variant — used for search results and archived / all views. */
 export function CategoryFlatTable({
   items,
+  allCategories,
   renderActions,
+  flashId,
 }: {
   items: Category[];
+  /** name-resolution pool for the "in A › B" line — pass the full list when
+   *  `items` is a filtered subset (search), so ancestors still resolve. */
+  allCategories?: Category[];
   renderActions: (c: Category) => ReactNode;
+  flashId?: string | null;
 }) {
+  const ancestorPath = useAncestorPath(allCategories ?? items);
   return (
     <Table className="table-fixed">
       <HeadRow />
       <TableBody>
         {items.map((cat) => (
-          <CategoryRow key={cat.id} cat={cat} renderActions={renderActions} />
+          <CategoryRow
+            key={cat.id}
+            cat={cat}
+            context={ancestorPath(cat)}
+            flash={cat.id === flashId}
+            renderActions={renderActions}
+          />
         ))}
       </TableBody>
     </Table>
@@ -474,18 +544,7 @@ export function CategoryCards({
   renderAction: (c: Category) => ReactNode;
 }) {
   const t = useTranslations('catalog');
-  const nameByLabel = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const c of items) m.set(c.id.replace(/-/g, ''), c.name['en'] ?? c.slug);
-    return m;
-  }, [items]);
-  const contextOf = (c: Category): string =>
-    c.path
-      .split('.')
-      .slice(0, -1)
-      .map((l) => nameByLabel.get(l))
-      .filter(Boolean)
-      .join(' › ');
+  const contextOf = useAncestorPath(items);
 
   return (
     <ul className="divide-y divide-border">

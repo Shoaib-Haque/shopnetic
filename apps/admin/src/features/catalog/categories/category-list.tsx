@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArchiveRestore, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category, CategoryListStatus } from '@shopnetic/contracts';
@@ -31,16 +31,64 @@ export function CategoryList() {
   const [restoreTarget, setRestoreTarget] = useState<Category | null>(null);
   const [restoring, setRestoring] = useState(false);
 
+  // still mounted? an undo toast outlives this page, and its `onUndo` must not
+  // `setState` after the user has navigated away. Set the flag in the effect
+  // body too: StrictMode dev-mounts mount→cleanup→mount, and a cleanup-only
+  // reset would leave this stuck `false` — silently killing every `resync()`.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  // one reorder request at a time — back-to-back drops would race on the server
+  const reordering = useRef(false);
+
+  // drag needs a precise pointer — a touch tablet in the md–lg band falls back
+  // to the Edit form's parent/position fields instead of a broken touch-drag.
+  const [canDrag, setCanDrag] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: fine)');
+    const upd = (): void => setCanDrag(mq.matches);
+    upd();
+    mq.addEventListener('change', upd);
+    return () => mq.removeEventListener('change', upd);
+  }, []);
+
+  // a monotonic id so an earlier, slower `load()` can't overwrite a later one
+  const loadSeq = useRef(0);
   const load = useCallback(() => {
+    const seq = ++loadSeq.current;
     setError(null);
     listCategories({ status })
-      .then(setItems)
+      .then((rows) => {
+        if (seq === loadSeq.current) setItems(rows);
+      })
       .catch((e: unknown) => {
+        if (seq !== loadSeq.current) return;
         setItems([]);
         setError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
       });
   }, [status, t]);
   useEffect(load, [load]);
+
+  const resync = useCallback(() => {
+    if (mounted.current) load();
+  }, [load]);
+
+  // briefly highlight the row that was just moved / restored, so it's easy to
+  // find again after the tree re-sorts. Latest flash wins; it clears itself.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const flash = useCallback((id: string) => {
+    setFlashId(id);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => {
+      if (mounted.current) setFlashId(null);
+    }, 1400);
+  }, []);
+  useEffect(() => () => clearTimeout(flashTimer.current), []);
 
   const tokens = useMemo(() => tokenize(debouncedQ), [debouncedQ]);
 
@@ -66,14 +114,32 @@ export function CategoryList() {
   const err = (e: unknown): void =>
     notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
 
-  // ── delete: soft (archive) + a 30s one-click undo, no confirm dialog ────────
+  // a reorder we sent no longer fits the tree (a sibling vanished, the old
+  // parent got archived…). Not a field error — just say the list refreshed.
+  const reorderErrorToast = (e: unknown): void => {
+    if (e instanceof AdminApiError && e.code === 'VALIDATION_ERROR') {
+      notify.info(t('categories.reloadedAfterChange'));
+    } else {
+      err(e);
+    }
+  };
+
+  // ── delete: soft (archive) + a one-click undo, no confirm dialog ───────────
   async function doDelete(c: Category): Promise<void> {
     try {
       await deleteCategory(c.id);
       notify.undo(t('categories.toast.deleted', { name: labelOf(c) }), {
         undoLabel: t('categories.undo'),
         undoneMessage: t('categories.toast.restored', { name: labelOf(c) }),
-        onUndo: () => restoreCategory(c.id).then(load),
+        onUndo: async () => {
+          try {
+            await restoreCategory(c.id);
+            resync();
+          } catch (e) {
+            err(e); // surface the real reason (name now taken, parent archived…)
+            throw e; // and skip the "restored" confirmation toast
+          }
+        },
       });
     } catch (e) {
       err(e);
@@ -103,27 +169,50 @@ export function CategoryList() {
     load();
   }
 
-  // ── drag reorder / reparent: apply now, offer a 30s undo, no confirm ───────
+  // ── drag reorder / reparent: apply now, offer a one-click undo, no confirm ──
+  const subtreeSize = (id: string): number => {
+    const c = (items ?? []).find((x) => x.id === id);
+    return c ? (items ?? []).filter((x) => x.path.startsWith(`${c.path}.`)).length : 0;
+  };
+
   async function applyMove(m: CategoryMove): Promise<void> {
+    if (reordering.current) return; // a reorder is already in flight
+    reordering.current = true;
     try {
       await reorderCategories({ parentId: m.parentId, orderedIds: m.orderedIds });
+      flash(m.movedId);
       notify.undo(
         m.reparents
-          ? t('categories.toast.moved', { name: nameOfId(m.movedId) })
+          ? t('categories.toast.moved', {
+              name: nameOfId(m.movedId),
+              count: subtreeSize(m.movedId),
+            })
           : t('categories.toast.reordered'),
         {
           undoLabel: t('categories.undo'),
           undoneMessage: t('categories.toast.moveUndone'),
-          onUndo: () =>
-            reorderCategories({
-              parentId: m.fromParentId,
-              orderedIds: m.undoOrderedIds,
-            }).then(load),
+          onUndo: async () => {
+            try {
+              await reorderCategories({
+                parentId: m.fromParentId,
+                orderedIds: m.undoOrderedIds,
+              });
+              resync();
+              flash(m.movedId);
+            } catch (e) {
+              // the tree moved on under us — can't replay the undo. Show the
+              // list as it really is now rather than leaving the moved row.
+              resync();
+              reorderErrorToast(e);
+              throw e; // skip the "Move undone." confirmation
+            }
+          },
         },
       );
     } catch (e) {
-      err(e);
+      reorderErrorToast(e);
     } finally {
+      reordering.current = false;
       load();
     }
   }
@@ -239,11 +328,21 @@ export function CategoryList() {
           {/* desktop: the tree (active + no search) or a flat table */}
           <div className="hidden rounded-md border border-border md:block">
             {matches !== null ? (
-              <CategoryFlatTable items={matches} renderActions={rowActions} />
+              <CategoryFlatTable
+                items={matches}
+                allCategories={items}
+                renderActions={rowActions}
+                flashId={flashId}
+              />
             ) : status === 'active' ? (
-              <CategoryTree items={items} renderActions={rowActions} onReorder={applyMove} />
+              <CategoryTree
+                items={items}
+                renderActions={rowActions}
+                flashId={flashId}
+                {...(canDrag ? { onReorder: applyMove } : {})}
+              />
             ) : (
-              <CategoryFlatTable items={items} renderActions={rowActions} />
+              <CategoryFlatTable items={items} renderActions={rowActions} flashId={flashId} />
             )}
           </div>
           {/* mobile: always a flat card list, parent-then-children order */}

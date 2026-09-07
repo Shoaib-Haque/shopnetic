@@ -53,3 +53,17 @@
     transform: scaleX(0);
   }
 }
+
+/* Brief highlight on a row that was just moved / restored, so the eye can
+   find it again in a long tree (see catalog/categories). */
+@keyframes sn-row-flash {
+  from {
+    background-color: hsl(var(--primary) / 0.14);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.sn-row-flash {
+  animation: sn-row-flash 1200ms ease-out;
+}
