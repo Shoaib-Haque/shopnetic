@@ -6,11 +6,26 @@ import { cn } from '../lib/cn';
  * sticky header, row hover. No `'use client'`: they're static markup that
  * composes inside a client list. Wrap in a horizontal scroller for wide tables.
  */
-export function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>) {
+export function Table({
+  className,
+  scrollX = true,
+  ...props
+}: HTMLAttributes<HTMLTableElement> & {
+  /**
+   * Horizontal scroll for wide tables (default). `overflow-x-auto` also makes
+   * the wrapper a *vertical* scroll container, which traps a `sticky` header —
+   * so pass `false` for a `table-fixed` table that can't outgrow its parent:
+   * `overflow-x-clip` still clips the corners but lets the header stick to the
+   * page scroll.
+   */
+  scrollX?: boolean;
+}) {
   return (
     // `rounded-[inherit]`: an overflow container clips its own box, so without
     // this the table's square corners bleed past a rounded wrapper's border.
-    <div className="w-full overflow-x-auto rounded-[inherit]">
+    <div
+      className={cn('w-full rounded-[inherit]', scrollX ? 'overflow-x-auto' : 'overflow-x-clip')}
+    >
       <table
         className={cn('w-full caption-bottom border-collapse text-sm', className)}
         {...props}

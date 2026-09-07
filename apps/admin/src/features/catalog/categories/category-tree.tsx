@@ -473,7 +473,7 @@ export function CategoryTree({
   walk(forest, 0, []);
 
   return (
-    <Table className="table-fixed">
+    <Table className="table-fixed" scrollX={false}>
       <HeadRow />
       <TableBody>
         {rows.map(({ cat, depth, rails, isLast, hasChildren }) => (
@@ -514,7 +514,7 @@ export function CategoryFlatTable({
 }) {
   const ancestorPath = useAncestorPath(allCategories ?? items);
   return (
-    <Table className="table-fixed">
+    <Table className="table-fixed" scrollX={false}>
       <HeadRow />
       <TableBody>
         {items.map((cat) => (
