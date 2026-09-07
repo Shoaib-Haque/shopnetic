@@ -6,6 +6,7 @@ const CODE_TO_KEY: Record<string, string> = {
   CATEGORY_SLUG_TAKEN: 'errors.categorySlugTaken',
   CATEGORY_NAME_TAKEN: 'errors.categoryNameTaken',
   CATEGORY_PARENT_INVALID: 'errors.categoryParentInvalid',
+  CATEGORY_PARENT_ARCHIVED: 'errors.categoryParentArchived',
   CATEGORY_HAS_CHILDREN: 'errors.categoryHasChildren',
   CATEGORY_CYCLE: 'errors.categoryCycle',
   BRAND_SLUG_TAKEN: 'errors.brandSlugTaken',

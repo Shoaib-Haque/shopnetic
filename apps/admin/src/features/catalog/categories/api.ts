@@ -1,14 +1,16 @@
 'use client';
 import type {
   Category,
+  CategoryListStatus,
   CreateCategoryRequest,
   MoveCategoryRequest,
   UpdateCategoryRequest,
 } from '@shopnetic/contracts';
 import { adminApi } from '@/features/admin-api/client';
 
-export function listCategories(opts?: { includeInactive?: boolean }): Promise<Category[]> {
-  const q = opts?.includeInactive ? '?includeInactive=true' : '';
+export function listCategories(opts?: { status?: CategoryListStatus }): Promise<Category[]> {
+  const status = opts?.status ?? 'active';
+  const q = status === 'active' ? '' : `?status=${status}`;
   return adminApi<Category[]>(`/categories${q}`);
 }
 
@@ -20,6 +22,7 @@ export function createCategory(body: CreateCategoryRequest): Promise<Category> {
   return adminApi<Category>('/categories', { method: 'POST', body });
 }
 
+/** Pass `parentId` in `body` to reparent in the same call. */
 export function updateCategory(id: string, body: UpdateCategoryRequest): Promise<Category> {
   return adminApi<Category>(`/categories/${id}`, { method: 'PATCH', body });
 }
@@ -30,4 +33,9 @@ export function moveCategory(id: string, body: MoveCategoryRequest): Promise<Cat
 
 export function deleteCategory(id: string): Promise<void> {
   return adminApi<void>(`/categories/${id}`, { method: 'DELETE' });
+}
+
+/** Un-archive a category and its archived subtree (cascade). */
+export function restoreCategory(id: string): Promise<Category> {
+  return adminApi<Category>(`/categories/${id}/restore`, { method: 'POST' });
 }

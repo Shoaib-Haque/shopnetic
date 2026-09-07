@@ -10,7 +10,7 @@ import { Field, Input } from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
-import { createCategory, moveCategory, updateCategory } from './api';
+import { createCategory, updateCategory } from './api';
 
 const formSchema = z.object({
   parentId: z.string(),
@@ -99,19 +99,17 @@ export function CategoryFormModal({
         });
         onSaved('created', c);
       } else if (category) {
-        let c = await updateCategory(category.id, {
+        // `parentId` reparents in the same call (see api.ts); omit it when
+        // unchanged so a plain edit never triggers a path rewrite.
+        const reparents = (category.parentId ?? '') !== v.parentId;
+        const c = await updateCategory(category.id, {
           slug: v.slug,
           name,
           position: v.position,
           isActive: v.isActive,
           brandRequirement: v.brandRequirement,
+          ...(reparents ? { parentId: v.parentId || null } : {}),
         });
-        if ((category.parentId ?? '') !== v.parentId) {
-          c = await moveCategory(category.id, {
-            parentId: v.parentId || null,
-            position: v.position,
-          });
-        }
         onSaved('updated', c);
       }
       onOpenChange(false);
@@ -176,8 +174,8 @@ export function CategoryFormModal({
 
       <Field label={t('categories.form.brandRequirement')} htmlFor="cat-brand">
         <select id="cat-brand" className={selectCls} {...register('brandRequirement')}>
-          <option value="required">{t('categories.form.brandRequired')}</option>
           <option value="optional">{t('categories.form.brandOptional')}</option>
+          <option value="required">{t('categories.form.brandRequired')}</option>
           <option value="none">{t('categories.form.brandNone')}</option>
         </select>
       </Field>

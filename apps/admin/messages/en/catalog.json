@@ -7,11 +7,15 @@
       "empty": "No categories yet.",
       "noMatch": "No categories match your search.",
       "loading": "Loading…",
-      "inactive": "inactive",
-      "showInactive": "Show inactive",
       "searchPlaceholder": "Search categories…",
-      "cols": { "name": "Name", "brand": "Brand" },
+      "cols": { "name": "Name", "brand": "Brand", "status": "Status" },
       "tree": { "expand": "Expand", "collapse": "Collapse" },
+      "filter": { "active": "Active", "archived": "Archived", "all": "All" },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive",
+        "archived": "Archived"
+      },
       "brandReq": {
         "required": "brand required",
         "optional": "brand optional",
@@ -19,13 +23,18 @@
       },
       "edit": "Edit",
       "delete": "Delete",
+      "restore": "Restore",
       "cancel": "Cancel",
       "deleteTitle": "Delete category?",
       "deleteMessage": "“{name}” will be archived. Move or delete its children first if it has any.",
+      "restoreTitle": "Restore category?",
+      "restoreMessage": "“{name}” will be moved back to the live tree.",
+      "restoreMessageWithChildren": "“{name}” and {count, plural, one {# archived sub-category} other {# archived sub-categories}} will be moved back to the live tree.",
       "toast": {
         "created": "Category “{name}” created.",
         "updated": "Category “{name}” saved.",
-        "deleted": "Category “{name}” deleted."
+        "deleted": "Category “{name}” deleted.",
+        "restored": "Category “{name}” restored."
       },
       "form": {
         "createTitle": "New category",
@@ -46,9 +55,10 @@
       }
     },
     "errors": {
-      "categorySlugTaken": "That slug is already used by a sibling category.",
-      "categoryNameTaken": "A sibling category already has that name (names are case-insensitive).",
+      "categorySlugTaken": "That slug is already in use by another category.",
+      "categoryNameTaken": "Another category already has that name (names are case-insensitive).",
       "categoryParentInvalid": "The chosen parent category was not found.",
+      "categoryParentArchived": "That category’s parent is archived — restore the parent first.",
       "categoryHasChildren": "Move or delete the child categories first.",
       "categoryCycle": "A category cannot be moved under its own descendant.",
       "brandSlugTaken": "That brand slug is already in use.",
