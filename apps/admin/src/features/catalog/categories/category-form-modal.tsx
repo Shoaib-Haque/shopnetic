@@ -140,7 +140,7 @@ export function CategoryFormModal({
     setError,
     clearErrors,
     watch,
-    formState: { errors, isDirty, isSubmitting },
+    formState: { errors, isDirty, dirtyFields, isSubmitting },
   } = useForm<FormValues>({ resolver, defaultValues: EMPTY });
 
   /** Resolve a field's error (zod message or server key) to display text. */
@@ -169,6 +169,7 @@ export function CategoryFormModal({
 
   // Create form: keep the slug in sync with the name until the user edits it.
   const nameEn = watch('nameEn');
+  const slugValue = watch('slug');
   useEffect(() => {
     if (mode !== 'create' || slugTouched) return;
     setValue('slug', slugify(nameEn ?? ''), { shouldDirty: true });
@@ -196,16 +197,20 @@ export function CategoryFormModal({
         });
         onSaved('created', c);
       } else if (category) {
-        // `parentId` reparents in the same call (see api.ts); omit it when
-        // unchanged so a plain edit never triggers a path rewrite.
-        const reparents = (category.parentId ?? '') !== v.parentId;
+        // Send only what changed — a no-op save must not write an audit event,
+        // and a single-field edit must not trigger an unrelated path rewrite.
+        const d = dirtyFields;
+        if (!Object.keys(d).length) {
+          onOpenChange(false);
+          return;
+        }
         const c = await updateCategory(category.id, {
-          slug: v.slug,
-          name,
-          position: v.position,
-          isActive: v.isActive,
-          brandRequirement: v.brandRequirement,
-          ...(reparents ? { parentId: v.parentId || null } : {}),
+          ...(d.slug ? { slug: v.slug } : {}),
+          ...(d.nameEn ? { name } : {}),
+          ...(d.position ? { position: v.position } : {}),
+          ...(d.isActive ? { isActive: v.isActive } : {}),
+          ...(d.brandRequirement ? { brandRequirement: v.brandRequirement } : {}),
+          ...(d.parentId ? { parentId: v.parentId || null } : {}),
         });
         onSaved('updated', c);
       }
@@ -225,6 +230,10 @@ export function CategoryFormModal({
     'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm';
 
   const archived = category?.archivedAt != null;
+  // an archived category is view-only in the modal — you restore it, you don't
+  // edit it (the API's `update` rejects a soft-deleted row anyway).
+  const readOnly = archived;
+  const slugChanged = mode === 'edit' && !errors.slug && slugValue !== category?.slug;
   const secondaryAction =
     mode === 'edit' && category && (archived ? onRestore : onDelete) ? (
       <button
@@ -248,11 +257,18 @@ export function CategoryFormModal({
     <FormModal
       open={open}
       onOpenChange={onOpenChange}
-      title={t(mode === 'create' ? 'categories.form.createTitle' : 'categories.form.editTitle')}
+      title={t(
+        readOnly
+          ? 'categories.form.viewTitle'
+          : mode === 'create'
+            ? 'categories.form.createTitle'
+            : 'categories.form.editTitle',
+      )}
       onSubmit={handleSubmit(onSubmit)}
       submitting={isSubmitting}
       submitLabel={t('categories.form.save')}
       {...(secondaryAction ? { secondaryAction } : {})}
+      {...(readOnly ? { readOnly: true } : {})}
       dirty={isDirty}
     >
       <Field
@@ -262,6 +278,7 @@ export function CategoryFormModal({
       >
         <select
           id="cat-parent"
+          disabled={readOnly}
           className={cn(selectCls, errors.parentId && 'border-destructive')}
           {...register('parentId')}
         >
@@ -276,7 +293,13 @@ export function CategoryFormModal({
       </Field>
 
       <Field label={t('categories.form.name')} htmlFor="cat-name" error={fieldError('nameEn')}>
-        <Input id="cat-name" invalid={Boolean(errors.nameEn)} {...register('nameEn')} />
+        <Input
+          id="cat-name"
+          maxLength={200}
+          disabled={readOnly}
+          invalid={Boolean(errors.nameEn)}
+          {...register('nameEn')}
+        />
       </Field>
 
       <Field
@@ -287,23 +310,30 @@ export function CategoryFormModal({
       >
         <Input
           id="cat-slug"
+          maxLength={80}
+          disabled={readOnly}
           invalid={Boolean(errors.slug)}
           {...register('slug', { onChange: () => setSlugTouched(true) })}
         />
       </Field>
+      {slugChanged && (
+        <p className="-mt-2 text-xs text-warning">{t('categories.form.slugChangeWarning')}</p>
+      )}
 
       <Field label={t('categories.form.position')} htmlFor="cat-pos" error={fieldError('position')}>
         <Input
           id="cat-pos"
           type="number"
           min={0}
+          max={100_000}
+          disabled={readOnly}
           invalid={Boolean(errors.position)}
           {...register('position')}
         />
       </Field>
 
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" {...register('isActive')} />
+        <input type="checkbox" disabled={readOnly} {...register('isActive')} />
         {t('categories.form.isActive')}
       </label>
 
@@ -314,6 +344,7 @@ export function CategoryFormModal({
       >
         <select
           id="cat-brand"
+          disabled={readOnly}
           className={cn(selectCls, errors.brandRequirement && 'border-destructive')}
           {...register('brandRequirement')}
         >

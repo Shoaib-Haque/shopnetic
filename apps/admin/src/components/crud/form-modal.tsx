@@ -30,6 +30,8 @@ export function FormModal({
   submitLabel,
   /** rendered left-aligned in the footer — e.g. a Delete / Restore button */
   secondaryAction,
+  /** view-only: no submit button, close button instead of cancel, `dirty` ignored */
+  readOnly = false,
   dirty = false,
   size = 'md',
 }: {
@@ -42,6 +44,7 @@ export function FormModal({
   submitting?: boolean;
   submitLabel: string;
   secondaryAction?: ReactNode;
+  readOnly?: boolean;
   dirty?: boolean;
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }) {
@@ -49,7 +52,7 @@ export function FormModal({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   function requestChange(next: boolean): void {
-    if (!next && dirty && !submitting) {
+    if (!next && dirty && !submitting && !readOnly) {
       setConfirmDiscard(true);
       return;
     }
@@ -76,16 +79,18 @@ export function FormModal({
                   onClick={() => requestChange(false)}
                   disabled={submitting}
                 >
-                  {t('actions.cancel')}
+                  {t(readOnly ? 'actions.close' : 'actions.cancel')}
                 </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  loading={submitting}
-                  loadingText={t('actions.saving')}
-                >
-                  {submitLabel}
-                </Button>
+                {!readOnly && (
+                  <Button
+                    type="submit"
+                    size="sm"
+                    loading={submitting}
+                    loadingText={t('actions.saving')}
+                  >
+                    {submitLabel}
+                  </Button>
+                )}
               </div>
             </ModalFooter>
           </form>
