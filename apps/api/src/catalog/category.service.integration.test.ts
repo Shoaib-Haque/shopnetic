@@ -189,6 +189,31 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     expect(movedLeaf.depth).toBe(3);
   });
 
+  it('reorder renumbers siblings and can pull a node into a new parent', async () => {
+    const p = await svc.create({ slug: s('ro-p'), name: name('RO-P') }, actor, {});
+    const q = await svc.create({ slug: s('ro-q'), name: name('RO-Q') }, actor, {});
+    const a = await svc.create({ slug: s('ro-a'), name: name('RO-A'), parentId: p.id }, actor, {});
+    const b = await svc.create({ slug: s('ro-b'), name: name('RO-B'), parentId: p.id }, actor, {});
+    const c = await svc.create({ slug: s('ro-c'), name: name('RO-C'), parentId: q.id }, actor, {});
+
+    // sort within p: b before a
+    const sorted = await svc.reorder({ parentId: p.id, orderedIds: [b.id, a.id] }, actor, {});
+    expect(sorted.map((x) => x.id)).toEqual([b.id, a.id]);
+    expect(sorted.map((x) => x.position)).toEqual([0, 1]);
+
+    // pull c from q into p, at the front → path rewritten, positions dense
+    const merged = await svc.reorder({ parentId: p.id, orderedIds: [c.id, b.id, a.id] }, actor, {});
+    expect(merged.map((x) => x.id)).toEqual([c.id, b.id, a.id]);
+    const movedC = await svc.get(c.id);
+    expect(movedC.parentId).toBe(p.id);
+    expect(movedC.path).toBe(`${p.path}.${c.id.replace(/-/g, '')}`);
+
+    // a subtree cannot be reordered under one of its own descendants
+    await expect(
+      svc.reorder({ parentId: c.id, orderedIds: [p.id] }, actor, {}),
+    ).rejects.toMatchObject({ code: 'CATEGORY_CYCLE' });
+  });
+
   it('soft-deletes a leaf, blocks deleting a parent with children', async () => {
     const p = await svc.create({ slug: s('del-p'), name: name('P') }, actor, {});
     const c = await svc.create({ slug: s('del-c'), name: name('C'), parentId: p.id }, actor, {});

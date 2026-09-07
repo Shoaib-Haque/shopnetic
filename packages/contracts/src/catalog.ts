@@ -55,6 +55,17 @@ export const moveCategoryRequestSchema = z.object({
 });
 export type MoveCategoryRequest = z.infer<typeof moveCategoryRequestSchema>;
 
+/**
+ * Drag-reorder result: after the call every id in `orderedIds` is a direct child
+ * of `parentId` (a root when `null`), in exactly that order (`position = index`).
+ * Send the complete new child list for the one parent that changed.
+ */
+export const reorderCategoriesRequestSchema = z.object({
+  parentId: z.string().uuid().nullable(),
+  orderedIds: z.array(z.string().uuid()).min(1).max(2000),
+});
+export type ReorderCategoriesRequest = z.infer<typeof reorderCategoriesRequestSchema>;
+
 /** Admin category list filter — which lifecycle slice to return. */
 export const categoryListStatusSchema = z.enum(['active', 'archived', 'all']).default('active');
 export type CategoryListStatus = z.infer<typeof categoryListStatusSchema>;

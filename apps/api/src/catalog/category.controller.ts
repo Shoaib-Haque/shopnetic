@@ -17,10 +17,12 @@ import {
   categoryListStatusSchema,
   createCategoryRequestSchema,
   moveCategoryRequestSchema,
+  reorderCategoriesRequestSchema,
   updateCategoryRequestSchema,
   type Category,
   type CreateCategoryRequest,
   type MoveCategoryRequest,
+  type ReorderCategoriesRequest,
   type UpdateCategoryRequest,
 } from '@shopnetic/contracts';
 import { ok } from '../common/envelope.js';
@@ -34,6 +36,7 @@ import { CategoryService } from './category.service.js';
 const createBody = new ZodBodyPipe(createCategoryRequestSchema);
 const updateBody = new ZodBodyPipe(updateCategoryRequestSchema);
 const moveBody = new ZodBodyPipe(moveCategoryRequestSchema);
+const reorderBody = new ZodBodyPipe(reorderCategoriesRequestSchema);
 
 type Envelope<T> = { data: T; meta: { requestId: string } };
 
@@ -90,6 +93,15 @@ export class CategoryController {
     @Body(moveBody) body: MoveCategoryRequest,
   ): Promise<Envelope<Category>> {
     return ok(req, await this.categories.move(id, body, actor, meta(req)));
+  }
+
+  @Post('reorder')
+  async reorder(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Body(reorderBody) body: ReorderCategoriesRequest,
+  ): Promise<Envelope<Category[]>> {
+    return ok(req, await this.categories.reorder(body, actor, meta(req)));
   }
 
   @Delete(':id')

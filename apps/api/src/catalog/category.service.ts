@@ -5,6 +5,7 @@ import type {
   CategoryListStatus,
   CreateCategoryRequest,
   MoveCategoryRequest,
+  ReorderCategoriesRequest,
   UpdateCategoryRequest,
 } from '@shopnetic/contracts';
 import type { Prisma } from '@shopnetic/db';
@@ -206,6 +207,76 @@ export class CategoryService {
       ...pick(meta),
     });
     return view;
+  }
+
+  /**
+   * Drag-reorder: make `orderedIds` the exact, ordered child list of `parentId`
+   * (`position = index`). Ids that change parent get their subtree paths
+   * rewritten in the same transaction; cycle-checked first.
+   */
+  async reorder(
+    input: ReorderCategoriesRequest,
+    actor: Actor,
+    meta: RequestMeta,
+  ): Promise<Category[]> {
+    const parentId = input.parentId ?? null;
+    const placeholders = input.orderedIds.map((_, i) => `$${i + 1}::uuid`).join(', ');
+    const rows = await this.prisma.$queryRawUnsafe<RawCategory[]>(
+      `SELECT ${COLUMNS} FROM catalog.category
+        WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
+      ...input.orderedIds,
+    );
+    if (rows.length !== input.orderedIds.length) {
+      throw new AppError('VALIDATION_ERROR', 422, {
+        detail: 'every id must be an existing live category',
+      });
+    }
+    const byId = new Map(rows.map((r) => [r.id, r]));
+
+    const newParent = parentId === null ? null : await this.parentOrThrow(parentId);
+    for (const row of rows) {
+      if ((row.parent_id ?? null) !== parentId && newParent) {
+        await this.assertReparentable(row, newParent.id);
+      }
+    }
+
+    const movedIds: string[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      for (const [i, id] of input.orderedIds.entries()) {
+        const row = byId.get(id);
+        if (!row) continue;
+        if ((row.parent_id ?? null) !== parentId) {
+          await this.reparentInTx(tx, row, newParent, i);
+          movedIds.push(id);
+          await writeCatalogOutbox(tx, 'category', 'category.moved', id, {
+            id,
+            fromParentId: row.parent_id,
+            toParentId: parentId,
+          });
+        } else if (row.position !== i) {
+          await tx.category.update({ where: { id }, data: { position: i } });
+        }
+      }
+      await writeCatalogOutbox(tx, 'category', 'category.reordered', parentId ?? 'root', {
+        parentId,
+        orderedIds: input.orderedIds,
+      });
+    });
+
+    await this.audit.record({
+      actorAccountId: actor.accountId,
+      action: 'catalog.categories_reordered',
+      targetType: 'category',
+      targetId: parentId ?? 'root',
+      before: null,
+      after: { parentId, orderedIds: input.orderedIds, movedIds },
+      ...pick(meta),
+    });
+
+    // `list` orders by the ltree path (uuid labels); re-sort the affected
+    // sibling group by the freshly written `position`.
+    const siblings = await this.list({ parentId, status: 'active' });
+    return siblings.sort((a, b) => a.position - b.position);
   }
 
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
