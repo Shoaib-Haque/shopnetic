@@ -13,6 +13,10 @@ import { cn } from '../lib/cn';
  * - `notify.undo`  — dark toast with an **Undo** button + a 20s timer bar. Only
  *   the latest one is live: a fixed toast id means each call replaces the
  *   previous and restarts a full window (plan/CODING-RULES.md section G8).
+ *
+ * Width: our custom toasts (`saved`, `undo`) are `min(356px, 100vw - 2rem)` so
+ * the box — and its Undo button — never runs off a narrow screen (sonner's
+ * built-in toasts already shrink below 600px; `toast.custom` content does not).
  */
 
 const DEFAULT_MS = 3000;
@@ -57,7 +61,7 @@ function SavedToast({ message, ms }: { message: string; ms: number }) {
     <div
       role="status"
       className={cn(
-        'relative flex w-[var(--width,356px)] items-center gap-2.5 overflow-hidden rounded-md',
+        'relative flex w-[min(356px,100vw_-_2rem)] items-center gap-2.5 overflow-hidden rounded-md',
         'border border-success/30 bg-success-muted px-3.5 py-3 text-sm text-foreground shadow-md',
       )}
     >
@@ -84,7 +88,7 @@ function UndoToast({
   return (
     <div
       role="status"
-      className="relative flex w-[var(--width,356px)] items-center gap-3 overflow-hidden rounded-md bg-foreground px-3.5 py-3 text-sm text-background shadow-md"
+      className="relative flex w-[min(356px,100vw_-_2rem)] items-center gap-3 overflow-hidden rounded-md bg-foreground px-3.5 py-3 text-sm text-background shadow-md"
     >
       <span className="line-clamp-2 min-w-0 flex-1" title={message}>
         {message}

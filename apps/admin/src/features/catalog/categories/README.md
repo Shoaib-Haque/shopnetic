@@ -93,6 +93,7 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
 | 7   | Tree connector lines clipped / not meeting across the row border.                     | Connectors are an absolutely-positioned `TreeGuides` layer filling the whole `<td>` (`top/bottom: -1` bridges the 1px border), not flex children.                                                                                               |
 | 8   | Delete asymmetry.                                                                     | `remove` **blocks** on live children (`CATEGORY_HAS_CHILDREN`); `restore` **cascades** the archived subtree. By design — deleting a subtree is N bottom-up clicks.                                                                              |
 | 9   | Sonner `<li>` wrapper painted a border ring around custom toasts.                     | Per-toast `style` reset (`BARE`) in `toast.tsx`.                                                                                                                                                                                                |
+| 10  | Undo toast clipped on narrow screens — the Undo button ran off-screen below ~383 px.  | `toast.custom` content isn't width-managed by sonner (only its built-in toasts shrink < 600 px). Our `SavedToast` / `UndoToast` boxes are now `w-[min(356px,100vw-2rem)]`.                                                                      |
 
 ---
 
