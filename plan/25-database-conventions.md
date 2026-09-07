@@ -147,20 +147,21 @@ in place yet — track these before relying on it:
 - No global soft-delete middleware/extension yet — every catalog service adds
   `deleted_at IS NULL` **by hand** in its queries. A future `@shopnetic/db`
   client extension centralizes it.
-- Unique indexes are still **full**, not partial (`slug @unique`,
-  `@@unique([parent_id, slug])`, `@@unique([option_type_id, code])`). The
-  services' `assertSlugFree` checks filter `deleted_at IS NULL`, but the DB
-  constraint does not — so re-creating the slug of a **soft-deleted** row throws
-  `P2002` at INSERT. Fix when the restore flow ships: partial indexes
-  `WHERE deleted_at IS NULL` (hand-added to the migration; Prisma `@@unique`
-  can't express `WHERE`), or slug-mangle on archive.
-- Catalog **name** uniqueness (case-insensitive `name.en` / `label.en` — `07`
-  "Catalog naming / uniqueness") is **app-level only**: an `assertNameFree` /
-  `assertLabelFree` check in the owning service, with a small TOCTOU window under
-  concurrent writes. DB-level hardening later: `citext` columns for the plain
-  strings (`brand.name`, `value_set.name` — like `brand_alias.alias`), and a
-  `lower((name_i18n->>'en'))` expression unique index for the JSON names.
-- No `restore` endpoints yet, and `outbox` events are written but not dispatched.
+- `category` now has **partial** unique indexes — `category_slug_key` on `slug`
+  and `category_name_en_lower_key` on `lower(name_i18n->>'en')`, both
+  `WHERE deleted_at IS NULL` (hand-added in the `_global_unique` migration; both
+  scopes went **global**, dropping `@@unique([parent_id, slug])`). Other
+  soft-deletable tables still use **full** indexes (`@@unique([option_type_id,
+  code])` etc.), so re-creating the slug of a soft-deleted row still throws
+  `P2002`; give them the same partial-index treatment as their restore flow lands.
+- Non-`category` catalog **name** uniqueness (case-insensitive `name.en` /
+  `label.en` — `07` "Catalog naming / uniqueness") is still **app-level only**
+  (`assertNameFree` / `assertLabelFree`, small TOCTOU window). DB-level hardening
+  later: `citext` columns for the plain strings (`brand.name`, `value_set.name`),
+  and `lower((name_i18n->>'en'))` expression unique indexes for the JSON names.
+- `category` has a **cascade restore** endpoint (`POST …/:id/restore`); other
+  entities have no `restore` yet, and `outbox` events are written but not
+  dispatched.
 - **Deferred** (need infra or other contexts, plan when they land): hard
   **purge / GDPR erasure** path; **bulk reassign** products to another
   category/brand before archiving; cart/order-aware product retirement (design

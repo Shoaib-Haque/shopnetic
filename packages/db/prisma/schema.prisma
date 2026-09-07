@@ -346,9 +346,10 @@ model Category {
   updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime?                @map("deleted_at") @db.Timestamptz(6)
 
-  // Sibling slugs are unique. NULL parent (roots) is handled in the service —
-  // Postgres treats NULLs as distinct, so this index does not cover it.
-  @@unique([parentId, slug])
+  // `slug` and `lower(name_i18n->>'en')` are each globally unique among live
+  // rows. Enforced by hand-managed partial unique indexes (`WHERE deleted_at IS
+  // NULL`) — Prisma cannot express partial / expression indexes — plus an
+  // app-level pre-check for friendly errors. See the `_global_unique` migration.
   @@index([parentId])
   @@index([deletedAt])
   @@map("category")

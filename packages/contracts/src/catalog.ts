@@ -32,11 +32,16 @@ export const createCategoryRequestSchema = z.object({
 });
 export type CreateCategoryRequest = z.infer<typeof createCategoryRequestSchema>;
 
-/** Everything except the parent — reparenting is `POST …/:id/move`. */
+/**
+ * Any field of a category. Passing `parentId` reparents it in place (same as
+ * `POST …/:id/move`, which stays for drag-reorder); omit the key to leave the
+ * parent untouched, send `null` to move it to a root.
+ */
 export const updateCategoryRequestSchema = z
   .object({
     slug: slugSchema,
     name: localizedTextSchema,
+    parentId: z.string().uuid().nullable(),
     position: z.number().int().min(0).max(100_000),
     isActive: z.boolean(),
     brandRequirement: categoryBrandRequirementSchema,
@@ -50,6 +55,10 @@ export const moveCategoryRequestSchema = z.object({
 });
 export type MoveCategoryRequest = z.infer<typeof moveCategoryRequestSchema>;
 
+/** Admin category list filter — which lifecycle slice to return. */
+export const categoryListStatusSchema = z.enum(['active', 'archived', 'all']).default('active');
+export type CategoryListStatus = z.infer<typeof categoryListStatusSchema>;
+
 export const categorySchema = z.object({
   id: z.string(),
   parentId: z.string().nullable(),
@@ -61,6 +70,8 @@ export const categorySchema = z.object({
   position: z.number().int(),
   isActive: z.boolean(),
   brandRequirement: categoryBrandRequirementSchema,
+  /** Soft-delete marker. `null` = live; an ISO timestamp = archived. */
+  archivedAt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

@@ -14,6 +14,7 @@ import {
 import type { Request } from 'express';
 import { Permission, type Actor } from '@shopnetic/auth';
 import {
+  categoryListStatusSchema,
   createCategoryRequestSchema,
   moveCategoryRequestSchema,
   updateCategoryRequestSchema,
@@ -46,10 +47,10 @@ export class CategoryController {
   async list(
     @Req() req: Request,
     @Query('parentId') parentId?: string,
-    @Query('includeInactive') includeInactive?: string,
+    @Query('status') status?: string,
   ): Promise<Envelope<Category[]>> {
-    const opts: { parentId?: string | null; includeInactive?: boolean } = {
-      includeInactive: includeInactive === 'true',
+    const opts: Parameters<CategoryService['list']>[0] = {
+      status: categoryListStatusSchema.catch('active').parse(status ?? undefined),
     };
     if (parentId === 'null') opts.parentId = null;
     else if (parentId) opts.parentId = parentId;
@@ -99,6 +100,15 @@ export class CategoryController {
     @Param('id') id: string,
   ): Promise<void> {
     await this.categories.remove(id, actor, meta(req));
+  }
+
+  @Post(':id/restore')
+  async restore(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+  ): Promise<Envelope<Category>> {
+    return ok(req, await this.categories.restore(id, actor, meta(req)));
   }
 }
 

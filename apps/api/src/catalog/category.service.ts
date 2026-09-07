@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Actor } from '@shopnetic/auth';
 import type {
   Category,
+  CategoryListStatus,
   CreateCategoryRequest,
   MoveCategoryRequest,
   UpdateCategoryRequest,
@@ -24,7 +25,11 @@ interface RawCategory {
   brand_requirement: Category['brandRequirement'];
   created_at: Date;
   updated_at: Date;
+  deleted_at: Date | null;
 }
+
+const COLUMNS = `id, parent_id, slug, name_i18n, path::text AS path, position, is_active,
+        brand_requirement, created_at, updated_at, deleted_at`;
 
 /** ltree label = the uuid with dashes stripped (32 hex chars — a valid label). */
 const label = (id: string): string => id.replace(/-/g, '');
@@ -36,22 +41,24 @@ export class CategoryService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(opts: { parentId?: string | null; includeInactive?: boolean }): Promise<Category[]> {
-    const where = ['deleted_at IS NULL'];
+  async list(opts: { parentId?: string | null; status?: CategoryListStatus }): Promise<Category[]> {
+    const where: string[] = [];
     const params: unknown[] = [];
+    const status = opts.status ?? 'active';
+    if (status === 'active') where.push('deleted_at IS NULL');
+    else if (status === 'archived') where.push('deleted_at IS NOT NULL');
+    // 'all' → no lifecycle filter
     if (opts.parentId === null) {
       where.push('parent_id IS NULL');
     } else if (typeof opts.parentId === 'string') {
       params.push(opts.parentId);
       where.push(`parent_id = $${params.length}::uuid`);
     }
-    if (!opts.includeInactive) where.push('is_active = true');
 
     const rows = await this.prisma.$queryRawUnsafe<RawCategory[]>(
-      `SELECT id, parent_id, slug, name_i18n, path::text AS path, position, is_active,
-              brand_requirement, created_at, updated_at
+      `SELECT ${COLUMNS}
          FROM catalog.category
-        WHERE ${where.join(' AND ')}
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
         ORDER BY path, position`,
       ...params,
     );
@@ -64,36 +71,35 @@ export class CategoryService {
 
   async create(input: CreateCategoryRequest, actor: Actor, meta: RequestMeta): Promise<Category> {
     const parent = input.parentId ? await this.parentOrThrow(input.parentId) : null;
-    await this.assertSlugFree(parent?.id ?? null, input.slug, null);
-    await this.assertNameFree(parent?.id ?? null, input.name['en'] ?? '', null);
+    await this.assertSlugFree(input.slug, []);
+    await this.assertNameFree(input.name['en'] ?? '', []);
 
-    const view = await this.prisma.$transaction(async (tx) => {
-      const row = await tx.category.create({
-        data: {
-          slug: input.slug,
-          nameI18n: input.name,
-          parentId: parent?.id ?? null,
-          position: input.position ?? 0,
-          isActive: input.isActive ?? true,
-          brandRequirement: input.brandRequirement ?? 'optional',
-        },
-      });
-      const path = parent ? `${parent.path}.${label(row.id)}` : label(row.id);
-      await tx.$executeRawUnsafe(
-        `UPDATE catalog.category SET path = $1::ltree WHERE id = $2::uuid`,
-        path,
-        row.id,
-      );
-      await writeCatalogOutbox(tx, 'category', 'category.created', row.id, {
-        id: row.id,
-        slug: row.slug,
-        parentId: row.parentId,
-      });
-      return toView({
-        ...raw(row),
-        path,
-      });
-    });
+    const view = await this.prisma
+      .$transaction(async (tx) => {
+        const row = await tx.category.create({
+          data: {
+            slug: input.slug,
+            nameI18n: input.name,
+            parentId: parent?.id ?? null,
+            position: input.position ?? 0,
+            isActive: input.isActive ?? true,
+            brandRequirement: input.brandRequirement ?? 'optional',
+          },
+        });
+        const path = parent ? `${parent.path}.${label(row.id)}` : label(row.id);
+        await tx.$executeRawUnsafe(
+          `UPDATE catalog.category SET path = $1::ltree WHERE id = $2::uuid`,
+          path,
+          row.id,
+        );
+        await writeCatalogOutbox(tx, 'category', 'category.created', row.id, {
+          id: row.id,
+          slug: row.slug,
+          parentId: row.parentId,
+        });
+        return toView({ ...raw(row), path });
+      })
+      .catch(mapUniqueViolation);
 
     await this.audit.record({
       actorAccountId: actor.accountId,
@@ -113,15 +119,23 @@ export class CategoryService {
     meta: RequestMeta,
   ): Promise<Category> {
     const current = await this.rowOrThrow(id);
-    if (input.slug && input.slug !== current.slug) {
-      await this.assertSlugFree(current.parent_id, input.slug, id);
+
+    if (input.slug !== undefined && input.slug !== current.slug) {
+      await this.assertSlugFree(input.slug, [id]);
     }
     if (input.name !== undefined) {
       const nextName = input.name['en'] ?? '';
       if (nextName.toLowerCase() !== (current.name_i18n['en'] ?? '').toLowerCase()) {
-        await this.assertNameFree(current.parent_id, nextName, id);
+        await this.assertNameFree(nextName, [id]);
       }
     }
+
+    const wantsReparent =
+      input.parentId !== undefined && (input.parentId ?? null) !== current.parent_id;
+    const newParent =
+      wantsReparent && input.parentId
+        ? await this.assertReparentable(current, input.parentId)
+        : null;
 
     const data: Prisma.CategoryUpdateInput = {};
     if (input.slug !== undefined) data.slug = input.slug;
@@ -130,13 +144,25 @@ export class CategoryService {
     if (input.isActive !== undefined) data.isActive = input.isActive;
     if (input.brandRequirement !== undefined) data.brandRequirement = input.brandRequirement;
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.category.update({ where: { id }, data });
-      await writeCatalogOutbox(tx, 'category', 'category.updated', id, {
-        id,
-        fields: Object.keys(data),
-      });
-    });
+    await this.prisma
+      .$transaction(async (tx) => {
+        if (Object.keys(data).length > 0) {
+          await tx.category.update({ where: { id }, data });
+          await writeCatalogOutbox(tx, 'category', 'category.updated', id, {
+            id,
+            fields: Object.keys(data),
+          });
+        }
+        if (wantsReparent) {
+          await this.reparentInTx(tx, current, newParent, input.position ?? current.position);
+          await writeCatalogOutbox(tx, 'category', 'category.moved', id, {
+            id,
+            fromParentId: current.parent_id,
+            toParentId: newParent?.id ?? null,
+          });
+        }
+      })
+      .catch(mapUniqueViolation);
 
     const view = await this.get(id);
     await this.audit.record({
@@ -158,44 +184,10 @@ export class CategoryService {
     meta: RequestMeta,
   ): Promise<Category> {
     const self = await this.rowOrThrow(id);
-    const parent = input.parentId ? await this.parentOrThrow(input.parentId) : null;
-
-    if (parent) {
-      if (parent.id === id)
-        throw new AppError('CATEGORY_CYCLE', 422, { detail: 'cannot parent to self' });
-      const inSubtree = await this.prisma.$queryRawUnsafe<{ c: number }[]>(
-        `SELECT count(*)::int AS c FROM catalog.category
-          WHERE id = $1::uuid AND path <@ $2::ltree`,
-        parent.id,
-        self.path,
-      );
-      if ((inSubtree[0]?.c ?? 0) > 0) {
-        throw new AppError('CATEGORY_CYCLE', 422, {
-          detail: 'cannot move a category under its own descendant',
-        });
-      }
-    }
-    await this.assertSlugFree(parent?.id ?? null, self.slug, id);
-    await this.assertNameFree(parent?.id ?? null, self.name_i18n['en'] ?? '', id);
+    const parent = input.parentId ? await this.assertReparentable(self, input.parentId) : null;
 
     await this.prisma.$transaction(async (tx) => {
-      const newSelfPath = parent ? `${parent.path}.${label(id)}` : label(id);
-      // $2 = old self path (prefix). Self row → new path; descendants → new
-      // prefix + the tail below self. (`subpath` errors when offset == nlevel.)
-      await tx.$executeRawUnsafe(
-        `UPDATE catalog.category
-            SET path = CASE
-              WHEN nlevel(path) = nlevel($2::ltree) THEN $1::ltree
-              ELSE $1::ltree || subpath(path, nlevel($2::ltree))
-            END
-          WHERE path <@ $2::ltree`,
-        newSelfPath,
-        self.path,
-      );
-      await tx.category.update({
-        where: { id },
-        data: { parentId: parent?.id ?? null, position: input.position ?? 0 },
-      });
+      await this.reparentInTx(tx, self, parent, input.position ?? 0);
       await writeCatalogOutbox(tx, 'category', 'category.moved', id, {
         id,
         fromParentId: self.parent_id,
@@ -241,17 +233,107 @@ export class CategoryService {
     });
   }
 
+  /**
+   * Un-archive a category and every archived descendant that went down with it
+   * (cascade). Blocked when the parent is still archived / gone, or when a
+   * restored name/slug would now collide with a live row.
+   */
+  async restore(id: string, actor: Actor, meta: RequestMeta): Promise<Category> {
+    const self = await this.archivedRowOrThrow(id);
+
+    let parent: { id: string; path: string } | null = null;
+    if (self.parent_id) {
+      const rows = await this.prisma.$queryRawUnsafe<
+        { id: string; path: string; deleted_at: Date | null }[]
+      >(
+        `SELECT id, path::text AS path, deleted_at FROM catalog.category WHERE id = $1::uuid`,
+        self.parent_id,
+      );
+      const p = rows[0];
+      if (!p) {
+        throw new AppError('CATEGORY_PARENT_INVALID', 422, {
+          detail: 'the parent category no longer exists',
+        });
+      }
+      if (p.deleted_at) {
+        throw new AppError('CATEGORY_PARENT_ARCHIVED', 409, {
+          detail: 'restore the parent category first',
+        });
+      }
+      parent = { id: p.id, path: p.path };
+    }
+
+    const subtree = await this.prisma.$queryRawUnsafe<RawCategory[]>(
+      `SELECT ${COLUMNS}
+         FROM catalog.category
+        WHERE path <@ $1::ltree AND deleted_at IS NOT NULL
+        ORDER BY path`,
+      self.path,
+    );
+    const subtreeIds = subtree.map((r) => r.id);
+
+    for (const row of subtree) {
+      await this.assertNameFree(row.name_i18n['en'] ?? '', subtreeIds);
+      await this.assertSlugFree(row.slug, subtreeIds);
+    }
+
+    await this.prisma
+      .$transaction(async (tx) => {
+        await tx.category.updateMany({
+          where: { id: { in: subtreeIds } },
+          data: { deletedAt: null },
+        });
+        // the parent may have moved while this was archived → rebuild the paths
+        const newSelfPath = parent ? `${parent.path}.${label(self.id)}` : label(self.id);
+        await tx.$executeRawUnsafe(
+          `UPDATE catalog.category
+              SET path = CASE
+                WHEN nlevel(path) = nlevel($2::ltree) THEN $1::ltree
+                ELSE $1::ltree || subpath(path, nlevel($2::ltree))
+              END
+            WHERE path <@ $2::ltree`,
+          newSelfPath,
+          self.path,
+        );
+        await writeCatalogOutbox(tx, 'category', 'category.restored', self.id, {
+          id: self.id,
+          restoredCount: subtreeIds.length,
+        });
+      })
+      .catch(mapUniqueViolation);
+
+    const view = await this.get(self.id);
+    await this.audit.record({
+      actorAccountId: actor.accountId,
+      action: 'catalog.category_restored',
+      targetType: 'category',
+      targetId: self.id,
+      after: view,
+      reason: `restore (${subtreeIds.length} row${subtreeIds.length === 1 ? '' : 's'})`,
+      ...pick(meta),
+    });
+    return view;
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
   private async rowOrThrow(id: string): Promise<RawCategory> {
     const rows = await this.prisma.$queryRawUnsafe<RawCategory[]>(
-      `SELECT id, parent_id, slug, name_i18n, path::text AS path, position, is_active,
-              brand_requirement, created_at, updated_at
-         FROM catalog.category WHERE id = $1::uuid AND deleted_at IS NULL`,
+      `SELECT ${COLUMNS} FROM catalog.category WHERE id = $1::uuid AND deleted_at IS NULL`,
       id,
     );
     const row = rows[0];
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'category not found' });
+    return row;
+  }
+
+  private async archivedRowOrThrow(id: string): Promise<RawCategory> {
+    const rows = await this.prisma.$queryRawUnsafe<RawCategory[]>(
+      `SELECT ${COLUMNS} FROM catalog.category WHERE id = $1::uuid AND deleted_at IS NOT NULL`,
+      id,
+    );
+    const row = rows[0];
+    if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'archived category not found' });
     return row;
   }
 
@@ -266,44 +348,80 @@ export class CategoryService {
     return row;
   }
 
-  private async assertSlugFree(
-    parentId: string | null,
-    slug: string,
-    exceptId: string | null,
+  /** Read-side check: the new parent exists, is live, and is not in `self`'s subtree. */
+  private async assertReparentable(
+    self: RawCategory,
+    newParentId: string,
+  ): Promise<{ id: string; path: string }> {
+    const parent = await this.parentOrThrow(newParentId);
+    if (parent.id === self.id)
+      throw new AppError('CATEGORY_CYCLE', 422, { detail: 'cannot parent to self' });
+    const inSubtree = await this.prisma.$queryRawUnsafe<{ c: number }[]>(
+      `SELECT count(*)::int AS c FROM catalog.category
+        WHERE id = $1::uuid AND path <@ $2::ltree`,
+      parent.id,
+      self.path,
+    );
+    if ((inSubtree[0]?.c ?? 0) > 0) {
+      throw new AppError('CATEGORY_CYCLE', 422, {
+        detail: 'cannot move a category under its own descendant',
+      });
+    }
+    return parent;
+  }
+
+  /** Write-side of a reparent: rewrite the subtree's ltree paths + set parent. */
+  private async reparentInTx(
+    tx: Prisma.TransactionClient,
+    self: RawCategory,
+    newParent: { id: string; path: string } | null,
+    position: number,
   ): Promise<void> {
-    const clash = await this.prisma.category.findFirst({
-      where: {
-        parentId,
-        slug,
-        deletedAt: null,
-        ...(exceptId ? { id: { not: exceptId } } : {}),
-      },
-      select: { id: true },
+    const newSelfPath = newParent ? `${newParent.path}.${label(self.id)}` : label(self.id);
+    await tx.$executeRawUnsafe(
+      `UPDATE catalog.category
+          SET path = CASE
+            WHEN nlevel(path) = nlevel($2::ltree) THEN $1::ltree
+            ELSE $1::ltree || subpath(path, nlevel($2::ltree))
+          END
+        WHERE path <@ $2::ltree`,
+      newSelfPath,
+      self.path,
+    );
+    await tx.category.update({
+      where: { id: self.id },
+      data: { parentId: newParent?.id ?? null, position },
     });
-    if (clash) {
+  }
+
+  /** Exact `slug` uniqueness among live categories (global). */
+  private async assertSlugFree(slug: string, exceptIds: string[]): Promise<void> {
+    const params: unknown[] = [slug];
+    const where = ['deleted_at IS NULL', 'slug = $1'];
+    if (exceptIds.length > 0) {
+      const ph = exceptIds.map((_, i) => `$${i + 2}::uuid`).join(', ');
+      where.push(`id NOT IN (${ph})`);
+      params.push(...exceptIds);
+    }
+    const rows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id FROM catalog.category WHERE ${where.join(' AND ')} LIMIT 1`,
+      ...params,
+    );
+    if (rows.length > 0) {
       throw new AppError('CATEGORY_SLUG_TAKEN', 409, {
-        detail: `a sibling already uses "${slug}"`,
+        detail: `slug "${slug}" is already in use`,
       });
     }
   }
 
-  /** Case-insensitive `name.en` uniqueness among live siblings (same parent). */
-  private async assertNameFree(
-    parentId: string | null,
-    nameEn: string,
-    exceptId: string | null,
-  ): Promise<void> {
-    const where = ['deleted_at IS NULL', "lower(name_i18n->>'en') = lower($1)"];
+  /** Case-insensitive `name.en` uniqueness among live categories (global). */
+  private async assertNameFree(nameEn: string, exceptIds: string[]): Promise<void> {
     const params: unknown[] = [nameEn];
-    if (parentId === null) {
-      where.push('parent_id IS NULL');
-    } else {
-      params.push(parentId);
-      where.push(`parent_id = $${params.length}::uuid`);
-    }
-    if (exceptId) {
-      params.push(exceptId);
-      where.push(`id <> $${params.length}::uuid`);
+    const where = ['deleted_at IS NULL', "lower(name_i18n->>'en') = lower($1)"];
+    if (exceptIds.length > 0) {
+      const ph = exceptIds.map((_, i) => `$${i + 2}::uuid`).join(', ');
+      where.push(`id NOT IN (${ph})`);
+      params.push(...exceptIds);
     }
     const rows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
       `SELECT id FROM catalog.category WHERE ${where.join(' AND ')} LIMIT 1`,
@@ -311,10 +429,25 @@ export class CategoryService {
     );
     if (rows.length > 0) {
       throw new AppError('CATEGORY_NAME_TAKEN', 409, {
-        detail: `a sibling category is already named "${nameEn}" (names are case-insensitive)`,
+        detail: `a category is already named "${nameEn}" (names are case-insensitive)`,
       });
     }
   }
+}
+
+/** Map a Prisma P2002 (unique index) from the DB backstop to a catalog error. */
+function mapUniqueViolation(e: unknown): never {
+  if (e && typeof e === 'object' && (e as { code?: unknown }).code === 'P2002') {
+    const target = String((e as { meta?: { target?: unknown } }).meta?.target ?? '');
+    if (target.includes('name')) {
+      throw new AppError('CATEGORY_NAME_TAKEN', 409, { detail: 'name already in use' });
+    }
+    if (target.includes('slug')) {
+      throw new AppError('CATEGORY_SLUG_TAKEN', 409, { detail: 'slug already in use' });
+    }
+    throw new AppError('CONFLICT', 409, { detail: 'unique constraint violated' });
+  }
+  throw e as Error;
 }
 
 function raw(row: {
@@ -327,6 +460,7 @@ function raw(row: {
   brandRequirement: string;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt: Date | null;
 }): RawCategory {
   return {
     id: row.id,
@@ -339,6 +473,7 @@ function raw(row: {
     brand_requirement: row.brandRequirement as RawCategory['brand_requirement'],
     created_at: row.createdAt,
     updated_at: row.updatedAt,
+    deleted_at: row.deletedAt,
   };
 }
 
@@ -353,6 +488,7 @@ function toView(r: RawCategory): Category {
     position: r.position,
     isActive: r.is_active,
     brandRequirement: r.brand_requirement,
+    archivedAt: r.deleted_at ? r.deleted_at.toISOString() : null,
     createdAt: r.created_at.toISOString(),
     updatedAt: r.updated_at.toISOString(),
   };

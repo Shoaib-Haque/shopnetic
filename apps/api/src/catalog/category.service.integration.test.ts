@@ -64,27 +64,104 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     expect(grand.path.startsWith(`${root.path}.`)).toBe(true);
   });
 
-  it('rejects a duplicate sibling slug but allows the same slug under a different parent', async () => {
+  it('rejects a duplicate slug anywhere in the tree (global), including under another parent', async () => {
     const a = await svc.create({ slug: s('cat-a'), name: name('A') }, actor, {});
     const b = await svc.create({ slug: s('cat-b'), name: name('B') }, actor, {});
+    await svc.create({ slug: s('dup'), name: name('x'), parentId: a.id }, actor, {});
     await expect(
-      svc
-        .create({ slug: s('dup'), name: name('x'), parentId: a.id }, actor, {})
-        .then(() => svc.create({ slug: s('dup'), name: name('y'), parentId: a.id }, actor, {})),
+      svc.create({ slug: s('dup'), name: name('y'), parentId: a.id }, actor, {}),
     ).rejects.toMatchObject({ code: 'CATEGORY_SLUG_TAKEN' });
+    // a different parent no longer helps — slug is global
     await expect(
       svc.create({ slug: s('dup'), name: name('z'), parentId: b.id }, actor, {}),
-    ).resolves.toMatchObject({ slug: s('dup') });
+    ).rejects.toMatchObject({ code: 'CATEGORY_SLUG_TAKEN' });
   });
 
-  it('rejects a case-variant duplicate name among siblings, allows it under another parent', async () => {
+  it('rejects a case-variant duplicate name anywhere in the tree (global)', async () => {
     const root = await svc.create({ slug: s('nm-root'), name: name('Gadgets') }, actor, {});
     await expect(
       svc.create({ slug: s('nm-2'), name: name('gadgets') }, actor, {}),
     ).rejects.toMatchObject({ code: 'CATEGORY_NAME_TAKEN' });
+    // nesting no longer helps — name is global
     await expect(
       svc.create({ slug: s('nm-child'), name: name('GADGETS'), parentId: root.id }, actor, {}),
-    ).resolves.toMatchObject({ slug: s('nm-child') });
+    ).rejects.toMatchObject({ code: 'CATEGORY_NAME_TAKEN' });
+    // renaming a row onto an existing name is blocked too; a no-op rename is fine
+    const other = await svc.create({ slug: s('nm-other'), name: name('Widgets') }, actor, {});
+    await expect(svc.update(other.id, { name: name('gadgets') }, actor, {})).rejects.toMatchObject({
+      code: 'CATEGORY_NAME_TAKEN',
+    });
+    await expect(
+      svc.update(other.id, { name: name('Widgets'), position: 1 }, actor, {}),
+    ).resolves.toMatchObject({ position: 1 });
+  });
+
+  it('update reparents a subtree, blocks cycles, and rebuilds paths', async () => {
+    const r1 = await svc.create({ slug: s('u-r1'), name: name('U-R1') }, actor, {});
+    const r2 = await svc.create({ slug: s('u-r2'), name: name('U-R2') }, actor, {});
+    const mid = await svc.create(
+      { slug: s('u-mid'), name: name('U-M'), parentId: r1.id },
+      actor,
+      {},
+    );
+    const leaf = await svc.create(
+      { slug: s('u-leaf'), name: name('U-L'), parentId: mid.id },
+      actor,
+      {},
+    );
+
+    // cycle: r1 cannot be reparented under its own descendant `mid`
+    await expect(svc.update(r1.id, { parentId: mid.id }, actor, {})).rejects.toMatchObject({
+      code: 'CATEGORY_CYCLE',
+    });
+
+    // reparent `mid` (with `leaf`) under r2, in the same call as a field edit
+    const moved = await svc.update(mid.id, { parentId: r2.id, position: 3 }, actor, {});
+    expect(moved.parentId).toBe(r2.id);
+    expect(moved.position).toBe(3);
+    expect(moved.path).toBe(`${r2.path}.${mid.id.replace(/-/g, '')}`);
+    const movedLeaf = await svc.get(leaf.id);
+    expect(movedLeaf.path).toBe(`${moved.path}.${leaf.id.replace(/-/g, '')}`);
+
+    // both a moved and an updated event land
+    const types = (await prisma.catalogOutbox.findMany({ where: { aggregateId: mid.id } }))
+      .map((r) => r.eventType)
+      .sort();
+    expect(types).toEqual(['category.created', 'category.moved', 'category.updated']);
+  });
+
+  it('restore cascades the archived subtree and blocks while the parent is archived', async () => {
+    const root = await svc.create({ slug: s('rs-root'), name: name('RS-Root') }, actor, {});
+    const child = await svc.create(
+      { slug: s('rs-child'), name: name('RS-Child'), parentId: root.id },
+      actor,
+      {},
+    );
+
+    // archive bottom-up (a parent with live children cannot be removed)
+    await svc.remove(child.id, actor, {});
+    await svc.remove(root.id, actor, {});
+
+    // cannot restore the child while its parent is still archived
+    await expect(svc.restore(child.id, actor, {})).rejects.toMatchObject({
+      code: 'CATEGORY_PARENT_ARCHIVED',
+    });
+
+    // restoring the root brings the whole archived subtree back
+    const restored = await svc.restore(root.id, actor, {});
+    expect(restored.archivedAt).toBeNull();
+    const restoredChild = await svc.get(child.id);
+    expect(restoredChild.archivedAt).toBeNull();
+    expect(restoredChild.path).toBe(`${restored.path}.${child.id.replace(/-/g, '')}`);
+
+    // a live row now holds the freed name → restore is blocked until it is renamed
+    await svc.remove(child.id, actor, {});
+    const squatter = await svc.create({ slug: s('rs-sq'), name: name('RS-Child') }, actor, {});
+    await expect(svc.restore(child.id, actor, {})).rejects.toMatchObject({
+      code: 'CATEGORY_NAME_TAKEN',
+    });
+    await svc.update(squatter.id, { name: name('RS-Squatter') }, actor, {});
+    await expect(svc.restore(child.id, actor, {})).resolves.toMatchObject({ archivedAt: null });
   });
 
   it('move rewrites the whole subtree and blocks cycles', async () => {

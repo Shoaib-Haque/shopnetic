@@ -70,7 +70,7 @@ raw-SQL migration.
 
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
-| `category` | parent_id, name_i18n, slug, path (ltree), position, is_active, brand_requirement (`required/optional/none`), deleted_at | Tree. `path` is a materialized ltree of **dash-stripped uuid** segments (root→self) — ltree labels can't hold `-`/slugs; a GiST index on `path` powers subtree ops. Maintained by the catalog service in a tx (raw SQL). Sibling `(parent_id, slug)` unique (roots de-duped in code). Admin CRUD: `/admin/v1/categories` + `…/:id/move`, gated by `category:manage`. |
+| `category` | parent_id, name_i18n, slug, path (ltree), position, is_active, brand_requirement (`required/optional/none`), deleted_at | Tree. `path` is a materialized ltree of **dash-stripped uuid** segments (root→self) — ltree labels can't hold `-`/slugs; a GiST index on `path` powers subtree ops. Maintained by the catalog service in a tx (raw SQL). `slug` and `lower(name.en)` are **globally** unique among live rows (partial unique indexes). Admin CRUD: `/admin/v1/categories` + `…/:id/move` + `…/:id/restore` (cascade), gated by `category:manage`. |
 | `option_type` | code (unique), name_i18n, data_type (`select/text/number/bool/swatch`), has_swatch, status (`active/deprecated`), deleted_at | Built. Global, reusable axis of choice (Color, Size, Storage, Carrier…). Admin CRUD: `/admin/v1/option-types` (+ `…/:id/values[/:valueId]`), gated by `attribute:manage`. Soft-deleted; deprecate once products reference it. (`data_type` uses `select` where `26` says `enum` — `enum` is not a safe Prisma enum member.) |
 | `option_value` | option_type_id, code (unique per type), label_i18n, swatch_hex (`#rrggbb`), swatch_image_key, position, status (`active/deprecated`) | Built. Nested under its type in the API. Hard-deletable only while unreferenced; deprecate once a product uses it. |
 | `value_set` / `value_set_item` | name (unique) / (value_set_id, option_value_id, position) — PK (value_set_id, option_value_id) | Built. Managed value lists (e.g. "Apparel sizes"). Admin CRUD: `/admin/v1/value-sets` (+ `…/:id/items[/:optionValueId]`), `attribute:manage`. A set is a bag of values (not type-bound); consistency is checked when it's attached to a `category_option`. Blocked from deletion while referenced. |
@@ -118,29 +118,37 @@ way out. **Hard purge** is a separate, rare, permission-gated admin action
 +-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
 | media_asset     | hard                                                    | —                                                               | —       |
 +-----------------+---------------------------------------------------------+-----------------------------------------------------------------+---------+
+`category` restore is **cascade** — it un-archives the whole archived subtree
+that went down with the row (you archive bottom-up, restore top-down). It is
+blocked while the parent is still archived (`CATEGORY_PARENT_ARCHIVED`) or gone
+(`CATEGORY_PARENT_INVALID`), and re-checks every restored row's name/slug against
+live rows first. Paths are rebuilt on restore (the parent may have moved).
+
 Not yet implemented: the `category`→products and `brand`→products guards, the
-`restore` endpoints, partial unique indexes (`WHERE deleted_at IS NULL` — a
-soft-deleted slug currently blocks re-creating it), and the purge / bulk-reassign
-paths. See `25` Part 2.2 "Current state vs. target".
+`brand` restore endpoint, and the purge / bulk-reassign paths. See `25` Part 2.2
+"Current state vs. target".
 
 ### Catalog naming / uniqueness
 
 Names and slugs are **case-insensitively** unique. Slugs are lowercased by the
-contract; name checks are **app-level** in the owning service (a small
-TOCTOU window under concurrent writes — DB-level `citext` / expression-unique
-indexes are the later hardening, see `25` Part 2.2).
+contract. Checks are **app-level** in the owning service for friendly errors;
+`category` additionally has DB-level partial unique indexes (`lower(name_i18n->>
+'en')` and `slug`, both `WHERE deleted_at IS NULL`) as the race backstop — other
+entities' DB-level `citext` / expression-unique indexes are still the later
+hardening (see `25` Part 2.2).
 
 | Entity | Unique field | Scope |
 |--------|--------------|-------|
-| category | `name.en`, `slug` | among live siblings (same parent) |
+| category | `name.en`, `slug` | global among live rows (DB-enforced) |
 | brand | `name`, `slug`, `alias` | global (`alias` is `citext`) |
 | option_type | `code`, `name.en` | global (`code` also lowercased) |
 | option_value | `code`, `label.en` | within its option type |
 | value_set | `name` | global |
 | product | `slug` | global. `title.en` is **not** blocked — the admin UI shows a soft "title already used" warning; a hard `(seller, title)` rule lands with seller-proposed products. |
 
-Errors: `CATEGORY_NAME_TAKEN`, `BRAND_NAME_TAKEN`, `OPTION_TYPE_NAME_TAKEN`,
-`OPTION_VALUE_LABEL_TAKEN`, `VALUE_SET_NAME_TAKEN` (all `409`).
+Errors: `CATEGORY_NAME_TAKEN`, `CATEGORY_SLUG_TAKEN`, `BRAND_NAME_TAKEN`,
+`OPTION_TYPE_NAME_TAKEN`, `OPTION_VALUE_LABEL_TAKEN`, `VALUE_SET_NAME_TAKEN`
+(all `409`).
 
 Price resolution for (seller, variant):
 `offer.sale_price ?? offer.price ?? (product.base_price + variant delta)`.
