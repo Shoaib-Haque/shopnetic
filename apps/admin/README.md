@@ -57,6 +57,10 @@ there's **no tree** — a flat card list in parent-then-children order, each car
 name-only with an **Edit** button; Delete / Restore live inside that Edit modal.
 More entities land as follow-up slices.
 
+Categories is the **reference implementation** for these list/tree pages —
+patterns to reuse, corner-case log, and backlog are in
+`src/features/catalog/categories/README.md`.
+
 Client components call the API through the BFF proxy at **`/api/admin/<path>`**
 (`src/app/api/admin/[...path]/route.ts`). The proxy attaches the `sn_sat` Bearer
 token and, when it is missing or the API answers `401`, silently refreshes it

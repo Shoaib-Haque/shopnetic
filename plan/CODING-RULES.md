@@ -254,6 +254,15 @@ client-sent price or permission.
 "Enter a valid email" not "Invalid input". "Quantity can't exceed 5 for this
 item" not "Error". Reuse the Zod schema's messages between client and server.
 
+### F8. Undo / retry handlers own their own failure
+An `onUndo` (or a retry, or an optimistic rollback) can itself fail because the
+world moved on — the row it wanted to restore is gone, the parent got archived.
+When it does: **re-sync from the server** and show a "the list changed —
+reloaded" message, *not* the generic field-validation copy (F5 conflict, not
+validation) and *not* nothing. Never leave the optimistic/pre-undo state on
+screen after the undo failed. Pairs with G8; worked example in
+`apps/admin/src/features/catalog/categories/README.md` (log #4).
+
 ---
 
 ## G. Design system consistency
@@ -371,9 +380,19 @@ composes; components render; handlers validate + delegate.
 If you add a cached read, you add its invalidation trigger in the same PR
 (`14-caching-strategy.md`). TTL is a safety net, not the mechanism.
 
----
-
-## I. Security & privacy (see `16` for the full set)
+### H7. Re-fetch after a mutation, and make the re-fetch robust
+Back-office pages that mutate then reload their own list must:
+- **`cache: 'no-store'`** on the list GET — the data is mutable and re-read
+  right after every write; the browser HTTP cache must not serve it stale.
+- **A monotonic request id** guarding the state write, so a slow earlier
+  `load()` can't overwrite a newer one's result (last dispatched wins).
+- **A mount-safe "still active" guard.** If an `onUndo` / toast callback
+  outlives the page and must not `setState` after unmount, gate it on a ref —
+  but set that ref `true` **in the effect body**, not only `false` in cleanup.
+  Under `reactStrictMode` (mount → cleanup → mount) and on any remount, a
+  cleanup-only flag sticks at `false` and silently kills every later re-sync.
+  Worked example: `apps/admin/src/features/catalog/categories/README.md` (log
+  #1–#3).
 
 ### I1. Validate and authorize every request server-side
 `authorize(actor, permission, resourceContext)` on every mutation + object-level
@@ -737,3 +756,8 @@ compose file.
 - 2026-09-01 — Strengthened J5 (plan/ kept in lockstep with code, not just for
   "decisions") and added J6 (README.md + .env.example must track code changes).
   Checklist updated.
+- 2026-09-07 — Added F8 (undo/retry handlers re-sync + "list changed" copy on
+  their own failure) and H7 (mutate-then-reload robustness: no-store list GET,
+  monotonic request id, mount-safe active guard vs the StrictMode cleanup-only
+  ref footgun). Both from the Categories build; worked log in
+  `apps/admin/src/features/catalog/categories/README.md`.
