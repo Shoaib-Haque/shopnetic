@@ -18,6 +18,7 @@ import { deleteCategory, listCategories, reorderCategories, restoreCategory } fr
 
 type ModalState = { mode: 'create' } | { mode: 'edit'; category: Category } | null;
 const STATUSES: CategoryListStatus[] = ['active', 'archived', 'all'];
+const COLLAPSE_KEY = 'sn_adm_cat_collapsed';
 
 export function CategoryList() {
   const t = useTranslations('catalog');
@@ -103,6 +104,51 @@ export function CategoryList() {
     }, 1400);
   }, []);
   useEffect(() => () => clearTimeout(flashTimer.current), []);
+
+  // collapsed tree nodes — lifted out of CategoryTree so the toolbar's
+  // expand-all / collapse-to-roots control can sit next to the search box.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COLLAPSE_KEY);
+      if (raw) setCollapsed(new Set(JSON.parse(raw) as string[]));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const persistCollapsed = (next: Set<string>): Set<string> => {
+    try {
+      window.localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next]));
+    } catch {
+      /* ignore */
+    }
+    return next;
+  };
+  const toggleCollapsed = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return persistCollapsed(next);
+    });
+  }, []);
+  const expandCollapsed = useCallback((id: string) => {
+    setCollapsed((prev) =>
+      prev.has(id) ? persistCollapsed(new Set([...prev].filter((x) => x !== id))) : prev,
+    );
+  }, []);
+  // a node is collapsible iff some row calls it parent
+  const parentIds = useMemo(
+    () =>
+      new Set(
+        (items ?? [])
+          .map((c) => c.parentId)
+          .filter((x): x is string => x !== null && x !== undefined),
+      ),
+    [items],
+  );
+  const setAllCollapsed = (collapse: boolean): void =>
+    setCollapsed(() => persistCollapsed(collapse ? new Set(parentIds) : new Set()));
 
   const tokens = useMemo(() => tokenize(debouncedQ), [debouncedQ]);
 
@@ -330,6 +376,18 @@ export function CategoryList() {
             </button>
           ))}
         </div>
+
+        {matches === null && status === 'active' && parentIds.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setAllCollapsed(collapsed.size === 0)}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            {collapsed.size === 0
+              ? t('categories.tree.collapseAll')
+              : t('categories.tree.expandAll')}
+          </button>
+        )}
       </div>
 
       {error !== null && <p className="mb-3 text-sm text-destructive">{error}</p>}
@@ -354,6 +412,9 @@ export function CategoryList() {
                 items={items}
                 renderActions={rowActions}
                 flashId={flashId}
+                collapsed={collapsed}
+                onToggleCollapsed={toggleCollapsed}
+                onExpandCollapsed={expandCollapsed}
                 {...(canDrag ? { onReorder: applyMove } : {})}
               />
             ) : (

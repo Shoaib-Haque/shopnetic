@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category } from '@shopnetic/contracts';
@@ -15,8 +15,6 @@ import {
   TableRow,
   type StatusTone,
 } from '@shopnetic/ui';
-
-const STORAGE_KEY = 'sn_adm_cat_collapsed';
 
 interface Node {
   cat: Category;
@@ -311,12 +309,20 @@ export function CategoryTree({
   renderActions,
   onReorder,
   flashId,
+  collapsed,
+  onToggleCollapsed,
+  onExpandCollapsed,
 }: {
   items: Category[];
   renderActions: (c: Category) => ReactNode;
   onReorder?: (move: CategoryMove) => void;
   /** id of a row to briefly highlight (just moved / restored). */
   flashId?: string | null;
+  /** collapsed node ids — lifted so the toolbar's expand/collapse-all lives by the search box */
+  collapsed: Set<string>;
+  onToggleCollapsed: (id: string) => void;
+  /** one-way expand (used when a drop nests a row inside a collapsed parent) */
+  onExpandCollapsed: (id: string) => void;
 }) {
   const forest = useMemo(() => buildForest(items), [items]);
 
@@ -395,7 +401,7 @@ export function CategoryTree({
           currentIds.length === orderedIds.length &&
           currentIds.every((v, i) => v === orderedIds[i]);
         if (unchanged) return;
-        if (drop.zone === 'inside') expand(target.id);
+        if (drop.zone === 'inside') onExpandCollapsed(target.id);
         onReorder?.({
           parentId,
           orderedIds,
@@ -411,46 +417,6 @@ export function CategoryTree({
       },
     };
   };
-
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) setCollapsed(new Set(JSON.parse(raw) as string[]));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const persist = (next: Set<string>): void => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const toggle = useCallback((id: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      persist(next);
-      return next;
-    });
-  }, []);
-
-  // one-way: reveal a node's children after something is dropped inside it,
-  // otherwise the moved row lands out of sight under a still-collapsed parent.
-  const expand = useCallback((id: string) => {
-    setCollapsed((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      persist(next);
-      return next;
-    });
-  }, []);
 
   interface Flat {
     cat: Category;
@@ -487,7 +453,7 @@ export function CategoryTree({
               isLast,
               hasChildren,
               collapsed: collapsed.has(cat.id),
-              onToggle: () => toggle(cat.id),
+              onToggle: () => onToggleCollapsed(cat.id),
             }}
             {...(onReorder ? { drag: dragHandlers(cat) } : {})}
             renderActions={renderActions}

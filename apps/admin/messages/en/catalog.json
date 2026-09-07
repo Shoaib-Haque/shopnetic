@@ -11,7 +11,12 @@
       "loading": "Loading…",
       "searchPlaceholder": "Search categories…",
       "cols": { "name": "Name", "brand": "Brand", "status": "Status" },
-      "tree": { "expand": "Expand", "collapse": "Collapse" },
+      "tree": {
+        "expand": "Expand",
+        "collapse": "Collapse",
+        "expandAll": "Expand all",
+        "collapseAll": "Collapse all"
+      },
       "filter": { "active": "Active", "archived": "Archived", "all": "All" },
       "status": {
         "active": "Active",
