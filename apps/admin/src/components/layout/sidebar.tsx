@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { LogOut } from 'lucide-react';
+import { LogOut, X } from 'lucide-react';
 import { cn, Spinner } from '@shopnetic/ui';
 import { NAV_SECTIONS } from './nav-config';
 
@@ -66,6 +66,7 @@ export function Sidebar({
             root={root}
             collapsed={false}
             onNavigate={onCloseMobile}
+            onClose={onCloseMobile}
             onSignOut={onSignOut}
             signingOut={signingOut}
           />
@@ -79,12 +80,15 @@ function SidebarBody({
   root,
   collapsed,
   onNavigate,
+  onClose,
   onSignOut,
   signingOut,
 }: {
   root: string;
   collapsed: boolean;
   onNavigate?: () => void;
+  /** mobile drawer only — renders an explicit close button by the first heading */
+  onClose?: () => void;
   onSignOut: () => void;
   signingOut: boolean;
 }) {
@@ -92,7 +96,17 @@ function SidebarBody({
   const pathname = usePathname();
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('actions.close')}
+          className="absolute right-1.5 top-2 z-10 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <X className="size-4" aria-hidden />
+        </button>
+      )}
       <nav className="flex-1 overflow-y-auto px-2 py-3">
         {NAV_SECTIONS.map((section) => (
           <div key={section.key} className="mb-3">
