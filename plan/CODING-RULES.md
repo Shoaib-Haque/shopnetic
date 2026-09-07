@@ -305,18 +305,24 @@ depends on the context, not the field:
   them (let them wrap or scroll instead); money, dates, counts, status.
 - **Native `<select>`**: also cap the option label strings themselves (~64 chars
   + `…`) — the open dropdown's width is not CSS-controllable.
-- **Data tables on narrow screens**: below `sm`, collapse to one row per record —
-  primary label (truncated) + a `⋮` for row actions; secondary fields drop to a
-  muted sub-line or move to the detail view. Never let fixed column widths sum
-  past the viewport (that collapses the flexible column to nothing). Each list
-  page picks its own PC/SP fit — a scrollable table, cards, or name-only —
-  per real need.
+- **Data tables — responsive by priority**: never let fixed column widths sum
+  past the viewport (that collapses the flexible column to nothing). Instead:
+  1. Below the table's card breakpoint (admin lists default `md`), render one
+     card per record — label (truncated) + secondary fields on a muted sub-line
+     + one primary action; the rest live in the record's Edit form.
+  2. In the band between that and `lg`, keep the table but shed its
+     lowest-priority columns (`hidden lg:table-cell`) and collapse row-action
+     labels to icons, so the label column keeps its width.
+  3. At `lg`+, the full table.
+  Each list owns its column priority order and which breakpoint each column
+  drops at — a per-column `hideBelow` in the (future) `ResourceListPage` config;
+  hand-rolled with `hidden …:table-cell` until the kit exists.
 
 ### G8. Reversible-by-undo, not guarded-by-confirm
 For actions that are **cheap to reverse** (drag-reorder, drag-reparent,
 soft-delete / archive, and the like), skip the confirm dialog — apply
 immediately and show an **Undo toast** (`notify.undo`): message + Undo button +
-a ~30s shrinking timer bar, Gmail-style. Only the *latest* action is
+a ~20s shrinking timer bar, Gmail-style. Only the *latest* action is
 one-click-undoable — a fixed toast id means each new one replaces the previous
 and restarts a full window; older items are still recoverable the long way
 (Archived tab, re-order). Undo success shows its own confirmation toast.
@@ -329,7 +335,7 @@ move its children first") is an error, not a confirm.
 Drag-reorder is offered **only where order is a real, user-owned property**
 (category tree, option values, media) — never on lists that are just sorted
 views (brands, products). On desktop the whole row is the drag target; below
-`sm` drag is off entirely (touch-drag on a tree is a poor UX) and the record's
+`md` drag is off entirely (touch-drag on a tree is a poor UX) and the record's
 Edit form is the reorder/reparent path — which also satisfies WCAG 2.5.7.
 Row actions that only exist on desktop (Delete, Restore) must also be reachable
 from that Edit form so mobile isn't a dead end.

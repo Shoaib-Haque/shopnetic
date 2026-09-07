@@ -51,8 +51,8 @@ Toasts: `@shopnetic/ui` `<Toaster/>` is mounted here; call `notify.saved(msg)` /
 (tree list / create / edit / reparent / delete / restore). On desktop, drag a
 row and drop on the top third of another to place it before, the bottom third
 for after, the middle to nest inside — one `POST /admin/v1/categories/reorder`
-per drop. Reorder, reparent and delete apply immediately and show a **30s Undo**
-toast (no confirm); restore keeps its confirm (it names the cascade). Below `sm`
+per drop. Reorder, reparent and delete apply immediately and show a **20s Undo**
+toast (no confirm); restore keeps its confirm (it names the cascade). Below `md`
 there's **no tree** — a flat card list in parent-then-children order, each card
 name-only with an **Edit** button; Delete / Restore live inside that Edit modal.
 More entities land as follow-up slices.

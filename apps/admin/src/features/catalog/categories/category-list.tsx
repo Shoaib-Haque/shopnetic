@@ -130,14 +130,15 @@ export function CategoryList() {
 
   const restoreCount = restoreTarget ? archivedDescendants(restoreTarget) : 0;
 
-  // desktop row actions (the table has room for real buttons)
+  // desktop row actions — labels collapse to icons in the md–lg band so the
+  // name column keeps its width (Brand column is also hidden there)
   const rowActions = (c: Category) =>
     c.archivedAt != null ? (
       <ActionButton
         icon={ArchiveRestore}
         variant="ghost"
         size="sm"
-        collapseLabel
+        collapseLabel="lg"
         onClick={() => setRestoreTarget(c)}
       >
         {t('categories.restore')}
@@ -148,7 +149,7 @@ export function CategoryList() {
           icon={Pencil}
           variant="ghost"
           size="sm"
-          collapseLabel
+          collapseLabel="lg"
           onClick={() => setModal({ mode: 'edit', category: c })}
         >
           {t('categories.edit')}
@@ -157,7 +158,7 @@ export function CategoryList() {
           icon={Trash2}
           variant="ghost"
           size="sm"
-          collapseLabel
+          collapseLabel="lg"
           className="text-muted-foreground hover:text-destructive"
           onClick={() => void doDelete(c)}
         >
@@ -236,7 +237,7 @@ export function CategoryList() {
       ) : (
         <>
           {/* desktop: the tree (active + no search) or a flat table */}
-          <div className="hidden rounded-md border border-border sm:block">
+          <div className="hidden rounded-md border border-border md:block">
             {matches !== null ? (
               <CategoryFlatTable items={matches} renderActions={rowActions} />
             ) : status === 'active' ? (
@@ -246,7 +247,7 @@ export function CategoryList() {
             )}
           </div>
           {/* mobile: always a flat card list, parent-then-children order */}
-          <div className="rounded-md border border-border sm:hidden">
+          <div className="rounded-md border border-border md:hidden">
             <CategoryCards items={flat} renderAction={cardAction} />
           </div>
         </>

@@ -219,7 +219,7 @@ function CategoryRow({ cat, tree, drag, renderActions }: RowProps) {
           </span>
         </div>
       </TableCell>
-      <TableCell className="w-36">
+      <TableCell className="hidden w-36 lg:table-cell">
         <StatusBadge tone={brandTone(cat.brandRequirement)}>
           {t(`categories.brandReq.${cat.brandRequirement}`)}
         </StatusBadge>
@@ -227,7 +227,9 @@ function CategoryRow({ cat, tree, drag, renderActions }: RowProps) {
       <TableCell className="w-28">
         <StatusBadge tone={life.tone}>{t(`categories.status.${life.key}`)}</StatusBadge>
       </TableCell>
-      <TableCell className="w-48 whitespace-nowrap text-right">{renderActions(cat)}</TableCell>
+      <TableCell className="w-20 whitespace-nowrap text-right lg:w-48">
+        {renderActions(cat)}
+      </TableCell>
     </TableRow>
   );
 }
@@ -238,9 +240,9 @@ function HeadRow() {
     <TableHeader>
       <TableRow>
         <TableHead className="pl-2">{t('categories.cols.name')}</TableHead>
-        <TableHead className="w-36">{t('categories.cols.brand')}</TableHead>
+        <TableHead className="hidden w-36 lg:table-cell">{t('categories.cols.brand')}</TableHead>
         <TableHead className="w-28">{t('categories.cols.status')}</TableHead>
-        <TableHead className="w-48" />
+        <TableHead className="w-20 lg:w-48" />
       </TableRow>
     </TableHeader>
   );
