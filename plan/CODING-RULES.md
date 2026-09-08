@@ -349,6 +349,23 @@ Edit form is the reorder/reparent path — which also satisfies WCAG 2.5.7.
 Row actions that only exist on desktop (Delete, Restore) must also be reachable
 from that Edit form so mobile isn't a dead end.
 
+### G9. One toast shape; duration tracks importance
+Every `notify.*` renders the same `BarToast` box — tone (`success` / `error` /
+`info`) sets the icon and colours, and **all of them carry a shrinking timer
+bar**. `notify.undo` is the dark variant with the Undo button (G8). Don't reach
+for sonner's built-in `toast.*` directly.
+
+Duration = time to read **plus** time to act when the toast asks for something:
+
+- Plain confirmation ("Category saved.") → `DEFAULT_MS` (3s). Never shorter.
+- The toast carries an instruction, or the user just lost context (a conflict
+  that closed their modal) → bump via the `ms` arg, ~5s.
+- A real action window (`notify.undo`) → ~20s.
+
+Don't stretch routine confirmations. The bar is a plain CSS animation, so it
+keeps draining while sonner pauses the real dismiss timer on hover / when the
+tab is hidden — treat it as indicative, not exact.
+
 ---
 
 ## H. API, data & state
@@ -761,3 +778,8 @@ compose file.
   monotonic request id, mount-safe active guard vs the StrictMode cleanup-only
   ref footgun). Both from the Categories build; worked log in
   `apps/admin/src/features/catalog/categories/README.md`.
+- 2026-09-08 — Added G9 (one `BarToast` shape for every `notify.*`; timer bar on
+  all of them; duration = read time + act time, default 3s, ~5s for
+  instruction/lost-context toasts, ~20s for undo). `notify.error`/`notify.info`
+  gained an `ms` arg; new `--destructive-muted` token so the error toast isn't
+  see-through.

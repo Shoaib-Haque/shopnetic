@@ -12,6 +12,7 @@
   --muted-foreground: 215 16% 47%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
+  --destructive-muted: 0 78% 96%;
   --success: 142 71% 40%;
   --success-foreground: 0 0% 100%;
   --success-muted: 142 60% 95%;
@@ -33,6 +34,7 @@
   --muted-foreground: 215 20% 65%;
   --destructive: 0 63% 45%;
   --destructive-foreground: 210 40% 98%;
+  --destructive-muted: 0 40% 18%;
   --success: 142 65% 42%;
   --success-foreground: 210 40% 98%;
   --success-muted: 142 40% 16%;

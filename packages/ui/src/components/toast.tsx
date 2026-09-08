@@ -1,7 +1,7 @@
 'use client';
 
 import { Toaster as SonnerToaster, toast } from 'sonner';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Info, type LucideIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 
 /**
@@ -9,14 +9,18 @@ import { cn } from '../lib/cn';
  * once in the app shell; call `notify.*` from anywhere. Messages are
  * already-localized strings (the library stays framework-agnostic).
  *
- * - `notify.saved` — light-green success toast with a shrinking timer bar.
+ * - `notify.saved` / `notify.error` / `notify.info` — one `BarToast` box, tone
+ *   sets the icon and colours; every one carries a shrinking timer bar that runs
+ *   the toast's `duration` (default 3s; pass `ms` to `error` to hold it longer).
  * - `notify.undo`  — dark toast with an **Undo** button + a 20s timer bar. Only
  *   the latest one is live: a fixed toast id means each call replaces the
  *   previous and restarts a full window (plan/CODING-RULES.md section G8).
  *
- * Width: our custom toasts (`saved`, `undo`) are `min(356px, 100vw - 2rem)` so
- * the box — and its Undo button — never runs off a narrow screen (sonner's
- * built-in toasts already shrink below 600px; `toast.custom` content does not).
+ * Width: our custom toasts are `min(356px, 100vw - 2rem)` so the box — and the
+ * Undo button — never runs off a narrow screen (sonner's built-in toasts shrink
+ * below 600px on their own; `toast.custom` content does not). The bar is a plain
+ * CSS animation, so it keeps draining while sonner pauses the dismiss timer on
+ * hover / when the tab is hidden — treat it as indicative, not exact.
  */
 
 const DEFAULT_MS = 3000;
@@ -56,20 +60,44 @@ function TimerBar({ ms, className }: { ms: number; className?: string }) {
   );
 }
 
-function SavedToast({ message, ms }: { message: string; ms: number }) {
+type Tone = 'success' | 'error' | 'info';
+const TONE: Record<Tone, { box: string; icon: string; bar: string; Icon: LucideIcon }> = {
+  success: {
+    box: 'border-success/30 bg-success-muted',
+    icon: 'text-success',
+    bar: 'bg-success/60',
+    Icon: CheckCircle2,
+  },
+  error: {
+    box: 'border-destructive/30 bg-destructive-muted',
+    icon: 'text-destructive',
+    bar: 'bg-destructive/60',
+    Icon: CircleAlert,
+  },
+  info: {
+    box: 'border-border bg-background',
+    icon: 'text-muted-foreground',
+    bar: 'bg-muted-foreground/40',
+    Icon: Info,
+  },
+};
+
+function BarToast({ tone, message, ms }: { tone: Tone; message: string; ms: number }) {
+  const s = TONE[tone];
   return (
     <div
       role="status"
       className={cn(
         'relative flex w-[min(356px,100vw_-_2rem)] items-center gap-2.5 overflow-hidden rounded-md',
-        'border border-success/30 bg-success-muted px-3.5 py-3 text-sm text-foreground shadow-md',
+        'border px-3.5 py-3 text-sm text-foreground shadow-md',
+        s.box,
       )}
     >
-      <CheckCircle2 className="mt-0.5 size-4 shrink-0 self-start text-success" aria-hidden />
+      <s.Icon className={cn('mt-0.5 size-4 shrink-0 self-start', s.icon)} aria-hidden />
       <span className="line-clamp-2 min-w-0 flex-1" title={message}>
         {message}
       </span>
-      <TimerBar ms={ms} />
+      <TimerBar ms={ms} className={s.bar} />
     </div>
   );
 }
@@ -105,12 +133,23 @@ function UndoToast({
   );
 }
 
-function showSaved(message: string, ms: number = DEFAULT_MS): void {
-  toast.custom(() => <SavedToast message={message} ms={ms} />, { duration: ms, style: BARE });
+function showBar(tone: Tone, message: string, ms: number): void {
+  toast.custom(() => <BarToast tone={tone} message={message} ms={ms} />, {
+    duration: ms,
+    style: BARE,
+  });
 }
 
-function showError(message: string): void {
-  toast.error(message);
+function showSaved(message: string, ms: number = DEFAULT_MS): void {
+  showBar('success', message, ms);
+}
+
+function showError(message: string, ms: number = DEFAULT_MS): void {
+  showBar('error', message, ms);
+}
+
+function showInfo(message: string, ms: number = DEFAULT_MS): void {
+  showBar('info', message, ms);
 }
 
 interface UndoOptions {
@@ -144,7 +183,7 @@ function showUndo(message: string, opts: UndoOptions): void {
 export const notify = {
   saved: showSaved,
   error: showError,
-  info: (message: string): void => void toast(message),
+  info: showInfo,
   undo: showUndo,
 };
 
