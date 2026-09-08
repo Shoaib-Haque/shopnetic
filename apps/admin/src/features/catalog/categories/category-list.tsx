@@ -417,7 +417,7 @@ export function CategoryList() {
           title={t('categories.addChild')}
           aria-label={t('categories.addChild')}
           onClick={() => setModal({ mode: 'create', parentId: c.id })}
-          className="hidden size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 lg:grid"
+          className="hidden size-7 shrink-0 -translate-x-1 place-items-center rounded text-muted-foreground opacity-0 transition duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:translate-x-0 focus-visible:opacity-100 group-hover:translate-x-0 group-hover:opacity-100 lg:grid"
         >
           <Plus className="size-4" aria-hidden />
         </button>
