@@ -15,17 +15,16 @@ export function Table({
    * Horizontal scroll for wide tables (default). `overflow-x-auto` also makes
    * the wrapper a *vertical* scroll container, which traps a `sticky` header —
    * so pass `false` for a `table-fixed` table that can't outgrow its parent:
-   * `overflow-x-clip` still clips the corners but lets the header stick to the
-   * page scroll.
+   * `overflow: clip` (both axes) rounds the corners cleanly and, unlike
+   * `auto`/`scroll`/`hidden`, is *not* a scroll container, so the header still
+   * sticks to the page. `clip` on one axis only leaves the other corners square.
    */
   scrollX?: boolean;
 }) {
   return (
     // `rounded-[inherit]`: an overflow container clips its own box, so without
     // this the table's square corners bleed past a rounded wrapper's border.
-    <div
-      className={cn('w-full rounded-[inherit]', scrollX ? 'overflow-x-auto' : 'overflow-x-clip')}
-    >
+    <div className={cn('w-full rounded-[inherit]', scrollX ? 'overflow-x-auto' : 'overflow-clip')}>
       <table
         className={cn('w-full caption-bottom border-collapse text-sm', className)}
         {...props}

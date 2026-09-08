@@ -38,6 +38,7 @@ export function Topbar({
         type="button"
         onClick={onOpenMobile}
         aria-label={t('shell.openMenu')}
+        title={t('shell.openMenu')}
         className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
       >
         <Menu className="size-5" aria-hidden />
@@ -46,6 +47,7 @@ export function Topbar({
         type="button"
         onClick={onToggleCollapsed}
         aria-label={t('shell.toggleSidebar')}
+        title={t('shell.toggleSidebar')}
         aria-pressed={collapsed}
         className="hidden rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground md:inline-flex"
       >
@@ -68,6 +70,7 @@ export function Topbar({
       <button
         type="button"
         aria-label={t('shell.notifications')}
+        title={t('shell.notifications')}
         className="ml-auto rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground md:ml-0"
       >
         <Bell className="size-5" aria-hidden />

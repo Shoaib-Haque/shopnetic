@@ -306,7 +306,7 @@ function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProp
       <TableCell className="w-28">
         <StatusBadge tone={life.tone}>{t(`categories.status.${life.key}`)}</StatusBadge>
       </TableCell>
-      <TableCell className="w-20 whitespace-nowrap text-right lg:w-56">
+      <TableCell className="w-28 whitespace-nowrap px-2 text-right lg:w-56">
         {renderActions(cat)}
       </TableCell>
     </TableRow>
@@ -321,7 +321,7 @@ function HeadRow() {
         <TableHead className="pl-2">{t('categories.cols.name')}</TableHead>
         <TableHead className="hidden w-36 lg:table-cell">{t('categories.cols.brand')}</TableHead>
         <TableHead className="w-28">{t('categories.cols.status')}</TableHead>
-        <TableHead className="w-20 lg:w-56" />
+        <TableHead className="w-28 lg:w-56" />
       </TableRow>
     </TableHeader>
   );

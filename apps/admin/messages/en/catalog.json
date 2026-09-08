@@ -29,9 +29,9 @@
         "archived": "Archived"
       },
       "brandReq": {
-        "required": "brand required",
-        "optional": "brand optional",
-        "none": "no brand"
+        "required": "required",
+        "optional": "optional",
+        "none": "none"
       },
       "edit": "Edit",
       "view": "View",
