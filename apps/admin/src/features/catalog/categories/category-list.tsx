@@ -280,6 +280,16 @@ export function CategoryList() {
     }
   }
 
+  // a drop that resolved to the row's current position — acknowledge it so the
+  // drag doesn't just vanish, and flash the row so it's clear which one.
+  const noopMove = useCallback(
+    (id: string) => {
+      flash(id);
+      notify.info(t('categories.toast.moveNoop'));
+    },
+    [flash, t],
+  );
+
   const restoreCount = restoreTarget ? archivedDescendants(restoreTarget) : 0;
 
   // desktop row actions — labels collapse to icons in the md–lg band so the
@@ -427,7 +437,7 @@ export function CategoryList() {
                 collapsed={collapsed}
                 onToggleCollapsed={toggleCollapsed}
                 onExpandCollapsed={expandCollapsed}
-                {...(canDrag ? { onReorder: applyMove } : {})}
+                {...(canDrag ? { onReorder: applyMove, onNoop: noopMove } : {})}
               />
             ) : (
               <CategoryFlatTable items={items} renderActions={rowActions} flashId={flashId} />

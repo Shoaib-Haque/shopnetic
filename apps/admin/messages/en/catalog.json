@@ -45,7 +45,8 @@
         "restored": "Category “{name}” restored.",
         "reordered": "Categories reordered.",
         "moved": "{count, plural, =0 {Category “{name}” moved.} one {Category “{name}” moved (+# sub-category).} other {Category “{name}” moved (+# sub-categories).}}",
-        "moveUndone": "Move undone."
+        "moveUndone": "Move undone.",
+        "moveNoop": "No change — it’s already there."
       },
       "form": {
         "createTitle": "New category",

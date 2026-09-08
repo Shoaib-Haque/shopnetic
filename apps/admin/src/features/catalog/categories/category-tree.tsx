@@ -319,6 +319,7 @@ export function CategoryTree({
   items,
   renderActions,
   onReorder,
+  onNoop,
   flashId,
   collapsed,
   onToggleCollapsed,
@@ -327,6 +328,9 @@ export function CategoryTree({
   items: Category[];
   renderActions: (c: Category) => ReactNode;
   onReorder?: (move: CategoryMove) => void;
+  /** a completed drop that left the order unchanged — so the UI can say so
+   *  instead of swallowing it silently. */
+  onNoop?: (movedId: string) => void;
   /** id of a row to briefly highlight (just moved / restored). */
   flashId?: string | null;
   /** collapsed node ids — lifted so the toolbar's expand/collapse-all lives by the search box */
@@ -411,7 +415,10 @@ export function CategoryTree({
           fromParentId === parentId &&
           currentIds.length === orderedIds.length &&
           currentIds.every((v, i) => v === orderedIds[i]);
-        if (unchanged) return;
+        if (unchanged) {
+          onNoop?.(id);
+          return;
+        }
         if (drop.zone === 'inside') onExpandCollapsed(target.id);
         onReorder?.({
           parentId,
