@@ -23,6 +23,58 @@ type ModalState =
 const STATUSES: CategoryListStatus[] = ['active', 'archived', 'all'];
 const COLLAPSE_KEY = 'sn_adm_cat_collapsed';
 
+/** ltree label for an id — uuid with the dashes stripped (matches the API). */
+const ltreeLabel = (id: string): string => id.replace(/-/g, '');
+
+/**
+ * Apply a drag move to the flat list in place of a server round-trip, so the
+ * tree re-renders the instant the row is dropped. `load()` reconciles with the
+ * real positions right after; a failed reorder snaps back to the snapshot.
+ */
+function applyMoveLocally(items: Category[], m: CategoryMove): Category[] {
+  const byId = new Map(items.map((c) => [c.id, c]));
+  const moved = byId.get(m.movedId);
+  if (!moved) return items;
+  const newParent = m.parentId ? byId.get(m.parentId) : null;
+  if (m.parentId && !newParent) return items; // stale target — let the refetch sort it
+
+  const newBasePath = newParent
+    ? `${newParent.path}.${ltreeLabel(moved.id)}`
+    : ltreeLabel(moved.id);
+  const oldPrefix = `${moved.path}.`;
+  const depthDelta = (newParent ? newParent.depth + 1 : 0) - moved.depth;
+
+  const posInNew = new Map(m.orderedIds.map((id, i) => [id, i]));
+  const posInOld = new Map(
+    m.undoOrderedIds.filter((id) => id !== m.movedId).map((id, i) => [id, i]),
+  );
+
+  return items.map((c) => {
+    if (c.id === m.movedId) {
+      return {
+        ...c,
+        parentId: m.parentId,
+        position: posInNew.get(c.id) ?? c.position,
+        path: newBasePath,
+        depth: c.depth + depthDelta,
+      };
+    }
+    if (c.path.startsWith(oldPrefix)) {
+      // a descendant rides along — re-root its path, shift its depth
+      return {
+        ...c,
+        path: newBasePath + '.' + c.path.slice(oldPrefix.length),
+        depth: c.depth + depthDelta,
+      };
+    }
+    const np = posInNew.get(c.id);
+    if (np !== undefined) return { ...c, position: np };
+    const op = posInOld.get(c.id);
+    if (op !== undefined) return { ...c, position: op };
+    return c;
+  });
+}
+
 export function CategoryList() {
   const t = useTranslations('catalog');
 
@@ -251,9 +303,11 @@ export function CategoryList() {
   async function applyMove(m: CategoryMove): Promise<void> {
     if (reordering.current) return; // a reorder is already in flight
     reordering.current = true;
+    const snapshot = items;
+    if (snapshot) setItems(applyMoveLocally(snapshot, m)); // show the move now
+    flash(m.movedId);
     try {
       await reorderCategories({ parentId: m.parentId, orderedIds: m.orderedIds });
-      flash(m.movedId);
       notify.undo(
         m.reparents
           ? t('categories.toast.moved', {
@@ -283,6 +337,7 @@ export function CategoryList() {
         },
       );
     } catch (e) {
+      if (snapshot && mounted.current) setItems(snapshot); // snap back
       reorderErrorToast(e);
     } finally {
       reordering.current = false;
