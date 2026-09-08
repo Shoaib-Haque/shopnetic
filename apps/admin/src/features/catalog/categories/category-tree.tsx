@@ -113,6 +113,9 @@ interface RowProps {
     onToggle: () => void;
     /** parent isn't in the list — flag the row instead of faking a root */
     orphan: boolean;
+    /** aria-posinset / aria-setsize for the treegrid row */
+    posInSet: number;
+    setSize: number;
   };
   /** Drag-reorder wiring; omit to make the row static. */
   drag?: {
@@ -220,6 +223,14 @@ function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProp
         drag?.hint === 'inside' && 'bg-primary/10',
         flash && 'sn-row-flash',
       )}
+      {...(tree
+        ? {
+            'aria-level': tree.depth + 1,
+            'aria-setsize': tree.setSize,
+            'aria-posinset': tree.posInSet,
+            ...(tree.hasChildren ? { 'aria-expanded': !tree.collapsed } : {}),
+          }
+        : {})}
       {...(drag
         ? {
             draggable: true,
@@ -362,6 +373,7 @@ export function CategoryTree({
   /** one-way expand (used when a drop nests a row inside a collapsed parent) */
   onExpandCollapsed: (id: string) => void;
 }) {
+  const t = useTranslations('catalog');
   const forest = useMemo(() => buildForest(items), [items]);
 
   const catById = useMemo(() => new Map(items.map((c) => [c.id, c])), [items]);
@@ -518,6 +530,9 @@ export function CategoryTree({
     hasChildren: boolean;
     childCount: number;
     orphan: boolean;
+    /** 1-based position among siblings, and the sibling count — for aria-*inset. */
+    posInSet: number;
+    setSize: number;
   }
   const rows: Flat[] = [];
   const walk = (nodes: Node[], depth: number, rails: boolean[]): void => {
@@ -532,6 +547,8 @@ export function CategoryTree({
         hasChildren,
         childCount: node.children.length,
         orphan: !!node.orphan,
+        posInSet: i + 1,
+        setSize: nodes.length,
       });
       if (hasChildren && !collapsed.has(node.cat.id)) {
         walk(node.children, depth + 1, [...rails, !isLast]);
@@ -541,28 +558,37 @@ export function CategoryTree({
   walk(forest, 0, []);
 
   return (
-    <Table className="table-fixed" scrollX={false}>
+    <Table
+      role="treegrid"
+      aria-label={t('categories.tree.ariaLabel')}
+      className="table-fixed"
+      scrollX={false}
+    >
       <HeadRow />
       <TableBody>
-        {rows.map(({ cat, depth, rails, isLast, hasChildren, childCount, orphan }) => (
-          <CategoryRow
-            key={cat.id}
-            cat={cat}
-            flash={cat.id === flashId}
-            tree={{
-              depth,
-              rails,
-              isLast,
-              hasChildren,
-              childCount,
-              collapsed: collapsed.has(cat.id),
-              onToggle: () => onToggleCollapsed(cat.id),
-              orphan,
-            }}
-            {...(onReorder ? { drag: dragHandlers(cat) } : {})}
-            renderActions={renderActions}
-          />
-        ))}
+        {rows.map(
+          ({ cat, depth, rails, isLast, hasChildren, childCount, orphan, posInSet, setSize }) => (
+            <CategoryRow
+              key={cat.id}
+              cat={cat}
+              flash={cat.id === flashId}
+              tree={{
+                depth,
+                rails,
+                isLast,
+                hasChildren,
+                childCount,
+                collapsed: collapsed.has(cat.id),
+                onToggle: () => onToggleCollapsed(cat.id),
+                orphan,
+                posInSet,
+                setSize,
+              }}
+              {...(onReorder ? { drag: dragHandlers(cat) } : {})}
+              renderActions={renderActions}
+            />
+          ),
+        )}
       </TableBody>
     </Table>
   );
