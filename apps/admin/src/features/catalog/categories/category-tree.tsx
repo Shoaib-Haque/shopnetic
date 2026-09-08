@@ -27,6 +27,8 @@ import {
 interface Node {
   cat: Category;
   children: Node[];
+  /** has a `parentId`, but that parent isn't in the list — shown at root level. */
+  orphan?: boolean;
 }
 
 function buildForest(items: Category[]): Node[] {
@@ -36,7 +38,10 @@ function buildForest(items: Category[]): Node[] {
   for (const node of byId.values()) {
     const parent = node.cat.parentId ? byId.get(node.cat.parentId) : undefined;
     if (parent) parent.children.push(node);
-    else roots.push(node);
+    else {
+      if (node.cat.parentId) node.orphan = true;
+      roots.push(node);
+    }
   }
   // `list` sorts by the ltree path (uuid labels), so sibling order is by
   // `position` only after this pass. Name breaks ties deterministically.
@@ -106,6 +111,8 @@ interface RowProps {
     childCount: number;
     collapsed: boolean;
     onToggle: () => void;
+    /** parent isn't in the list — flag the row instead of faking a root */
+    orphan: boolean;
   };
   /** Drag-reorder wiring; omit to make the row static. */
   drag?: {
@@ -258,6 +265,11 @@ function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProp
             <span className="truncate" title={`${label} /${cat.slug}`}>
               <span className="font-medium">{label}</span>
               <span className="ml-2 text-xs text-muted-foreground">/{cat.slug}</span>
+              {tree?.orphan ? (
+                <span className="ml-2 align-middle" title={t('categories.tree.orphanHint')}>
+                  <StatusBadge tone="warning">{t('categories.tree.orphan')}</StatusBadge>
+                </span>
+              ) : null}
               {tree?.collapsed && tree.hasChildren ? (
                 <span
                   className="ml-2 rounded bg-muted px-1 text-[10px] font-medium text-muted-foreground"
@@ -505,6 +517,7 @@ export function CategoryTree({
     isLast: boolean;
     hasChildren: boolean;
     childCount: number;
+    orphan: boolean;
   }
   const rows: Flat[] = [];
   const walk = (nodes: Node[], depth: number, rails: boolean[]): void => {
@@ -518,6 +531,7 @@ export function CategoryTree({
         isLast,
         hasChildren,
         childCount: node.children.length,
+        orphan: !!node.orphan,
       });
       if (hasChildren && !collapsed.has(node.cat.id)) {
         walk(node.children, depth + 1, [...rails, !isLast]);
@@ -530,7 +544,7 @@ export function CategoryTree({
     <Table className="table-fixed" scrollX={false}>
       <HeadRow />
       <TableBody>
-        {rows.map(({ cat, depth, rails, isLast, hasChildren, childCount }) => (
+        {rows.map(({ cat, depth, rails, isLast, hasChildren, childCount, orphan }) => (
           <CategoryRow
             key={cat.id}
             cat={cat}
@@ -543,6 +557,7 @@ export function CategoryTree({
               childCount,
               collapsed: collapsed.has(cat.id),
               onToggle: () => onToggleCollapsed(cat.id),
+              orphan,
             }}
             {...(onReorder ? { drag: dragHandlers(cat) } : {})}
             renderActions={renderActions}

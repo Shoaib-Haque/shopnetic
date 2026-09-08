@@ -16,7 +16,9 @@
         "collapse": "Collapse",
         "expandAll": "Expand all",
         "collapseAll": "Collapse all",
-        "hiddenCount": "{count, plural, one {# sub-category} other {# sub-categories}}"
+        "hiddenCount": "{count, plural, one {# sub-category} other {# sub-categories}}",
+        "orphan": "detached",
+        "orphanHint": "This category’s parent isn’t in the current list — it’s shown at the top level."
       },
       "filter": { "active": "Active", "archived": "Archived", "all": "All" },
       "status": {
