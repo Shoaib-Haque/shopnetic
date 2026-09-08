@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArchiveRestore, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArchiveRestore, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category, CategoryListStatus } from '@shopnetic/contracts';
 import { cn, Input, notify } from '@shopnetic/ui';
@@ -236,6 +236,14 @@ export function CategoryList() {
   const archivedDescendants = (c: Category): number =>
     (items ?? []).filter((x) => x.archivedAt != null && x.path.startsWith(`${c.path}.`)).length;
 
+  // Restore rejects a row whose parent is still archived (restore the parent
+  // first). Archiving cascades down, so checking the direct parent is enough.
+  const parentArchived = (c: Category): boolean => {
+    if (!c.parentId) return false;
+    const p = (items ?? []).find((x) => x.id === c.parentId);
+    return p?.archivedAt != null;
+  };
+
   const err = (e: unknown): void =>
     notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
 
@@ -359,18 +367,50 @@ export function CategoryList() {
 
   // desktop row actions — labels collapse to icons in the md–lg band so the
   // name column keeps its width (Brand column is also hidden there)
-  const rowActions = (c: Category) =>
-    c.archivedAt != null ? (
-      <ActionButton
-        icon={ArchiveRestore}
-        variant="ghost"
-        size="sm"
-        collapseLabel="lg"
-        onClick={() => setRestoreTarget(c)}
-      >
-        {t('categories.restore')}
-      </ActionButton>
-    ) : (
+  const rowActions = (c: Category) => {
+    if (c.archivedAt != null) {
+      const blocked = parentArchived(c);
+      const restore = (
+        <ActionButton
+          icon={ArchiveRestore}
+          variant="ghost"
+          size="sm"
+          collapseLabel="lg"
+          disabled={blocked}
+          onClick={() => setRestoreTarget(c)}
+        >
+          {t('categories.restore')}
+        </ActionButton>
+      );
+      return (
+        <span className="inline-flex items-center gap-1">
+          {/* archived rows are view-only — this opens the same read-only modal
+              the mobile card list offers */}
+          <ActionButton
+            icon={Eye}
+            variant="ghost"
+            size="sm"
+            collapseLabel="lg"
+            onClick={() => setModal({ mode: 'edit', category: c })}
+          >
+            {t('categories.view')}
+          </ActionButton>
+          {/* a disabled <button> eats hover events, so the "restore the parent
+              first" tooltip has to live on a wrapper the pointer can reach */}
+          {blocked ? (
+            <span
+              className="inline-flex cursor-not-allowed"
+              title={t('errors.categoryParentArchived')}
+            >
+              {restore}
+            </span>
+          ) : (
+            restore
+          )}
+        </span>
+      );
+    }
+    return (
       <span className="inline-flex items-center gap-1">
         <button
           type="button"
@@ -402,6 +442,7 @@ export function CategoryList() {
         </ActionButton>
       </span>
     );
+  };
 
   // mobile card action — always Edit; Delete / Restore live inside the modal
   const cardAction = (c: Category) => (
@@ -527,6 +568,7 @@ export function CategoryList() {
             ? { initialParentId: modal.parentId }
             : {})}
           allCategories={(items ?? []).filter((c) => c.archivedAt == null)}
+          restoreBlocked={modal.mode === 'edit' && parentArchived(modal.category)}
           onSaved={onSaved}
           onDelete={(c) => void doDelete(c)}
           onRestore={setRestoreTarget}

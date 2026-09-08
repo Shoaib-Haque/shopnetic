@@ -33,6 +33,7 @@
         "none": "no brand"
       },
       "edit": "Edit",
+      "view": "View",
       "addChild": "Add sub-category",
       "delete": "Delete",
       "restore": "Restore",

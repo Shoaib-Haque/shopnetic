@@ -78,6 +78,7 @@ export function CategoryFormModal({
   category,
   initialParentId,
   allCategories,
+  restoreBlocked = false,
   onSaved,
   onDelete,
   onRestore,
@@ -89,6 +90,8 @@ export function CategoryFormModal({
   /** Create mode only — pre-select this parent (still editable). */
   initialParentId?: string | undefined;
   allCategories: Category[];
+  /** Edit mode, archived row — its parent is still archived, so Restore would fail. */
+  restoreBlocked?: boolean;
   onSaved: (action: 'created' | 'updated', c: Category) => void;
   /** Edit mode only — close the modal, then run the list's delete / restore flow. */
   onDelete?: (c: Category) => void;
@@ -237,23 +240,31 @@ export function CategoryFormModal({
   // edit it (the API's `update` rejects a soft-deleted row anyway).
   const readOnly = archived;
   const slugChanged = mode === 'edit' && !errors.slug && slugValue !== category?.slug;
+  const restoreDisabled = archived && restoreBlocked;
   const secondaryAction =
     mode === 'edit' && category && (archived ? onRestore : onDelete) ? (
-      <button
-        type="button"
-        onClick={() => {
-          onOpenChange(false);
-          (archived ? onRestore : onDelete)?.(category);
-        }}
-        className={cn(
-          'rounded-md px-2.5 py-1.5 text-sm font-medium',
-          archived
-            ? 'text-primary hover:bg-primary/10'
-            : 'text-destructive hover:bg-destructive/10',
-        )}
+      // a disabled <button> eats hover events — the tooltip sits on the wrapper.
+      <span
+        className={cn('inline-flex', restoreDisabled && 'cursor-not-allowed')}
+        {...(restoreDisabled ? { title: t('errors.categoryParentArchived') } : {})}
       >
-        {t(archived ? 'categories.restore' : 'categories.delete')}
-      </button>
+        <button
+          type="button"
+          disabled={restoreDisabled}
+          onClick={() => {
+            onOpenChange(false);
+            (archived ? onRestore : onDelete)?.(category);
+          }}
+          className={cn(
+            'rounded-md px-2.5 py-1.5 text-sm font-medium disabled:pointer-events-none disabled:opacity-50',
+            archived
+              ? 'text-primary hover:bg-primary/10'
+              : 'text-destructive hover:bg-destructive/10',
+          )}
+        >
+          {t(archived ? 'categories.restore' : 'categories.delete')}
+        </button>
+      </span>
     ) : undefined;
 
   return (
