@@ -108,6 +108,16 @@ export function CategoryList() {
   }, []);
   useEffect(() => () => clearTimeout(flashTimer.current), []);
 
+  // keep the flashed row on screen — after a drag move, its undo, or a no-op
+  // drop, the row can land off-screen (and scroll anchoring only follows it in
+  // one direction). Re-runs when the list reloads so it lands on the final row.
+  useEffect(() => {
+    if (!flashId) return;
+    document
+      .querySelector(`[data-cat-row="${CSS.escape(flashId)}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [flashId, items]);
+
   // collapsed tree nodes — lifted out of CategoryTree so the toolbar's
   // expand-all / collapse-to-roots control can sit next to the search box.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());

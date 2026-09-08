@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useMemo, useState, type DragEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category } from '@shopnetic/contracts';
@@ -195,8 +203,11 @@ function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProp
   const label = cat.name['en'] ?? cat.slug;
   return (
     <TableRow
+      data-cat-row={cat.id}
       className={cn(
-        'group',
+        // leave a gap when scrollIntoView({block:'nearest'}) parks this row at
+        // an edge (after a move / undo) so it isn't glued to the viewport rim
+        'group scroll-my-24',
         drag && 'cursor-grab select-none',
         drag?.dragging && 'opacity-40',
         drag?.hint === 'inside' && 'bg-primary/10',
@@ -358,6 +369,54 @@ export function CategoryTree({
   const [dragId, setDragId] = useState<string | null>(null);
   const [hint, setHint] = useState<{ id: string; zone: DropZone } | null>(null);
 
+  // ── edge auto-scroll: a native drag freezes the page scroll, so nudge the
+  //    nearest scrollable ancestor while the pointer sits near its top / bottom.
+  const autoScroll = useRef<{ raf: number; vy: number; el: HTMLElement | null }>({
+    raf: 0,
+    vy: 0,
+    el: null,
+  });
+  const stopAutoScroll = useCallback(() => {
+    const s = autoScroll.current;
+    if (s.raf) cancelAnimationFrame(s.raf);
+    s.raf = 0;
+    s.vy = 0;
+    s.el = null;
+  }, []);
+  useEffect(() => stopAutoScroll, [stopAutoScroll]);
+
+  const edgeAutoScroll = useCallback((clientY: number, from: HTMLElement): void => {
+    const st = autoScroll.current;
+    if (!st.el) {
+      for (let n: HTMLElement | null = from; n; n = n.parentElement) {
+        const oy = getComputedStyle(n).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) {
+          st.el = n;
+          break;
+        }
+      }
+    }
+    const sc = st.el;
+    if (!sc) return;
+    const r = sc.getBoundingClientRect();
+    const ZONE = 64; // px from an edge where the nudge kicks in
+    const MAX = 16; // px per frame at the very edge
+    if (clientY < r.top + ZONE) st.vy = -MAX * Math.min(1, (r.top + ZONE - clientY) / ZONE);
+    else if (clientY > r.bottom - ZONE)
+      st.vy = MAX * Math.min(1, (clientY - (r.bottom - ZONE)) / ZONE);
+    else st.vy = 0;
+    const tick = (): void => {
+      const s = autoScroll.current;
+      if (!s.vy || !s.el) {
+        s.raf = 0;
+        return;
+      }
+      s.el.scrollTop += s.vy;
+      s.raf = requestAnimationFrame(tick);
+    };
+    if (st.vy && !st.raf) st.raf = requestAnimationFrame(tick);
+  }, []);
+
   const dragHandlers = (cat: Category): NonNullable<RowProps['drag']> => {
     const insideOwnSubtree = (targetPath: string): boolean => {
       const dragged = dragId ? catById.get(dragId) : undefined;
@@ -372,6 +431,7 @@ export function CategoryTree({
         setDragId(cat.id);
       },
       onDragOver: (e) => {
+        if (dragId) edgeAutoScroll(e.clientY, e.currentTarget);
         if (!dragId || dragId === cat.id || insideOwnSubtree(cat.path)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
@@ -387,6 +447,7 @@ export function CategoryTree({
       },
       onDrop: (e) => {
         e.preventDefault();
+        stopAutoScroll();
         const id = dragId;
         const drop = hint;
         setDragId(null);
@@ -430,6 +491,7 @@ export function CategoryTree({
         });
       },
       onDragEnd: () => {
+        stopAutoScroll();
         setDragId(null);
         setHint(null);
       },
