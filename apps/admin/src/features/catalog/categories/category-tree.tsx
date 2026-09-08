@@ -94,6 +94,8 @@ interface RowProps {
     /** Is this the last child of its parent? (no spine continues below its elbow) */
     isLast: boolean;
     hasChildren: boolean;
+    /** direct children — shown as a chip while collapsed */
+    childCount: number;
     collapsed: boolean;
     onToggle: () => void;
   };
@@ -194,6 +196,7 @@ function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProp
   return (
     <TableRow
       className={cn(
+        'group',
         drag && 'cursor-grab select-none',
         drag?.dragging && 'opacity-40',
         drag?.hint === 'inside' && 'bg-primary/10',
@@ -244,6 +247,14 @@ function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProp
             <span className="truncate" title={`${label} /${cat.slug}`}>
               <span className="font-medium">{label}</span>
               <span className="ml-2 text-xs text-muted-foreground">/{cat.slug}</span>
+              {tree?.collapsed && tree.hasChildren ? (
+                <span
+                  className="ml-2 rounded bg-muted px-1 text-[10px] font-medium text-muted-foreground"
+                  aria-label={t('categories.tree.hiddenCount', { count: tree.childCount })}
+                >
+                  {tree.childCount}
+                </span>
+              ) : null}
             </span>
             {context ? (
               <span className="truncate text-xs text-muted-foreground" title={context}>
@@ -261,7 +272,7 @@ function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProp
       <TableCell className="w-28">
         <StatusBadge tone={life.tone}>{t(`categories.status.${life.key}`)}</StatusBadge>
       </TableCell>
-      <TableCell className="w-20 whitespace-nowrap text-right lg:w-48">
+      <TableCell className="w-20 whitespace-nowrap text-right lg:w-56">
         {renderActions(cat)}
       </TableCell>
     </TableRow>
@@ -276,7 +287,7 @@ function HeadRow() {
         <TableHead className="pl-2">{t('categories.cols.name')}</TableHead>
         <TableHead className="hidden w-36 lg:table-cell">{t('categories.cols.brand')}</TableHead>
         <TableHead className="w-28">{t('categories.cols.status')}</TableHead>
-        <TableHead className="w-20 lg:w-48" />
+        <TableHead className="w-20 lg:w-56" />
       </TableRow>
     </TableHeader>
   );
@@ -424,13 +435,21 @@ export function CategoryTree({
     rails: boolean[];
     isLast: boolean;
     hasChildren: boolean;
+    childCount: number;
   }
   const rows: Flat[] = [];
   const walk = (nodes: Node[], depth: number, rails: boolean[]): void => {
     nodes.forEach((node, i) => {
       const isLast = i === nodes.length - 1;
       const hasChildren = node.children.length > 0;
-      rows.push({ cat: node.cat, depth, rails, isLast, hasChildren });
+      rows.push({
+        cat: node.cat,
+        depth,
+        rails,
+        isLast,
+        hasChildren,
+        childCount: node.children.length,
+      });
       if (hasChildren && !collapsed.has(node.cat.id)) {
         walk(node.children, depth + 1, [...rails, !isLast]);
       }
@@ -442,7 +461,7 @@ export function CategoryTree({
     <Table className="table-fixed" scrollX={false}>
       <HeadRow />
       <TableBody>
-        {rows.map(({ cat, depth, rails, isLast, hasChildren }) => (
+        {rows.map(({ cat, depth, rails, isLast, hasChildren, childCount }) => (
           <CategoryRow
             key={cat.id}
             cat={cat}
@@ -452,6 +471,7 @@ export function CategoryTree({
               rails,
               isLast,
               hasChildren,
+              childCount,
               collapsed: collapsed.has(cat.id),
               onToggle: () => onToggleCollapsed(cat.id),
             }}

@@ -16,7 +16,10 @@ import { CategoryCards, CategoryFlatTable, CategoryTree, type CategoryMove } fro
 import { CategoryFormModal } from './category-form-modal';
 import { deleteCategory, listCategories, reorderCategories, restoreCategory } from './api';
 
-type ModalState = { mode: 'create' } | { mode: 'edit'; category: Category } | null;
+type ModalState =
+  | { mode: 'create'; parentId?: string }
+  | { mode: 'edit'; category: Category }
+  | null;
 const STATUSES: CategoryListStatus[] = ['active', 'archived', 'all'];
 const COLLAPSE_KEY = 'sn_adm_cat_collapsed';
 
@@ -294,6 +297,15 @@ export function CategoryList() {
       </ActionButton>
     ) : (
       <span className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          title={t('categories.addChild')}
+          aria-label={t('categories.addChild')}
+          onClick={() => setModal({ mode: 'create', parentId: c.id })}
+          className="hidden size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 lg:grid"
+        >
+          <Plus className="size-4" aria-hidden />
+        </button>
         <ActionButton
           icon={Pencil}
           variant="ghost"
@@ -436,6 +448,9 @@ export function CategoryList() {
           }}
           mode={modal.mode}
           category={modal.mode === 'edit' ? modal.category : undefined}
+          {...(modal.mode === 'create' && modal.parentId
+            ? { initialParentId: modal.parentId }
+            : {})}
           allCategories={(items ?? []).filter((c) => c.archivedAt == null)}
           onSaved={onSaved}
           onDelete={(c) => void doDelete(c)}

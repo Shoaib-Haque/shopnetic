@@ -76,6 +76,7 @@ export function CategoryFormModal({
   onOpenChange,
   mode,
   category,
+  initialParentId,
   allCategories,
   onSaved,
   onDelete,
@@ -85,6 +86,8 @@ export function CategoryFormModal({
   onOpenChange: (open: boolean) => void;
   mode: 'create' | 'edit';
   category?: Category | undefined;
+  /** Create mode only — pre-select this parent (still editable). */
+  initialParentId?: string | undefined;
   allCategories: Category[];
   onSaved: (action: 'created' | 'updated', c: Category) => void;
   /** Edit mode only — close the modal, then run the list's delete / restore flow. */
@@ -163,9 +166,9 @@ export function CategoryFormModal({
         brandRequirement: category.brandRequirement,
       });
     } else {
-      reset(EMPTY);
+      reset({ ...EMPTY, parentId: initialParentId ?? '' });
     }
-  }, [open, mode, category, reset]);
+  }, [open, mode, category, initialParentId, reset]);
 
   // Create form: keep the slug in sync with the name until the user edits it.
   const nameEn = watch('nameEn');

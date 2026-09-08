@@ -15,7 +15,8 @@
         "expand": "Expand",
         "collapse": "Collapse",
         "expandAll": "Expand all",
-        "collapseAll": "Collapse all"
+        "collapseAll": "Collapse all",
+        "hiddenCount": "{count, plural, one {# sub-category} other {# sub-categories}}"
       },
       "filter": { "active": "Active", "archived": "Archived", "all": "All" },
       "status": {
@@ -29,6 +30,7 @@
         "none": "no brand"
       },
       "edit": "Edit",
+      "addChild": "Add sub-category",
       "delete": "Delete",
       "restore": "Restore",
       "undo": "Undo",
