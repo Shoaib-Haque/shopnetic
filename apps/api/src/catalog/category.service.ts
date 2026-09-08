@@ -121,6 +121,14 @@ export class CategoryService {
   ): Promise<Category> {
     const current = await this.rowOrThrow(id);
 
+    // optimistic concurrency: reject a save built on a stale view of the row
+    if (
+      input.expectedUpdatedAt !== undefined &&
+      input.expectedUpdatedAt !== current.updated_at.toISOString()
+    ) {
+      throw new AppError('CONFLICT', 409, { detail: 'category changed since it was loaded' });
+    }
+
     if (input.slug !== undefined && input.slug !== current.slug) {
       await this.assertSlugFree(input.slug, [id]);
     }

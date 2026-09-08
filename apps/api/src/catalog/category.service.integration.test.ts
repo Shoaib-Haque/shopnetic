@@ -237,4 +237,30 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     const types = rows.map((r) => r.eventType).sort();
     expect(types).toEqual(['category.created', 'category.updated']);
   });
+
+  it('update rejects a stale expectedUpdatedAt (optimistic concurrency)', async () => {
+    const cat = await svc.create({ slug: s('cc'), name: name('CC') }, actor, {});
+
+    // matching token → succeeds, and bumps updatedAt
+    const ok = await svc.update(
+      cat.id,
+      { name: name('CC2'), expectedUpdatedAt: cat.updatedAt },
+      actor,
+      {},
+    );
+    expect(ok.updatedAt).not.toBe(cat.updatedAt);
+
+    // the original token is now stale → 409
+    await expect(
+      svc.update(cat.id, { name: name('CC3'), expectedUpdatedAt: cat.updatedAt }, actor, {}),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // the fresh token works again; omitting it skips the check
+    await expect(
+      svc.update(cat.id, { name: name('CC4'), expectedUpdatedAt: ok.updatedAt }, actor, {}),
+    ).resolves.toMatchObject({ name: { en: s('CC4') } });
+    await expect(svc.update(cat.id, { position: 2 }, actor, {})).resolves.toMatchObject({
+      position: 2,
+    });
+  });
 });

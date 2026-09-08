@@ -82,6 +82,7 @@ export function CategoryFormModal({
   onSaved,
   onDelete,
   onRestore,
+  onConflict,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -96,6 +97,9 @@ export function CategoryFormModal({
   /** Edit mode only — close the modal, then run the list's delete / restore flow. */
   onDelete?: (c: Category) => void;
   onRestore?: (c: Category) => void;
+  /** Edit mode — the save hit a 409 (row changed since it was opened). The list
+   *  owner should close this modal, refetch, and tell the user to reopen. */
+  onConflict?: () => void;
 }) {
   const t = useTranslations('catalog');
   const [formError, setFormError] = useState<string | null>(null);
@@ -217,12 +221,18 @@ export function CategoryFormModal({
           ...(d.isActive ? { isActive: v.isActive } : {}),
           ...(d.brandRequirement ? { brandRequirement: v.brandRequirement } : {}),
           ...(d.parentId ? { parentId: v.parentId || null } : {}),
+          // guard against clobbering another admin's edit made since this form opened
+          expectedUpdatedAt: category.updatedAt,
         });
         onSaved('updated', c);
       }
       onOpenChange(false);
     } catch (e) {
       const code = e instanceof AdminApiError ? e.code : undefined;
+      if (code === 'CONFLICT' && onConflict) {
+        onConflict(); // list owner closes this modal, refetches, and notifies
+        return;
+      }
       const field = code ? FIELD_FOR_CODE[code] : undefined;
       if (field) {
         setError(field, { type: 'server', message: catalogErrorKey(code) }, { shouldFocus: true });

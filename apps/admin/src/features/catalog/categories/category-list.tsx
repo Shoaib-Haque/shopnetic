@@ -572,6 +572,11 @@ export function CategoryList() {
           onSaved={onSaved}
           onDelete={(c) => void doDelete(c)}
           onRestore={setRestoreTarget}
+          onConflict={() => {
+            setModal(null);
+            notify.error(t('categories.editConflict'), 5000);
+            load();
+          }}
         />
       )}
 

@@ -46,7 +46,16 @@ export const updateCategoryRequestSchema = z
     isActive: z.boolean(),
     brandRequirement: categoryBrandRequirementSchema,
   })
-  .partial();
+  .partial()
+  .extend({
+    /**
+     * Optimistic-concurrency guard: the `updatedAt` the client last read for
+     * this row. If it no longer matches the stored value the update is rejected
+     * with `409 CONFLICT`, so a stale edit form can't silently overwrite a
+     * newer change. Omit to skip the check.
+     */
+    expectedUpdatedAt: z.string().optional(),
+  });
 export type UpdateCategoryRequest = z.infer<typeof updateCategoryRequestSchema>;
 
 export const moveCategoryRequestSchema = z.object({
