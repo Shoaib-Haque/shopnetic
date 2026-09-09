@@ -923,3 +923,9 @@ compose file.
   pass — Active/Archived/All tabs were leaving stale rows frozen during the
   fetch. Added a `<Skeleton>` primitive (`@shopnetic/ui`). `plan/28` section 10
   now covers back-office loading states end to end.
+- 2026-09-09 — Added `DEV_FAULT_STATUS` (+ `DEV_FAULT_ROUTES`, `DEV_FAULT_BODY`,
+  `x-debug-fault` header) — dev-only synthetic error responses for walking the
+  frontend error-state matrix (F5), same R4-style safeguards as the other
+  `DEV_*` flags. Runs after the delay middleware so slow-then-fail composes.
+  Feeds an error-state pass over the admin surfaces (list/tab/detail load,
+  add/edit, delete/restore/undo).

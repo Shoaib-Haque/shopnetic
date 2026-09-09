@@ -4,9 +4,16 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { createLogger } from '@shopnetic/observability';
 import { AppModule } from './app.module.js';
-import { authRelaxed, loadApiEnv, rateLimitDisabled, responseDelayActive } from './config/env.js';
+import {
+  authRelaxed,
+  faultInjectActive,
+  loadApiEnv,
+  rateLimitDisabled,
+  responseDelayActive,
+} from './config/env.js';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { devResponseDelay } from './common/dev-response-delay.middleware.js';
+import { devFaultInject } from './common/dev-fault-inject.middleware.js';
 
 const log = createLogger({ service: 'api' });
 
@@ -24,14 +31,26 @@ async function bootstrap(): Promise<void> {
       'DEV_RESPONSE_DELAY_MS is ON — matching responses are artificially delayed',
     );
   }
+  if (faultInjectActive(env)) {
+    log.warn(
+      {
+        status: env.DEV_FAULT_STATUS,
+        routes: env.DEV_FAULT_ROUTES || '*',
+        body: env.DEV_FAULT_BODY,
+      },
+      'DEV_FAULT_STATUS is ON — matching requests get a synthetic error response',
+    );
+  }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   app.set('trust proxy', 1);
   app.use(cookieParser());
-  // Wired only in development — the x-debug-delay header override has no
-  // effect at all outside this branch, even if a client sends it elsewhere.
+  // Wired only in development — the x-debug-delay / x-debug-fault header
+  // overrides have no effect at all outside this branch, even if a client
+  // sends them elsewhere. Delay runs first so a slow-then-fail composes.
   if (env.NODE_ENV === 'development') {
     app.use(devResponseDelay(env));
+    app.use(devFaultInject(env));
   }
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();

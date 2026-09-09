@@ -10,7 +10,7 @@ import type { Request, Response } from 'express';
 import type { ApiError, ErrorCode } from '@shopnetic/contracts';
 import { AppError } from './app-error.js';
 
-const ERROR_BASE = 'https://errors.shopnetic.com/';
+export const ERROR_BASE = 'https://errors.shopnetic.com/';
 
 /**
  * Turns every thrown error into the RFC-9457 envelope (plan/08 section 4). `AppError`
@@ -86,7 +86,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 }
 
-function codeForStatus(status: number): ErrorCode {
+export function codeForStatus(status: number): ErrorCode {
   switch (status) {
     case 400:
       return 'VALIDATION_ERROR';
@@ -107,7 +107,7 @@ function codeForStatus(status: number): ErrorCode {
   }
 }
 
-function titleFor(status: number): string {
+export function titleFor(status: number): string {
   const map: Record<number, string> = {
     400: 'Bad Request',
     401: 'Unauthorized',

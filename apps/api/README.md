@@ -156,6 +156,19 @@ header — the header only works when `NODE_ENV=development`, same as the flag
 itself. Rejected at boot in production; no wiring at all outside `development`
 (so it's inert under `NODE_ENV=test` too).
 
+`DEV_FAULT_STATUS=<code>` (development only) short-circuits matching requests
+with a synthetic error (`400`/`401`/`403`/`404`/`409`/`422`/`429`/`500`/`502`/
+`503` — the statuses the frontend branches on) instead of handling them, so
+every error state can be exercised on demand. `DEV_FAULT_ROUTES` scopes it
+(same syntax as the delay flag); `DEV_FAULT_BODY` picks the body shape —
+`envelope` (normal RFC-9457 error), `malformed` (broken JSON), or `empty`.
+Override per request with `x-debug-fault: <code>`, or `x-debug-fault: off` to
+force a real response. Runs _after_ the delay middleware, so
+`DEV_RESPONSE_DELAY_MS` + a fault gives you slow-then-fail. Same safeguards:
+rejected at boot in production, no wiring outside `development`. Things it
+can't fake — a dead API (stop the process → BFF returns `502`), the browser
+being offline (DevTools → Network → Offline), a hung socket (`DEV_RESPONSE_DELAY_MS=60000`).
+
 ## Not yet
 
 Step-up re-auth for sensitive staff actions. Outbox writes + a dispatcher.

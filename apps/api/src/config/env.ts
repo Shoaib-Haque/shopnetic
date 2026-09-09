@@ -69,6 +69,17 @@ const envSchema = z.object({
   // DEV ONLY — comma-separated path prefixes DEV_RESPONSE_DELAY_MS (and the
   // header override) apply to, e.g. "/admin/v1/categories". Empty = every request.
   DEV_RESPONSE_DELAY_ROUTES: z.string().default(''),
+  // DEV ONLY — return a synthetic error for matching requests instead of
+  // handling them, to check every frontend error state. 0 = off. A per-request
+  // `x-debug-fault: <status>` header overrides this (`off` forces a real
+  // response). Never active in `test`; a boot check rejects it in `production`.
+  DEV_FAULT_STATUS: z.coerce.number().int().min(0).max(599).default(0),
+  // DEV ONLY — comma-separated path prefixes DEV_FAULT_STATUS (and the header
+  // override) apply to, e.g. "/admin/v1/categories". Empty = every request.
+  DEV_FAULT_ROUTES: z.string().default(''),
+  // DEV ONLY — the injected body shape: a normal RFC-9457 error envelope,
+  // broken JSON, or an empty body (exercises the client's non-JSON path).
+  DEV_FAULT_BODY: z.enum(['envelope', 'malformed', 'empty']).default('envelope'),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -92,6 +103,9 @@ export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
   if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_RESPONSE_DELAY_MS > 0) {
     throw new Error('DEV_RESPONSE_DELAY_MS must not be set in production');
   }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_FAULT_STATUS > 0) {
+    throw new Error('DEV_FAULT_STATUS must not be set in production');
+  }
   return parsed.data;
 }
 
@@ -112,4 +126,9 @@ export function responseDelayActive(
   env: Pick<ApiEnv, 'NODE_ENV' | 'DEV_RESPONSE_DELAY_MS'>,
 ): boolean {
   return env.NODE_ENV === 'development' && env.DEV_RESPONSE_DELAY_MS > 0;
+}
+
+/** True only in `development` with a default fault status configured. */
+export function faultInjectActive(env: Pick<ApiEnv, 'NODE_ENV' | 'DEV_FAULT_STATUS'>): boolean {
+  return env.NODE_ENV === 'development' && env.DEV_FAULT_STATUS > 0;
 }
