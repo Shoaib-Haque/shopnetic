@@ -21,6 +21,26 @@ interface Options {
   signal?: AbortSignal;
 }
 
+/**
+ * The staff session is dead on the backend (refresh failed / reuse detected)
+ * but this tab still has the old shell mounted with nothing to re-render it —
+ * only a fresh page load re-runs the server-side staff gate. Derive the login
+ * URL from the *current* URL rather than an env constant: `ADMIN_BASE_PATH` is
+ * meant to be rotatable per environment, and a non-`NEXT_PUBLIC_` value isn't
+ * reliably inlined into the client bundle, so reading it back out of the
+ * address bar (which the user is already looking at) is the robust source.
+ * `/en/<basePath>/...` → redirect to `/en/<basePath>/login?next=<here>`.
+ */
+function redirectToLogin(): void {
+  const { pathname, search } = window.location;
+  const [, locale, basePath] = pathname.split('/');
+  if (!locale || !basePath) return;
+  const root = `/${locale}/${basePath}`;
+  if (pathname.startsWith(`${root}/login`)) return; // already there — avoid a loop
+  const next = encodeURIComponent(pathname + search);
+  window.location.assign(`${root}/login?next=${next}`);
+}
+
 export async function adminApi<T>(path: string, opts: Options = {}): Promise<T> {
   const method = opts.method ?? 'GET';
   const init: RequestInit = {
@@ -50,6 +70,10 @@ export async function adminApi<T>(path: string, opts: Options = {}): Promise<T> 
     const code =
       (payload as { error?: { code?: string } } | null)?.error?.code ??
       (res.status === 401 ? 'UNAUTHENTICATED' : 'INTERNAL');
+    // the backend session is gone (not just this one call failing) — the shell
+    // is still showing as signed in with nothing left to fetch, so send the
+    // user to sign in again instead of leaving a dead page up.
+    if (code === 'UNAUTHENTICATED') redirectToLogin();
     throw new AdminApiError(code, res.status);
   }
   return (payload as { data: T }).data;

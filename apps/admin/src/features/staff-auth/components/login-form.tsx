@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,7 +21,11 @@ type Step =
 export function StaffLoginForm({ locale, basePath }: { locale: string; basePath: string }) {
   const t = useTranslations('staff');
   const router = useRouter();
+  const searchParams = useSearchParams();
   const dashboard = `/${locale}/${basePath}`;
+  // only follow `next` back into this same admin root — never off-app
+  const rawNext = searchParams.get('next');
+  const destination = rawNext && rawNext.startsWith(`${dashboard}/`) ? rawNext : dashboard;
 
   const [step, setStep] = useState<Step>({ name: 'password' });
   const [creds, setCreds] = useState<Credentials>({ email: '', password: '' });
@@ -63,7 +67,7 @@ export function StaffLoginForm({ locale, basePath }: { locale: string; basePath:
 
     // Real session (BFF returns { data: { user } } and sets the cookie).
     if (res.ok && body.data?.user) {
-      router.replace(dashboard);
+      router.replace(destination);
       router.refresh();
       return;
     }
@@ -103,7 +107,7 @@ export function StaffLoginForm({ locale, basePath }: { locale: string; basePath:
         <p className="text-xs text-muted-foreground">{t('recovery.warning')}</p>
         <Button
           onClick={() => {
-            router.replace(dashboard);
+            router.replace(destination);
             router.refresh();
           }}
         >

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { ADMIN_BASE_PATH } from '@/config/site';
@@ -19,7 +20,10 @@ export default async function AdminLoginPage({ params }: Props) {
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 px-4">
       <h1 className="text-xl font-semibold">{t('login.title')}</h1>
-      <StaffLoginForm locale={locale} basePath={ADMIN_BASE_PATH} />
+      {/* useSearchParams() (for `?next=`) needs a Suspense boundary */}
+      <Suspense fallback={null}>
+        <StaffLoginForm locale={locale} basePath={ADMIN_BASE_PATH} />
+      </Suspense>
     </main>
   );
 }
