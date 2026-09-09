@@ -181,7 +181,16 @@ export function CategoryList() {
       .map((r) => r.c);
   }, [items, tokens]);
 
-  const labelOf = (c: Category | null | undefined): string => (c ? (c.name['en'] ?? c.slug) : '');
+  // Toasts and confirm-dialog copy interpolate this name into a sentence —
+  // an unbounded name (FX's fixtures go past 200 chars) wraps a *fixed-width*
+  // dialog into a wall of text (tmp/Restore.png). The full name is always one
+  // hover/click away (the row's title, the Edit form), so cap what a message
+  // embeds; a single ellipsis reads better than the dialog stretching tall.
+  const MESSAGE_NAME_MAX = 60;
+  const clipName = (s: string): string =>
+    s.length > MESSAGE_NAME_MAX ? `${s.slice(0, MESSAGE_NAME_MAX - 1)}…` : s;
+  const labelOf = (c: Category | null | undefined): string =>
+    c ? clipName(c.name['en'] ?? c.slug) : '';
   const nameOfId = (id: string | null): string => {
     if (!id) return t('categories.form.parentNone');
     return labelOf((items ?? []).find((x) => x.id === id));
@@ -475,15 +484,18 @@ export function CategoryList() {
         </div>
 
         {matches === null && status === 'active' && parentIds.size > 0 && (
-          <button
-            type="button"
+          // only meaningful for the tree, which is md+ only (<md renders the
+          // flat CategoryCards list) — hidden below md, where it would do nothing
+          <ActionButton
+            variant="outline"
+            size="sm"
+            className="hidden md:inline-flex"
             onClick={() => setAllCollapsed(collapsed.size === 0)}
-            className="text-sm text-muted-foreground hover:text-foreground"
           >
             {collapsed.size === 0
               ? t('categories.tree.collapseAll')
               : t('categories.tree.expandAll')}
-          </button>
+          </ActionButton>
         )}
       </div>
 
