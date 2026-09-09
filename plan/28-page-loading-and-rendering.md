@@ -127,6 +127,54 @@ Hybrid pagination — SEO-safe first, then progressive:
 - Lighthouse-CI gate on LCP/INP/CLS per template; a PR that regresses a template
   fails.
 
+## 10. Back-office (admin / seller) list & tree pages
+
+Different constraints from the storefront: no SEO, no anonymous traffic, data is
+`no-store` (`14` section 2), and the surfaces are list/tree/detail CRUD, not
+content pages. The rules:
+
+- **First load → skeleton shaped like the rows** (not a spinner, not a blank
+  panel), `CODING-RULES.md` section E4. The skeleton lives with the feature
+  (`CategoryListSkeleton`) and is built from the shared `<Skeleton>` primitive
+  (`@shopnetic/ui`) — a pulsing token-coloured block.
+- **Filter / tab / segment change is a new first load.** Switching a list's
+  Active/Archived/All tabs (or any control that swaps the dataset) clears the
+  old rows and shows the skeleton again. Leaving the previous selection's rows
+  frozen on screen while the new set loads reads as "nothing happened" or, worse,
+  as wrong data under the new label. Implemented as a `useEffect` keyed on the
+  filter value alone.
+- **Post-mutation refresh keeps the rows.** After a create / update / delete /
+  reorder, the list re-fetches in place — no skeleton flash. This is a
+  same-dataset background refresh, the one case section E4 says *not* to blank.
+  The distinction is the effect key: filter-change resets, `resync()` does not.
+- **In-place actions → spinner on the control** (`Button` `loading` prop), never
+  a page-level skeleton. Save, delete, restore, undo.
+- **Client-side search shows no loading state.** Where a list filters over an
+  already-loaded dataset (Categories search ranks in memory), typing hits no
+  network — no spinner, no skeleton, results update on the debounce.
+- **Optimistic mutations roll back visibly** (`CODING-RULES.md` section E2):
+  drag-reorder applies to local state on drop, a failed request restores the
+  pre-drop snapshot + an error toast; a second interaction during an in-flight
+  request is queued (latest wins), not dropped.
+- **Undo toasts follow the one-at-a-time convention** (`CODING-RULES.md`
+  section G9): a second action's toast replaces the first still on screen. Rapid
+  repeat actions (double drag before reading the first toast) therefore lose the
+  earlier undo — accepted; a toast queue is not worth the complexity for that
+  window.
+
+**Verifying these:** the dev-only `DEV_RESPONSE_DELAY_MS` flag on the API
+(`apps/api/README.md` "Dev shortcuts"; env + `x-debug-delay` header +
+`DEV_RESPONSE_DELAY_ROUTES` glob) injects artificial latency so every
+waiting/loading/optimistic state is actually observable on a fast local setup.
+DevTools network throttling stays the tool for asset / cold-page loads. The
+Categories page had a full pass on 2026-09-09; the project-wide sweep of the
+other back-office surfaces is still pending.
+
 ## Changelog
 
 - 2026-08-31 — Initial draft.
+- 2026-09-09 — Added section 10 (back-office list/tree loading states) from the
+  Categories time-related UI pass: skeleton on first load *and* on filter/tab
+  change, in-place refresh keeps rows, client-search has no loading state,
+  optimistic rollback + one-at-a-time toasts. `DEV_RESPONSE_DELAY_MS` is how
+  these are verified.

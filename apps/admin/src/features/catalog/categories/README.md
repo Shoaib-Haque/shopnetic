@@ -82,6 +82,14 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
 - **Archived = view-only.** `category.archivedAt != null` opens the modal in
   `readOnly` mode (Close, no Save, no discard prompt); the API rejects an update
   to a soft-deleted row anyway.
+- **Loading states** (CODING-RULES E4, plan/28 section 10). First load and every
+  tab switch (Active/Archived/All) show `CategoryListSkeleton` — a row-shaped
+  `<Skeleton>` block, not a spinner or a bare line. A post-mutation `resync()`
+  re-fetches with the current rows still visible (no skeleton flash) — the
+  skeleton reset is keyed on `status`, not on the `load` callback. In-place
+  actions (save / delete / restore / undo) spin the control, never the list.
+  Search filters the loaded set in memory, so it hits no network and shows no
+  loading state. Verified under `DEV_RESPONSE_DELAY_MS` on 2026-09-09.
 
 ---
 
@@ -128,6 +136,13 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
     cleaned value, so a paste of `"xzcx zxzxcv"` can't sit in the slug field
     until submit. Slug live-slugifies (blur trims a dangling `-`); the name
     collapses whitespace / pasted newlines on blur. CODING-RULES H4.
+11. **Skeleton on first load AND on filter change** (`CategoryListSkeleton` +
+    `<Skeleton>`): `items === null` renders the row-shaped skeleton; a
+    `useEffect` keyed on the filter value (`status`) sets `items` back to `null`
+    on a tab switch so the skeleton returns for that load. The key is
+    deliberately the filter value, not the `load` callback — a post-mutation
+    `resync()` re-fetches with the rows still on screen (no flash). CODING-RULES
+    E4, plan/28 section 10.
 
 ---
 
@@ -165,6 +180,8 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
 | 28  | Default OS scrollbar (thick, with up/down spinner arrows) on the page, modals, and table wrappers.                                                                                                                                                         | Global `scrollbar-width: thin` + `::-webkit-scrollbar*` rules in `tokens.css` (loaded once per app) — 6px, token-colored thumb, no buttons, theme-aware. Firefox's `scrollbar-width: thin` is a coarse preset (no pixel control), so it won't match 6px exactly there. A native `<select>` popup is OS-rendered and can't be reached from CSS; that's a known gap. CODING-RULES G10.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 29  | "Collapse all" read as a plain text label (no border), and still showed on `<md`, where the tree is `CategoryCards` (a flat list it does nothing to).                                                                                                      | Swapped the bare `<button>` for `ActionButton variant="outline"` (a standalone text-only action needs a border to read as a control — CODING-RULES G10) and added `hidden md:inline-flex` — it's meaningless below the breakpoint where the tree itself doesn't render.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | 30  | A long category name made the Restore confirm dialog very tall (the name wrapped ~7 lines) even though the dialog's width was already fixed.                                                                                                               | `labelOf` now caps the name to 60 chars + `…` before it's interpolated into any confirm/toast message — the width was never the problem, the un-truncated string was. The full name is still one hover/click away (row `title=`, Edit form). Also nudged every `Modal` a little above true vertical center (`top-[42%]`) system-wide. CODING-RULES G7, G10.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 31  | First list load showed a plain "Loading…" line — on a fast local API it flashed by too fast to judge; on a real connection it is a bare text jump.                                                                                                         | Compared plain text vs a tree-shaped skeleton under injected latency (`DEV_RESPONSE_DELAY_MS`). Skeleton won for a list/tree surface. Added a `<Skeleton>` primitive (`@shopnetic/ui`, pulsing token block) + a local `CategoryListSkeleton` (indented rows echoing a real forest shape). Dead `categories.loading` i18n key removed. CODING-RULES E4, plan/28 section 10.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 32  | Switching the Active / Archived / All tabs left the previous tab rows frozen on screen with no feedback for the whole fetch — looked like the click did nothing, or like wrong data under the new label.                                                   | `load()` never cleared `items` on a status change. Added a `useEffect` keyed on `status` alone that resets `items` to `null` → the skeleton shows again for the tab load. Deliberately _not_ keyed on `load` — a post-mutation `resync()` must keep the current rows visible (H7), only a dataset swap resets. CODING-RULES E4, plan/28 section 10.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ---
 
@@ -217,12 +234,17 @@ shipped 2026-09-07/09 — see corner-case log rows 12–23.
   the full fix.
 - **No virtualization** — `buildForest` + a full re-render on every change is
   fine to ~1000s of rows, not beyond.
-- **Time-related UI pass** (project-wide, _after_ feature work) — a dedicated
-  sweep of every waiting/loading/optimistic state (list fetch, create/update
-  spinners, drag reconcile, reorder queue, 409 flow) driven by a dev-only
-  latency-injection flag on the API: `DEV_RESPONSE_DELAY_MS` env +
-  `x-debug-delay: <ms>` header + route glob, same shape as `DEV_AUTH_RELAXED`.
-  DevTools network throttling stays the tool for asset / cold-load states.
+- **Time-related UI pass** — the `DEV_RESPONSE_DELAY_MS` flag is built
+  (`apps/api`, `plan/28` section 10) and **Categories had its pass on
+  2026-09-09**: list first-load skeleton (row 31), tab-switch reset-to-skeleton
+  (row 32), and confirmed-fine-as-is — Save spinner, optimistic drag + rollback,
+  reorder queue, rapid-drop toast collision, delete/restore/undo timing, and
+  client-side search (no network, no loading state). **Not** re-tested under
+  latency: the 409 edit-conflict flow — it needs a two-tab concurrent-edit repro
+  and latency doesn't change the path, only adds a wait before the 5 s toast.
+  The **project-wide sweep** of the other back-office surfaces (once they exist)
+  is still pending. DevTools network throttling stays the tool for asset /
+  cold-load states.
 
 ---
 

@@ -209,6 +209,14 @@ Route/section first load → skeleton matching final layout (no CLS).
 User-triggered action → spinner on the control. Don't blank the whole screen for
 a background refetch.
 
+Changing a **filter, tab, or segment** that swaps the dataset (a list's
+Active/Archived/All tabs, a different date range) is a *new first load* — clear
+the old rows and show the skeleton, don't leave the previous selection's rows
+frozen on screen with no feedback while the new set loads. Only a *same-dataset*
+background refresh (a post-mutation resync, a poll) keeps the current rows
+visible. Verify the difference under real latency with `DEV_RESPONSE_DELAY_MS`
+(section R4).
+
 ### E5. Empty, error, and partial states are required
 Every list/section ships all four: loading, empty (with a helpful next step),
 error (with retry), and partial (some data failed — show the rest + a notice).
@@ -909,3 +917,9 @@ compose file.
   `.value` goes `""` the instant the typed text isn't a fully-valid number, so
   the handler can't see (or fix) what's on screen — block the key itself,
   sanitize `onPaste` separately. Global scrollbar width taken down to 6px.
+- 2026-09-09 — E4 clarified: switching a list's filter/tab/segment (dataset
+  swap) is a new first load → clear rows, show the skeleton; only a same-dataset
+  background refresh keeps rows on screen. From the Categories time-related UI
+  pass — Active/Archived/All tabs were leaving stale rows frozen during the
+  fetch. Added a `<Skeleton>` primitive (`@shopnetic/ui`). `plan/28` section 10
+  now covers back-office loading states end to end.
