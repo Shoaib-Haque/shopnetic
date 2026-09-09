@@ -67,7 +67,12 @@ export function FormModal({
             <ModalTitle>{title}</ModalTitle>
             {description !== undefined && <ModalDescription>{description}</ModalDescription>}
           </ModalHeader>
-          <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          {/* noValidate: native constraint validation (e.g. a number input's
+              `min`) blocks submit and shows its own bubble on just the first
+              offending field, before RHF/zod ever runs — so other empty/invalid
+              fields go unreported and focus lands wherever the browser picked.
+              RHF's zodResolver is the only source of validation UI here. */}
+          <form onSubmit={onSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
             <ModalBody className="flex flex-col gap-4">{children}</ModalBody>
             <ModalFooter className={secondaryAction ? 'justify-between' : undefined}>
               {secondaryAction ?? null}

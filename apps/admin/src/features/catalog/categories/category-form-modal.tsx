@@ -270,8 +270,17 @@ export function CategoryFormModal({
   // live-slugified (blur trims a dangling "-"), the name has whitespace / pasted
   // newlines collapsed on blur. `e.currentTarget.value` is rewritten before RHF
   // reads the event, so validation, dirty tracking and the visible value agree.
-  const slugField = register('slug');
+  //
+  // Declared in the same order the fields appear on screen (name, slug,
+  // position) — RHF's default "focus the first invalid field" walks fields in
+  // *registration* order, not JSX order, so a mismatch here silently sends
+  // focus to the wrong field on a failed submit (CODING-RULES H4).
   const nameField = register('nameEn');
+  const slugField = register('slug');
+  // same principle for a non-negative number field: `-` can't ever be valid
+  // here, so it's blocked/stripped the instant it's typed or pasted rather
+  // than waiting for submit to reject it (CODING-RULES H4).
+  const positionField = register('position');
 
   const archived = category?.archivedAt != null;
   // an archived category is view-only in the modal — you restore it, you don't
@@ -395,7 +404,33 @@ export function CategoryFormModal({
           max={100_000}
           disabled={readOnly}
           invalid={Boolean(errors.position)}
-          {...register('position')}
+          {...positionField}
+          // `type="number"`'s DOM `.value` goes to "" the instant what's typed
+          // isn't a fully-valid number (e.g. mid-way through "--1"), so an
+          // onChange-only strip can't see (or fix) what's on screen at that
+          // point — block the key itself instead, so a "-" is never entered
+          // in the first place. onPaste covers pasted text the same way
+          // (selectionStart/End aren't readable on a number input, so this
+          // replaces the whole value rather than splicing at the cursor).
+          onKeyDown={(e) => {
+            if (e.key === '-') e.preventDefault();
+          }}
+          onPaste={(e) => {
+            // always block the default paste — a clipboard string with zero
+            // digits ("--", "--p") must not fall through to inserting itself
+            // raw just because there was nothing to sanitize it *into*.
+            e.preventDefault();
+            const digits = e.clipboardData.getData('text').replace(/[^0-9]/g, '');
+            if (!digits) return; // nothing valid pasted — leave the field as-is
+            e.currentTarget.value = digits;
+            void positionField.onChange(e);
+          }}
+          onChange={(e) => {
+            // belt-and-suspenders for anything that lands outside a keystroke
+            // or paste (drag-drop text, autofill, …)
+            e.currentTarget.value = e.currentTarget.value.replace(/-/g, '');
+            void positionField.onChange(e);
+          }}
         />
       </Field>
 
