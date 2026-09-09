@@ -48,7 +48,12 @@ export const ModalContent = forwardRef<ElementRef<typeof RDialog.Content>, Modal
         <RDialog.Content
           ref={ref}
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2',
+            // sits a little above true vertical center (readers' eyes land
+            // there first, and it keeps the modal clear of a spot the
+            // on-screen keyboard usually covers) — `-translate-y-1/2` still
+            // centers *the modal itself* around that point, so tall content
+            // grows evenly and short content doesn't look off-balance.
+            'fixed left-1/2 top-[42%] z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2',
             '-translate-y-1/2 flex-col rounded-lg border border-border bg-background shadow-xl',
             'focus:outline-none',
             SIZES[size],
