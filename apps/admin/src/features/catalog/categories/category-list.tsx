@@ -98,8 +98,11 @@ export function CategoryList() {
       mounted.current = false;
     };
   }, []);
-  // one reorder request at a time — back-to-back drops would race on the server
+  // one reorder request at a time — back-to-back drops would race on the server.
+  // A drop that lands while one is in flight is remembered (latest wins) and run
+  // once the in-flight one settles, so it isn't silently swallowed.
   const reordering = useRef(false);
+  const pendingMove = useRef<CategoryMove | null>(null);
 
   // "/" jumps to search (unless the user is already typing somewhere)
   const searchRef = useRef<HTMLInputElement>(null);
@@ -309,11 +312,19 @@ export function CategoryList() {
   };
 
   async function applyMove(m: CategoryMove): Promise<void> {
-    if (reordering.current) return; // a reorder is already in flight
+    if (reordering.current) {
+      // a reorder is in flight — stack this drop onto the optimistic tree and
+      // remember it (latest wins); the `finally` below runs it next.
+      pendingMove.current = m;
+      setItems((cur) => (cur ? applyMoveLocally(cur, m) : cur));
+      flash(m.movedId);
+      return;
+    }
     reordering.current = true;
     const snapshot = items;
     if (snapshot) setItems(applyMoveLocally(snapshot, m)); // show the move now
     flash(m.movedId);
+    let ok = true;
     try {
       await reorderCategories({ parentId: m.parentId, orderedIds: m.orderedIds });
       notify.undo(
@@ -345,11 +356,17 @@ export function CategoryList() {
         },
       );
     } catch (e) {
+      ok = false;
       if (snapshot && mounted.current) setItems(snapshot); // snap back
       reorderErrorToast(e);
     } finally {
       reordering.current = false;
+      const next = pendingMove.current;
+      pendingMove.current = null;
       load();
+      // run the queued drop only if this one landed — a dependent move built on
+      // a reorder that failed would apply against the wrong tree.
+      if (ok && next && mounted.current) void applyMove(next);
     }
   }
 
