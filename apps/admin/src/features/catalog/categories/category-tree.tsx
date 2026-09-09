@@ -12,6 +12,7 @@ import {
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category } from '@shopnetic/contracts';
+import type { CategoryMove } from './reorder';
 import {
   cn,
   StatusBadge,
@@ -325,19 +326,6 @@ function HeadRow() {
       </TableRow>
     </TableHeader>
   );
-}
-
-/** What a completed drag hands back — enough to apply it, confirm it, and undo it. */
-export interface CategoryMove {
-  /** new parent (root when null) and its full child order after the move */
-  parentId: string | null;
-  orderedIds: string[];
-  movedId: string;
-  fromParentId: string | null;
-  /** true when the drop changed the parent (structural — worth a confirm) */
-  reparents: boolean;
-  /** the child order of `fromParentId` *before* the move, for one-click undo */
-  undoOrderedIds: string[];
 }
 
 /**

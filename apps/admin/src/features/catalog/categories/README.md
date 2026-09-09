@@ -19,6 +19,7 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
 | `category-list.tsx`       | page container: fetch + status filter + search, drag→`applyMove` (optimistic + `applyMoveLocally`), delete→undo, 409-conflict recovery, flash + scroll-into-view, modal wiring, desktop/mobile switch |
 | `category-tree.tsx`       | `CategoryTree` (nested + drag + `edgeAutoScroll` + treegrid aria), `CategoryFlatTable` (search / archived), `CategoryCards` (mobile), `buildForest` (+ `orphan`), `TreeGuides`, `useAncestorPath`     |
 | `category-form-modal.tsx` | create / edit / view(archived) modal; combined resolver; slug auto-fill; `expectedUpdatedAt` on save; `restoreBlocked` / `onConflict`                                                                 |
+| `reorder.ts`              | `CategoryMove` type + `applyMoveLocally` (pure, idempotent optimistic-drag reducer) + `ltreeLabel`. Unit-tested in `reorder.test.ts`.                                                                 |
 | `../error-copy.ts`        | API error `code` → `catalog.errors.*` key                                                                                                                                                             |
 
 ---
@@ -97,10 +98,13 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
 6. **Row flash**: `flashId` state + self-clearing `flash(id)`; `sn-row-flash`
    (tokens.css) fades a brief tint on the row that just moved / restored so the
    eye finds it after the tree re-sorts.
-7. **Optimistic list mutation** (`applyMoveLocally` + `applyMove`): a pure
-   `(items, move) → items` function applies the change to local state on the
-   interaction; keep the pre-change array as `snapshot`, `setItems(snapshot)` on
-   failure, and let the `finally { load() }` refetch reconcile either way.
+7. **Optimistic list mutation** (`reorder.ts` `applyMoveLocally` + `applyMove`):
+   a **pure, idempotent** `(items, move) → items` reducer in its own file (no
+   `'use client'`, so it's unit-testable — `reorder.test.ts`) applies the change
+   to local state on the interaction; `applyMove` keeps the pre-change array as
+   `snapshot`, does `setItems(snapshot)` on failure, and lets the
+   `finally { load() }` refetch reconcile either way. Idempotency is what makes
+   the queued-drop re-apply (row 23) safe.
 8. **Auto-tooltip on collapsed labels** (`ActionButton`): a `matchMedia` hook
    detects when the viewport is below the `collapseLabel` breakpoint and sets
    `title` to the label text — a hover tooltip appears only while the button is
@@ -165,11 +169,12 @@ shipped 2026-09-07/09 — see corner-case log rows 12–23.
 
 **Still open**
 
-- **Optimistic-drag rollback coverage** — the snapshot restore isn't exercised on
-  every failure path (only `VALIDATION_ERROR` is manually verified). Add a test
-  that forces a 500 / network error mid-drag. The queued-drop path (row 23) is
-  likewise unit-untested — `applyMoveLocally` is pure and idempotent, so it's a
-  cheap one to add when the admin gets a test setup.
+- **Optimistic-drag rollback coverage** — `applyMoveLocally` is now unit-tested
+  (`reorder.test.ts`, 6 cases incl. subtree re-root, depth shift, idempotency for
+  the queued path). Still uncovered: the component-level `setItems(snapshot)`
+  restore and the `applyMove` orchestration (queue → re-invoke on success, drop
+  on failure) — those need an RTL / component harness (the deferred admin
+  test-harness slice). Only `VALIDATION_ERROR` rollback is manually verified.
 - **No bulk actions** — multi-select rows → archive / move many. Needs a
   selection model the CRUD kit doesn't have yet.
 - **Tree has no first-class keyboard reorder** — only via the Edit form (WCAG
