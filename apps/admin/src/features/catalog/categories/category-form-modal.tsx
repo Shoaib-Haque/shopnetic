@@ -5,7 +5,7 @@ import { useForm, type Path, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
-import type { Category } from '@shopnetic/contracts';
+import { isReservedSlug, type Category } from '@shopnetic/contracts';
 import { cn, Field, Input } from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -20,7 +20,8 @@ const formSchema = z.object({
     .trim()
     .min(1, 'categories.form.err.required')
     .max(80, 'categories.form.err.slugLong')
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'categories.form.err.slugFormat'),
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'categories.form.err.slugFormat')
+    .refine((s) => !isReservedSlug(s), 'categories.form.err.slugReserved'),
   nameEn: z
     .string()
     .trim()

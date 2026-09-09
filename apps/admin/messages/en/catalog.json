@@ -75,6 +75,7 @@
           "nameLong": "Keep the name to 200 characters or fewer.",
           "slugLong": "Keep the slug to 80 characters or fewer.",
           "slugFormat": "Lowercase letters, digits and single hyphens only.",
+          "slugReserved": "That word is reserved — pick a different slug.",
           "positionNumber": "Enter a whole number.",
           "positionRange": "Enter a number between 0 and 100000."
         }

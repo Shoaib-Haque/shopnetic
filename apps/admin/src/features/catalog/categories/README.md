@@ -145,6 +145,7 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
 | 21  | Toast family was inconsistent — `saved`/`undo` had a timer bar, `error`/`info` didn't. | One tone-driven `BarToast`; every `notify.*` gets the bar and the responsive width. `error`/`info` gained an `ms` arg. CODING-RULES G9. (`949c36f`)                                                                                                                                                              |
 | 22  | Row-hover "+ Add child" was easy to miss (appeared only on hover, far right).          | Fades + slides 4 px into place on hover / focus (150 ms) so the motion draws the eye; hidden at rest, `lg+` only, no layout shift. (`7b419ab`) Options A (faint-at-rest) and B (permanent in the cluster) were weighed and passed.                                                                               |
 | 23  | A drop during an in-flight `/reorder` was silently swallowed (was #6's trade-off).     | `pendingMove` ref holds the newest such drop (latest wins), stacked onto the optimistic tree + flashed for feedback; the in-flight call's `finally` runs it next. Skipped if the in-flight call **failed** — a move built on a failed reorder would apply against the wrong tree; `load()` shows real state.     |
+| 24  | A slug could be `login` / `cart` / `api` / `c` — shadowing a storefront route.         | `slugSchema` (contracts) `.refine`s against `RESERVED_SLUGS` / `isReservedSlug`, so every catalog entity's slug is checked both sides; the admin form mirrors it with `categories.form.err.slugReserved`. Exact match after lower-casing — `new-arrivals` is fine. plan/07 "Catalog naming / uniqueness".        |
 
 ---
 
@@ -178,8 +179,6 @@ shipped 2026-09-07/09 — see corner-case log rows 12–23.
   highlight or expand-to the matching row _in the tree_.
 - **No virtualization** — `buildForest` + a full re-render on every change is
   fine to ~1000s of rows, not beyond.
-- **Reserved-slug guard** — nothing stops a slug like `new` / `api` that could
-  shadow a route.
 - **Time-related UI pass** (project-wide, _after_ feature work) — a dedicated
   sweep of every waiting/loading/optimistic state (list fetch, create/update
   spinners, drag reconcile, reorder queue, 409 flow) driven by a dev-only

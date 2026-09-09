@@ -137,6 +137,11 @@ contract. Checks are **app-level** in the owning service for friendly errors;
 entities' DB-level `citext` / expression-unique indexes are still the later
 hardening (see `25` Part 2.2).
 
+`slugSchema` (contracts) also rejects a **reserved-slug** list — words that
+shadow (or will shadow) a storefront / admin route segment (`login`, `cart`,
+`api`, `c`, `p`, `new`, …) — via `.refine` / `isReservedSlug`, so it applies to
+every catalog entity's slug. Extend the list as storefront routes land.
+
 | Entity | Unique field | Scope |
 |--------|--------------|-------|
 | category | `name.en`, `slug` | global among live rows (DB-enforced) |

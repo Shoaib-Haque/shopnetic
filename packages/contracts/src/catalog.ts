@@ -11,13 +11,70 @@ export const localizedTextSchema = z
   });
 export type LocalizedText = z.infer<typeof localizedTextSchema>;
 
+/**
+ * Slugs we won't hand out to any catalog entity — they shadow (or will shadow)
+ * a storefront / admin route segment, or are structurally unsafe. Exact match
+ * only, after lower-casing: `new-arrivals` is fine, `new` is not. Extend as
+ * storefront routes are added.
+ */
+export const RESERVED_SLUGS = [
+  'admin',
+  'api',
+  'auth',
+  'login',
+  'logout',
+  'signin',
+  'signup',
+  'register',
+  'account',
+  'cart',
+  'checkout',
+  'order',
+  'orders',
+  'wishlist',
+  'search',
+  'settings',
+  'help',
+  'about',
+  'contact',
+  'terms',
+  'privacy',
+  'sitemap',
+  'robots',
+  'favicon',
+  'assets',
+  'static',
+  'public',
+  'c',
+  'p',
+  'b',
+  'category',
+  'categories',
+  'product',
+  'products',
+  'brand',
+  'brands',
+  'collection',
+  'collections',
+  'new',
+  'edit',
+  'create',
+  'delete',
+  'index',
+  'null',
+  'undefined',
+] as const;
+const RESERVED_SLUG_SET: ReadonlySet<string> = new Set(RESERVED_SLUGS);
+export const isReservedSlug = (s: string): boolean => RESERVED_SLUG_SET.has(s.trim().toLowerCase());
+
 export const slugSchema = z
   .string()
   .trim()
   .toLowerCase()
   .min(1)
   .max(80)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase letters, digits and single hyphens only');
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase letters, digits and single hyphens only')
+  .refine((s) => !RESERVED_SLUG_SET.has(s), 'that slug is reserved');
 
 export const categoryBrandRequirementSchema = z.enum(['required', 'optional', 'none']);
 export type CategoryBrandRequirement = z.infer<typeof categoryBrandRequirementSchema>;
