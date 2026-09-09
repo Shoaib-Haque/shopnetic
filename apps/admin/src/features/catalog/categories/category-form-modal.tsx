@@ -71,6 +71,26 @@ function slugify(s: string): string {
     .slice(0, 80);
 }
 
+/**
+ * `slugify` for a field being typed into — keeps a **trailing** hyphen so
+ * "foo-bar" stays typable one key at a time. Runs on every change / paste;
+ * `slugify` (which also trims the trailing `-`) runs on blur.
+ */
+function slugifyLive(s: string): string {
+  return s
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/['’`"]/g, '')
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, 80);
+}
+
+/** collapse whitespace runs (incl. pasted newlines / tabs) to single spaces. */
+const collapseWs = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
 export function CategoryFormModal({
   open,
   onOpenChange,
@@ -245,6 +265,13 @@ export function CategoryFormModal({
   const selectCls =
     'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm';
 
+  // Text fields sanitise typed *and* pasted input in place: the slug is
+  // live-slugified (blur trims a dangling "-"), the name has whitespace / pasted
+  // newlines collapsed on blur. `e.currentTarget.value` is rewritten before RHF
+  // reads the event, so validation, dirty tracking and the visible value agree.
+  const slugField = register('slug');
+  const nameField = register('nameEn');
+
   const archived = category?.archivedAt != null;
   // an archived category is view-only in the modal — you restore it, you don't
   // edit it (the API's `update` rejects a soft-deleted row anyway).
@@ -322,7 +349,12 @@ export function CategoryFormModal({
           maxLength={200}
           disabled={readOnly}
           invalid={Boolean(errors.nameEn)}
-          {...register('nameEn')}
+          {...nameField}
+          onBlur={(e) => {
+            e.currentTarget.value = collapseWs(e.currentTarget.value);
+            void nameField.onChange(e);
+            void nameField.onBlur(e);
+          }}
         />
       </Field>
 
@@ -337,7 +369,17 @@ export function CategoryFormModal({
           maxLength={80}
           disabled={readOnly}
           invalid={Boolean(errors.slug)}
-          {...register('slug', { onChange: () => setSlugTouched(true) })}
+          {...slugField}
+          onChange={(e) => {
+            e.currentTarget.value = slugifyLive(e.currentTarget.value);
+            void slugField.onChange(e);
+            setSlugTouched(true);
+          }}
+          onBlur={(e) => {
+            e.currentTarget.value = slugify(e.currentTarget.value);
+            void slugField.onChange(e);
+            void slugField.onBlur(e);
+          }}
         />
       </Field>
       {slugChanged && (

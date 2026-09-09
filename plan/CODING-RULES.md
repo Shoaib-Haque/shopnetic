@@ -389,6 +389,16 @@ React Hook Form + Zod resolver, schema shared with the API. Disable submit while
 pending, show field errors inline, show a form-level error on failure, keep user
 input on error.
 
+**Normalise typed _and_ pasted input in place**, don't just reject it on submit:
+identifier fields (slug, handle, code) live-transform to their valid shape on
+every change (a trailing separator stays typable; tidy it on blur); free-text
+fields collapse whitespace / pasted newlines on blur; numeric fields use
+`type="number"` + `z.coerce.number()` and lean on the browser + schema. Rewrite
+`e.currentTarget.value` before RHF reads the event so the visible value, dirty
+state and validation agree. Worked example:
+`apps/admin/src/features/catalog/categories/category-form-modal.tsx`
+(`slugify` / `slugifyLive` / `collapseWs`).
+
 ### H5. No business logic in components or route handlers
 Domain rules live in the service/domain layer, unit-tested in isolation. The BFF
 composes; components render; handlers validate + delegate.
@@ -783,3 +793,8 @@ compose file.
   instruction/lost-context toasts, ~20s for undo). `notify.error`/`notify.info`
   gained an `ms` arg; new `--destructive-muted` token so the error toast isn't
   see-through.
+- 2026-09-09 — H4 now requires normalising typed **and** pasted input in place
+  (identifier fields live-transform, free-text collapses whitespace on blur,
+  numeric leans on `type=number` + `z.coerce`) rather than only rejecting on
+  submit. Categories `slug`/`name` fields do this; extract a `<SlugInput>` when
+  Brands lands.

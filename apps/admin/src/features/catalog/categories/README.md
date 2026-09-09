@@ -109,6 +109,12 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
    `setSize` / `orphan` per node into the row props; the row spreads
    `aria-level` / `aria-setsize` / `aria-posinset` / `aria-expanded` only when
    `tree` metadata is present (the flat table passes none).
+10. **Sanitise-in-place inputs** (`slugify` / `slugifyLive` / `collapseWs`):
+    capture `register('field')` once, then in a wrapping `onChange` / `onBlur`
+    rewrite `e.currentTarget.value` and call `field.onChange(e)` — RHF reads the
+    cleaned value, so a paste of `"xzcx zxzxcv"` can't sit in the slug field
+    until submit. Slug live-slugifies (blur trims a dangling `-`); the name
+    collapses whitespace / pasted newlines on blur. CODING-RULES H4.
 
 ---
 
@@ -195,6 +201,8 @@ Brands is the second entity — the moment to promote what's proven here:
 - Combined zod + client-check resolver → a `useCrudResolver(schema, checks)`
   helper.
 - `notify.undo` + `resync` + `reorderErrorToast` → a `useUndoableMutation` hook.
+- Slug `register` + `slugifyLive`/`slugify` on change/blur → a `<SlugInput>`
+  primitive (Brands has a slug field too).
 
 Brands also needs its own API work: brand→products delete guard, a brand
 `restore` endpoint (parity with categories).
