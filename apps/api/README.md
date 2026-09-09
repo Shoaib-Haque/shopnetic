@@ -147,6 +147,15 @@ guard so repeated local login/refresh attempts aren't throttled. Same
 safeguards: rejected at boot in production, no effect under `NODE_ENV=test`,
 logged at `warn` on boot.
 
+`DEV_RESPONSE_DELAY_MS=<ms>` (development only) artificially delays matching
+responses so admin/seller loading states can be checked under realistic
+latency instead of localhost's near-zero round trip. Scope it to specific
+routes with `DEV_RESPONSE_DELAY_ROUTES` (comma-separated path prefixes, empty
+= every request), or override per request/tab with an `x-debug-delay: <ms>`
+header — the header only works when `NODE_ENV=development`, same as the flag
+itself. Rejected at boot in production; no wiring at all outside `development`
+(so it's inert under `NODE_ENV=test` too).
+
 ## Not yet
 
 Step-up re-auth for sensitive staff actions. Outbox writes + a dispatcher.

@@ -4,8 +4,9 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { createLogger } from '@shopnetic/observability';
 import { AppModule } from './app.module.js';
-import { authRelaxed, loadApiEnv, rateLimitDisabled } from './config/env.js';
+import { authRelaxed, loadApiEnv, rateLimitDisabled, responseDelayActive } from './config/env.js';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
+import { devResponseDelay } from './common/dev-response-delay.middleware.js';
 
 const log = createLogger({ service: 'api' });
 
@@ -17,10 +18,21 @@ async function bootstrap(): Promise<void> {
   if (rateLimitDisabled(env)) {
     log.warn('DEV_RATE_LIMIT_DISABLED is ON — every @RateLimit guard is bypassed');
   }
+  if (responseDelayActive(env)) {
+    log.warn(
+      { ms: env.DEV_RESPONSE_DELAY_MS, routes: env.DEV_RESPONSE_DELAY_ROUTES || '*' },
+      'DEV_RESPONSE_DELAY_MS is ON — matching responses are artificially delayed',
+    );
+  }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   app.set('trust proxy', 1);
   app.use(cookieParser());
+  // Wired only in development — the x-debug-delay header override has no
+  // effect at all outside this branch, even if a client sends it elsewhere.
+  if (env.NODE_ENV === 'development') {
+    app.use(devResponseDelay(env));
+  }
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
 

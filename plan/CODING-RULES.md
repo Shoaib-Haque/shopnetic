@@ -886,6 +886,12 @@ compose file.
   numeric leans on `type=number` + `z.coerce`) rather than only rejecting on
   submit. Categories `slug`/`name` fields do this; extract a `<SlugInput>` when
   Brands lands.
+- 2026-09-09 — Added `DEV_RESPONSE_DELAY_MS` (+ `DEV_RESPONSE_DELAY_ROUTES`,
+  `x-debug-delay` header) — dev-only artificial response latency for testing
+  loading/skeleton states under realistic conditions, same R4-style safeguards
+  as `DEV_AUTH_RELAXED`/`DEV_RATE_LIMIT_DISABLED` (inert outside
+  `development`, rejected at boot in `production`, `warn` on boot). Not a
+  security-relaxation flag, so not added to `16-security.md`.
 - 2026-09-09 — H4 revised: `noValidate` is now mandatory on every RHF form (the
   browser's own constraint validation was hijacking submit + focus before
   RHF/zod ran); numeric-field normalisation extended to stripping a typed/pasted

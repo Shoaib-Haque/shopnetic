@@ -61,6 +61,14 @@ const envSchema = z.object({
     .enum(['true', 'false', '1', '0'])
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
+  // DEV ONLY — artificially delay responses to eyeball loading states under
+  // realistic latency. 0 = off. A per-request `x-debug-delay` header can
+  // override this, but only ever in `development` (see main.ts). Never
+  // active in `test`; a boot check rejects it in `production`.
+  DEV_RESPONSE_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(0),
+  // DEV ONLY — comma-separated path prefixes DEV_RESPONSE_DELAY_MS (and the
+  // header override) apply to, e.g. "/admin/v1/categories". Empty = every request.
+  DEV_RESPONSE_DELAY_ROUTES: z.string().default(''),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -81,6 +89,9 @@ export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
   if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_RATE_LIMIT_DISABLED) {
     throw new Error('DEV_RATE_LIMIT_DISABLED must not be set in production');
   }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_RESPONSE_DELAY_MS > 0) {
+    throw new Error('DEV_RESPONSE_DELAY_MS must not be set in production');
+  }
   return parsed.data;
 }
 
@@ -94,4 +105,11 @@ export function rateLimitDisabled(
   env: Pick<ApiEnv, 'NODE_ENV' | 'DEV_RATE_LIMIT_DISABLED'>,
 ): boolean {
   return env.NODE_ENV === 'development' && env.DEV_RATE_LIMIT_DISABLED;
+}
+
+/** True only in `development` with a positive default delay configured. */
+export function responseDelayActive(
+  env: Pick<ApiEnv, 'NODE_ENV' | 'DEV_RESPONSE_DELAY_MS'>,
+): boolean {
+  return env.NODE_ENV === 'development' && env.DEV_RESPONSE_DELAY_MS > 0;
 }
