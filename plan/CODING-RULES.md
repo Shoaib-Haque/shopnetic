@@ -316,6 +316,12 @@ depends on the context, not the field:
   them (let them wrap or scroll instead); money, dates, counts, status.
 - **Native `<select>`**: also cap the option label strings themselves (~64 chars
   + `…`) — the open dropdown's width is not CSS-controllable.
+- **Interpolated into a fixed-width dialog** (a confirm message, a toast) —
+  cap the value *before* it's embedded in the sentence (~60 chars + `…`), not
+  after. A confirm dialog is deliberately a fixed, reasonable width (`sm`); an
+  unbounded name wraps that into a wall of text instead of growing the width.
+  The full value is still one hover/click away — the row's `title=`, the Edit
+  form.
 - **Data tables — responsive by priority**: never let fixed column widths sum
   past the viewport (that collapses the flexible column to nothing). Instead:
   1. Below the table's card breakpoint (admin lists default `md`), render one
@@ -368,6 +374,36 @@ Don't stretch routine confirmations. The bar is a plain CSS animation, so it
 keeps draining while sonner pauses the real dismiss timer on hover / when the
 tab is hidden — treat it as indicative, not exact.
 
+### G10. A control looks like what it does; a message matches the current state
+**Outline / border, or not** — decide by how the control sits, not by habit:
+- A **standalone text-only action** with no other visual cue that it's
+  interactive (e.g. a "Collapse all" toggle floating next to a bordered
+  filter-pill group) needs a visible border (`ActionButton variant="outline"`)
+  — otherwise it reads as a label, not a control.
+- **Icon-only controls in a dense/repeated context** (a row's Edit/Delete/
+  Restore icons, the sidebar collapse toggle, a topbar icon button) don't —
+  the icon plus a hover background is enough affordance there, and a border on
+  every row action is just noise.
+- A **segmented group** (status filter pills) reads as one control because the
+  *group* has a border and the active pill gets a fill — the bare pills inside
+  it don't each need their own border.
+- Primary/secondary form actions (Save, Cancel, a destructive confirm) already
+  get full `Button` styling — unchanged.
+
+**A tooltip / label that names two opposite states never shows a fixed string
+for both** — "Collapse or expand sidebar" is true regardless of which one a
+click will actually do. Read the *current* state and say what the click will
+do this time ("Collapse sidebar" ⇄ "Expand sidebar"), the same way the tree's
+expand/collapse chevron already keys its `aria-label` off `tree.collapsed`.
+Applies everywhere a message describes a toggleable thing, not just tooltips.
+
+**Scrollbars are slim and consistent everywhere**, not just where someone
+happened to add `overflow-auto`: a global, token-colored, theme-aware
+`::-webkit-scrollbar` / `scrollbar-color` rule (`packages/ui/src/tokens.css`)
+covers the page, modals, tables — anywhere something scrolls — with no classic
+up/down arrow buttons. A native `<select>` popup is OS-rendered and can't be
+restyled from CSS; that one's a known gap, not a missed selector.
+
 ---
 
 ## H. API, data & state
@@ -391,15 +427,53 @@ React Hook Form + Zod resolver, schema shared with the API. Disable submit while
 pending, show field errors inline, show a form-level error on failure, keep user
 input on error.
 
+**`noValidate` on every RHF form, no exceptions.** Without it the *browser's*
+constraint validation (a number input's `min`, a `required` attribute) runs
+first: it blocks `handleSubmit` from ever firing, shows its own bubble on only
+the *first* offending field in DOM order, and leaves every other invalid field
+unreported. RHF + zod must be the single source of validation UI, or the "every
+field gets its own inline error" and "focus jumps to the first invalid field"
+rules below silently stop being true. `FormModal` sets it once for every
+current and future CRUD entity — a hand-rolled `<form>` sets it itself.
+
+**Every field shows its own error, together, on submit** — zod's default (no
+custom `mode`) already validates the whole schema at once; this only holds if
+nothing native is short-circuiting it first (see above).
+
+**Focus goes to the first field that actually violates a rule.** RHF's default
+`shouldFocusError` does this correctly, but it walks fields in the order
+`register()` was **called**, not JSX/visual order — those normally coincide
+for `{...register('x')}` used inline, but **break the moment a field's
+`register()` call is hoisted into a `const` above the JSX** (e.g. to wire a
+paste-sanitizer, H4 above) in an order that no longer matches how the fields
+read top-to-bottom. Don't special-case which field gets focused; keep every
+hoisted `register()` call declared in the same order its field appears on
+screen. Worked example / bug this caused:
+`apps/admin/src/features/catalog/categories/category-form-modal.tsx` had
+`slugField` declared before `nameField` while Name rendered first — focus
+went to Slug even when Name was also empty.
+
 **Normalise typed _and_ pasted input in place**, don't just reject it on submit:
 identifier fields (slug, handle, code) live-transform to their valid shape on
 every change (a trailing separator stays typable; tidy it on blur); free-text
-fields collapse whitespace / pasted newlines on blur; numeric fields use
-`type="number"` + `z.coerce.number()` and lean on the browser + schema. Rewrite
+fields collapse whitespace / pasted newlines on blur. Rewrite
 `e.currentTarget.value` before RHF reads the event so the visible value, dirty
 state and validation agree. Worked example:
 `apps/admin/src/features/catalog/categories/category-form-modal.tsx`
 (`slugify` / `slugifyLive` / `collapseWs`).
+
+**A numeric field whose valid range excludes negatives blocks `-` at the key,
+not just the value.** `min` on a `type="number"` input is a *submit-time*
+check only — it does nothing to stop the keystroke. An `onChange`-only strip
+isn't enough either: a `type="number"` input's DOM `.value` collapses to `""`
+the instant what's typed isn't a fully-valid number (mid-way through `--1`,
+say), so the handler can't see — or fix — what's actually on screen at that
+point; the invalid text just sits there. Block the key itself
+(`onKeyDown`, `e.key === '-'` → `preventDefault`), sanitize `onPaste`
+separately (`selectionStart`/`End` aren't readable on a number input, so
+replace the whole value rather than splicing at the cursor), and keep an
+`onChange` strip as a last-resort net for anything else (drag-drop, autofill).
+Worked example: the `position` field in the same file.
 
 ### H5. No business logic in components or route handlers
 Domain rules live in the service/domain layer, unit-tested in isolation. The BFF
@@ -422,6 +496,18 @@ Back-office pages that mutate then reload their own list must:
   cleanup-only flag sticks at `false` and silently kills every later re-sync.
   Worked example: `apps/admin/src/features/catalog/categories/README.md` (log
   #1–#3).
+
+### H8. A dead backend session sends the user to sign in — it doesn't sit there
+The staff-plane BFF silently refreshes the access token from the refresh
+cookie on a `401`; if *that* fails, the session really is gone server-side.
+The already-mounted shell has no reason to re-render on its own, so a plain
+inline error ("Something went wrong") leaves a fully-signed-in-looking page
+sitting on top of a dead session. The shared client fetch wrapper (`adminApi`)
+does a hard `window.location.assign` to the login route the moment it sees
+that code — computed from the **current URL**, not an env constant that isn't
+reliably inlined into the client bundle — with `?next=` so the user lands back
+where they were after signing in again. Any new BFF-fronted app repeats this
+at its own fetch chokepoint; it must not be re-derived per page.
 
 ### I1. Validate and authorize every request server-side
 `authorize(actor, permission, resourceContext)` on every mutation + object-level
@@ -800,3 +886,20 @@ compose file.
   numeric leans on `type=number` + `z.coerce`) rather than only rejecting on
   submit. Categories `slug`/`name` fields do this; extract a `<SlugInput>` when
   Brands lands.
+- 2026-09-09 — H4 revised: `noValidate` is now mandatory on every RHF form (the
+  browser's own constraint validation was hijacking submit + focus before
+  RHF/zod ran); numeric-field normalisation extended to stripping a typed/pasted
+  `-` when the range excludes negatives. Added H8 (a dead backend session
+  redirects to login, computed from the current URL, with `?next=`). Added G10
+  (border-or-not convention for controls; a toggle's tooltip/label always
+  reflects the *current* state, never a fixed "X or Y" string; global slim
+  scrollbars). G7 extended: confirm/toast copy caps an interpolated free-text
+  value before embedding it, not after.
+- 2026-09-09 — H4 corrected twice more, both from real bugs the first pass
+  missed: (1) RHF's default focus-first-invalid-field walks `register()` *call*
+  order, not JSX order — a hoisted `const x = register(...)` block declared out
+  of visual order sends focus to the wrong field even with `noValidate` on. (2)
+  stripping `-` in `onChange` alone doesn't work on `type="number"`: its DOM
+  `.value` goes `""` the instant the typed text isn't a fully-valid number, so
+  the handler can't see (or fix) what's on screen — block the key itself,
+  sanitize `onPaste` separately. Global scrollbar width taken down to 6px.
