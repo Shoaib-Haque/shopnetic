@@ -126,6 +126,14 @@ export function CategoryList() {
       });
   }, [status, t]);
   useEffect(load, [load]);
+  // switching tabs (Active/Archived/All) shows the skeleton again instead of
+  // leaving the previous tab's rows frozen on screen with no feedback while
+  // the new tab loads. Deliberately keyed on `status` alone, not `load` — a
+  // post-mutation resync() must keep the current rows visible (H7), not flash
+  // back to skeleton on every save/delete/reorder.
+  useEffect(() => {
+    setItems(null);
+  }, [status]);
 
   const resync = useCallback(() => {
     if (mounted.current) load();
