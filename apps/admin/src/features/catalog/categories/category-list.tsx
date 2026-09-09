@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArchiveRestore, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category, CategoryListStatus } from '@shopnetic/contracts';
-import { cn, Input, notify } from '@shopnetic/ui';
+import { cn, notify, SearchInput } from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
 import { ActionButton } from '@/components/crud/action-button';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
@@ -26,6 +26,7 @@ const COLLAPSE_KEY = 'sn_adm_cat_collapsed';
 
 export function CategoryList() {
   const t = useTranslations('catalog');
+  const tCommon = useTranslations('admin');
 
   const [items, setItems] = useState<Category[] | null>(null);
   const [status, setStatus] = useState<CategoryListStatus>('active');
@@ -448,12 +449,14 @@ export function CategoryList() {
       />
 
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <Input
+        <SearchInput
           ref={searchRef}
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onValueChange={setQ}
+          onClear={load}
+          clearLabel={tCommon('actions.clear')}
           placeholder={t('categories.searchPlaceholder')}
-          className="h-9 max-w-xs"
+          className="w-full max-w-xs"
         />
         <div className="inline-flex rounded-md border border-border p-0.5">
           {STATUSES.map((s) => (

@@ -160,8 +160,10 @@ shared module. Copy-paste is a review blocker.
 ### D3. One way to do a common thing
 Money formatting, dates, addresses, ratings, price display, empty states,
 error banners, page headers, data tables, pagination, **password fields**
-(`@shopnetic/ui` `PasswordInput` — has the show/hide toggle) — **one** shared
-component each. No local reinventions.
+(`@shopnetic/ui` `PasswordInput` — has the show/hide toggle), **search fields**
+(`@shopnetic/ui` `SearchInput` — magnifier + clear button with tooltip, `Esc`
+to clear, `onClear` for a re-fetch) — **one** shared component each. No local
+reinventions.
 
 ### D4. Components are dumb about data source
 A component takes props; it doesn't know about `fetch`, the BFF, or the store.

@@ -66,10 +66,19 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
   Delete/Restore live in the Edit modal). `md–lg` → table minus the Brand column
   (`hidden lg:table-cell`) and with icon-only row actions (`collapseLabel="lg"`).
   `lg+` → full table. `table-fixed` so a long name can't shove columns off-screen.
+- **Search.** A non-empty query always swaps to the flat, relevance-ranked
+  `CategoryFlatTable` (best match first, `in A › B` context line per row) — the
+  same behaviour on every lifecycle view. Zero matches → "no match" message.
+  The field is `@shopnetic/ui` `SearchInput` (magnifier + a clear button shown
+  while non-empty, `Esc` also clears); `onClear` is wired to `load()` so a
+  cleared field re-fetches the default list. Showing hits _in the tree_
+  (pruned + highlighted) was built and reverted — see "Declined".
 - **Validation** (CODING-RULES P1, H4). One custom RHF resolver =
   `zodResolver(schema)` **+** a client-side duplicate check against the live
   name/slug sets, so every offending field shows its own inline error in one
-  pass. Server error codes still map to a field via `FIELD_FOR_CODE`.
+  pass. Server error codes still map to a field via `FIELD_FOR_CODE`. Text
+  fields sanitise on type/paste (`slugifyLive` / `collapseWs`); `slugSchema`
+  also rejects `RESERVED_SLUGS`.
 - **Archived = view-only.** `category.archivedAt != null` opens the modal in
   `readOnly` mode (Close, no Save, no discard prompt); the API rejects an update
   to a soft-deleted row anyway.
@@ -166,6 +175,13 @@ shipped 2026-09-07/09 — see corner-case log rows 12–23.
   normal way to order now, but the modal's Position field is the _only_ reorder
   path on touch (`< md`, no drag). Collapsing it there is a net loss. Revisit
   only if the collapse is gated to `pointer: fine`.
+- **Search hits shown in the tree** (pruned to matches + ancestors, highlighted).
+  Built, then reverted. A size-dependent switch (tree when small, flat when
+  broad) reads as unpredictable; a consistent "always tree" scrolls badly on a
+  broad query. Every comparable category admin (WordPress, Shopify, PrestaShop,
+  Magento) uses a flat ranked list during search, drag is off during search
+  anyway, and the `in A › B` line already carries context — so search stays
+  flat.
 
 **Still open**
 
@@ -180,8 +196,6 @@ shipped 2026-09-07/09 — see corner-case log rows 12–23.
 - **Tree has no first-class keyboard reorder** — only via the Edit form (WCAG
   2.5.7 satisfied). A roving-tabindex + arrow/space reorder on the treegrid is
   the full fix.
-- **Search is out-of-context** — token match returns a flat list; it doesn't
-  highlight or expand-to the matching row _in the tree_.
 - **No virtualization** — `buildForest` + a full re-render on every change is
   fine to ~1000s of rows, not beyond.
 - **Time-related UI pass** (project-wide, _after_ feature work) — a dedicated
