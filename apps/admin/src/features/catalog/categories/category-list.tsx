@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArchiveRestore, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category, CategoryListStatus } from '@shopnetic/contracts';
-import { cn, notify, SearchInput } from '@shopnetic/ui';
+import { cn, notify, SearchInput, Skeleton } from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
 import { ActionButton } from '@/components/crud/action-button';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
@@ -23,6 +23,37 @@ type ModalState =
   | null;
 const STATUSES: CategoryListStatus[] = ['active', 'archived', 'all'];
 const COLLAPSE_KEY = 'sn_adm_cat_collapsed';
+
+// Depth per row + a name-width fraction, loosely echoing a real tree shape
+// (root / child / child / grandchild / child / root) so the placeholder
+// doesn't read as a generic unrelated list.
+const SKELETON_ROWS = [
+  { depth: 0, width: '40%' },
+  { depth: 1, width: '55%' },
+  { depth: 1, width: '35%' },
+  { depth: 2, width: '45%' },
+  { depth: 1, width: '50%' },
+  { depth: 0, width: '30%' },
+];
+
+function CategoryListSkeleton() {
+  return (
+    <div className="rounded-md border border-border">
+      <ul>
+        {SKELETON_ROWS.map((row, i) => (
+          <li
+            key={i}
+            className="flex items-center gap-3 border-b border-border py-2 pr-3 last:border-b-0"
+            style={{ paddingLeft: `${0.75 + row.depth * 1.5}rem` }}
+          >
+            <Skeleton className="size-4 shrink-0" />
+            <Skeleton className="h-4" style={{ width: row.width }} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function CategoryList() {
   const t = useTranslations('catalog');
@@ -502,7 +533,7 @@ export function CategoryList() {
       {error !== null && <p className="mb-3 text-sm text-destructive">{error}</p>}
 
       {items === null ? (
-        <p className="text-sm text-muted-foreground">{t('categories.loading')}</p>
+        <CategoryListSkeleton />
       ) : emptyMsg ? (
         <p className="text-sm text-muted-foreground">{emptyMsg}</p>
       ) : (

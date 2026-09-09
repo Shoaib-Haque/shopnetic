@@ -9,7 +9,6 @@
       "noMatch": "No categories match your search.",
       "reloadedAfterChange": "The category list changed — reloaded.",
       "editConflict": "This category was changed elsewhere — the list has been refreshed. Reopen it to try again.",
-      "loading": "Loading…",
       "searchPlaceholder": "Search categories…",
       "cols": { "name": "Name", "brand": "Brand", "status": "Status" },
       "tree": {
