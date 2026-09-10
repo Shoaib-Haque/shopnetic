@@ -34,6 +34,17 @@ cookie (8h). No token reaches the browser. Sign-in also stores a short-lived
 Cookies: **`sn_srt`** = staff refresh token (8h) · **`sn_sat`** = staff access
 token (~15m, minted/refreshed by the BFF). Both httpOnly, Path `/`.
 
+**Tests** (`features/staff-auth/components/*.test.tsx`, same RTL harness as
+`catalog/categories` — `postJson` + `next/navigation` + `next/link` mocked):
+`login-form.test.tsx` covers wrong credentials, the first-login →
+TOTP-enrol → recovery-codes → redirect path, the returning-user MFA step
+(code re-attached on the retry), network failure showing its distinct copy,
+a locked account, and — the security one — the `?next=` open-redirect guard
+(off-app URLs and prefix-lookalikes fall back to the dashboard, only genuine
+in-root paths are honoured). `accept-invite-form.test.tsx` covers the
+missing-token guard, breached/expired-invite copy, and the success/done
+state. Each verified by disabling its fix and watching the test fail.
+
 ## Shell
 
 `(protected)/layout.tsx` (Server Component, session guard) renders
