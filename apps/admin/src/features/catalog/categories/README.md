@@ -20,8 +20,43 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
 | `category-tree.tsx`       | `CategoryTree` (nested + drag + `edgeAutoScroll` + treegrid aria), `CategoryFlatTable` (search / archived), `CategoryCards` (mobile), `buildForest` (+ `orphan`), `TreeGuides`, `useAncestorPath`     |
 | `category-form-modal.tsx` | create / edit / view(archived) modal; combined resolver; slug auto-fill; `expectedUpdatedAt` on save; `restoreBlocked` / `onConflict`                                                                 |
 | `reorder.ts`              | `CategoryMove` type + `applyMoveLocally` (pure, idempotent optimistic-drag reducer) + `ltreeLabel`. Unit-tested in `reorder.test.ts`.                                                                 |
-| `category-list.test.tsx`  | RTL component tests — error-state coverage (`@/test/render.tsx` harness, `adminApi` mocked at the source)                                                                                             |
+| `category-list.test.tsx`  | RTL component tests — error / redirect / rollback paths (see "Tests")                                                                                                                                 |
 | `../error-copy.ts`        | API error `code` → `catalog.errors.*` key                                                                                                                                                             |
+
+---
+
+## Tests
+
+`reorder.test.ts` unit-tests `applyMoveLocally` (6 cases: subtree re-root,
+depth shift, idempotency for the queued path). `category-list.test.tsx` +
+`../../admin-api/client.test.ts` are the RTL/component tests — this feature is
+where `apps/admin`'s component-test setup was born, and every admin test since
+(staff auth) reuses it:
+
+- `vitest.config.ts`: jsdom env + an esbuild `jsx: 'automatic'` override (the
+  Next tsconfig sets `jsx: "preserve"`, which would leave JSX untransformed for
+  the test build) + the `@/*` alias.
+- `vitest.setup.ts`: jest-dom matchers, `window.matchMedia` and
+  `Element.prototype.scrollIntoView` stubs (jsdom gaps the components hit).
+- `@/test/render.tsx`: wraps the component in the real `NextIntlClientProvider`
+  (merged `en` messages — assertions check real copy, not keys) + mounts
+  `<Toaster/>`. Mock the data layer at its source (`adminApi` / `postJson`), one
+  mock per module.
+
+Covered: failed first load shows the error line alone (not stacked on empty); a
+failed background `resync()` keeps the rows; an offline delete toasts without
+blanking the list; the post-401 redirect fires exactly once (`client.test.ts` —
+mocks `fetch`, swaps in a full `Location` stub since jsdom won't let
+`window.location.assign` be spied, `vi.resetModules()` per test because
+`redirecting` is module-level by design); a failed drag-reorder rolls back. Each
+verified by disabling its fix and watching the test fail.
+
+jsdom gotchas for the next test: a zero-size `getBoundingClientRect` makes the
+drag before/inside/after split resolve to `NaN` → `'inside'` (used as a
+deterministic drop zone rather than mocked away); `Location` / `DataTransfer`
+stubs must satisfy every interface member (`Symbol.iterator` included) — a
+single `as X` only typechecks with enough structural overlap, and CODING-RULES
+B5 bans the `x as unknown as Y` bridge.
 
 ---
 
@@ -249,34 +284,10 @@ shipped 2026-09-07/09 — see corner-case log rows 12–23.
   boundary without either breaking the hierarchy or prefetching ancestors, and
   a realistic category tree doesn't approach the row count where that matters
   (see "No virtualization" below).
-- **Optimistic-drag rollback coverage** — `applyMoveLocally` is unit-tested
-  (`reorder.test.ts`, 6 cases incl. subtree re-root, depth shift, idempotency for
-  the queued path). The RTL component harness (`category-list.test.tsx` —
-  `apps/admin`'s first: `vitest.config.ts` jsdom + esbuild `jsx: 'automatic'`
-  override for Next's `jsx: "preserve"` tsconfig, `@/test/render.tsx` wraps
-  `NextIntlClientProvider` with the real `en` messages + mounts `<Toaster/>`,
-  `adminApi` mocked at the source) now covers all 5 originally-planned cases,
-  every one verified meaningful by disabling its fix and watching the test fail:
-  - failed first load shows the error line alone (not stacked on empty)
-  - a failed background `resync()` keeps the rows on screen
-  - an offline delete shows the toast with the list intact
-  - a 401 that redirects doesn't race a second call into a second navigation —
-    `src/features/admin-api/client.test.ts` (own file: this exercises the real
-    `adminApi`/`redirectToLogin`, so it can't mock `adminApi` itself; `fetch` is
-    mocked instead. jsdom won't let `window.location.assign` be spied in place —
-    a full `Location` stub swaps in per test, reset via `vi.resetModules()`
-    since `redirecting` is deliberate module-level state)
-  - a failed drag-reorder rolls back optimistic state and toasts — native HTML5
-    drag events need a hand-built `dataTransfer` stub (`onDrop` never calls
-    `.getData()`, only writes `effectAllowed`/`dropEffect`/`setData`, so it can
-    be inert); jsdom's zero-size `getBoundingClientRect` makes the
-    before/inside/after split resolve to `NaN` → `'inside'`, which is exploited
-    as a deterministic drop zone rather than mocked away
-    Two DOM interfaces (`Location`, `DataTransfer`) needed hand-built stubs
-    satisfying every member (CODING-RULES B5 bans `x as unknown as Y` — the
-    stubs are typed with a single `as X`, which only typechecks once they cover
-    enough of the real interface, `Symbol.iterator` included for the
-    list-shaped nested types).
+- **Component-test residue** — the error / redirect / rollback paths are
+  covered (see "Tests"). Still untested: the `pendingMove` queue's multi-drop
+  path (only the single-drop rollback is), and the form modal
+  (`category-form-modal.tsx`) has no component test at all.
 - **No bulk actions** — multi-select rows → archive / move many. Needs a
   selection model the CRUD kit doesn't have yet.
 - **Tree has no first-class keyboard reorder** — only via the Edit form (WCAG
