@@ -10,7 +10,11 @@ const pemKey = z
   .transform((s) => s.replace(/\\n/g, '\n'));
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // No default: every DEV_* safeguard below hinges on this being set correctly
+  // (section R4). Defaulting to 'development' would fail *open* — a deployment
+  // that forgets to set NODE_ENV would silently get the permissive posture
+  // instead of the boot loudly failing.
+  NODE_ENV: z.enum(['development', 'test', 'production']),
   PORT: z.coerce.number().int().positive().max(65535).default(4000),
   APP_VERSION: z.string().default('0.0.0'),
 

@@ -169,6 +169,16 @@ rejected at boot in production, no wiring outside `development`. Things it
 can't fake — a dead API (stop the process → BFF returns `502`), the browser
 being offline (DevTools → Network → Offline), a hung socket (`DEV_RESPONSE_DELAY_MS=60000`).
 
+## Security
+
+`helmet()` is wired first in `main.ts` — baseline headers (`X-Content-Type-Options`,
+`X-Frame-Options`/`frame-ancestors`, HSTS, `X-Powered-By` removed) on every
+response. `NODE_ENV` has **no default** — every `DEV_*` safeguard above hinges
+on it being set correctly, so a deployment that forgets it fails loudly at
+boot instead of silently running with the permissive `development` posture.
+See `plan/16-security.md` for the full picture (password hashing, token
+rotation, rate limits, RBAC).
+
 ## Not yet
 
 Step-up re-auth for sensitive staff actions. Outbox writes + a dispatcher.

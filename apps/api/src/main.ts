@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { createLogger } from '@shopnetic/observability';
@@ -44,6 +45,10 @@ async function bootstrap(): Promise<void> {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   app.set('trust proxy', 1);
+  // Baseline security headers (X-Content-Type-Options, frame-ancestors,
+  // HSTS, X-Powered-By removed, …). A JSON-only API never serves HTML, so
+  // helmet's default CSP is inert here but harmless to send. plan/16-security.md.
+  app.use(helmet());
   app.use(cookieParser());
   // Wired only in development — the x-debug-delay / x-debug-fault header
   // overrides have no effect at all outside this branch, even if a client

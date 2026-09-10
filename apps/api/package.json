@@ -24,6 +24,7 @@
     "@shopnetic/db": "workspace:*",
     "@shopnetic/observability": "workspace:*",
     "cookie-parser": "1.4.7",
+    "helmet": "8.3.0",
     "ioredis": "5.4.2",
     "jose": "5.9.6",
     "nodemailer": "6.9.16",

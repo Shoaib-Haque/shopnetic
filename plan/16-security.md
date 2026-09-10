@@ -70,6 +70,13 @@ Related: `03-users-and-rbac.md`, `08-api-design.md`, `13-payments-and-payouts.md
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-
   origin`, `X-Frame-Options: DENY` / `frame-ancestors 'none'`,
   `Permissions-Policy` minimal, `Cross-Origin-Opener-Policy`.
+  **Implemented for `apps/api`** (JSON-only, no HTML): `helmet()` wired first in
+  `main.ts` gives the baseline set (nosniff, frame-ancestors, HSTS,
+  `X-Powered-By` removed) with its default config — the nonce-based CSP above
+  is specifically for the HTML-serving apps (storefront/seller/admin) once
+  those ship theirs. `NODE_ENV` has no default in `apps/api/src/config/env.ts`
+  (every `DEV_*` flag's safety hinges on it) — a deployment that forgets to set
+  it fails loudly at boot rather than defaulting to the permissive posture.
 - CORS: explicit allow-list of our own origins; credentials only for those; no
   wildcard with credentials.
 - CSRF: SameSite cookies + double-submit / origin check on state-changing

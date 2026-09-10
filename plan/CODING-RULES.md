@@ -953,3 +953,11 @@ compose file.
   non-deterministic post-401 redirect (a `redirecting` latch in `adminApi`
   stops later calls racing the navigation). Added `error.tsx` at the admin
   `(protected)` segment (F4) so a render throw keeps the shell.
+- 2026-09-10 — Security audit of the dev flags + auth/session stack (found
+  solid: argon2id, RS256 audience-scoped JWTs, refresh rotation + reuse
+  detection, rate-limited auth endpoints, RBAC fails closed). Two real gaps
+  fixed: `helmet()` wired in `apps/api/src/main.ts` for baseline response
+  headers (plan/16 section 3); `NODE_ENV` lost its `.default('development')`
+  in `apps/api/src/config/env.ts` — every `DEV_*` safeguard hinges on it being
+  set correctly, so a deployment that forgets it now fails loudly at boot
+  instead of silently running with the permissive posture.
