@@ -249,22 +249,34 @@ shipped 2026-09-07/09 — see corner-case log rows 12–23.
   boundary without either breaking the hierarchy or prefetching ancestors, and
   a realistic category tree doesn't approach the row count where that matters
   (see "No virtualization" below).
-- **Optimistic-drag rollback coverage** — `applyMoveLocally` is now unit-tested
+- **Optimistic-drag rollback coverage** — `applyMoveLocally` is unit-tested
   (`reorder.test.ts`, 6 cases incl. subtree re-root, depth shift, idempotency for
-  the queued path). The RTL component harness now exists too
-  (`category-list.test.tsx` — `apps/admin`'s first: `vitest.config.ts`
-  jsdom + esbuild `jsx: 'automatic'` override for Next's `jsx: "preserve"`
-  tsconfig, `@/test/render.tsx` wraps `NextIntlClientProvider` with the real `en`
-  messages + mounts `<Toaster/>`, `adminApi` mocked at the source so one mock
-  controls every category call), with 3 tests locking in this pass's fixes:
-  failed-first-load shows the error line alone, a failed background `resync()`
-  keeps the rows, offline delete shows the toast with the list intact. Verified
-  meaningful by disabling the fix and watching both regression tests fail.
-  **Still uncovered**: the `applyMove` drag orchestration (`setItems(snapshot)`
-  rollback, the `pendingMove` queue) and the 401-redirect-race fix — native
-  HTML5 drag events need a hand-built `dataTransfer` shim in jsdom, and
-  `window.location` isn't reassignable without a stub; deferred as the harder
-  half of the same task.
+  the queued path). The RTL component harness (`category-list.test.tsx` —
+  `apps/admin`'s first: `vitest.config.ts` jsdom + esbuild `jsx: 'automatic'`
+  override for Next's `jsx: "preserve"` tsconfig, `@/test/render.tsx` wraps
+  `NextIntlClientProvider` with the real `en` messages + mounts `<Toaster/>`,
+  `adminApi` mocked at the source) now covers all 5 originally-planned cases,
+  every one verified meaningful by disabling its fix and watching the test fail:
+  - failed first load shows the error line alone (not stacked on empty)
+  - a failed background `resync()` keeps the rows on screen
+  - an offline delete shows the toast with the list intact
+  - a 401 that redirects doesn't race a second call into a second navigation —
+    `src/features/admin-api/client.test.ts` (own file: this exercises the real
+    `adminApi`/`redirectToLogin`, so it can't mock `adminApi` itself; `fetch` is
+    mocked instead. jsdom won't let `window.location.assign` be spied in place —
+    a full `Location` stub swaps in per test, reset via `vi.resetModules()`
+    since `redirecting` is deliberate module-level state)
+  - a failed drag-reorder rolls back optimistic state and toasts — native HTML5
+    drag events need a hand-built `dataTransfer` stub (`onDrop` never calls
+    `.getData()`, only writes `effectAllowed`/`dropEffect`/`setData`, so it can
+    be inert); jsdom's zero-size `getBoundingClientRect` makes the
+    before/inside/after split resolve to `NaN` → `'inside'`, which is exploited
+    as a deterministic drop zone rather than mocked away
+    Two DOM interfaces (`Location`, `DataTransfer`) needed hand-built stubs
+    satisfying every member (CODING-RULES B5 bans `x as unknown as Y` — the
+    stubs are typed with a single `as X`, which only typechecks once they cover
+    enough of the real interface, `Symbol.iterator` included for the
+    list-shaped nested types).
 - **No bulk actions** — multi-select rows → archive / move many. Needs a
   selection model the CRUD kit doesn't have yet.
 - **Tree has no first-class keyboard reorder** — only via the Edit form (WCAG

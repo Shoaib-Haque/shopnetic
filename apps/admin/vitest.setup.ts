@@ -16,3 +16,9 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+
+// jsdom doesn't implement scrollIntoView either — the row-flash effect
+// (category-list.tsx) calls it after a move/undo/restore.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
