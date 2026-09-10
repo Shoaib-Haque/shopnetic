@@ -170,6 +170,27 @@ describe('StaffLoginForm', () => {
     );
   });
 
+  it('on a successful login the button stays in its pending state through the redirect', async () => {
+    mockedPostJson.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { data: { user: { id: 'u1' } } },
+    });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    // the response has landed (redirect fired) but the form is still mounted —
+    // the button must not have snapped back to idle in the gap before the
+    // dashboard renders.
+    await waitFor(() => expect(routerReplace).toHaveBeenCalled());
+    // the submit button is still the loading one (name = "Loading" + loadingText
+    // from the Button/Spinner composition), not back to "Sign in"
+    expect(screen.getByRole('button', { name: /signing in/i })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument();
+  });
+
   describe('?next= redirect guard', () => {
     const succeed = () =>
       mockedPostJson.mockResolvedValueOnce({

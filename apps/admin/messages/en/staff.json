@@ -35,7 +35,8 @@
     "recovery": {
       "intro": "Save these one-time recovery codes somewhere safe — each works once if you lose your authenticator.",
       "warning": "They will not be shown again.",
-      "continue": "Continue to the dashboard"
+      "continue": "Continue to the dashboard",
+      "continuing": "Opening the dashboard…"
     },
     "accept": {
       "title": "Accept your staff invite",

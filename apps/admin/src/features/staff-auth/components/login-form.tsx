@@ -49,7 +49,6 @@ export function StaffLoginForm({ locale, basePath }: { locale: string; basePath:
       ...next,
       ...(otp ? { code: otp } : {}),
     });
-    setBusy(false);
 
     const body = res.body as {
       data?: { status?: string; secret?: string; otpauthUri?: string; user?: unknown };
@@ -57,6 +56,7 @@ export function StaffLoginForm({ locale, basePath }: { locale: string; basePath:
 
     // First login: not a session yet — go to the TOTP enrolment step.
     if (res.status === 200 && body.data?.status === 'totp_enrolment_required') {
+      setBusy(false);
       setStep({
         name: 'enrol',
         secret: body.data.secret ?? '',
@@ -65,13 +65,17 @@ export function StaffLoginForm({ locale, basePath }: { locale: string; basePath:
       return;
     }
 
-    // Real session (BFF returns { data: { user } } and sets the cookie).
+    // Real session (BFF returns { data: { user } } and sets the cookie). Keep
+    // `busy` true through the navigation — this form unmounts when the
+    // dashboard renders, and resetting it here leaves the button looking idle
+    // for the beat between the response landing and the route actually changing.
     if (res.ok && body.data?.user) {
       router.replace(destination);
       router.refresh();
       return;
     }
 
+    setBusy(false);
     const errCode = extractErrorCode(res.body);
     if (errCode === 'MFA_REQUIRED') {
       setStep({ name: 'mfa' });
@@ -106,7 +110,10 @@ export function StaffLoginForm({ locale, basePath }: { locale: string; basePath:
         </ul>
         <p className="text-xs text-muted-foreground">{t('recovery.warning')}</p>
         <Button
+          loading={busy}
+          loadingText={t('recovery.continuing')}
           onClick={() => {
+            setBusy(true);
             router.replace(destination);
             router.refresh();
           }}
