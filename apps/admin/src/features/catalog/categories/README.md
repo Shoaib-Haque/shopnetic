@@ -20,6 +20,7 @@ API side: `apps/api/src/catalog/category.service.ts`, contract
 | `category-tree.tsx`       | `CategoryTree` (nested + drag + `edgeAutoScroll` + treegrid aria), `CategoryFlatTable` (search / archived), `CategoryCards` (mobile), `buildForest` (+ `orphan`), `TreeGuides`, `useAncestorPath`     |
 | `category-form-modal.tsx` | create / edit / view(archived) modal; combined resolver; slug auto-fill; `expectedUpdatedAt` on save; `restoreBlocked` / `onConflict`                                                                 |
 | `reorder.ts`              | `CategoryMove` type + `applyMoveLocally` (pure, idempotent optimistic-drag reducer) + `ltreeLabel`. Unit-tested in `reorder.test.ts`.                                                                 |
+| `category-list.test.tsx`  | RTL component tests — error-state coverage (`@/test/render.tsx` harness, `adminApi` mocked at the source)                                                                                             |
 | `../error-copy.ts`        | API error `code` → `catalog.errors.*` key                                                                                                                                                             |
 
 ---
@@ -250,10 +251,20 @@ shipped 2026-09-07/09 — see corner-case log rows 12–23.
   (see "No virtualization" below).
 - **Optimistic-drag rollback coverage** — `applyMoveLocally` is now unit-tested
   (`reorder.test.ts`, 6 cases incl. subtree re-root, depth shift, idempotency for
-  the queued path). Still uncovered: the component-level `setItems(snapshot)`
-  restore and the `applyMove` orchestration (queue → re-invoke on success, drop
-  on failure) — those need an RTL / component harness (the deferred admin
-  test-harness slice). Only `VALIDATION_ERROR` rollback is manually verified.
+  the queued path). The RTL component harness now exists too
+  (`category-list.test.tsx` — `apps/admin`'s first: `vitest.config.ts`
+  jsdom + esbuild `jsx: 'automatic'` override for Next's `jsx: "preserve"`
+  tsconfig, `@/test/render.tsx` wraps `NextIntlClientProvider` with the real `en`
+  messages + mounts `<Toaster/>`, `adminApi` mocked at the source so one mock
+  controls every category call), with 3 tests locking in this pass's fixes:
+  failed-first-load shows the error line alone, a failed background `resync()`
+  keeps the rows, offline delete shows the toast with the list intact. Verified
+  meaningful by disabling the fix and watching both regression tests fail.
+  **Still uncovered**: the `applyMove` drag orchestration (`setItems(snapshot)`
+  rollback, the `pendingMove` queue) and the 401-redirect-race fix — native
+  HTML5 drag events need a hand-built `dataTransfer` shim in jsdom, and
+  `window.location` isn't reassignable without a stub; deferred as the harder
+  half of the same task.
 - **No bulk actions** — multi-select rows → archive / move many. Needs a
   selection model the CRUD kit doesn't have yet.
 - **Tree has no first-class keyboard reorder** — only via the Edit form (WCAG
