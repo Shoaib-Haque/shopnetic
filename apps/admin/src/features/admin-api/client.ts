@@ -21,6 +21,13 @@ interface Options {
   signal?: AbortSignal;
 }
 
+// Set once the first `UNAUTHENTICATED` has kicked off a login redirect. Every
+// later call then fails fast instead of starting a fetch or letting a caller's
+// success / `finally` path run against a dead session and race the navigation
+// (that non-determinism is why a failed delete used to land somewhere different
+// from a failed save).
+let redirecting = false;
+
 /**
  * The staff session is dead on the backend (refresh failed / reuse detected)
  * but this tab still has the old shell mounted with nothing to re-render it —
@@ -32,16 +39,21 @@ interface Options {
  * `/en/<basePath>/...` → redirect to `/en/<basePath>/login?next=<here>`.
  */
 function redirectToLogin(): void {
+  if (redirecting) return;
   const { pathname, search } = window.location;
   const [, locale, basePath] = pathname.split('/');
   if (!locale || !basePath) return;
   const root = `/${locale}/${basePath}`;
   if (pathname.startsWith(`${root}/login`)) return; // already there — avoid a loop
   const next = encodeURIComponent(pathname + search);
+  redirecting = true;
   window.location.assign(`${root}/login?next=${next}`);
 }
 
 export async function adminApi<T>(path: string, opts: Options = {}): Promise<T> {
+  // a login redirect is already in flight — don't start another request
+  if (redirecting) throw new AdminApiError('UNAUTHENTICATED', 401);
+
   const method = opts.method ?? 'GET';
   const init: RequestInit = {
     method,
@@ -56,7 +68,14 @@ export async function adminApi<T>(path: string, opts: Options = {}): Promise<T> 
     init.body = JSON.stringify(opts.body);
   }
 
-  const res = await fetch(`/api/admin${path}`, init);
+  let res: Response;
+  try {
+    res = await fetch(`/api/admin${path}`, init);
+  } catch {
+    // fetch rejects (no response at all) → offline, DNS, the Next server down.
+    // Give it a real code so callers' `instanceof AdminApiError` branches hit.
+    throw new AdminApiError('OFFLINE', 0);
+  }
   if (res.status === 204) return undefined as T;
 
   let payload: unknown = null;

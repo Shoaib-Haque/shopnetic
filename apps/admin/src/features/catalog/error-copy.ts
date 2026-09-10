@@ -15,6 +15,11 @@ const CODE_TO_KEY: Record<string, string> = {
   VALIDATION_ERROR: 'errors.validation',
   UNAUTHENTICATED: 'errors.unauthenticated',
   FORBIDDEN: 'errors.forbidden',
+  // Everything else (500/502/503/404/429/malformed) intentionally falls through
+  // to `errors.generic` — one "try again" line. Only a true network failure
+  // (the request never reached the server) gets its own copy, because the
+  // user's fix is different: check the connection, not retry.
+  OFFLINE: 'errors.offline',
 };
 
 export function catalogErrorKey(code: string | undefined): string {

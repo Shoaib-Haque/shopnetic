@@ -112,19 +112,30 @@ export function CategoryList() {
 
   // a monotonic id so an earlier, slower `load()` can't overwrite a later one
   const loadSeq = useRef(0);
-  const load = useCallback(() => {
-    const seq = ++loadSeq.current;
-    setError(null);
-    listCategories({ status })
-      .then((rows) => {
-        if (seq === loadSeq.current) setItems(rows);
-      })
-      .catch((e: unknown) => {
-        if (seq !== loadSeq.current) return;
-        setItems([]);
-        setError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
-      });
-  }, [status, t]);
+  const load = useCallback(
+    (opts?: { background?: boolean }) => {
+      const seq = ++loadSeq.current;
+      if (!opts?.background) setError(null);
+      listCategories({ status })
+        .then((rows) => {
+          if (seq === loadSeq.current) setItems(rows);
+        })
+        .catch((e: unknown) => {
+          if (seq !== loadSeq.current) return;
+          // A *background* refresh (post-mutation resync) that fails keeps the
+          // rows already on screen — the action that kicked it off showed its
+          // own error toast, and blanking a good list to an error screen
+          // because a refresh didn't land is worse than slightly stale rows.
+          if (opts?.background) return;
+          // A *fresh* load (mount / tab switch) has nothing to preserve: show
+          // the message alone, `items` stays null (not []) so "No categories
+          // yet." never stacks on top of it. The user re-loads the page.
+          setItems(null);
+          setError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+        });
+    },
+    [status, t],
+  );
   useEffect(load, [load]);
   // switching tabs (Active/Archived/All) shows the skeleton again instead of
   // leaving the previous tab's rows frozen on screen with no feedback while
@@ -135,8 +146,11 @@ export function CategoryList() {
     setItems(null);
   }, [status]);
 
+  // post-mutation reload: keeps the rows on screen if the refresh itself fails
+  // (the mutation already surfaced its own error), never blanks to the skeleton
+  // or the error line.
   const resync = useCallback(() => {
-    if (mounted.current) load();
+    if (mounted.current) load({ background: true });
   }, [load]);
 
   // briefly highlight the row that was just moved / restored, so it's easy to
@@ -278,7 +292,7 @@ export function CategoryList() {
     } catch (e) {
       err(e);
     } finally {
-      load();
+      resync();
     }
   }
 
@@ -289,7 +303,7 @@ export function CategoryList() {
       await restoreCategory(restoreTarget.id);
       notify.saved(t('categories.toast.restored', { name: labelOf(restoreTarget) }));
       setRestoreTarget(null);
-      load();
+      resync();
     } catch (e) {
       err(e);
       setRestoreTarget(null);
@@ -300,7 +314,7 @@ export function CategoryList() {
 
   function onSaved(action: 'created' | 'updated', c: Category): void {
     notify.saved(t(`categories.toast.${action}`, { name: labelOf(c) }));
-    load();
+    resync();
   }
 
   // ── drag reorder / reparent: apply now, offer a one-click undo, no confirm ──
@@ -361,7 +375,7 @@ export function CategoryList() {
       reordering.current = false;
       const next = pendingMove.current;
       pendingMove.current = null;
-      load();
+      resync();
       // run the queued drop only if this one landed — a dependent move built on
       // a reorder that failed would apply against the wrong tree.
       if (ok && next && mounted.current) void applyMove(next);
@@ -501,7 +515,7 @@ export function CategoryList() {
           ref={searchRef}
           value={q}
           onValueChange={setQ}
-          onClear={load}
+          onClear={resync}
           clearLabel={tCommon('actions.clear')}
           placeholder={t('categories.searchPlaceholder')}
           className="w-full max-w-xs"
@@ -538,9 +552,9 @@ export function CategoryList() {
         )}
       </div>
 
-      {error !== null && <p className="mb-3 text-sm text-destructive">{error}</p>}
-
-      {items === null ? (
+      {error !== null ? (
+        <p className="px-6 py-10 text-center text-sm text-destructive">{error}</p>
+      ) : items === null ? (
         <CategoryListSkeleton />
       ) : emptyMsg ? (
         <p className="text-sm text-muted-foreground">{emptyMsg}</p>
@@ -595,7 +609,7 @@ export function CategoryList() {
           onConflict={() => {
             setModal(null);
             notify.error(t('categories.editConflict'), 5000);
-            load();
+            resync();
           }}
         />
       )}

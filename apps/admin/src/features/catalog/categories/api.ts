@@ -15,10 +15,6 @@ export function listCategories(opts?: { status?: CategoryListStatus }): Promise<
   return adminApi<Category[]>(`/categories${q}`);
 }
 
-export function getCategory(id: string): Promise<Category> {
-  return adminApi<Category>(`/categories/${id}`);
-}
-
 export function createCategory(body: CreateCategoryRequest): Promise<Category> {
   return adminApi<Category>('/categories', { method: 'POST', body });
 }

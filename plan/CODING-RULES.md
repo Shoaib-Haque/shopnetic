@@ -222,6 +222,12 @@ Every list/section ships all four: loading, empty (with a helpful next step),
 error (with retry), and partial (some data failed — show the rest + a notice).
 A PR adding a data view without these is incomplete.
 
+The error state renders **instead of** the empty state, never stacked on it
+(a failed fetch that left the collection at `[]` must not show both "something
+went wrong" and "nothing here yet"). "With retry" for a whole-page/whole-section
+view can be a page reload — an in-page Retry button is welcome but not required,
+and a back-office team may choose a plain message + reload over button chrome.
+
 ---
 
 ## F. Error handling & user-facing messages
@@ -254,6 +260,15 @@ forbidden (explain, don't loop), validation (field-level messages), conflict
 (explain what changed, offer reload), rate-limited (say "try again in X"),
 network/offline (retry banner), server (generic + correlationId). Don't collapse
 them into one "Something went wrong".
+
+The distinctions that must survive are the ones where **handling** or the
+user's **remedy** differs: 401 → login, 403 → explain, 404 → "it's gone",
+409 → conflict + reload, validation → field errors, offline → "check your
+connection". Pure server/transport failures with the same remedy — 500 / 502 /
+503 / 504 / 429 / a malformed body — *may* share one generic "try again" line
+if a per-code message wouldn't change what the user does; a surface owner (e.g.
+a back-office list) can take that trade. Offline still gets its own line even
+then, because "check your connection" ≠ "retry".
 
 ### F6. Money/stock/permission checks are server-side, always
 Client-side checks are UX hints. The server re-validates price, stock, coupons,
@@ -929,3 +944,12 @@ compose file.
   `DEV_*` flags. Runs after the delay middleware so slow-then-fail composes.
   Feeds an error-state pass over the admin surfaces (list/tab/detail load,
   add/edit, delete/restore/undo).
+- 2026-09-10 — Categories error-state pass (using `DEV_FAULT_STATUS`). E5:
+  error state renders *instead of* empty, never stacked; a whole-page view's
+  "retry" may be a plain reload, no button required. F5: pure server/transport
+  failures (5xx/429/malformed) may share one generic line per surface-owner's
+  choice; offline keeps its own copy. `AdminApiError` now wraps a `fetch`
+  rejection as `code: 'OFFLINE'` so `instanceof` checks catch it. Fixed a
+  non-deterministic post-401 redirect (a `redirecting` latch in `adminApi`
+  stops later calls racing the navigation). Added `error.tsx` at the admin
+  `(protected)` segment (F4) so a render throw keeps the shell.
