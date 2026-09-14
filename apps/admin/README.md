@@ -69,6 +69,19 @@ drawer, sign-out pinned at its bottom), a scrollable **main column**, and a
 Toasts: `@shopnetic/ui` `<Toaster/>` is mounted here; call `notify.saved(msg)` /
 `notify.error(msg)`.
 
+**Sign-out** lives once, in `AdminShell`'s `signOut()` — Topbar and Sidebar
+both call it via props, neither has its own copy (D2). It checks the logout
+call's result: on failure (offline — the BFF route always clears cookies and
+returns ok even when the upstream call itself failed, so a network error
+reaching the browser is the only real failure signal) it resets the button
+and shows a toast, instead of navigating to `/login` anyway — which would
+otherwise just bounce straight back to the dashboard via the login page's own
+already-signed-in guard, with nothing explaining why "sign out" didn't work.
+Tested in `admin-shell.test.tsx`: success navigates + refreshes, failure
+toasts and re-enables the button, a second click while pending is a no-op.
+(`features/staff-auth/components/logout-button.tsx` was a separate,
+never-wired-in implementation of the same thing — deleted as dead code.)
+
 ## Catalog (back office)
 
 `/[locale]/x7f2k9t3m1qp/(protected)/catalog/…` — currently **Categories**

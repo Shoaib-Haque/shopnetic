@@ -2,7 +2,8 @@
 
 import { useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { Toaster } from '@shopnetic/ui';
+import { useTranslations } from 'next-intl';
+import { Toaster, notify } from '@shopnetic/ui';
 import { postJson } from '@/features/staff-auth/submit';
 import { Topbar } from './topbar';
 import { Sidebar } from './sidebar';
@@ -27,6 +28,7 @@ export function AdminShell({
   loginHref: string;
   children: ReactNode;
 }) {
+  const t = useTranslations('admin');
   const router = useRouter();
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useSidebar();
   const [signingOut, setSigningOut] = useState(false);
@@ -34,7 +36,18 @@ export function AdminShell({
   async function signOut(): Promise<void> {
     if (signingOut) return;
     setSigningOut(true);
-    await postJson('/api/staff-auth/logout', {});
+    const res = await postJson('/api/staff-auth/logout', {});
+    // The BFF route clears cookies and returns ok even if the upstream call
+    // failed — the only real failure signal reaching here is the browser
+    // never reaching the BFF at all (offline / dev server down). Navigating
+    // anyway in that case would land on /login only to be bounced straight
+    // back by its own already-signed-in guard, with nothing explaining why
+    // "sign out" didn't do anything.
+    if (!res.ok) {
+      setSigningOut(false);
+      notify.error(t('shell.signOutFailed'));
+      return;
+    }
     router.replace(loginHref);
     router.refresh();
   }

@@ -12,6 +12,7 @@
       "account": "Account menu",
       "signOut": "Sign out",
       "signingOut": "Signing out…",
+      "signOutFailed": "Couldn’t sign you out. Check your connection and try again.",
       "soon": "Soon"
     },
     "nav": {
