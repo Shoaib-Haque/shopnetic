@@ -12,6 +12,7 @@
       "passwordHint": "At least 8 characters.",
       "passwordTooShort": "Use at least 8 characters.",
       "code": "Authenticator code",
+      "recoveryCode": "Recovery code",
       "showPassword": "Show password",
       "hidePassword": "Hide password"
     },
@@ -23,12 +24,15 @@
       "inviteLink": "Accept an invite"
     },
     "mfa": {
-      "intro": "Enter the 6-digit code from your authenticator app (or a recovery code)."
+      "intro": "Enter the 6-digit code from your authenticator app.",
+      "useRecovery": "Use a recovery code instead",
+      "useAuthenticator": "Use your authenticator app instead"
     },
     "enrol": {
-      "intro": "First sign-in: add this account to an authenticator app, then enter a code to finish.",
+      "intro": "First sign-in: scan this with your authenticator app, then enter a code to finish.",
+      "qrAlt": "QR code — scan with your authenticator app",
+      "manualEntry": "Can't scan? Enter the code manually",
       "secretLabel": "Secret (manual entry)",
-      "uriLabel": "otpauth URI",
       "submit": "Confirm and sign in",
       "submitting": "Confirming…"
     },

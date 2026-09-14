@@ -5,6 +5,8 @@ export { Skeleton, type SkeletonProps } from './components/skeleton';
 export { Input, type InputProps } from './components/input';
 export { SearchInput, type SearchInputProps } from './components/search-input';
 export { PasswordInput, type PasswordInputProps } from './components/password-input';
+export { OtpInput, type OtpInputProps } from './components/otp-input';
+export { QrCode, type QrCodeProps } from './components/qr-code';
 export { Field, type FieldProps } from './components/field';
 export {
   DropdownMenu,

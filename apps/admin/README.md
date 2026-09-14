@@ -20,9 +20,14 @@ invite-only.
 
 **First sign-in (bootstrap Super Admin):** email + password from
 `packages/db/.env` (`BOOTSTRAP_SUPERADMIN_*`, set before `db:seed`). You'll be
-shown a **TOTP setup** step — add the secret to an authenticator app (manual key
-entry), enter the 6-digit code, save the recovery codes.
-**After that:** email + password → 6-digit code (or a one-time recovery code).
+shown a **TOTP setup** step — scan the QR with an authenticator app (or enter
+the secret manually, behind a "Can't scan?" disclosure), enter the 6-digit
+code, save the recovery codes. The pending secret is stable across repeat
+login attempts before you confirm — a reload won't invalidate what you just
+scanned.
+**After that:** email + password → a segmented 6-digit code field (paste
+spreads across the cells, typing auto-advances) — or "Use a recovery code
+instead" for the one-time alphanumeric fallback.
 **Add more staff:** invite from the dashboard (needs `staff:manage` — Super
 Admin only); the link (Mailpit) opens `…/x7f2k9t3m1qp/accept-invite`.
 
@@ -41,9 +46,17 @@ TOTP-enrol → recovery-codes → redirect path, the returning-user MFA step
 (code re-attached on the retry), network failure showing its distinct copy,
 a locked account, and — the security one — the `?next=` open-redirect guard
 (off-app URLs and prefix-lookalikes fall back to the dashboard, only genuine
-in-root paths are honoured). `accept-invite-form.test.tsx` covers the
-missing-token guard, breached/expired-invite copy, and the success/done
-state. Each verified by disabling its fix and watching the test fail.
+in-root paths are honoured). Also: the `OtpInput` cells reject non-digits and
+disable submit until complete, typing auto-advances focus through all 6
+cells (a real regression — see CODING-RULES changelog 2026-09-14), the
+recovery-code toggle swaps in a plain field, and the enrol screen's QR
+renders a genuine PNG data URI (`qrcode`'s encoder runs for real in jsdom, no
+canvas needed) with the secret behind a manual-entry fallback.
+`accept-invite-form.test.tsx` covers the missing-token guard,
+breached/expired-invite copy, and the success/done state. Each verified by
+disabling its fix and watching the test fail. `TotpService`'s
+reuse-the-pending-secret idempotency is covered server-side, in
+`apps/api/src/identity/staff-auth.integration.test.ts`.
 
 ## Shell
 
@@ -103,6 +116,7 @@ password — no TOTP (see `apps/api/README.md`).
 ## Not yet
 
 Nav built from the actor's permissions (all catalog links shown for now, the API
-enforces); QR image for enrolment (secret + otpauth URI shown as text for now);
-the rest of the catalog UI (brands, option types, value sets, products, media);
-back-office modules (`plan/06`, Phase 2+).
+enforces); **staff-invite UI** — `POST /identity/v1/staff/invites` exists
+(`staff:manage`, Super Admin) but nothing in the dashboard calls it; sending an
+invite is API-only today. The rest of the catalog UI (brands, option types,
+value sets, products, media); back-office modules (`plan/06`, Phase 2+).

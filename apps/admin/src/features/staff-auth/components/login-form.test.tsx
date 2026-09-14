@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderAdmin } from '@/test/render';
 import { postJson } from '@/features/staff-auth/submit';
 import { StaffLoginForm } from './login-form';
@@ -42,6 +42,14 @@ function render() {
 function fillCredentials(email = 'staff@example.com', password = 'correct-horse-battery') {
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: email } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: password } });
+}
+
+/** Paste a code into the segmented OtpInput's first cell (spreads across cells). */
+function pasteOtp(text: string) {
+  const group = screen.getByRole('group', { name: 'Authenticator code' });
+  const firstCell = within(group).getAllByRole('textbox')[0]!;
+  fireEvent.focus(firstCell);
+  fireEvent.paste(firstCell, { clipboardData: { getData: () => text } });
 }
 
 beforeEach(() => {
@@ -128,10 +136,9 @@ describe('StaffLoginForm', () => {
 
     // enrol step
     expect(await screen.findByText('ABC123SECRET')).toBeInTheDocument();
-    expect(screen.getByText(/First sign-in: add this account/)).toBeInTheDocument();
+    expect(screen.getByText(/First sign-in: scan this/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Authenticator code'), { target: { value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm and sign in' }));
+    pasteOtp('123456'); // reaching 6 digits auto-submits the confirm
 
     // recovery step
     expect(await screen.findByText('recovery-one')).toBeInTheDocument();
@@ -149,6 +156,32 @@ describe('StaffLoginForm', () => {
     );
   });
 
+  it('enrol screen shows a QR for the otpauth URI, with the secret behind a manual-entry fallback', async () => {
+    mockedPostJson.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        data: {
+          status: 'totp_enrolment_required',
+          secret: 'ABC123SECRET',
+          otpauthUri: 'otpauth://totp/Shopnetic:staff@example.com?secret=ABC123SECRET',
+        },
+      },
+    });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    // qrcode's encoder runs for real here (no canvas needed) — a genuine PNG
+    // data URI, not just a wiring stub
+    const qr = await screen.findByRole('img', { name: /QR code/i });
+    expect(qr.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+    // the secret is present but tucked behind the manual-entry disclosure, not
+    // shown as the primary path
+    expect(screen.getByText("Can't scan? Enter the code manually")).toBeInTheDocument();
+  });
+
   it('returning MFA user → mfa step → submitting the code retries login with it and redirects', async () => {
     mockedPostJson
       .mockResolvedValueOnce({ ok: false, status: 401, body: { error: { code: 'MFA_REQUIRED' } } })
@@ -160,13 +193,83 @@ describe('StaffLoginForm', () => {
 
     expect(await screen.findByText(/Enter the 6-digit code/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Authenticator code'), { target: { value: '654321' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    pasteOtp('654321'); // 6 digits → auto-submits the retry
 
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(DASHBOARD));
     expect(mockedPostJson).toHaveBeenLastCalledWith(
       '/api/staff-auth/login',
       expect.objectContaining({ code: '654321' }),
+    );
+  });
+
+  it('MFA step: non-digits are rejected and a partial code keeps the button disabled', async () => {
+    mockedPostJson.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      body: { error: { code: 'MFA_REQUIRED' } },
+    });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByText(/Enter the 6-digit code/);
+
+    pasteOtp('12ab34'); // only the 4 digits land
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeDisabled();
+    const cells = within(screen.getByRole('group', { name: 'Authenticator code' })).getAllByRole(
+      'textbox',
+    ) as HTMLInputElement[];
+    expect(cells.map((c) => c.value).join('')).toBe('1234');
+  });
+
+  it('MFA step: typing a digit at a time auto-advances focus through all 6 cells', async () => {
+    mockedPostJson
+      .mockResolvedValueOnce({ ok: false, status: 401, body: { error: { code: 'MFA_REQUIRED' } } })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { data: { user: { id: 'u1' } } } });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByText(/Enter the 6-digit code/);
+
+    const cells = within(screen.getByRole('group', { name: 'Authenticator code' })).getAllByRole(
+      'textbox',
+    ) as HTMLInputElement[];
+
+    for (const [i, digit] of ['1', '2', '3', '4', '5'].entries()) {
+      fireEvent.change(cells[i]!, { target: { value: digit } });
+      // typing one digit must hand focus to the *next* cell, not bounce back
+      expect(document.activeElement).toBe(cells[i + 1]);
+    }
+    fireEvent.change(cells[5]!, { target: { value: '6' } }); // 6th digit auto-submits
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(DASHBOARD));
+    expect(mockedPostJson).toHaveBeenLastCalledWith(
+      '/api/staff-auth/login',
+      expect.objectContaining({ code: '123456' }),
+    );
+  });
+
+  it('MFA step: "use a recovery code" swaps in a plain field and submits the recovery code', async () => {
+    mockedPostJson
+      .mockResolvedValueOnce({ ok: false, status: 401, body: { error: { code: 'MFA_REQUIRED' } } })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { data: { user: { id: 'u1' } } } });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByText(/Enter the 6-digit code/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use a recovery code instead' }));
+    expect(screen.queryByRole('group', { name: 'Authenticator code' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Recovery code'), { target: { value: 'A3F9K-2M7QP' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(DASHBOARD));
+    expect(mockedPostJson).toHaveBeenLastCalledWith(
+      '/api/staff-auth/login',
+      expect.objectContaining({ code: 'A3F9K-2M7QP' }),
     );
   });
 

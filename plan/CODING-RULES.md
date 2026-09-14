@@ -162,8 +162,13 @@ Money formatting, dates, addresses, ratings, price display, empty states,
 error banners, page headers, data tables, pagination, **password fields**
 (`@shopnetic/ui` `PasswordInput` — has the show/hide toggle), **search fields**
 (`@shopnetic/ui` `SearchInput` — magnifier + clear button with tooltip, `Esc`
-to clear, `onClear` for a re-fetch) — **one** shared component each. No local
-reinventions.
+to clear, `onClear` for a re-fetch), **one-time codes** (`@shopnetic/ui`
+`OtpInput` — segmented `0-9`-only cells, auto-advance, paste-to-spread,
+`onComplete` for auto-submit; a non-6-digit fallback like a recovery code
+uses a plain `Input`), **scannable secrets** (`@shopnetic/ui` `QrCode` —
+client-side PNG data URI via `qrcode`, nothing sent anywhere to generate it;
+a `<Skeleton>` fills the frame while it encodes) — **one** shared component
+each. No local reinventions.
 
 ### D4. Components are dumb about data source
 A component takes props; it doesn't know about `fetch`, the BFF, or the store.
@@ -966,3 +971,18 @@ compose file.
   confirming (a reload, a double-click) silently invalidated whatever the
   user had just scanned into their authenticator app. Now idempotent: reuses
   the pending secret until it's confirmed.
+- 2026-09-10 — D3 gains `OtpInput` (`@shopnetic/ui`): segmented `0-9`-only
+  one-time-code field (auto-advance, backspace-to-previous, paste-to-spread,
+  `onComplete` auto-submit). Wired into the staff login enrol + MFA steps; a
+  recovery code (not 6 digits) falls back to a plain `Input` behind a toggle.
+  From the staff-auth UI/UX pass — also fixed the sign-in button resetting to
+  idle in the gap before the post-login redirect renders.
+- 2026-09-14 — `OtpInput`'s "click anywhere → jump to the first empty cell"
+  guard read a stale `value` closure — a programmatic `.focus()` call fires
+  its target's `onFocus` synchronously, one render before React catches up,
+  so auto-advance kept getting reverted and every digit had to be typed by
+  clicking each cell by hand. Found by walking the enrol screen with a real
+  phone. Fixed with a ref updated the instant a digit commits, not just on
+  next render. D3 gains `QrCode` (`@shopnetic/ui`) — the enrol screen scans
+  instead of hand-typing a base32 secret; the secret stays as a collapsed
+  manual-entry fallback.
