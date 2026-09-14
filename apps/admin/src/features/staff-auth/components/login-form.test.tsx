@@ -94,6 +94,24 @@ describe('StaffLoginForm', () => {
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
+  it('rate limited → shows the rate-limited copy and stays on the password step', async () => {
+    mockedPostJson.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      body: { error: { code: 'RATE_LIMITED' } },
+    });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(
+      await screen.findByText('Too many attempts. Please wait a bit and try again.'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
   it('locked account → shows the account-locked copy and does not advance past the password step', async () => {
     mockedPostJson.mockResolvedValueOnce({
       ok: false,
@@ -182,6 +200,39 @@ describe('StaffLoginForm', () => {
     expect(screen.getByText("Can't scan? Enter the code manually")).toBeInTheDocument();
   });
 
+  it('enrol step: confirming after the account got enrolled elsewhere → shows the already-enrolled copy, stays on the enrol step', async () => {
+    mockedPostJson
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: {
+          data: {
+            status: 'totp_enrolment_required',
+            secret: 'ABC123SECRET',
+            otpauthUri: 'otpauth://totp/Shopnetic:staff@example.com?secret=ABC123SECRET',
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        body: { error: { code: 'MFA_ALREADY_ENROLLED' } },
+      });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByText('ABC123SECRET');
+
+    pasteOtp('123456');
+
+    expect(
+      await screen.findByText('An authenticator is already set up for this account.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('ABC123SECRET')).toBeInTheDocument(); // still the enrol step
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
   it('returning MFA user → mfa step → submitting the code retries login with it and redirects', async () => {
     mockedPostJson
       .mockResolvedValueOnce({ ok: false, status: 401, body: { error: { code: 'MFA_REQUIRED' } } })
@@ -200,6 +251,44 @@ describe('StaffLoginForm', () => {
       '/api/staff-auth/login',
       expect.objectContaining({ code: '654321' }),
     );
+  });
+
+  it('MFA step: wrong code → shows the invalid-code message and stays on the MFA step', async () => {
+    mockedPostJson
+      .mockResolvedValueOnce({ ok: false, status: 401, body: { error: { code: 'MFA_REQUIRED' } } })
+      .mockResolvedValueOnce({ ok: false, status: 401, body: { error: { code: 'MFA_INVALID' } } });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByText(/Enter the 6-digit code/);
+
+    pasteOtp('000000');
+
+    expect(await screen.findByText("That code isn't right. Try again.")).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Authenticator code' })).toBeInTheDocument();
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  it('MFA step: wrong recovery code → shows the invalid-code message and stays on the recovery field', async () => {
+    mockedPostJson
+      .mockResolvedValueOnce({ ok: false, status: 401, body: { error: { code: 'MFA_REQUIRED' } } })
+      .mockResolvedValueOnce({ ok: false, status: 401, body: { error: { code: 'MFA_INVALID' } } });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByText(/Enter the 6-digit code/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use a recovery code instead' }));
+    fireEvent.change(screen.getByLabelText('Recovery code'), { target: { value: 'WRONG-CODE1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByText("That code isn't right. Try again.")).toBeInTheDocument();
+    // stays in recovery mode — a failed attempt must not silently flip back
+    // to the authenticator-app field
+    expect(screen.getByLabelText('Recovery code')).toBeInTheDocument();
+    expect(routerReplace).not.toHaveBeenCalled();
   });
 
   it('MFA step: non-digits are rejected and a partial code keeps the button disabled', async () => {

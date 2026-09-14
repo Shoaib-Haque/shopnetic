@@ -986,3 +986,11 @@ compose file.
   next render. D3 gains `QrCode` (`@shopnetic/ui`) — the enrol screen scans
   instead of hand-typing a base32 secret; the secret stays as a collapsed
   manual-entry fallback.
+- 2026-09-14 — Closed the staff-auth test gaps left from the login/MFA/enrol
+  work above: rate-limited, wrong authenticator code, wrong recovery code
+  (both stay on their own step rather than bouncing back to the other),
+  `MFA_ALREADY_ENROLLED` on confirm, and a direct test of
+  `(protected)/layout.tsx`'s session guard (redirect vs. render, no session
+  vs. a valid one) — the first Server Component tested this way in the app;
+  its own deps (`getCurrentStaff`, `AdminShell`) are mocked so the test is
+  only about the redirect decision.

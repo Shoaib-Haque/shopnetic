@@ -51,12 +51,18 @@ disable submit until complete, typing auto-advances focus through all 6
 cells (a real regression — see CODING-RULES changelog 2026-09-14), the
 recovery-code toggle swaps in a plain field, and the enrol screen's QR
 renders a genuine PNG data URI (`qrcode`'s encoder runs for real in jsdom, no
-canvas needed) with the secret behind a manual-entry fallback.
-`accept-invite-form.test.tsx` covers the missing-token guard,
-breached/expired-invite copy, and the success/done state. Each verified by
-disabling its fix and watching the test fail. `TotpService`'s
-reuse-the-pending-secret idempotency is covered server-side, in
-`apps/api/src/identity/staff-auth.integration.test.ts`.
+canvas needed) with the secret behind a manual-entry fallback. Error-copy
+coverage: a rate-limited attempt, a wrong authenticator code, a wrong
+recovery code (each stays on its own step rather than bouncing back), and
+confirming enrolment after the account got enrolled elsewhere
+(`MFA_ALREADY_ENROLLED`). `accept-invite-form.test.tsx` covers the
+missing-token guard, breached/expired-invite copy, and the success/done
+state. Each verified by disabling its fix and watching the test fail.
+`TotpService`'s reuse-the-pending-secret idempotency is covered
+server-side, in `apps/api/src/identity/staff-auth.integration.test.ts`.
+`(protected)/layout.test.tsx` covers the session guard directly: no
+session redirects to that locale/root's login and never renders the
+shell, a valid session renders it with no redirect.
 
 ## Shell
 
