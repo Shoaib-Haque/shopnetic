@@ -27,7 +27,14 @@ export class TotpService {
     return row?.confirmedAt != null;
   }
 
-  /** Start (or restart) enrolment. Fails if TOTP is already confirmed. */
+  /**
+   * Start enrolment. Idempotent while pending: a still-unconfirmed secret is
+   * reused, not replaced — every login attempt before confirmation (a login
+   * page reload, a double-click, this being called twice for any reason)
+   * previously minted a *new* secret and silently invalidated whatever the
+   * user had just scanned/typed into their authenticator app. Fails if TOTP
+   * is already confirmed.
+   */
   async beginEnrolment(
     accountId: string,
     accountEmail: string,
@@ -37,13 +44,14 @@ export class TotpService {
       throw new AppError('MFA_ALREADY_ENROLLED', 409, { detail: 'authenticator already set up' });
     }
 
-    const secret = authenticator.generateSecret();
-    const encrypted = this.box.encrypt(secret);
-    await this.prisma.totpSecret.upsert({
-      where: { accountId },
-      create: { accountId, secretEncrypted: encrypted },
-      update: { secretEncrypted: encrypted, confirmedAt: null },
-    });
+    const secret = existing
+      ? this.box.decrypt(existing.secretEncrypted)
+      : authenticator.generateSecret();
+    if (!existing) {
+      await this.prisma.totpSecret.create({
+        data: { accountId, secretEncrypted: this.box.encrypt(secret) },
+      });
+    }
 
     return {
       secret,

@@ -961,3 +961,8 @@ compose file.
   in `apps/api/src/config/env.ts` — every `DEV_*` safeguard hinges on it being
   set correctly, so a deployment that forgets it now fails loudly at boot
   instead of silently running with the permissive posture.
+- 2026-09-14 — `TotpService.beginEnrolment` minted a *new* secret on every
+  call while enrolment was pending — any second login attempt before
+  confirming (a reload, a double-click) silently invalidated whatever the
+  user had just scanned into their authenticator app. Now idempotent: reuses
+  the pending secret until it's confirmed.

@@ -121,6 +121,16 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
     totpSecret = outcome.challenge.secret;
   });
 
+  it('a second login attempt before confirming reuses the same secret, not a new one', async () => {
+    // a login page reload / double-click / retry before enrolment is
+    // confirmed used to mint a *new* secret each time, silently invalidating
+    // whatever the user had just scanned into their authenticator app.
+    const outcome = await staffAuth.login({ email: staffEmail, password: staffPassword }, {});
+    expect(outcome.kind).toBe('enrolment');
+    if (outcome.kind !== 'enrolment') throw new Error('expected enrolment');
+    expect(outcome.challenge.secret).toBe(totpSecret);
+  });
+
   it('confirming enrolment issues a session + recovery codes', async () => {
     const { response } = await staffAuth.confirmEnrolment(
       { email: staffEmail, password: staffPassword, code: authenticator.generate(totpSecret) },
