@@ -32,7 +32,8 @@ export function AdminShell({
 }) {
   const t = useTranslations('admin');
   const router = useRouter();
-  const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useSidebar();
+  const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen, expandedGroups, toggleGroup } =
+    useSidebar();
   const [signingOut, setSigningOut] = useState(false);
 
   async function signOut(): Promise<void> {
@@ -73,6 +74,8 @@ export function AdminShell({
           onCloseMobile={() => setMobileOpen(false)}
           onSignOut={signOut}
           signingOut={signingOut}
+          expandedGroups={expandedGroups}
+          onToggleGroup={toggleGroup}
         />
         <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           {/* left-aligned, soft cap so tables don't sprawl on ultra-wide screens */}

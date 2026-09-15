@@ -50,50 +50,64 @@ function redirectToLogin(): void {
   window.location.assign(`${root}/login?next=${next}`);
 }
 
-export async function adminApi<T>(path: string, opts: Options = {}): Promise<T> {
-  // a login redirect is already in flight — don't start another request
-  if (redirecting) throw new AdminApiError('UNAUTHENTICATED', 401);
+/**
+ * Builds a typed client against one BFF proxy base — `adminApi` (below) is
+ * `/api/admin/*`; `staffManageApi` is `/api/staff-auth/staff/*`. `redirecting`
+ * is shared across every client (module-level, not per-base): a dead session
+ * is a dead session no matter which proxy noticed first, so only one of them
+ * should ever kick off the redirect.
+ */
+function createApiClient(basePath: string) {
+  return async function callApi<T>(path: string, opts: Options = {}): Promise<T> {
+    // a login redirect is already in flight — don't start another request
+    if (redirecting) throw new AdminApiError('UNAUTHENTICATED', 401);
 
-  const method = opts.method ?? 'GET';
-  const init: RequestInit = {
-    method,
-    headers: {},
-    // admin data is mutable and re-fetched right after every mutation — the
-    // browser must not serve a stale GET from its HTTP cache.
-    cache: 'no-store',
-    ...(opts.signal ? { signal: opts.signal } : {}),
+    const method = opts.method ?? 'GET';
+    const init: RequestInit = {
+      method,
+      headers: {},
+      // admin data is mutable and re-fetched right after every mutation — the
+      // browser must not serve a stale GET from its HTTP cache.
+      cache: 'no-store',
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    };
+    if (opts.body !== undefined) {
+      init.headers = { 'content-type': 'application/json' };
+      init.body = JSON.stringify(opts.body);
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${basePath}${path}`, init);
+    } catch {
+      // fetch rejects (no response at all) → offline, DNS, the Next server down.
+      // Give it a real code so callers' `instanceof AdminApiError` branches hit.
+      throw new AdminApiError('OFFLINE', 0);
+    }
+    if (res.status === 204) return undefined as T;
+
+    let payload: unknown = null;
+    try {
+      payload = await res.json();
+    } catch {
+      /* empty / non-JSON */
+    }
+
+    if (!res.ok) {
+      const code =
+        (payload as { error?: { code?: string } } | null)?.error?.code ??
+        (res.status === 401 ? 'UNAUTHENTICATED' : 'INTERNAL');
+      // the backend session is gone (not just this one call failing) — the shell
+      // is still showing as signed in with nothing left to fetch, so send the
+      // user to sign in again instead of leaving a dead page up.
+      if (code === 'UNAUTHENTICATED') redirectToLogin();
+      throw new AdminApiError(code, res.status);
+    }
+    return (payload as { data: T }).data;
   };
-  if (opts.body !== undefined) {
-    init.headers = { 'content-type': 'application/json' };
-    init.body = JSON.stringify(opts.body);
-  }
-
-  let res: Response;
-  try {
-    res = await fetch(`/api/admin${path}`, init);
-  } catch {
-    // fetch rejects (no response at all) → offline, DNS, the Next server down.
-    // Give it a real code so callers' `instanceof AdminApiError` branches hit.
-    throw new AdminApiError('OFFLINE', 0);
-  }
-  if (res.status === 204) return undefined as T;
-
-  let payload: unknown = null;
-  try {
-    payload = await res.json();
-  } catch {
-    /* empty / non-JSON */
-  }
-
-  if (!res.ok) {
-    const code =
-      (payload as { error?: { code?: string } } | null)?.error?.code ??
-      (res.status === 401 ? 'UNAUTHENTICATED' : 'INTERNAL');
-    // the backend session is gone (not just this one call failing) — the shell
-    // is still showing as signed in with nothing left to fetch, so send the
-    // user to sign in again instead of leaving a dead page up.
-    if (code === 'UNAUTHENTICATED') redirectToLogin();
-    throw new AdminApiError(code, res.status);
-  }
-  return (payload as { data: T }).data;
 }
+
+export const adminApi = createApiClient('/api/admin');
+/** Staff-directory actions (list / role / unlock / reset-totp / deprovision) —
+ * `staff:manage`, Super Admin only; the BFF proxy is `/api/staff-auth/staff/*`. */
+export const staffManageApi = createApiClient('/api/staff-auth/staff');

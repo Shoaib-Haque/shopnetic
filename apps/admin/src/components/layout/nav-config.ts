@@ -16,14 +16,25 @@ import {
  * with `soon: true` render disabled until their page lands. `superAdminOnly`
  * hides the item for anyone else — the API is still the real enforcement
  * (`@RequirePermission`), this only stops a normal Admin from seeing (and
- * clicking into) a control that would just reject them.
+ * clicking into) a control that would just reject them. `children` makes the
+ * item an expand/collapse group instead of a link — one level only, a child
+ * is always a plain link (no nested groups, no `soon`/`superAdminOnly` of its
+ * own; gating lives on the parent since every child shares one permission
+ * today). Collapsed sidebar: a group's icon links straight to its first
+ * child instead of trying to show a flyout submenu.
  */
+export interface NavChildItem {
+  key: string;
+  path: string;
+}
+
 export interface NavItem {
   key: string;
   path?: string;
   icon: LucideIcon;
   soon?: boolean;
   superAdminOnly?: boolean;
+  children?: NavChildItem[];
 }
 
 export interface NavSection {
@@ -49,7 +60,17 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     key: 'administration',
-    items: [{ key: 'staff', path: '/staff', icon: UserPlus, superAdminOnly: true }],
+    items: [
+      {
+        key: 'staff',
+        icon: UserPlus,
+        superAdminOnly: true,
+        children: [
+          { key: 'staffList', path: '/staff' },
+          { key: 'staffInvite', path: '/staff/invite' },
+        ],
+      },
+    ],
   },
 ];
 

@@ -1043,3 +1043,66 @@ compose file.
   time this bites: `@shopnetic/contracts` is consumed via its built `dist`,
   not source — `pnpm --filter @shopnetic/contracts build` after any schema
   change, or downstream typecheck fails on the *old* shape.
+- 2026-09-15 — Built the staff directory (list + role change / unlock /
+  TOTP reset / deprovision — the second item from the staff-auth backlog,
+  bundled with its follow-on actions since they share one page and one new
+  `StaffAccountsService`, not four separate small features). New
+  `identity/v1/staff` `GET` + 4 mutation routes, all `staff:manage`;
+  role-change *replaces* the account's grant in one transaction rather than
+  adding to it; deprovision revokes every session
+  (`SessionService.revokeAllForAccount`) as a belt-and-suspenders on top of
+  `ActorService` already blocking a non-`active` account regardless.
+  `CANNOT_MODIFY_SELF` (409) guards role-change and deprovision against the
+  caller's own `accountId` — unlock/reset-totp don't need it, since being
+  authenticated and being locked-out-of-TOTP are mutually exclusive.
+  Client-side, `features/admin-api/client.ts`'s `adminApi` became
+  `createApiClient(basePath)` so a second client (`staffManageApi`, → the
+  new `/api/staff-auth/staff/[[...path]]` BFF catch-all) shares the same
+  401-redirect logic instead of a second copy of it — `redirecting` stays
+  one shared module-level flag across both. Found empirically while testing
+  the new `StaffList`'s row-action menu: Radix's `DropdownMenuTrigger` opens
+  on `pointerdown`/keyboard, not `click` — `fireEvent.click` in a jsdom test
+  silently no-ops on it; `vitest.setup.ts` gained the pointer-capture
+  polyfills Radix needs that jsdom doesn't implement, and the fix on the
+  test side is to open the menu via `fireEvent.keyDown(trigger, {key:
+  'Enter'})` instead of a click.
+- 2026-09-15 — Found live (screenshot from a real signed-in session): the
+  staff-directory BFF catch-all was `[...path]` (required) — Next.js
+  doesn't match that pattern at all for zero extra segments, so `GET
+  /api/staff-auth/staff` (the list call) 404'd at the routing layer,
+  never reaching the handler, while every mutation route (`:accountId/role`
+  etc., always ≥1 segment) worked fine. Renamed the folder to `[[...path]]`
+  (optional catch-all) and handled `path` being `undefined` for that
+  zero-segment case. A reminder for any future catch-all BFF proxy that
+  needs to answer its own bare prefix, not just sub-paths under it.
+- 2026-09-15 — Found live: a Deprovisioned (`disabled`) staff account had no
+  way back to `active` — `StaffAccountsService.unlock()` only accepted
+  `status: 'locked'`, and the frontend only offered "Unlock" for a `locked`
+  row. Renamed `unlock` → `activate` (API method, controller endpoint
+  `POST :accountId/unlock` → `:accountId/activate`), and relaxed the guard
+  to accept either `'locked'` or `'disabled'` — one mechanism, not a
+  duplicate "reactivate" action, since the only real difference is *why*
+  the account got there, which the caller already knows from `status` and
+  reflects purely in button/toast copy ("Unlock" vs "Reactivate"). No new
+  self-guard needed, same reasoning as the original `unlock`: you can't be
+  simultaneously authenticated and locked-out-or-disabled.
+- 2026-09-15 — Restructured the **Staff** nav item into an expand/collapse
+  group (`NavItem.children`, one level only) with **List** (`/staff`) and
+  **Invite** (`/staff/invite`) as separate pages instead of one page
+  stacking the directory table above the invite form. Expand state
+  (`expandedGroups`, keyed by `NavItem.key`) lives in `useSidebar()`, not in
+  `Sidebar`, because the desktop rail and mobile drawer mount two separate
+  `SidebarBody` copies that need to stay in sync rather than drift apart —
+  matches the existing pattern for `collapsed`/`mobileOpen`. A child route
+  being current auto-expands its group (`expanded || anyChildActive`) with
+  no click needed. Found while writing that auto-expand test: `isActiveHref`
+  is a `pathname.startsWith(href)` prefix check, so a parent-shaped path
+  like `/staff` is technically also a prefix of `/staff/invite` — without
+  care, *both* children would show `aria-current`. `NavItemRow` now picks
+  the single longest-matching child path as the "current" one instead of
+  trusting each child's independent prefix match. Separately, the same test
+  first failed for an unrelated reason worth remembering: this test file's
+  `next/link` mock only forwarded `href`/`children`, silently dropping
+  `aria-current` (and `onClick`, `className`) from the rendered `<a>` — any
+  test mocking `next/link` and asserting on more than `href` needs to spread
+  the rest of the props through.

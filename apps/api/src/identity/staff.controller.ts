@@ -1,14 +1,29 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Permission } from '@shopnetic/auth';
 import {
   staffInviteAcceptRequestSchema,
   staffInviteCreateRequestSchema,
   staffLoginRequestSchema,
+  staffRoleChangeRequestSchema,
   staffTotpConfirmRequestSchema,
+  type StaffAccount,
   type StaffInviteAcceptRequest,
   type StaffInviteCreateRequest,
   type StaffLoginRequest,
+  type StaffRoleChangeRequest,
   type StaffSessionResponse,
   type StaffTotpConfirmRequest,
   type TotpConfirmResponse,
@@ -27,6 +42,7 @@ import { RequirePermission } from '../auth/require-permission.decorator.js';
 import { CurrentActor } from '../auth/current-actor.decorator.js';
 import { StaffAuthService } from './staff-auth.service.js';
 import { StaffInviteService } from './staff-invite.service.js';
+import { StaffAccountsService } from './staff-accounts.service.js';
 import {
   STAFF_REFRESH_COOKIE,
   clearStaffRefreshCookie,
@@ -37,6 +53,7 @@ const loginBody = new ZodBodyPipe(staffLoginRequestSchema);
 const confirmBody = new ZodBodyPipe(staffTotpConfirmRequestSchema);
 const inviteBody = new ZodBodyPipe(staffInviteCreateRequestSchema);
 const acceptBody = new ZodBodyPipe(staffInviteAcceptRequestSchema);
+const roleChangeBody = new ZodBodyPipe(staffRoleChangeRequestSchema);
 
 @Controller('identity/v1/staff')
 export class StaffController {
@@ -44,6 +61,7 @@ export class StaffController {
     @Inject(API_ENV) private readonly env: ApiEnv,
     private readonly staffAuth: StaffAuthService,
     private readonly invites: StaffInviteService,
+    private readonly accounts: StaffAccountsService,
   ) {}
 
   private get isProd(): boolean {
@@ -149,6 +167,74 @@ export class StaffController {
   ): Promise<{ data: { accepted: true }; meta: { requestId: string } }> {
     await this.invites.accept(body, ctxOf(req));
     return ok(req, { accepted: true });
+  }
+
+  @Get()
+  @HttpCode(200)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async list(
+    @Req() req: Request,
+  ): Promise<{ data: { accounts: StaffAccount[] }; meta: { requestId: string } }> {
+    return ok(req, { accounts: await this.accounts.list() });
+  }
+
+  @Patch(':accountId/role')
+  @HttpCode(200)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async changeRole(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('accountId') accountId: string,
+    @Body(roleChangeBody) body: StaffRoleChangeRequest,
+  ): Promise<{ data: StaffAccount; meta: { requestId: string } }> {
+    const account = await this.accounts.changeRole(
+      accountId,
+      body.role,
+      actor.accountId,
+      ctxOf(req),
+    );
+    return ok(req, account);
+  }
+
+  @Post(':accountId/activate')
+  @HttpCode(200)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async activate(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('accountId') accountId: string,
+  ): Promise<{ data: StaffAccount; meta: { requestId: string } }> {
+    const account = await this.accounts.activate(accountId, actor.accountId, ctxOf(req));
+    return ok(req, account);
+  }
+
+  @Post(':accountId/reset-totp')
+  @HttpCode(200)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async resetTotp(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('accountId') accountId: string,
+  ): Promise<{ data: StaffAccount; meta: { requestId: string } }> {
+    const account = await this.accounts.resetTotp(accountId, actor.accountId, ctxOf(req));
+    return ok(req, account);
+  }
+
+  @Post(':accountId/deprovision')
+  @HttpCode(200)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async deprovision(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('accountId') accountId: string,
+  ): Promise<{ data: StaffAccount; meta: { requestId: string } }> {
+    const account = await this.accounts.deprovision(accountId, actor.accountId, ctxOf(req));
+    return ok(req, account);
   }
 }
 

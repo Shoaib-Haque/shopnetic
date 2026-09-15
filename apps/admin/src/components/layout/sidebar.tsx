@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { LogOut, X } from 'lucide-react';
+import { ChevronDown, LogOut, X } from 'lucide-react';
 import { cn, Spinner } from '@shopnetic/ui';
-import { visibleNavSections } from './nav-config';
+import { visibleNavSections, type NavItem } from './nav-config';
 
 interface SidebarProps {
   root: string; // /<locale>/<basePath>
@@ -15,6 +15,8 @@ interface SidebarProps {
   onCloseMobile: () => void;
   onSignOut: () => void;
   signingOut: boolean;
+  expandedGroups: Record<string, boolean>;
+  onToggleGroup: (key: string) => void;
 }
 
 export function Sidebar({
@@ -25,6 +27,8 @@ export function Sidebar({
   onCloseMobile,
   onSignOut,
   signingOut,
+  expandedGroups,
+  onToggleGroup,
 }: SidebarProps) {
   return (
     <>
@@ -41,6 +45,8 @@ export function Sidebar({
           collapsed={collapsed}
           onSignOut={onSignOut}
           signingOut={signingOut}
+          expandedGroups={expandedGroups}
+          onToggleGroup={onToggleGroup}
         />
       </aside>
 
@@ -73,6 +79,8 @@ export function Sidebar({
             onClose={onCloseMobile}
             onSignOut={onSignOut}
             signingOut={signingOut}
+            expandedGroups={expandedGroups}
+            onToggleGroup={onToggleGroup}
           />
         </aside>
       </div>
@@ -88,6 +96,8 @@ function SidebarBody({
   onClose,
   onSignOut,
   signingOut,
+  expandedGroups,
+  onToggleGroup,
 }: {
   root: string;
   roles: readonly string[];
@@ -97,9 +107,20 @@ function SidebarBody({
   onClose?: () => void;
   onSignOut: () => void;
   signingOut: boolean;
+  expandedGroups: Record<string, boolean>;
+  onToggleGroup: (key: string) => void;
 }) {
   const t = useTranslations('admin');
   const pathname = usePathname();
+
+  function hrefFor(path: string): string {
+    return `${root}${path}`;
+  }
+
+  function isActiveHref(path: string): boolean {
+    const href = hrefFor(path);
+    return path === '' ? pathname === href : pathname.startsWith(href);
+  }
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -122,60 +143,18 @@ function SidebarBody({
               </p>
             )}
             <ul className="flex flex-col gap-0.5">
-              {section.items.map((item) => {
-                const label = t(`nav.${item.key}`);
-                const href = item.path !== undefined ? `${root}${item.path}` : undefined;
-                const active =
-                  href !== undefined &&
-                  (item.path === '' ? pathname === href : pathname.startsWith(href));
-                const Icon = item.icon;
-                const inner = (
-                  <>
-                    <Icon className="size-4 shrink-0" aria-hidden />
-                    {!collapsed && <span className="truncate">{label}</span>}
-                    {!collapsed && item.soon && (
-                      <span className="ml-auto rounded bg-muted px-1 text-[10px] text-muted-foreground">
-                        {t('shell.soon')}
-                      </span>
-                    )}
-                  </>
-                );
-                const base = cn(
-                  'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm',
-                  collapsed && 'justify-center',
-                );
-                if (!href || item.soon) {
-                  return (
-                    <li key={item.key}>
-                      <span
-                        className={cn(base, 'cursor-not-allowed text-muted-foreground/60')}
-                        {...(collapsed ? { title: `${label} — ${t('shell.soon')}` } : {})}
-                        aria-disabled
-                      >
-                        {inner}
-                      </span>
-                    </li>
-                  );
-                }
-                return (
-                  <li key={item.key}>
-                    <Link
-                      href={href}
-                      onClick={() => onNavigate?.()}
-                      {...(collapsed ? { title: label } : {})}
-                      {...(active ? { 'aria-current': 'page' as const } : {})}
-                      className={cn(
-                        base,
-                        active
-                          ? 'bg-muted font-medium text-foreground'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                      )}
-                    >
-                      {inner}
-                    </Link>
-                  </li>
-                );
-              })}
+              {section.items.map((item) => (
+                <NavItemRow
+                  key={item.key}
+                  item={item}
+                  collapsed={collapsed}
+                  expanded={expandedGroups[item.key] ?? false}
+                  onToggleGroup={onToggleGroup}
+                  onNavigate={onNavigate}
+                  hrefFor={hrefFor}
+                  isActiveHref={isActiveHref}
+                />
+              ))}
             </ul>
           </div>
         ))}
@@ -197,5 +176,159 @@ function SidebarBody({
         </button>
       </div>
     </div>
+  );
+}
+
+function NavItemRow({
+  item,
+  collapsed,
+  expanded,
+  onToggleGroup,
+  onNavigate,
+  hrefFor,
+  isActiveHref,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  /** only meaningful when `item.children` exists — whether the caller has
+   * explicitly toggled this group open; defaulted below to "a child is the
+   * current page" when the caller has no opinion yet (`undefined`). */
+  expanded: boolean;
+  onToggleGroup: (key: string) => void;
+  onNavigate: (() => void) | undefined;
+  hrefFor: (path: string) => string;
+  isActiveHref: (path: string) => boolean;
+}) {
+  const t = useTranslations('admin');
+  const label = t(`nav.${item.key}`);
+  const Icon = item.icon;
+  const base = cn(
+    'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm',
+    collapsed && 'justify-center',
+  );
+
+  if (item.children) {
+    const anyChildActive = item.children.some((c) => isActiveHref(c.path));
+    // `isActiveHref` is a prefix match, so "/staff" matches "/staff/invite"
+    // too — only the longest (most specific) matching child should show as
+    // current, not every ancestor path along the way.
+    const activeChildKey = item.children
+      .filter((c) => isActiveHref(c.path))
+      .reduce<string | undefined>((bestKey, c) => {
+        if (!bestKey) return c.key;
+        const best = item.children!.find((x) => x.key === bestKey)!;
+        return c.path.length > best.path.length ? c.key : bestKey;
+      }, undefined);
+    // collapsed rail has no room for an indented submenu — the icon just
+    // goes straight to the first child (the "list" page) instead
+    if (collapsed) {
+      const first = item.children[0]!;
+      return (
+        <li>
+          <Link
+            href={hrefFor(first.path)}
+            title={label}
+            {...(anyChildActive ? { 'aria-current': 'page' as const } : {})}
+            className={cn(
+              base,
+              anyChildActive
+                ? 'bg-muted font-medium text-foreground'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            <Icon className="size-4 shrink-0" aria-hidden />
+          </Link>
+        </li>
+      );
+    }
+    const isOpen = expanded || anyChildActive;
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={() => onToggleGroup(item.key)}
+          aria-expanded={isOpen}
+          className={cn(base, 'w-full text-muted-foreground hover:bg-muted hover:text-foreground')}
+        >
+          <Icon className="size-4 shrink-0" aria-hidden />
+          <span className="truncate">{label}</span>
+          <ChevronDown
+            className={cn('ml-auto size-3.5 shrink-0 transition-transform', isOpen && 'rotate-180')}
+            aria-hidden
+          />
+        </button>
+        {isOpen && (
+          <ul className="ml-[1.625rem] mt-0.5 flex flex-col gap-0.5 border-l border-border pl-2.5">
+            {item.children.map((child) => {
+              const childActive = child.key === activeChildKey;
+              return (
+                <li key={child.key}>
+                  <Link
+                    href={hrefFor(child.path)}
+                    onClick={() => onNavigate?.()}
+                    {...(childActive ? { 'aria-current': 'page' as const } : {})}
+                    className={cn(
+                      'block rounded-md px-2 py-1.5 text-sm',
+                      childActive
+                        ? 'bg-muted font-medium text-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    )}
+                  >
+                    {t(`nav.${child.key}`)}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </li>
+    );
+  }
+
+  const href = item.path !== undefined ? hrefFor(item.path) : undefined;
+  const active = href !== undefined && isActiveHref(item.path!);
+  const inner = (
+    <>
+      <Icon className="size-4 shrink-0" aria-hidden />
+      {!collapsed && <span className="truncate">{label}</span>}
+      {!collapsed && item.soon && (
+        <span className="ml-auto rounded bg-muted px-1 text-[10px] text-muted-foreground">
+          {t('shell.soon')}
+        </span>
+      )}
+    </>
+  );
+
+  if (!href || item.soon) {
+    return (
+      <li>
+        <span
+          className={cn(base, 'cursor-not-allowed text-muted-foreground/60')}
+          {...(collapsed ? { title: `${label} — ${t('shell.soon')}` } : {})}
+          aria-disabled
+        >
+          {inner}
+        </span>
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <Link
+        href={href}
+        onClick={() => onNavigate?.()}
+        {...(collapsed ? { title: label } : {})}
+        {...(active ? { 'aria-current': 'page' as const } : {})}
+        className={cn(
+          base,
+          active
+            ? 'bg-muted font-medium text-foreground'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+        )}
+      >
+        {inner}
+      </Link>
+    </li>
   );
 }

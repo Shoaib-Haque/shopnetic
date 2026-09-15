@@ -46,6 +46,11 @@ and `start` (`node dist/`) are unaffected.
 | GET            | `/identity/v1/staff/auth/session`                                         | current staff user for a valid `sn_srt` cookie                                                                |
 | POST           | `/identity/v1/staff/invites`                                              | **staff Bearer** + `staff:manage` — `{ email, role }` → emails an invite link, `202`                          |
 | POST           | `/identity/v1/staff/invites/accept`                                       | `{ token, password }` → creates the staff account, `202`                                                      |
+| GET            | `/identity/v1/staff`                                                      | **staff Bearer** + `staff:manage` — the staff directory: every account, role(s), status, TOTP state           |
+| PATCH          | `/identity/v1/staff/:accountId/role`                                      | **staff Bearer** + `staff:manage` — `{ role }` → replaces the account's role; `409` on self                   |
+| POST           | `/identity/v1/staff/:accountId/unlock`                                    | **staff Bearer** + `staff:manage` — `locked` → `active`; `422` if not currently locked                        |
+| POST           | `/identity/v1/staff/:accountId/reset-totp`                                | **staff Bearer** + `staff:manage` — clears the TOTP secret + recovery codes; next login re-enrols             |
+| POST           | `/identity/v1/staff/:accountId/deprovision`                               | **staff Bearer** + `staff:manage` — `active`/`locked` → `disabled`, revokes every session; `409` on self      |
 | \*             | `/admin/v1/categories` (+ `…/:id`, `…/:id/move`)                          | **staff Bearer** + `category:manage` — category tree CRUD (ltree `path`, reparent, soft-delete)               |
 | GET/PUT/DELETE | `/admin/v1/categories/:categoryId/options[/:optionTypeId]`                | **staff Bearer** + `category:manage` — per-category option config (applicability, variant-axis, value source) |
 | \*             | `/admin/v1/brands` (+ `…/:id`, `…/:id/aliases[/:aliasId]`, `…/:id/merge`) | **staff Bearer** + `brand:manage` — brand CRUD, aliases, merge (moves aliases, soft-deletes source)           |
@@ -104,8 +109,10 @@ src/
              media are the inventory context, not built.
   identity/  IdentityModule — buyer + staff auth. register/verify/login/refresh/
              logout/session, /me, /audit-events; staff invite + accept, staff
-             login + TOTP enrol/confirm; password, sessions (rotation + reuse
-             detection), TOTP (otplib + AES-256-GCM seed), email verification,
+             login + TOTP enrol/confirm; the staff directory (list, role
+             change, unlock, TOTP reset, deprovision — StaffAccountsService,
+             `staff:manage`); password, sessions (rotation + reuse detection),
+             TOTP (otplib + AES-256-GCM seed), email verification,
              transactional mail (Mailpit)
   health/    health controller
   main.ts    parses env, wires cookie-parser + the global filter, boots Nest

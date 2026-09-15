@@ -28,7 +28,9 @@
       "valueSets": "Value sets",
       "products": "Products",
       "media": "Media",
-      "staff": "Invite staff"
+      "staff": "Staff",
+      "staffList": "List",
+      "staffInvite": "Invite"
     },
     "footer": {
       "text": "© 2026 Shopnetic — Admin"

@@ -6,11 +6,20 @@ const STORAGE_KEY = 'sn_adm_sidebar_collapsed';
 
 /**
  * Sidebar state. `collapsed` (desktop icon-rail) persists in `localStorage`,
- * default expanded. `mobileOpen` is the transient drawer state, never persisted.
+ * default expanded. `mobileOpen` is the transient drawer state, never
+ * persisted. `expandedGroups` (a nav item with `children`, e.g. "Staff") is
+ * per-mount only too — it's keyed by `NavItem.key` and lives here (not in
+ * `Sidebar` itself) so the desktop rail and the mobile drawer, which mount
+ * two separate `SidebarBody`s, stay in sync rather than drifting apart.
  */
 export function useSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  const toggleGroup = useCallback((key: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   useEffect(() => {
     try {
@@ -32,5 +41,5 @@ export function useSidebar() {
     });
   }, []);
 
-  return { collapsed, toggleCollapsed, mobileOpen, setMobileOpen };
+  return { collapsed, toggleCollapsed, mobileOpen, setMobileOpen, expandedGroups, toggleGroup };
 }

@@ -7,6 +7,7 @@ import { AdminShell } from './admin-shell';
 
 const routerReplace = vi.fn();
 const routerRefresh = vi.fn();
+let mockPathname = '/en/x7f2k9t3m1qp';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -17,12 +18,20 @@ vi.mock('next/navigation', () => ({
     back: vi.fn(),
     forward: vi.fn(),
   }),
-  usePathname: () => '/en/x7f2k9t3m1qp',
+  usePathname: () => mockPathname,
 }));
 
 vi.mock('next/link', () => ({
-  default: ({ children, href }: { children: ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  // forwards aria-current/onClick/etc, not just href — the auto-expand test
+  // asserts aria-current on the rendered anchor, which a href-only mock drops
+  default: ({
+    children,
+    href,
+    ...rest
+  }: { children: ReactNode; href: string } & Record<string, unknown>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
   ),
 }));
 
@@ -47,6 +56,7 @@ function render(roles: string[] = ['SUPER_ADMIN']) {
 beforeEach(() => {
   routerReplace.mockReset();
   routerRefresh.mockReset();
+  mockPathname = '/en/x7f2k9t3m1qp';
 });
 
 afterEach(() => {
@@ -101,15 +111,37 @@ describe('AdminShell sign-out', () => {
 });
 
 describe('AdminShell nav — role-gated items', () => {
-  it('Super Admin sees the Staff link (and the Administration section)', () => {
+  it('Super Admin sees the Staff group (and the Administration section); expanding it shows List + Invite', () => {
     render(['SUPER_ADMIN']);
     expect(screen.getAllByText('Administration').length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('link', { name: 'Invite staff' }).length).toBeGreaterThan(0);
+    const toggles = screen.getAllByRole('button', { name: 'Staff' });
+    expect(toggles.length).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: 'List' })).not.toBeInTheDocument();
+
+    fireEvent.click(toggles[0]!);
+    expect(screen.getByRole('link', { name: 'List' })).toHaveAttribute(
+      'href',
+      '/en/x7f2k9t3m1qp/staff',
+    );
+    expect(screen.getByRole('link', { name: 'Invite' })).toHaveAttribute(
+      'href',
+      '/en/x7f2k9t3m1qp/staff/invite',
+    );
   });
 
-  it('a normal Admin sees neither the Staff link nor the Administration heading', () => {
+  it('already being on /staff/invite auto-expands the group and marks Invite current', () => {
+    mockPathname = '/en/x7f2k9t3m1qp/staff/invite';
+    render(['SUPER_ADMIN']);
+
+    // no click needed — the active child alone opens the group
+    const invite = screen.getByRole('link', { name: 'Invite' });
+    expect(invite).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'List' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('a normal Admin sees neither the Staff group nor the Administration heading', () => {
     render(['ADMIN']);
     expect(screen.queryByText('Administration')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Invite staff' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Staff' })).not.toBeInTheDocument();
   });
 });

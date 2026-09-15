@@ -12,6 +12,7 @@ import { AccessTokenService } from './access-token.service.js';
 import { TotpService } from './totp.service.js';
 import { StaffAuthService } from './staff-auth.service.js';
 import { StaffInviteService } from './staff-invite.service.js';
+import { StaffAccountsService } from './staff-accounts.service.js';
 
 /**
  * Identity & Access context (plan/03). Depends on the global Prisma, Redis,
@@ -29,6 +30,7 @@ import { StaffInviteService } from './staff-invite.service.js';
     TotpService,
     StaffAuthService,
     StaffInviteService,
+    StaffAccountsService,
   ],
   exports: [IdentityService],
 })

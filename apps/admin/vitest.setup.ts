@@ -22,3 +22,20 @@ if (!window.matchMedia) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// Radix (DropdownMenu, Modal/Dialog, …) opens/closes via pointer events and
+// pointer-capture — without these, `fireEvent.click` on a Radix trigger
+// silently no-ops instead of opening it, since jsdom's PointerEvent support
+// is incomplete and the capture methods don't exist at all.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+}
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = () => {};
+}
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => {};
+}
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => {};
+}

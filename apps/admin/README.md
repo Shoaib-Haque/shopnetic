@@ -87,28 +87,76 @@ shell, a valid session renders it with no redirect.
 
 ## Staff management
 
-`(protected)/staff` — `InviteStaffForm` (email + role, `staffInviteCreateRequestSchema`):
-Send invite calls `identity/v1/staff/invites` (`staff:manage`, Super Admin
-only), 202 toasts "Invite sent to \<email\>." and clears the email field
-(the chosen role sticks, since inviting several people to the same role in a
-row is the common case). Nav shows the page to everyone — same "API
-enforces" convention as Catalog below — a non-Super-Admin gets `FORBIDDEN`
-back and sees "Only a Super Admin can do that."
+`(protected)/staff` (`StaffList`, the directory table) and
+`(protected)/staff/invite` (`InviteStaffForm`, email + role,
+`staffInviteCreateRequestSchema`) are separate pages, not one page stacked
+on top of the other — reached via the **Staff** nav group (see Shell below),
+which expands to **List** / **Invite** sub-links. Both need `staff:manage`
+(Super Admin only); the group itself is role-gated so a normal Admin never
+reaches either page's server-enforced 403 in the first place — the "nav
+hides it, API still enforces it" pattern that used to be the whole story
+for this page no longer applies here.
 
-Unlike the other `/api/staff-auth/*` routes this one needs the _caller's own_
-staff session, not a bare refresh-token cookie: `/api/staff-auth/invite`
-goes through `proxyWithBearer` (`features/admin-api/proxy-with-bearer.ts`) —
-the same Bearer-attach-and-refresh-on-401 dance the `/api/admin/*` proxy
-uses, now shared by both rather than duplicated. `callIdentityStaffApi`
-(`features/admin-api/bridge.ts`) is `callAdminApi`'s twin, pointed at
-`identity/v1/staff` instead of `admin/v1` — the invite endpoint lives in the
-identity module, not the `admin/v1` API surface the generic proxy targets.
+**`StaffList`**: one row per staff account (email, role(s), status, TOTP
+state), a `⋮` menu per row for the four lifecycle actions:
 
-Tested in `invite-staff-form.test.tsx`: invalid email, success (toast copy,
-role carried in the request, email-only reset), `INVITE_EMAIL_TAKEN`,
-`FORBIDDEN`, and a network failure. Verified end-to-end against a running
-stack too: real Super Admin login, page render, a sent invite landing in
-Mailpit, and both the email-taken and BFF-side validation error responses.
+- **Change role** — opens a small modal, `PATCH :accountId/role` _replaces_
+  the account's role (not additive — the old grant is deleted in the same
+  transaction as the new one is created).
+- **Unlock** / **Reactivate** — same underlying action
+  (`POST :accountId/activate`), different button copy depending on how the
+  account got non-`active`: offered as "Unlock" when `status: locked`, as
+  "Reactivate" when `status: disabled` (a deliberate Deprovision). There's
+  no mechanism difference, only in why the account got there, which the UI
+  already knows from `status`.
+- **Reset authenticator** — only offered when TOTP is actually enrolled;
+  clears the secret + recovery codes so the next login re-enrols from
+  scratch (the fix for "lost my phone and my recovery codes").
+- **Deprovision** — hidden once already `disabled`; `POST
+:accountId/deprovision` sets `status: disabled` and revokes every active
+  session for the account (belt-and-suspenders — `ActorService` already
+  blocks a non-`active` account on its very next request regardless). Also
+  available on a `locked` account, letting an admin go straight to
+  `disabled` without unlocking first.
+
+The signed-in user's own row is marked "You"; **Change role** and
+**Deprovision** are disabled on it — the API rejects both against your own
+`accountId` with `409 CANNOT_MODIFY_SELF` (activate/reset-totp have no such
+guard: you can't be both authenticated _and_ locked-out-or-disabled, so a
+self-guard there would be dead code).
+
+Unlike the other `/api/staff-auth/*` routes these need the _caller's own_
+staff session, not a bare refresh-token cookie — `/api/staff-auth/invite`
+and the new `/api/staff-auth/staff/[[...path]]` catch-all (list + the four
+actions) both go through `proxyWithBearer`
+(`features/admin-api/proxy-with-bearer.ts`), the same Bearer-attach-and-
+refresh-on-401 dance the `/api/admin/*` proxy uses, shared rather than
+duplicated. `callIdentityStaffApi` (`features/admin-api/bridge.ts`) is
+`callAdminApi`'s twin, pointed at `identity/v1/staff` instead of `admin/v1`
+— these endpoints live in the identity module, not the `admin/v1` API
+surface the generic proxy targets. Client-side, `features/admin-api/client.ts`
+now exports `staffManageApi` alongside `adminApi` — both are the same
+`createApiClient(basePath)` factory (401-redirect handling, `AdminApiError`)
+pointed at a different BFF prefix; `redirecting`'s module-level flag stays
+shared across both, since a dead session is a dead session regardless of
+which proxy noticed first.
+
+Tested in `invite-staff-form.test.tsx` (invalid email, success, error paths)
+and `staff-list.test.tsx` (load error + retry, rendering, the self-row
+guard, each action's visibility rule and full flow, mapped error copy on
+failure — including that a locked row offers only "Unlock" and a disabled
+row offers only "Reactivate", never both). `staff-accounts.service.
+integration.test.ts` covers the API side against a real DB:
+role-replace-not-add, both self-guards, `activate`'s already-active
+rejection, activating a locked account, **reactivating a deprovisioned
+(disabled) account** (the regression test for the "deprovision has no way
+back" bug), TOTP reset actually clearing rows, deprovision revoking
+sessions, and the 404 on a non-staff account. One jsdom gotcha
+worth knowing for any future Radix-menu test: `fireEvent.click` on a
+`DropdownMenuTrigger` silently does nothing — Radix opens it on
+`pointerdown` (or Enter/Space/ArrowDown), which jsdom's plain click never
+fires; `vitest.setup.ts` also gained pointer-capture polyfills Radix needs
+that jsdom doesn't implement at all.
 
 ## Shell
 
@@ -141,15 +189,33 @@ only, computed from `Grant`/`Role`, not trusted by the API itself) —
 `nav-config.ts`'s `visibleNavSections(roles)` drops any `superAdminOnly`
 item for a non-Super-Admin, and drops a section entirely once it has no
 visible items left (so "Administration" doesn't show as an empty heading).
-The **Staff** page is the first (only, so far) item marked
+The **Staff** entry is the first (only, so far) item marked
 `superAdminOnly` — a normal Admin never sees it in the nav; the API's
 `@RequirePermission(STAFF_MANAGE)` was already the real gate, this closes
 the UX gap where they could see and submit a form that only then rejected
 them. Tested in `nav-config.test.ts` (the pure filter: drops the section,
 keeps it for a multi-role account that includes `SUPER_ADMIN`, never
 touches sections with no gated items) and `admin-shell.test.tsx` (the
-real `Sidebar` wiring: Super Admin sees "Invite staff" + the
+real `Sidebar` wiring: Super Admin sees the "Staff" group + the
 "Administration" heading, a normal Admin sees neither).
+
+**Staff is a nav group, not a single link.** `nav-config.ts`'s `NavItem` can
+carry `children: NavChildItem[]` instead of a `path` — one level only, a
+child is always a plain link, and gating stays on the parent since every
+child shares one permission today. Clicking the group toggles it open to
+reveal **List** (`/staff`) and **Invite** (`/staff/invite`); expand state
+(`expandedGroups`, keyed by `NavItem.key`) lives in `useSidebar()` rather
+than in `Sidebar` itself, because the desktop rail and the mobile drawer
+mount two separate copies of the sidebar body that need to stay in sync.
+Being on a child route auto-expands the group even without a click
+(`expanded || anyChildActive`). On the collapsed desktop rail there's no
+room for an indented submenu, so the group's icon links straight to its
+first child (List) instead of a flyout. Active-link matching
+(`isActiveHref`) is a `pathname.startsWith(href)` prefix check, which means
+a parent path like `/staff` is technically a prefix of `/staff/invite` too
+— `NavItemRow` picks the **longest** matching child path as the sole
+"current" one so only one sub-link is ever marked `aria-current`, not
+every ancestor along the way.
 
 ## Catalog (back office)
 
@@ -198,7 +264,7 @@ password — no TOTP (see `apps/api/README.md`).
 ## Not yet
 
 Catalog nav isn't role-gated yet (all catalog links shown regardless of
-permission, the API still enforces) — only the Staff-management link is
+permission, the API still enforces) — only the Staff nav group is
 role-aware so far (see Shell above). The rest of the catalog UI (brands,
 option types, value sets, products, media); back-office modules (`plan/06`,
 Phase 2+).

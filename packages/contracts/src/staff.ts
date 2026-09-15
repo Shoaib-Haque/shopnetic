@@ -6,8 +6,11 @@ import { emailSchema, passwordSchema, authTokensSchema, sessionUserSchema } from
  * TOTP is mandatory.
  */
 
-const staffRoleSchema = z.enum(['SERVICE_ADMIN', 'ADMIN', 'SUPER_ADMIN']);
+export const staffRoleSchema = z.enum(['SERVICE_ADMIN', 'ADMIN', 'SUPER_ADMIN']);
 export type StaffRole = z.infer<typeof staffRoleSchema>;
+
+export const accountStatusSchema = z.enum(['active', 'locked', 'disabled', 'anonymized']);
+export type AccountStatus = z.infer<typeof accountStatusSchema>;
 
 const totpCodeSchema = z
   .string()
@@ -62,3 +65,27 @@ export const totpConfirmResponseSchema = staffSessionResponseSchema.extend({
   recoveryCodes: z.array(z.string()),
 });
 export type TotpConfirmResponse = z.infer<typeof totpConfirmResponseSchema>;
+
+/**
+ * The staff directory (`staff:manage`, Super Admin only — plan/03 section 2).
+ * One row per staff account; `roles` mirrors `SessionUser.roles`' shape.
+ */
+export const staffAccountSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  status: accountStatusSchema,
+  roles: z.array(staffRoleSchema),
+  totpEnrolled: z.boolean(),
+  createdAt: z.string(),
+});
+export type StaffAccount = z.infer<typeof staffAccountSchema>;
+
+export const staffListResponseSchema = z.object({
+  accounts: z.array(staffAccountSchema),
+});
+export type StaffListResponse = z.infer<typeof staffListResponseSchema>;
+
+export const staffRoleChangeRequestSchema = z.object({
+  role: staffRoleSchema,
+});
+export type StaffRoleChangeRequest = z.infer<typeof staffRoleChangeRequestSchema>;

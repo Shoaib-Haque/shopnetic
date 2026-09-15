@@ -145,6 +145,18 @@ export class SessionService {
     });
   }
 
+  /** Every still-active session for an account — deprovisioning, a forced
+   * password reset, etc. `ActorService` already blocks a non-`active` account
+   * on its very next request regardless, so this is belt-and-suspenders: it
+   * makes the account look signed-out immediately rather than merely refuse
+   * to do anything the next time it tries. */
+  async revokeAllForAccount(accountId: string, reason: 'admin' | 'password_change'): Promise<void> {
+    await this.prisma.session.updateMany({
+      where: { accountId, revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: reason },
+    });
+  }
+
   private async revokeFamily(familyId: string, reason: 'reuse_detected' | 'admin'): Promise<void> {
     await this.prisma.session.updateMany({
       where: { familyId, revokedAt: null },

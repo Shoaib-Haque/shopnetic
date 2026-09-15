@@ -67,6 +67,59 @@
       "submit": "Sign out",
       "submitting": "Signing out…"
     },
+    "manage": {
+      "title": "Staff",
+      "intro": "Everyone with access to the admin panel, and their role.",
+      "cols": { "email": "Email", "role": "Role", "status": "Status", "totp": "Authenticator" },
+      "status": {
+        "active": "Active",
+        "locked": "Locked",
+        "disabled": "Disabled",
+        "anonymized": "Anonymized"
+      },
+      "totpEnrolled": "Set up",
+      "totpNotEnrolled": "Not set up",
+      "you": "You",
+      "actions": {
+        "changeRole": "Change role",
+        "unlock": "Unlock",
+        "reactivate": "Reactivate",
+        "resetTotp": "Reset authenticator",
+        "deprovision": "Deprovision"
+      },
+      "roleModal": {
+        "title": "Change role",
+        "description": "Change the role for {email}.",
+        "submit": "Save"
+      },
+      "confirmUnlock": {
+        "title": "Unlock this account?",
+        "message": "{email} will be able to sign in again.",
+        "confirm": "Unlock"
+      },
+      "confirmReactivate": {
+        "title": "Reactivate this account?",
+        "message": "{email} will be able to sign in again.",
+        "confirm": "Reactivate"
+      },
+      "confirmResetTotp": {
+        "title": "Reset authenticator?",
+        "message": "{email} will need to set up a new authenticator app the next time they sign in. Their existing recovery codes stop working too.",
+        "confirm": "Reset"
+      },
+      "confirmDeprovision": {
+        "title": "Deprovision this account?",
+        "message": "{email} will be signed out everywhere and won't be able to sign in again until reactivated.",
+        "confirm": "Deprovision"
+      },
+      "toast": {
+        "roleChanged": "Role updated for {email}.",
+        "unlocked": "{email} unlocked.",
+        "reactivated": "{email} reactivated.",
+        "totpReset": "Authenticator reset for {email}.",
+        "deprovisioned": "{email} deprovisioned."
+      }
+    },
     "errors": {
       "generic": "Something went wrong. Please try again.",
       "network": "We couldn't reach the server. Check your connection and try again.",
@@ -81,7 +134,8 @@
       "inviteExpired": "This invite link has expired.",
       "inviteEmailTaken": "An account with this email already exists.",
       "passwordBreached": "This password has appeared in a data breach. Choose a different one.",
-      "forbidden": "Only a Super Admin can do that."
+      "forbidden": "Only a Super Admin can do that.",
+      "cannotModifySelf": "You can't do that to your own account."
     }
   }
 }
