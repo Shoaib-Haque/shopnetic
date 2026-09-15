@@ -4,15 +4,19 @@ import { Permission } from '@shopnetic/auth';
 import type { AuditEvent } from '@shopnetic/contracts';
 import type { AuditEvent as AuditEventRow } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { AuthGuard } from '../auth/auth.guard.js';
+import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { RequirePermission } from '../auth/require-permission.decorator.js';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
+/** `auditlog:read` is staff-only in practice (plan/03 section 4) — this must
+ * be `StaffAuthGuard` (`aud=admin` + `plane=staff`), not the generic
+ * `AuthGuard` (storefront audience only), or every real admin Bearer token
+ * gets rejected as unauthenticated. */
 @Controller('identity/v1')
-@UseGuards(AuthGuard, PermissionGuard)
+@UseGuards(StaffAuthGuard, PermissionGuard)
 export class AuditController {
   constructor(private readonly prisma: PrismaService) {}
 

@@ -1160,3 +1160,43 @@ compose file.
     passing tests) — `touch apps/api/src/main.ts` forces a real restart.
     Always confirm the live route is actually mapped (`grep "Mapped.*route"
     /tmp/api-dev.log`) after API changes, don't trust the watcher blindly.
+- 2026-09-15 — Three bugs reported from live use of the features above,
+  fixed same day:
+  - **Change-password's server error broke H4** ("every field shows its
+    own error"): `INVALID_CREDENTIALS` was rendered as a generic banner
+    above the submit button instead of inline under the field it's
+    actually about. Fixed to match `category-form-modal.tsx`'s established
+    `FIELD_FOR_CODE` + RHF `setError(field, {type:'server', message}, ...)`
+    pattern — a code that clearly belongs to one input goes there;
+    everything else stays a form-level banner. Caught in review that my
+    first test for this wasn't actually meaningful: `screen.findByText(...)`
+    matches the error text wherever it renders, banner included, so it
+    passed even with the old (wrong) behavior — had to assert the error
+    node's *direct parent* is that field's own wrapper `<div>`, not just
+    "present somewhere on the page," to make the test discriminate at all.
+  - **Forgot/reset-password pages were vertically centered** (`justify-center`,
+    login's pattern) instead of top-anchored like `accept-invite`'s page
+    (`pt-20 sm:pt-28`). Both pages swap between form / done / invalid-link
+    states of different heights — centering makes the block visibly jump on
+    every swap. `accept-invite` already got this right; forgot/reset-password
+    just didn't copy it. Fixed both to match.
+  - **Audit log logged the viewer out on click** — `AuditController` had
+    always used the generic `AuthGuard` (verifies against the *storefront*
+    audience only), never `StaffAuthGuard` (`aud=admin` + `plane=staff`).
+    `auditlog:read` is staff-only in practice (plan/03 section 4), so this
+    was a latent bug since Slice 3 that nothing had exercised from the staff
+    plane until the admin UI landed today — every real admin Bearer token
+    got rejected as unauthenticated, which the admin BFF's dead-session
+    handling reads as "sign back in" and bounces to login. Fixed by swapping
+    to `StaffAuthGuard`. Not caught by the integration test written earlier
+    the same day — that test instantiates `AuditController` directly and
+    calls `.list()`, bypassing the guard pipeline entirely, which is how
+    every controller in this codebase is tested (no e2e/supertest
+    infrastructure exists here at all). Added a narrower regression test
+    instead: mint a real `aud=admin` token, run it through `StaffAuthGuard`
+    and (for contrast) the old `AuthGuard` directly, plus a
+    `Reflect.getMetadata('__guards__', AuditController)` check that the
+    controller is actually wired to the right one. General lesson: a
+    guard-only bug is invisible to a test that instantiates the
+    controller/service directly — it needs the actual guard class exercised
+    against a real signed token, not just the downstream method.

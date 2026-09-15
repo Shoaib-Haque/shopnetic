@@ -24,7 +24,9 @@ export default async function AcceptInvitePage({ params, searchParams }: Props) 
   const { token } = await searchParams;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col px-4 pt-20 sm:pt-28">
+    // neutral shell — vertical alignment is chosen per state (form vs
+    // message) inside the form itself, via AuthPageSection
+    <main className="mx-auto flex min-h-dvh max-w-sm flex-col px-4">
       {/* the heading/intro vary by state (form / done / invalid link) — owned
           by the form itself rather than fixed here, so "set a password" can't
           linger once it's already been set */}

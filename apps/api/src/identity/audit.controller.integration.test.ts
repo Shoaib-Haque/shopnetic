@@ -1,17 +1,40 @@
+import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
+import type { ExecutionContext } from '@nestjs/common';
 import type { Request } from 'express';
+import type { ApiEnv } from '../config/env.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { ActorService } from './actor.service.js';
+import { JwksService } from '../crypto/jwks.service.js';
+import { AccessTokenService, STAFF_AUDIENCE } from './access-token.service.js';
+import { AuthGuard } from '../auth/auth.guard.js';
+import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { AuditController } from './audit.controller.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
+
+const env = {
+  NODE_ENV: 'test',
+  JWT_ISSUER: 'https://shopnetic.test',
+  JWT_ACCESS_TTL_SECONDS: 900,
+} as ApiEnv;
+
+function contextWithBearer(token: string): ExecutionContext {
+  const req = { headers: { authorization: `Bearer ${token}` } } as object as Request;
+  // Minimal ExecutionContext stand-in — only the member the two guards touch.
+  const mock = { switchToHttp: () => ({ getRequest: () => req }) };
+  return mock as object as ExecutionContext;
+}
 
 describe.skipIf(!hasDb)('AuditController (integration)', () => {
   let prisma: PrismaClient;
   let controller: AuditController;
   let audit: AuditService;
   let actorId: string;
+  let staffToken = '';
+  let jwks: JwksService;
   const stamp = Date.now();
   const actorEmail = `itest-audit-actor-${stamp}@shopnetic.test`;
   const req = { headers: { 'x-request-id': 'itest-req-id' } } as object as Request;
@@ -26,6 +49,16 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
       data: { email: actorEmail, plane: 'staff', status: 'active', emailVerifiedAt: new Date() },
     });
     actorId = actor.id;
+
+    // Shared across the whole describe block: with no JWT_PRIVATE_KEY/PUBLIC_KEY
+    // configured, JwksService generates a fresh ephemeral keypair per instance —
+    // a token minted here would fail verification against a *different*
+    // instance's key, so the guard test below reuses this exact one.
+    jwks = new JwksService(env);
+    await jwks.onModuleInit();
+    const accessTokens = new AccessTokenService(env, jwks);
+    const { accessToken } = await accessTokens.issue(actorId, 'itest-session', STAFF_AUDIENCE);
+    staffToken = accessToken;
   });
 
   afterAll(async () => {
@@ -65,5 +98,29 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
     const second = await controller.list(req, first.meta.nextCursor, '2');
     const firstIds = new Set(first.data.map((e) => e.id));
     expect(second.data.some((e) => firstIds.has(e.id))).toBe(false);
+  });
+
+  // Regression for "clicking Audit log signs the viewer out": a real admin
+  // Bearer token must pass `StaffAuthGuard` (what the controller is actually
+  // wired to) and must NOT pass the generic `AuthGuard` (storefront audience
+  // only) — that mismatch is exactly the bug. A test that instantiates
+  // `AuditController` directly and calls `.list()`, like the two above,
+  // bypasses the guard pipeline entirely and can't catch this.
+  it('a real admin token passes StaffAuthGuard but not the generic AuthGuard', async () => {
+    const px = prisma as PrismaService;
+    const actors = new ActorService(px);
+    const staffGuard = new StaffAuthGuard(jwks, actors);
+    const authGuard = new AuthGuard(jwks, actors);
+
+    await expect(staffGuard.canActivate(contextWithBearer(staffToken))).resolves.toBe(true);
+    await expect(authGuard.canActivate(contextWithBearer(staffToken))).rejects.toMatchObject({
+      code: 'UNAUTHENTICATED',
+    });
+  });
+
+  it('is wired to StaffAuthGuard, not the generic AuthGuard', () => {
+    const guards = (Reflect.getMetadata('__guards__', AuditController) ?? []) as unknown[];
+    expect(guards).toContain(StaffAuthGuard);
+    expect(guards).not.toContain(AuthGuard);
   });
 });

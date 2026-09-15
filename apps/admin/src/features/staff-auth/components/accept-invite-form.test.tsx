@@ -45,6 +45,15 @@ afterEach(() => {
 });
 
 describe('AcceptInviteForm', () => {
+  it('vertical alignment: a message state (no token) sits top-anchored, the form state centers', () => {
+    const { container: invalidLink } = render(null);
+    expect(invalidLink.firstElementChild).toHaveClass('pt-20');
+    cleanup();
+
+    const { container: form } = render();
+    expect(form.firstElementChild).toHaveClass('justify-center');
+  });
+
   it('no token → shows the invalid-invite message and renders no form', () => {
     render(null);
 
@@ -95,6 +104,8 @@ describe('AcceptInviteForm', () => {
     expect(await screen.findByText('Redirecting to sign in…')).toBeInTheDocument();
     expect(screen.queryByLabelText('Create a password')).not.toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    // the done state is a message, not a form — top-anchored, not centered
+    expect(container.firstElementChild).toHaveClass('pt-20');
     // the same timer-bar primitive the toasts use (aria-hidden, so queried by
     // its animation style rather than an accessible role)
     const bar = container.querySelector('[style*="sn-toast-timer"]');
