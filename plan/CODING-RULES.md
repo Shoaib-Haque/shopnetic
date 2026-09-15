@@ -1021,3 +1021,12 @@ compose file.
   toast call sites' own `className` — so the same shrinking-bar primitive
   can sit in page content too, not just inside a toast box.
   `accept-invite`'s "redirecting" screen uses it.
+- 2026-09-15 — Found via manual full-circle testing (invite → email → accept
+  → login): a staff member already signed in could open an invite link
+  (typically in the same browser that sent it) and it would silently accept
+  the invite into their own session — `login` already guarded against a
+  signed-in visitor (`redirect` to the dashboard) but `accept-invite` never
+  got the same check. Extracted the shared logic into
+  `features/staff-auth/redirect-if-signed-in.ts`'s `redirectIfSignedIn()`,
+  used by both; any future public-only page (forgot-password, …) should call
+  it too rather than re-deriving the check per page.

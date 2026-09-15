@@ -29,8 +29,20 @@ scanned.
 spreads across the cells, typing auto-advances) — or "Use a recovery code
 instead" for the one-time alphanumeric fallback.
 **Add more staff:** invite from the dashboard's **Staff** page (needs
-`staff:manage` — Super Admin only, see below); the link (Mailpit in dev)
-opens `…/x7f2k9t3m1qp/accept-invite`.
+`staff:manage` — Super Admin only, see below); the link opens
+`…/x7f2k9t3m1qp/accept-invite`. Mail goes through `apps/api`'s
+`SMTP_URL`/`MAIL_FROM` (its own README's Env table) — Mailpit by default,
+real delivery if those are pointed at a real SMTP account.
+
+**`login` and `accept-invite` are public-only:** `redirectIfSignedIn`
+(`features/staff-auth/redirect-if-signed-in.ts`) sends an already-signed-in
+visitor straight to the dashboard instead of showing either page. This
+matters most for `accept-invite` — the session cookie is shared across every
+tab in a browser, not per-tab, so opening an invite link in the same browser
+that sent it (the common case) would otherwise silently accept the invite
+_and_ swap that browser's session over to the new account. Any future
+public-only page (forgot-password, …) should call the same helper rather
+than re-deriving the check.
 
 The browser only talks to the admin's own `/api/staff-auth/*` route handlers;
 they call the identity **staff** API server-side and own a `sn_srt` httpOnly
@@ -62,7 +74,10 @@ state — on success it auto-redirects to `login` after a 3s
 `REDIRECT_DELAY_MS` (fake timers: not before, exactly at), no manual
 "Go to sign in" link, and shows a `@shopnetic/ui` `TimerBar` (the same
 shrinking-bar primitive `notify.*` toasts use) so the wait reads as
-self-resolving rather than a dead pause. Each verified by disabling its fix
+self-resolving rather than a dead pause. `redirect-if-signed-in.test.ts`
+covers `redirectIfSignedIn` directly (redirects when signed in, no-ops
+when not) — one unit test standing in for both `login` and `accept-invite`,
+since they share the exact same call. Each verified by disabling its fix
 and watching the test fail.
 `TotpService`'s reuse-the-pending-secret idempotency is covered
 server-side, in `apps/api/src/identity/staff-auth.integration.test.ts`.

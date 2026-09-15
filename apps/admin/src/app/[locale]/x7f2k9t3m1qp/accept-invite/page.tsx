@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { setRequestLocale } from 'next-intl/server';
 import { ADMIN_BASE_PATH } from '@/config/site';
+import { redirectIfSignedIn } from '@/features/staff-auth/redirect-if-signed-in';
 import { AcceptInviteForm } from '@/features/staff-auth/components/accept-invite-form';
 
 type Props = {
@@ -16,6 +17,10 @@ export const metadata: Metadata = {
 export default async function AcceptInvitePage({ params, searchParams }: Props) {
   const { locale } = await params;
   setRequestLocale(locale);
+  // a signed-in visitor clicking an invite link (often in the same browser
+  // that sent it) must not silently accept it into their own session — see
+  // redirectIfSignedIn's doc comment.
+  await redirectIfSignedIn(locale);
   const { token } = await searchParams;
 
   return (

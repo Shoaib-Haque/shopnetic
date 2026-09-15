@@ -142,7 +142,8 @@ depth — never the only control; real auth in `proxy.ts` + server layout + API)
 apps/admin/src/app/[locale]/
 ├── x7f2k9t3m1qp/                 # admin base segment (value from env: ADMIN_BASE_PATH)
 │   ├── layout.tsx                # server: verify staff session or redirect to login
-│   ├── login/page.tsx           # the only unauthenticated page here
+│   ├── login/page.tsx           # unauthenticated; already-signed-in → redirect to dashboard
+│   ├── accept-invite/page.tsx   # unauthenticated; same already-signed-in redirect (shared helper)
 │   └── (protected)/
 │       ├── layout.tsx           # server: require staff grant; load nav by permission
 │       ├── page.tsx             # dashboard
@@ -151,7 +152,9 @@ apps/admin/src/app/[locale]/
 │       ├── promotions/**  cms/**  settings/**  staff/**   (staff/** = SUPER_ADMIN)
 │       └── ...
 └── api/
-    └── admin/{login,logout,refresh-token,session-info}/route.ts
+    ├── staff-auth/{login,logout,refresh,session,totp-confirm,accept-invite,invite}/route.ts
+    │                                 # session-establishing + staff-management calls to the identity API
+    └── admin/[...path]/route.ts     # generic Bearer proxy to the protected admin/v1/* API
 ```
 
 - `ADMIN_BASE_PATH` is an **env var**, not a literal, so it can be rotated and
@@ -159,6 +162,12 @@ apps/admin/src/app/[locale]/
 - The segment is obfuscation only. Enforcement order: `proxy.ts` (reject
   non-staff, no session → login) → `(protected)/layout.tsx` (server-side grant
   check) → each server action / API route (`authorize()` per `16` section 2).
+- The inverse guard matters too: every unauthenticated page checks for an
+  *existing* session and redirects to the dashboard if one's found, as one
+  shared helper (not copied per page). Without it, an already-signed-in
+  visitor opening a public-only link — e.g. an invite link, often in the
+  same browser that sent it — would act on it inside their own session
+  instead of being sent where they already belong.
 - **One segment for all staff — not one per role.** Super Admin, Admin and
   Service Admin share this base path, one login surface, one `aud=admin` token.
   Differentiation is by **permission-gated route + nav**, computed from the

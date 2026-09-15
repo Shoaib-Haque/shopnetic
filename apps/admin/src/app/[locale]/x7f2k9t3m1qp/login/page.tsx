@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { redirect } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { ADMIN_BASE_PATH } from '@/config/site';
-import { getCurrentStaff } from '@/features/staff-auth/current-actor';
+import { redirectIfSignedIn } from '@/features/staff-auth/redirect-if-signed-in';
 import { StaffLoginForm } from '@/features/staff-auth/components/login-form';
 
 type Props = { params: Promise<{ locale: string }> };
@@ -13,8 +12,7 @@ export const metadata: Metadata = { title: 'Sign in', robots: { index: false, fo
 export default async function AdminLoginPage({ params }: Props) {
   const { locale } = await params;
   setRequestLocale(locale);
-
-  if (await getCurrentStaff()) redirect(`/${locale}/${ADMIN_BASE_PATH}`);
+  await redirectIfSignedIn(locale);
 
   const t = await getTranslations('staff');
   return (
