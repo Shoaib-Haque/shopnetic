@@ -134,6 +134,23 @@ toasts and re-enables the button, a second click while pending is a no-op.
 (`features/staff-auth/components/logout-button.tsx` was a separate,
 never-wired-in implementation of the same thing — deleted as dead code.)
 
+**Nav is role-aware.** `/auth/session` now returns `roles` on `SessionUser`
+(the account's distinct role keys, e.g. `['SUPER_ADMIN']` — staff plane
+only, computed from `Grant`/`Role`, not trusted by the API itself) —
+`(protected)/layout.tsx` passes it through to `AdminShell` → `Sidebar`.
+`nav-config.ts`'s `visibleNavSections(roles)` drops any `superAdminOnly`
+item for a non-Super-Admin, and drops a section entirely once it has no
+visible items left (so "Administration" doesn't show as an empty heading).
+The **Staff** page is the first (only, so far) item marked
+`superAdminOnly` — a normal Admin never sees it in the nav; the API's
+`@RequirePermission(STAFF_MANAGE)` was already the real gate, this closes
+the UX gap where they could see and submit a form that only then rejected
+them. Tested in `nav-config.test.ts` (the pure filter: drops the section,
+keeps it for a multi-role account that includes `SUPER_ADMIN`, never
+touches sections with no gated items) and `admin-shell.test.tsx` (the
+real `Sidebar` wiring: Super Admin sees "Invite staff" + the
+"Administration" heading, a normal Admin sees neither).
+
 ## Catalog (back office)
 
 `/[locale]/x7f2k9t3m1qp/(protected)/catalog/…` — currently **Categories**
@@ -180,6 +197,8 @@ password — no TOTP (see `apps/api/README.md`).
 
 ## Not yet
 
-Nav built from the actor's permissions (all catalog and staff-management links
-shown for now, the API enforces). The rest of the catalog UI (brands, option
-types, value sets, products, media); back-office modules (`plan/06`, Phase 2+).
+Catalog nav isn't role-gated yet (all catalog links shown regardless of
+permission, the API still enforces) — only the Staff-management link is
+role-aware so far (see Shell above). The rest of the catalog UI (brands,
+option types, value sets, products, media); back-office modules (`plan/06`,
+Phase 2+).

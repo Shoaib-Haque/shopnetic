@@ -110,7 +110,7 @@ export class StaffAuthService {
     if (!account || account.plane !== 'staff' || account.status !== 'active') {
       throw AppError.unauthenticated('UNAUTHENTICATED', 'account unavailable');
     }
-    return toUser(account);
+    return toUser(account, await this.rolesFor(account.id));
   }
 
   private async authenticatePassword(
@@ -155,7 +155,10 @@ export class StaffAuthService {
       targetId: session.sessionId,
       ...pick(ctx),
     });
-    return { response: { tokens, user: toUser(account) }, session };
+    return {
+      response: { tokens, user: toUser(account, await this.rolesFor(account.id)) },
+      session,
+    };
   }
 
   private async recordFailure(
@@ -171,10 +174,26 @@ export class StaffAuthService {
       ...pick(ctx),
     });
   }
+
+  /** Distinct role keys the account holds (e.g. `['SUPER_ADMIN']`, or several
+   * for a multi-role account) — drives client-side nav visibility; the API
+   * itself never trusts this, `@RequirePermission` is the real gate. */
+  private async rolesFor(accountId: string): Promise<string[]> {
+    const grants = await this.prisma.grant.findMany({
+      where: { accountId },
+      include: { role: true },
+    });
+    return [...new Set(grants.map((g) => g.role.key))];
+  }
 }
 
-function toUser(account: Account): StaffSessionResponse['user'] {
-  return { id: account.id, email: account.email, emailVerified: account.emailVerifiedAt !== null };
+function toUser(account: Account, roles: string[]): StaffSessionResponse['user'] {
+  return {
+    id: account.id,
+    email: account.email,
+    emailVerified: account.emailVerifiedAt !== null,
+    roles,
+  };
 }
 
 function pick(meta: RequestMeta): { ip?: string; correlationId?: string } {

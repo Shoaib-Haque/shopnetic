@@ -19,11 +19,13 @@ const TOPBAR_PX = 56;
  */
 export function AdminShell({
   email,
+  roles,
   root,
   loginHref,
   children,
 }: {
   email: string;
+  roles: readonly string[];
   root: string;
   loginHref: string;
   children: ReactNode;
@@ -65,6 +67,7 @@ export function AdminShell({
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar
           root={root}
+          roles={roles}
           collapsed={collapsed}
           mobileOpen={mobileOpen}
           onCloseMobile={() => setMobileOpen(false)}

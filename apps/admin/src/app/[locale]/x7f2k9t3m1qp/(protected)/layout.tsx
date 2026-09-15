@@ -25,7 +25,12 @@ export default async function ProtectedLayout({
   if (!staff) redirect(`${root}/login`);
 
   return (
-    <AdminShell email={staff.email} root={root} loginHref={`${root}/login`}>
+    <AdminShell
+      email={staff.email}
+      roles={staff.roles ?? []}
+      root={root}
+      loginHref={`${root}/login`}
+    >
       {children}
     </AdminShell>
   );

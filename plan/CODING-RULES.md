@@ -1030,3 +1030,16 @@ compose file.
   `features/staff-auth/redirect-if-signed-in.ts`'s `redirectIfSignedIn()`,
   used by both; any future public-only page (forgot-password, …) should call
   it too rather than re-deriving the check per page.
+- 2026-09-15 — Nav wasn't role-aware: a normal Admin could see and submit the
+  **Staff** invite form, only to be rejected by the API's own
+  `@RequirePermission(STAFF_MANAGE)` (Super Admin only) — safe, but a
+  confusing dead end. `SessionUser` (`@shopnetic/contracts`) gains an
+  optional `roles: string[]` — staff plane only (computed from `Grant`/
+  `Role` in `StaffAuthService.rolesFor`), other planes' session responses
+  are unaffected. `nav-config.ts`'s new `visibleNavSections(roles)` drops a
+  `superAdminOnly` item (and the whole section, once it's empty) for anyone
+  without `SUPER_ADMIN`; the API stays the real gate, this only stops the
+  client from showing a control that would just fail. Reminder for next
+  time this bites: `@shopnetic/contracts` is consumed via its built `dist`,
+  not source — `pnpm --filter @shopnetic/contracts build` after any schema
+  change, or downstream typecheck fails on the *old* shape.

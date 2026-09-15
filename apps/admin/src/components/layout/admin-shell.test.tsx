@@ -31,9 +31,14 @@ vi.mock('@/features/staff-auth/submit', () => ({ postJson: vi.fn() }));
 const mockedPostJson = vi.mocked(postJson);
 const LOGIN_HREF = '/en/x7f2k9t3m1qp/login';
 
-function render() {
+function render(roles: string[] = ['SUPER_ADMIN']) {
   return renderAdmin(
-    <AdminShell email="staff@example.com" root="/en/x7f2k9t3m1qp" loginHref={LOGIN_HREF}>
+    <AdminShell
+      email="staff@example.com"
+      roles={roles}
+      root="/en/x7f2k9t3m1qp"
+      loginHref={LOGIN_HREF}
+    >
       <p>page content</p>
     </AdminShell>,
   );
@@ -92,5 +97,19 @@ describe('AdminShell sign-out', () => {
     expect(mockedPostJson).toHaveBeenCalledTimes(1);
     resolveLogout({ ok: true, status: 200, body: { data: { ok: true } } });
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(LOGIN_HREF));
+  });
+});
+
+describe('AdminShell nav — role-gated items', () => {
+  it('Super Admin sees the Staff link (and the Administration section)', () => {
+    render(['SUPER_ADMIN']);
+    expect(screen.getAllByText('Administration').length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Invite staff' }).length).toBeGreaterThan(0);
+  });
+
+  it('a normal Admin sees neither the Staff link nor the Administration heading', () => {
+    render(['ADMIN']);
+    expect(screen.queryByText('Administration')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Invite staff' })).not.toBeInTheDocument();
   });
 });

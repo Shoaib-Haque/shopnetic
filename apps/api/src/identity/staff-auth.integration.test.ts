@@ -138,6 +138,7 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
     );
     expect(response.tokens.tokenType).toBe('Bearer');
     expect(response.user.email).toBe(staffEmail);
+    expect(response.user.roles).toEqual(['ADMIN']); // the role the invite granted
     expect(response.recoveryCodes).toHaveLength(10);
     recoveryCodes = response.recoveryCodes;
   });

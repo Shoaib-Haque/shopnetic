@@ -45,6 +45,10 @@ export const sessionUserSchema = z.object({
   id: z.string(),
   email: z.string(),
   emailVerified: z.boolean(),
+  /** Role keys the account currently holds (e.g. `['SUPER_ADMIN']`). Only the
+   * staff plane populates this today — optional so other planes' session
+   * responses aren't forced to carry an empty array they don't compute. */
+  roles: z.array(z.string()).optional(),
 });
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 

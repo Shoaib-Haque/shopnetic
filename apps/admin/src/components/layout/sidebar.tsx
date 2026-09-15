@@ -5,10 +5,11 @@ import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { LogOut, X } from 'lucide-react';
 import { cn, Spinner } from '@shopnetic/ui';
-import { NAV_SECTIONS } from './nav-config';
+import { visibleNavSections } from './nav-config';
 
 interface SidebarProps {
   root: string; // /<locale>/<basePath>
+  roles: readonly string[];
   collapsed: boolean;
   mobileOpen: boolean;
   onCloseMobile: () => void;
@@ -18,6 +19,7 @@ interface SidebarProps {
 
 export function Sidebar({
   root,
+  roles,
   collapsed,
   mobileOpen,
   onCloseMobile,
@@ -35,6 +37,7 @@ export function Sidebar({
       >
         <SidebarBody
           root={root}
+          roles={roles}
           collapsed={collapsed}
           onSignOut={onSignOut}
           signingOut={signingOut}
@@ -64,6 +67,7 @@ export function Sidebar({
         >
           <SidebarBody
             root={root}
+            roles={roles}
             collapsed={false}
             onNavigate={onCloseMobile}
             onClose={onCloseMobile}
@@ -78,6 +82,7 @@ export function Sidebar({
 
 function SidebarBody({
   root,
+  roles,
   collapsed,
   onNavigate,
   onClose,
@@ -85,6 +90,7 @@ function SidebarBody({
   signingOut,
 }: {
   root: string;
+  roles: readonly string[];
   collapsed: boolean;
   onNavigate?: () => void;
   /** mobile drawer only — renders an explicit close button by the first heading */
@@ -108,7 +114,7 @@ function SidebarBody({
         </button>
       )}
       <nav className="flex-1 overflow-y-auto px-2 py-3">
-        {NAV_SECTIONS.map((section) => (
+        {visibleNavSections(roles).map((section) => (
           <div key={section.key} className="mb-3">
             {!collapsed && (
               <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
