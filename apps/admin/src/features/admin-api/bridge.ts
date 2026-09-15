@@ -4,6 +4,7 @@ import { parseStaffSetCookie } from '@/features/staff-auth/parse-set-cookie';
 import { readTokens } from '@/features/staff-auth/tokens';
 
 const ADMIN_BASE = `${serverEnv.API_BASE_URL}/admin/v1`;
+const IDENTITY_STAFF_BASE = `${serverEnv.API_BASE_URL}/identity/v1/staff`;
 const REFRESH_URL = `${serverEnv.API_BASE_URL}/identity/v1/staff/auth/token/refresh`;
 
 export interface AdminApiResult {
@@ -19,7 +20,25 @@ interface CallOptions {
 }
 
 /** Server-only call to a protected `/admin/v1/*` endpoint with a Bearer token. */
-export async function callAdminApi(
+export function callAdminApi(pathAndQuery: string, opts: CallOptions): Promise<AdminApiResult> {
+  return callWithBearer(ADMIN_BASE, pathAndQuery, opts);
+}
+
+/**
+ * Server-only call to a protected `/identity/v1/staff/*` endpoint with a
+ * Bearer token — same shape as `callAdminApi`, different base, for the staff
+ * endpoints that live in the identity module rather than `admin/v1` (e.g.
+ * sending an invite).
+ */
+export function callIdentityStaffApi(
+  pathAndQuery: string,
+  opts: CallOptions,
+): Promise<AdminApiResult> {
+  return callWithBearer(IDENTITY_STAFF_BASE, pathAndQuery, opts);
+}
+
+async function callWithBearer(
+  base: string,
   pathAndQuery: string,
   opts: CallOptions,
 ): Promise<AdminApiResult> {
@@ -34,7 +53,7 @@ export async function callAdminApi(
 
   let res: Response;
   try {
-    res = await fetch(`${ADMIN_BASE}${pathAndQuery}`, init);
+    res = await fetch(`${base}${pathAndQuery}`, init);
   } catch {
     return { status: 502, body: { error: { code: 'INTERNAL' } } };
   }

@@ -6,6 +6,7 @@ import {
   ListChecks,
   SlidersHorizontal,
   Tags,
+  UserPlus,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -41,5 +42,9 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: 'products', icon: Boxes, soon: true },
       { key: 'media', icon: Image, soon: true },
     ],
+  },
+  {
+    key: 'administration',
+    items: [{ key: 'staff', path: '/staff', icon: UserPlus }],
   },
 ];

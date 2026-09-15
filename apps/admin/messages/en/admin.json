@@ -16,14 +16,19 @@
       "soon": "Soon"
     },
     "nav": {
-      "sections": { "overview": "Overview", "catalog": "Catalog" },
+      "sections": {
+        "overview": "Overview",
+        "catalog": "Catalog",
+        "administration": "Administration"
+      },
       "dashboard": "Dashboard",
       "categories": "Categories",
       "brands": "Brands",
       "optionTypes": "Option types",
       "valueSets": "Value sets",
       "products": "Products",
-      "media": "Media"
+      "media": "Media",
+      "staff": "Invite staff"
     },
     "footer": {
       "text": "© 2026 Shopnetic — Admin"

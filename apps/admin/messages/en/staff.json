@@ -50,6 +50,19 @@
       "done": "Your account is ready.",
       "goToLogin": "Go to sign in"
     },
+    "invite": {
+      "title": "Invite staff",
+      "intro": "Send an invite to add a new Super Admin, Admin or Service Admin. The link is valid for 7 days.",
+      "roleLabel": "Role",
+      "roles": {
+        "SERVICE_ADMIN": "Service Admin",
+        "ADMIN": "Admin",
+        "SUPER_ADMIN": "Super Admin"
+      },
+      "submit": "Send invite",
+      "submitting": "Sending…",
+      "sent": "Invite sent to {email}."
+    },
     "logout": {
       "submit": "Sign out",
       "submitting": "Signing out…"
@@ -67,7 +80,8 @@
       "inviteInvalid": "This invite link is invalid or has already been used.",
       "inviteExpired": "This invite link has expired.",
       "inviteEmailTaken": "An account with this email already exists.",
-      "passwordBreached": "This password has appeared in a data breach. Choose a different one."
+      "passwordBreached": "This password has appeared in a data breach. Choose a different one.",
+      "forbidden": "Only a Super Admin can do that."
     }
   }
 }

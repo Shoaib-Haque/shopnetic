@@ -28,8 +28,9 @@ scanned.
 **After that:** email + password → a segmented 6-digit code field (paste
 spreads across the cells, typing auto-advances) — or "Use a recovery code
 instead" for the one-time alphanumeric fallback.
-**Add more staff:** invite from the dashboard (needs `staff:manage` — Super
-Admin only); the link (Mailpit) opens `…/x7f2k9t3m1qp/accept-invite`.
+**Add more staff:** invite from the dashboard's **Staff** page (needs
+`staff:manage` — Super Admin only, see below); the link (Mailpit in dev)
+opens `…/x7f2k9t3m1qp/accept-invite`.
 
 The browser only talks to the admin's own `/api/staff-auth/*` route handlers;
 they call the identity **staff** API server-side and own a `sn_srt` httpOnly
@@ -63,6 +64,31 @@ server-side, in `apps/api/src/identity/staff-auth.integration.test.ts`.
 `(protected)/layout.test.tsx` covers the session guard directly: no
 session redirects to that locale/root's login and never renders the
 shell, a valid session renders it with no redirect.
+
+## Staff management
+
+`(protected)/staff` — `InviteStaffForm` (email + role, `staffInviteCreateRequestSchema`):
+Send invite calls `identity/v1/staff/invites` (`staff:manage`, Super Admin
+only), 202 toasts "Invite sent to \<email\>." and clears the email field
+(the chosen role sticks, since inviting several people to the same role in a
+row is the common case). Nav shows the page to everyone — same "API
+enforces" convention as Catalog below — a non-Super-Admin gets `FORBIDDEN`
+back and sees "Only a Super Admin can do that."
+
+Unlike the other `/api/staff-auth/*` routes this one needs the _caller's own_
+staff session, not a bare refresh-token cookie: `/api/staff-auth/invite`
+goes through `proxyWithBearer` (`features/admin-api/proxy-with-bearer.ts`) —
+the same Bearer-attach-and-refresh-on-401 dance the `/api/admin/*` proxy
+uses, now shared by both rather than duplicated. `callIdentityStaffApi`
+(`features/admin-api/bridge.ts`) is `callAdminApi`'s twin, pointed at
+`identity/v1/staff` instead of `admin/v1` — the invite endpoint lives in the
+identity module, not the `admin/v1` API surface the generic proxy targets.
+
+Tested in `invite-staff-form.test.tsx`: invalid email, success (toast copy,
+role carried in the request, email-only reset), `INVITE_EMAIL_TAKEN`,
+`FORBIDDEN`, and a network failure. Verified end-to-end against a running
+stack too: real Super Admin login, page render, a sent invite landing in
+Mailpit, and both the email-taken and BFF-side validation error responses.
 
 ## Shell
 
@@ -134,8 +160,6 @@ password — no TOTP (see `apps/api/README.md`).
 
 ## Not yet
 
-Nav built from the actor's permissions (all catalog links shown for now, the API
-enforces); **staff-invite UI** — `POST /identity/v1/staff/invites` exists
-(`staff:manage`, Super Admin) but nothing in the dashboard calls it; sending an
-invite is API-only today. The rest of the catalog UI (brands, option types,
-value sets, products, media); back-office modules (`plan/06`, Phase 2+).
+Nav built from the actor's permissions (all catalog and staff-management links
+shown for now, the API enforces). The rest of the catalog UI (brands, option
+types, value sets, products, media); back-office modules (`plan/06`, Phase 2+).

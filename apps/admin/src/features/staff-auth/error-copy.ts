@@ -14,6 +14,7 @@ const CODE_TO_KEY: Record<string, string> = {
   INVITE_EXPIRED: 'errors.inviteExpired',
   INVITE_EMAIL_TAKEN: 'errors.inviteEmailTaken',
   PASSWORD_BREACHED: 'errors.passwordBreached',
+  FORBIDDEN: 'errors.forbidden',
 };
 
 export function staffErrorKey(code: string | undefined): string {

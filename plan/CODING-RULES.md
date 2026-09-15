@@ -994,3 +994,13 @@ compose file.
   vs. a valid one) — the first Server Component tested this way in the app;
   its own deps (`getCurrentStaff`, `AdminShell`) are mocked so the test is
   only about the redirect decision.
+- 2026-09-14 — Built the staff-invite UI (`(protected)/staff`, closes the
+  last real feature gap from the staff-auth pass): email + role form calling
+  `identity/v1/staff/invites`. That endpoint needs the caller's *own* staff
+  session (`staff:manage`, Super Admin) rather than the refresh-token cookie
+  the other `/api/staff-auth/*` routes use — extracted the `/api/admin/*`
+  proxy's Bearer-attach-and-refresh-on-401 dance into
+  `features/admin-api/proxy-with-bearer.ts` so this new route (and the
+  existing proxy, refactored onto it) share one copy instead of growing a
+  second one. `callIdentityStaffApi` (`admin-api/bridge.ts`) is
+  `callAdminApi`'s twin pointed at `identity/v1/staff` instead of `admin/v1`.
