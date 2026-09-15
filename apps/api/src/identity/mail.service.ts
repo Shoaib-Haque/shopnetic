@@ -1,18 +1,15 @@
-import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import { createTransport, type Transporter } from 'nodemailer';
-import { API_ENV, type ApiEnv } from '../config/env.js';
+import { Injectable, Logger } from '@nestjs/common';
+import { MailQueueService } from '../queue/mail-queue.service.js';
 import { identityMail, renderTemplate, type MailLocale } from './mail.templates.js';
 
+/** Renders the template and enqueues — doesn't send anything itself.
+ * `apps/workers` owns the actual SMTP delivery, retries, and backoff
+ * (`plan/31-background-jobs-and-queues.md` section 3). */
 @Injectable()
-export class MailService implements OnModuleInit {
+export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private transporter!: Transporter;
 
-  constructor(@Inject(API_ENV) private readonly env: ApiEnv) {}
-
-  onModuleInit(): void {
-    this.transporter = createTransport(this.env.SMTP_URL);
-  }
+  constructor(private readonly queue: MailQueueService) {}
 
   async sendVerification(to: string, link: string, locale: MailLocale = 'en'): Promise<void> {
     const { subject, text } = renderTemplate(identityMail(locale).verifyEmail, { link });
@@ -59,7 +56,7 @@ export class MailService implements OnModuleInit {
   }
 
   private async send(to: string, subject: string, text: string): Promise<void> {
-    await this.transporter.sendMail({ from: this.env.MAIL_FROM, to, subject, text });
+    await this.queue.enqueue({ to, subject, text });
   }
 }
 

@@ -11,3 +11,6 @@ allowBuilds:
   "@prisma/engines": true
   "@parcel/watcher": false
   "@swc/core": false
+  # bullmq's msgpackr dep — native build is a pure perf optimization with a
+  # JS fallback if skipped; deny like the other native-build deps above.
+  msgpackr-extract: false

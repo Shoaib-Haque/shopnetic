@@ -3,25 +3,32 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "background job processors — BullMQ (plan/01, plan/17)",
+  "description": "background job processors — BullMQ (plan/01, plan/17, plan/31)",
   "main": "dist/main.js",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js",
+    "start": "node --env-file-if-exists=.env dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "echo \"@shopnetic/workers: no tests\" && exit 0",
+    "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@shopnetic/observability": "workspace:*"
+    "@shopnetic/events": "workspace:*",
+    "@shopnetic/observability": "workspace:*",
+    "bullmq": "6.3.6",
+    "ioredis": "5.4.2",
+    "nodemailer": "6.9.16",
+    "zod": "3.24.1"
   },
   "devDependencies": {
     "@shopnetic/config": "workspace:*",
     "@types/node": "22.10.5",
+    "@types/nodemailer": "6.4.17",
     "eslint": "9.18.0",
     "tsx": "4.19.2",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vitest": "2.1.8"
   }
 }

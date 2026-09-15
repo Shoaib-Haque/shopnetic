@@ -97,7 +97,10 @@ src/
   config/    zod-validated env (loadApiEnv) + @Global ConfigModule
   common/    AppError + RFC-9457 exception filter, Zod body pipe, correlation-id
              middleware, Redis rate-limit guard/decorator, success envelope
-  redis/     @Global RedisModule (ioredis)
+  redis/     @Global RedisModule (ioredis) — rate-limit buckets
+  queue/     @Global QueueModule — MailQueueService (BullMQ producer; this
+             process never processes a job itself, `apps/workers` does —
+             plan/31-background-jobs-and-queues.md section 3)
   crypto/    @Global CryptoModule — JwksService (RS256 sign + verify) + /.well-known/jwks.json
   auth/      @Global AuthModule — ActorService, AuthGuard, @RequirePermission +
              PermissionGuard, @CurrentActor
@@ -115,8 +118,10 @@ src/
              login + TOTP enrol/confirm; the staff directory (list, role
              change, unlock, TOTP reset, deprovision — StaffAccountsService,
              `staff:manage`); password, sessions (rotation + reuse detection),
-             TOTP (otplib + AES-256-GCM seed), email verification,
-             transactional mail (Mailpit)
+             TOTP (otplib + AES-256-GCM seed), email verification. Mail is
+             never sent from here — `MailService` renders the template and
+             enqueues via `MailQueueService`; `apps/workers` delivers it
+             (Mailpit locally)
   health/    health controller
   main.ts    parses env, wires cookie-parser + the global filter, boots Nest
 ```
@@ -143,8 +148,9 @@ ephemeral pair; prod: required), `AUTH_REFRESH_TTL_DAYS`,
 `PASSWORD_RESET_TTL_HOURS` (default 1h — short on purpose, a live reset link
 is a bigger risk than an email-verify link), `TOTP_ENC_KEY` (dev may
 omit; prod required), `TOTP_ISSUER`, `TOTP_WINDOW_STEPS` (skew tolerance,
-default 1), `SMTP_URL`, `MAIL_FROM`, `APP_WEB_URL`, `ADMIN_WEB_URL`,
-`ADMIN_BASE_PATH`, `PASSWORD_BREACH_CHECK`.
+default 1), `APP_WEB_URL`, `ADMIN_WEB_URL`, `ADMIN_BASE_PATH`,
+`PASSWORD_BREACH_CHECK`. (`SMTP_URL`/`MAIL_FROM` moved to `apps/workers` —
+this process never sends mail itself, see `queue/` below.)
 
 ### Dev shortcuts
 

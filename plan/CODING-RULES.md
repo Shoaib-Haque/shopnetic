@@ -1275,3 +1275,44 @@ compose file.
     itself match the query — an accepted, documented limitation, not a bug,
     matching `useAncestorPath`'s existing (pre-pagination) behavior for a
     filtered result set.
+- 2026-09-15 — Screenshots at a 321px ("SP") viewport showed Staff List and
+  Audit Log hadn't picked up G7's data-table card breakpoint: overlapping
+  headers, columns cut off with no way to reach them. Neither had followed
+  the pattern Categories already established (`hidden md:block` table +
+  `md:hidden` card list). Fixed both the same way; Staff List's row menu
+  got extracted into a shared `renderMenu()` so table and cards render the
+  identical actions. Verified live, not just by test: a headless-browser
+  login + TOTP flow at 321×801 against the real dev stack, screenshotted
+  both pages. (Retroactive entry — this landed in `e1fc6ac` without one.)
+- 2026-09-15 — A direct question about mail delivery reliability under load
+  ("might lose some mails under too many requests") became
+  `plan/31-background-jobs-and-queues.md`: BullMQ on the Redis already
+  provisioned, `apps/api` enqueues / `apps/workers` processes. Then built
+  the first slice: all 5 existing inline `MailService.sendXxx` call sites
+  now enqueue instead of sending directly. `MailService` renders the
+  template and calls `MailQueueService.enqueue({to, subject, text})`
+  (`apps/api/src/queue/`, a `@Global` module mirroring `RedisModule`'s
+  shape); `apps/workers` went from an idling stub to a real `Worker` —
+  `src/mail/mail-processor.ts` does the actual nodemailer send,
+  `src/main.ts` wires it up, `src/config/env.ts` validates
+  `REDIS_URL`/`SMTP_URL`/`MAIL_FROM` the same way `apps/api` validates its
+  own env. `@shopnetic/events` gained `QueueName`/`MailSendJob` — job
+  contracts, deliberately kept distinct from the existing `DomainEvent`
+  export (a queue "command" is "do this reliably once"; a domain event is
+  "something happened, N may care" — different shape, same file, same
+  reason it already existed for cross-app shared vocabulary).
+  `SMTP_URL`/`MAIL_FROM` moved out of `apps/api`'s env schema entirely —
+  dead config once nothing there reads them; they now live only in
+  `apps/workers`. Each BullMQ `Queue`/`Worker` gets its **own** ioredis
+  connection (`maxRetriesPerRequest: null`, BullMQ's own requirement for
+  blocking commands) — deliberately not reusing `apps/api`'s existing
+  `RedisService` connection, which is tuned differently
+  (`maxRetriesPerRequest: 2`) for rate-limit buckets. Verified live, not
+  just unit tests: ran the real dev stack (`apps/api` + `apps/workers` +
+  real Redis), fired two real `forgot-password` requests, confirmed both
+  jobs landed in `bull:mail:completed` with the correctly rendered
+  subject/link — real SMTP delivery succeeded end to end. One gap left
+  open on purpose: no per-job idempotency key yet (a caller-side
+  double-submit isn't deduped) — none of today's call sites have an
+  obvious stable key to build one from without more design, and it's
+  low-stakes enough to file as a follow-up rather than block the slice on.

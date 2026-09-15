@@ -2,6 +2,7 @@ import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common
 import { ConfigModule } from './config/config.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { QueueModule } from './queue/queue.module.js';
 import { CryptoModule } from './crypto/crypto.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AuditModule } from './audit/audit.module.js';
@@ -20,6 +21,7 @@ import { CorrelationMiddleware } from './common/correlation.middleware.js';
     ConfigModule,
     PrismaModule,
     RedisModule,
+    QueueModule,
     CryptoModule,
     AuthModule,
     AuditModule,

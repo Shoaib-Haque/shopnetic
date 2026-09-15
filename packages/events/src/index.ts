@@ -56,3 +56,26 @@ export interface EventEnvelope<TPayload = unknown> {
   correlationId: string;
   payload: TPayload;
 }
+
+/**
+ * BullMQ queue names + job payloads — "async commands," distinct from the
+ * domain events above (`02-architecture.md` section 4: an event is
+ * "something happened, N consumers may care"; a command is "do this
+ * reliably, once"). The queue name doubles as the BullMQ queue name:
+ * `apps/api` enqueues, `apps/workers` consumes
+ * (`plan/31-background-jobs-and-queues.md`).
+ */
+export const QueueName = {
+  MAIL: 'mail',
+} as const;
+
+export type QueueName = (typeof QueueName)[keyof typeof QueueName];
+
+/** Rendered and ready to send — the worker knows nothing about templates or
+ * locales, only SMTP delivery (`plan/31-background-jobs-and-queues.md`
+ * section 3: `apps/api` renders, `apps/workers` sends). */
+export interface MailSendJob {
+  to: string;
+  subject: string;
+  text: string;
+}

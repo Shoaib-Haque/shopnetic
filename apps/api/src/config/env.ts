@@ -41,10 +41,6 @@ const envSchema = z.object({
   // Accept a code from ±N 30s steps (clock skew tolerance). 1 = RFC default.
   TOTP_WINDOW_STEPS: z.coerce.number().int().min(0).max(20).default(1),
 
-  // Outbound email (Mailpit locally).
-  SMTP_URL: z.string().startsWith('smtp').default('smtp://localhost:1025'),
-  MAIL_FROM: z.string().default('Shopnetic <no-reply@shopnetic.local>'),
-
   // Where email links point.
   APP_WEB_URL: z.string().url().default('http://localhost:3000'),
   ADMIN_WEB_URL: z.string().url().default('http://localhost:3002'),

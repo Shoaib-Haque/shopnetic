@@ -71,14 +71,13 @@ extraction step to defer — split by role from the start:
 - **`apps/workers` is consumer-only**: it's where the `Worker`/`Queue`
   instances and every processor function actually live. This is the stub's
   entire reason to exist — fill it in, don't route around it.
-- `apps/api` already has an `ioredis` connection (`RedisService`, used today
-  for rate-limit buckets) — a BullMQ `Queue` (producer side) can reuse that
-  connection. `apps/workers` has no Redis dependency yet; add `ioredis` +
-  `bullmq` there when the first processor lands. **Don't share one ioredis
-  instance between the two roles carelessly**: BullMQ's `Worker` requires
-  `maxRetriesPerRequest: null` on its connection for blocking commands to
-  work, which conflicts with `RedisService`'s `maxRetriesPerRequest: 2` — give
-  the `Worker` its own connection, even if it points at the same Redis.
+- Each BullMQ `Queue`/`Worker` gets its **own** dedicated `ioredis`
+  connection (`maxRetriesPerRequest: null`, per BullMQ's own requirement for
+  blocking commands) — not `apps/api`'s existing `RedisService` connection,
+  which is tuned differently (`maxRetriesPerRequest: 2`) for rate-limit
+  buckets. Implemented as `apps/api/src/queue/mail-queue.service.ts`
+  (producer) and `apps/workers/src/mail/mail-processor.ts` +
+  `apps/workers/src/main.ts` (consumer).
 
 ## 4. The reliability chain: outbox → relay → queue → worker
 
@@ -125,7 +124,7 @@ second list anywhere else.
 
 | Job | Trigger | Idempotency key | Retry policy | Notes |
 |---|---|---|---|---|
-| `mail.send` | every `MailService.sendXxx` call (register, resend, invite, forgot-password) | `{type}:{accountId}:{tokenId or similar}` — finalize when built | exponential backoff, ~5 attempts, then DLQ | first slice; see section 8 for today's inline call sites this replaces |
+| `mail.send` | every `MailService.sendXxx` call (register, resend, invite, forgot-password) | **none yet** — each call is its own job, no `jobId` dedup | exponential backoff, 5 attempts, then DLQ (`removeOnComplete: 500`, `removeOnFail: 5000`) | shipped (section 8); BullMQ's own retry needs no key (same job instance) — a caller-side double-submit (e.g. a double-clicked "resend") isn't deduped, since none of these calls carry a stable natural key to build a `jobId` from without more design. Low-stakes enough to leave as a follow-up, not a blocker |
 | `search.reindex` | catalog/product write | entity id | backoff, alert on DLQ depth | **not** `apps/workers` — its own dedicated consumer, `apps/search-indexer` (already scaffolded, currently stub), per `11-search-and-catalog.md` section 4 |
 | `payout.execute` | payout cycle | payout batch id | backoff + manual review on DLQ (money — no silent drop) | see `13-payments-and-payouts.md`; full outbox required, no shortcut |
 
@@ -160,18 +159,24 @@ effect attached (`CODING-RULES.md` Q1).
 
 ## 8. Known current violations — retrofit list
 
-Remove a row once its call site is migrated to `mail.send`. Not urgent bugs
-today (dev/staging volume is low) — but fix as one slice (build the queue +
-migrate every call site together), not ad hoc per call site, so every mail
-send gets the same guarantee at the same time.
+**All migrated (2026-09-15).** `MailService` no longer sends anything itself
+— every `sendXxx` method renders its template, then enqueues via
+`MailQueueService`. Kept as a record of what the first slice covered, and as
+the template for the next domain that needs this (payouts, exports, …).
 
-| Call site | File |
-|---|---|
-| `sendVerification` (register) | `apps/api/src/identity/identity.service.ts` |
-| `sendAlreadyRegistered` | `apps/api/src/identity/identity.service.ts` |
-| `sendVerification` (resend) | `apps/api/src/identity/identity.service.ts` |
-| `sendStaffInvite` | `apps/api/src/identity/staff-invite.service.ts` |
-| `sendStaffPasswordReset` | `apps/api/src/identity/staff-auth.service.ts` |
+| Call site | File | Status |
+|---|---|---|
+| `sendVerification` (register) | `apps/api/src/identity/identity.service.ts` | queued |
+| `sendAlreadyRegistered` | `apps/api/src/identity/identity.service.ts` | queued |
+| `sendVerification` (resend) | `apps/api/src/identity/identity.service.ts` | queued |
+| `sendStaffInvite` | `apps/api/src/identity/staff-invite.service.ts` | queued |
+| `sendStaffPasswordReset` | `apps/api/src/identity/staff-auth.service.ts` | queued |
+
+Verified live, not just by test: enqueued two real `forgot-password` mail
+jobs against the running dev stack (`apps/api` on :4000, `apps/workers`'
+already-running dev process, real Redis on :6380) and confirmed both landed
+in `bull:mail:completed` with the correct rendered subject/link — the real
+SMTP send succeeded end to end, not just "the job was created."
 
 ## Changelog
 
@@ -187,4 +192,11 @@ send gets the same guarantee at the same time.
   producer(`apps/api`)/consumer(`apps/workers`) from the start, and fixed
   the `search.reindex` job-catalog row, which pointed at `apps/workers` but
   actually belongs to `apps/search-indexer` per `11-search-and-catalog.md`
+  section 4 — a separate, already-scaffolded dedicated consumer.
+- 2026-09-15 — First slice shipped: `mail.send` on BullMQ, all 5 call sites
+  in section 8 migrated. `@shopnetic/events` gained `QueueName`/`MailSendJob`
+  (section 2). `apps/workers` went from stub to real: env validation,
+  `mail-processor.ts` (nodemailer send), `main.ts` wires the `Worker`. Gap
+  left open on purpose, not silently: no per-job idempotency key yet
+  (section 5) — flagged as a follow-up, not treated as done.
   section 4 — a separate, already-scaffolded dedicated consumer.
