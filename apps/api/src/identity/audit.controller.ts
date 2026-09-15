@@ -31,6 +31,7 @@ export class AuditController {
     const rows = await this.prisma.auditEvent.findMany({
       take: limit + 1,
       orderBy: { id: 'desc' },
+      include: { actor: { select: { email: true } } },
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
 
@@ -45,13 +46,16 @@ export class AuditController {
   }
 }
 
-function toAuditView(row: AuditEventRow): AuditEvent {
+function toAuditView(row: AuditEventRow & { actor: { email: string } | null }): AuditEvent {
   return {
     id: row.id,
     actorAccountId: row.actorAccountId,
+    actorEmail: row.actor?.email ?? null,
     action: row.action,
     targetType: row.targetType,
     targetId: row.targetId,
+    before: row.before,
+    after: row.after,
     reason: row.reason,
     ip: row.ip,
     correlationId: row.correlationId,

@@ -279,6 +279,12 @@ export function StaffLoginForm({ locale, basePath }: { locale: string; basePath:
           {...register('password')}
         />
       </Field>
+      <Link
+        href={`/${locale}/${basePath}/forgot-password`}
+        className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        {t('login.forgotPassword')}
+      </Link>
       {formError ? (
         <p className="text-sm text-destructive" role="alert">
           {formError}

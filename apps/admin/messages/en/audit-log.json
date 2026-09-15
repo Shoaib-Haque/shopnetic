@@ -1,0 +1,16 @@
+{
+  "auditLog": {
+    "title": "Audit log",
+    "intro": "Every sensitive action taken across the admin panel, newest first.",
+    "cols": { "time": "Time", "actor": "Actor", "action": "Action", "target": "Target" },
+    "system": "System",
+    "empty": "No audit events yet.",
+    "loadMore": "Load more",
+    "viewDetails": "View details",
+    "hideDetails": "Hide details",
+    "reason": "Reason",
+    "correlationId": "Correlation ID",
+    "before": "Before",
+    "after": "After"
+  }
+}

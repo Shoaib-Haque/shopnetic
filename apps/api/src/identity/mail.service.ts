@@ -46,6 +46,18 @@ export class MailService implements OnModuleInit {
     this.logger.log(`staff invite queued for ${maskEmail(to)} (${role})`);
   }
 
+  async sendStaffPasswordReset(
+    to: string,
+    resetUrl: string,
+    locale: MailLocale = 'en',
+  ): Promise<void> {
+    const { subject, text } = renderTemplate(identityMail(locale).staffPasswordReset, {
+      link: resetUrl,
+    });
+    await this.send(to, subject, text);
+    this.logger.log(`staff password-reset email queued for ${maskEmail(to)}`);
+  }
+
   private async send(to: string, subject: string, text: string): Promise<void> {
     await this.transporter.sendMail({ from: this.env.MAIL_FROM, to, subject, text });
   }

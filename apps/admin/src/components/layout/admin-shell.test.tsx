@@ -139,9 +139,10 @@ describe('AdminShell nav — role-gated items', () => {
     expect(screen.getByRole('link', { name: 'List' })).not.toHaveAttribute('aria-current');
   });
 
-  it('a normal Admin sees neither the Staff group nor the Administration heading', () => {
+  it('a normal Admin sees the Administration heading (for Audit log) but not the Staff group', () => {
     render(['ADMIN']);
-    expect(screen.queryByText('Administration')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Administration').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: 'Staff' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Audit log' }).length).toBeGreaterThan(0);
   });
 });

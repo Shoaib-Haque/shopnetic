@@ -1,0 +1,153 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useTranslations } from 'next-intl';
+import { z } from 'zod';
+import { staffResetPasswordRequestSchema } from '@shopnetic/contracts';
+import { Button, Field, PasswordInput, TimerBar } from '@shopnetic/ui';
+import { postJson } from '../submit';
+import { staffErrorKey, extractErrorCode } from '../error-copy';
+import { AuthPageSection } from './auth-page-section';
+
+const formSchema = staffResetPasswordRequestSchema
+  .omit({ token: true })
+  .extend({ confirmPassword: z.string() })
+  .refine((v) => v.newPassword === v.confirmPassword, { path: ['confirmPassword'] });
+
+type FormValues = z.infer<typeof formSchema>;
+
+const REDIRECT_DELAY_MS = 3000;
+
+export function ResetPasswordForm({
+  token,
+  locale,
+  basePath,
+}: {
+  token: string | null;
+  locale: string;
+  basePath: string;
+}) {
+  const t = useTranslations('staff');
+  const router = useRouter();
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    mode: 'onTouched',
+  });
+
+  const loginHref = `/${locale}/${basePath}/login`;
+
+  useEffect(() => {
+    if (!done) return;
+    const timer = setTimeout(() => {
+      router.replace(loginHref);
+      router.refresh();
+    }, REDIRECT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [done, router, loginHref]);
+
+  if (!token) {
+    return (
+      <AuthPageSection variant="message">
+        <div className="flex flex-col gap-6">
+          <h1 className="text-xl font-semibold">{t('resetPassword.title')}</h1>
+          <p className="text-sm text-destructive" role="alert">
+            {t('errors.passwordResetTokenInvalid')}
+          </p>
+        </div>
+      </AuthPageSection>
+    );
+  }
+
+  if (done) {
+    return (
+      <AuthPageSection variant="message">
+        <div className="flex flex-col gap-6">
+          <h1 className="text-xl font-semibold">{t('resetPassword.doneTitle')}</h1>
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">{t('resetPassword.redirecting')}</p>
+            <div className="overflow-hidden rounded-full bg-muted">
+              <TimerBar ms={REDIRECT_DELAY_MS} className="bg-primary/60" />
+            </div>
+          </div>
+        </div>
+      </AuthPageSection>
+    );
+  }
+
+  return (
+    <AuthPageSection variant="form">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-xl font-semibold">{t('resetPassword.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('resetPassword.intro')}</p>
+        </div>
+        <form
+          noValidate
+          className="flex w-full max-w-sm flex-col gap-4"
+          onSubmit={handleSubmit(async ({ newPassword }) => {
+            setBusy(true);
+            setFormError(null);
+            const res = await postJson('/api/staff-auth/reset-password', { token, newPassword });
+            setBusy(false);
+            if (res.status === 204) {
+              setDone(true);
+              return;
+            }
+            setFormError(
+              res.status === 0 ? t('errors.network') : t(staffErrorKey(extractErrorCode(res.body))),
+            );
+          })}
+        >
+          <Field
+            label={t('fields.newPassword')}
+            htmlFor="reset-password-new"
+            hint={t('fields.passwordHint')}
+            error={errors.newPassword ? t('fields.passwordTooShort') : undefined}
+          >
+            <PasswordInput
+              id="reset-password-new"
+              autoComplete="new-password"
+              invalid={Boolean(errors.newPassword)}
+              showLabel={t('fields.showPassword')}
+              hideLabel={t('fields.hidePassword')}
+              {...register('newPassword')}
+            />
+          </Field>
+          <Field
+            label={t('fields.confirmPassword')}
+            htmlFor="reset-password-confirm"
+            error={errors.confirmPassword ? t('fields.passwordsDontMatch') : undefined}
+          >
+            <PasswordInput
+              id="reset-password-confirm"
+              autoComplete="new-password"
+              invalid={Boolean(errors.confirmPassword)}
+              showLabel={t('fields.showPassword')}
+              hideLabel={t('fields.hidePassword')}
+              {...register('confirmPassword')}
+            />
+          </Field>
+          {formError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {formError}
+            </p>
+          ) : null}
+          <Button type="submit" loading={busy} loadingText={t('resetPassword.submitting')}>
+            {t('resetPassword.submit')}
+          </Button>
+        </form>
+      </div>
+    </AuthPageSection>
+  );
+}

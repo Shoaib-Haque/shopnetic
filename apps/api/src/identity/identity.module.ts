@@ -6,6 +6,7 @@ import { StaffController } from './staff.controller.js';
 import { IdentityService } from './identity.service.js';
 import { PasswordService } from './password.service.js';
 import { VerificationService } from './verification.service.js';
+import { PasswordResetService } from './password-reset.service.js';
 import { MailService } from './mail.service.js';
 import { SessionService } from './session.service.js';
 import { AccessTokenService } from './access-token.service.js';
@@ -24,6 +25,7 @@ import { StaffAccountsService } from './staff-accounts.service.js';
     IdentityService,
     PasswordService,
     VerificationService,
+    PasswordResetService,
     MailService,
     SessionService,
     AccessTokenService,

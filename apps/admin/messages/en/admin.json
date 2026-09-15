@@ -10,6 +10,7 @@
       "searchSoon": "Search is coming soon",
       "notifications": "Notifications",
       "account": "Account menu",
+      "changePassword": "Change password",
       "signOut": "Sign out",
       "signingOut": "Signing out…",
       "signOutFailed": "Couldn’t sign you out. Check your connection and try again.",
@@ -30,7 +31,8 @@
       "media": "Media",
       "staff": "Staff",
       "staffList": "List",
-      "staffInvite": "Invite"
+      "staffInvite": "Invite",
+      "auditLog": "Audit log"
     },
     "footer": {
       "text": "© 2026 Shopnetic — Admin"

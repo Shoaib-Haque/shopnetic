@@ -4,6 +4,7 @@ import { parseStaffSetCookie } from '@/features/staff-auth/parse-set-cookie';
 import { readTokens } from '@/features/staff-auth/tokens';
 
 const ADMIN_BASE = `${serverEnv.API_BASE_URL}/admin/v1`;
+const IDENTITY_BASE = `${serverEnv.API_BASE_URL}/identity/v1`;
 const IDENTITY_STAFF_BASE = `${serverEnv.API_BASE_URL}/identity/v1/staff`;
 const REFRESH_URL = `${serverEnv.API_BASE_URL}/identity/v1/staff/auth/token/refresh`;
 
@@ -35,6 +36,15 @@ export function callIdentityStaffApi(
   opts: CallOptions,
 ): Promise<AdminApiResult> {
   return callWithBearer(IDENTITY_STAFF_BASE, pathAndQuery, opts);
+}
+
+/**
+ * Server-only call to a protected `/identity/v1/*` endpoint that isn't under
+ * `/staff` (e.g. `audit-events`, which any staff role with `auditlog:read`
+ * can reach, not just `staff:manage`).
+ */
+export function callIdentityApi(pathAndQuery: string, opts: CallOptions): Promise<AdminApiResult> {
+  return callWithBearer(IDENTITY_BASE, pathAndQuery, opts);
 }
 
 async function callWithBearer(

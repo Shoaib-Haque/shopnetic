@@ -18,6 +18,7 @@ interface IdentityMailCatalog {
   verifyEmail: MailTemplate;
   alreadyRegistered: MailTemplate;
   staffInvite: MailTemplate;
+  staffPasswordReset: MailTemplate;
 }
 
 const CATALOG: Record<MailLocale, IdentityMailCatalog> = {
@@ -54,6 +55,18 @@ const CATALOG: Record<MailLocale, IdentityMailCatalog> = {
         '{link}',
         '',
         'This invite expires in 7 days. If you were not expecting it, ignore this email.',
+      ].join('\n'),
+    },
+    staffPasswordReset: {
+      subject: 'Reset your Shopnetic staff password',
+      text: [
+        'Someone requested a password reset for this Shopnetic staff account.',
+        '',
+        'Choose a new password here:',
+        '{link}',
+        '',
+        'This link expires in 1 hour. If you did not request this, ignore this email —',
+        'your password has not been changed.',
       ].join('\n'),
     },
   },

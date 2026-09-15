@@ -1,4 +1,7 @@
 import '@testing-library/jest-dom/vitest';
+import { installIntersectionObserverMock } from './src/test/intersection-observer';
+
+installIntersectionObserverMock();
 
 // jsdom doesn't implement matchMedia. category-list.tsx calls it directly
 // (the `pointer: fine` drag-capability check) — without this every render

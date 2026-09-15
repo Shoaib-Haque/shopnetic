@@ -6,11 +6,12 @@ import common from '../../messages/en/common.json';
 import staff from '../../messages/en/staff.json';
 import admin from '../../messages/en/admin.json';
 import catalog from '../../messages/en/catalog.json';
+import auditLog from '../../messages/en/audit-log.json';
 
 // Mirrors `src/i18n/request.ts`'s namespace merge, so a test asserts against
 // the real English copy (not a translation key) — a typo'd or missing message
 // key fails the test the same way it'd show up broken in the app.
-const messages = { ...common, ...staff, ...admin, ...catalog };
+const messages = { ...common, ...staff, ...admin, ...catalog, ...auditLog };
 
 /**
  * Render helper for components that call `useTranslations` and/or `notify.*`

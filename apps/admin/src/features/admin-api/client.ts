@@ -19,6 +19,9 @@ interface Options {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
+  /** Return the whole `{data, meta}` envelope instead of unwrapping to just
+   * `data` — for callers that need `meta` too (e.g. cursor pagination). */
+  raw?: boolean;
 }
 
 // Set once the first `UNAUTHENTICATED` has kicked off a login redirect. Every
@@ -52,10 +55,11 @@ function redirectToLogin(): void {
 
 /**
  * Builds a typed client against one BFF proxy base — `adminApi` (below) is
- * `/api/admin/*`; `staffManageApi` is `/api/staff-auth/staff/*`. `redirecting`
- * is shared across every client (module-level, not per-base): a dead session
- * is a dead session no matter which proxy noticed first, so only one of them
- * should ever kick off the redirect.
+ * `/api/admin/*`; `staffManageApi` is `/api/staff-auth/staff/*`; `auditLogApi`
+ * is `/api/staff-auth/audit-events`. `redirecting` is shared across every
+ * client (module-level, not per-base): a dead session is a dead session no
+ * matter which proxy noticed first, so only one of them should ever kick off
+ * the redirect.
  */
 function createApiClient(basePath: string) {
   return async function callApi<T>(path: string, opts: Options = {}): Promise<T> {
@@ -103,7 +107,7 @@ function createApiClient(basePath: string) {
       if (code === 'UNAUTHENTICATED') redirectToLogin();
       throw new AdminApiError(code, res.status);
     }
-    return (payload as { data: T }).data;
+    return opts.raw ? (payload as T) : (payload as { data: T }).data;
   };
 }
 
@@ -111,3 +115,6 @@ export const adminApi = createApiClient('/api/admin');
 /** Staff-directory actions (list / role / unlock / reset-totp / deprovision) —
  * `staff:manage`, Super Admin only; the BFF proxy is `/api/staff-auth/staff/*`. */
 export const staffManageApi = createApiClient('/api/staff-auth/staff');
+/** `auditlog:read` — every staff role, not just Super Admin; the BFF proxy is
+ * `/api/staff-auth/audit-events`. */
+export const auditLogApi = createApiClient('/api/staff-auth/audit-events');

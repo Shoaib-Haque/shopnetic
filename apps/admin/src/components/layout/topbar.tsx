@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Bell, ChevronDown, Menu, PanelLeft, Search } from 'lucide-react';
 import {
@@ -14,6 +15,7 @@ import {
 
 interface TopbarProps {
   email: string;
+  root: string;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   onOpenMobile: () => void;
@@ -23,6 +25,7 @@ interface TopbarProps {
 
 export function Topbar({
   email,
+  root,
   collapsed,
   onToggleCollapsed,
   onOpenMobile,
@@ -92,6 +95,10 @@ export function Topbar({
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href={`${root}/account/change-password`}>{t('shell.changePassword')}</Link>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={(e) => {

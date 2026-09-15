@@ -14,15 +14,21 @@ import {
 import type { Request, Response } from 'express';
 import { Permission } from '@shopnetic/auth';
 import {
+  staffChangePasswordRequestSchema,
+  staffForgotPasswordRequestSchema,
   staffInviteAcceptRequestSchema,
   staffInviteCreateRequestSchema,
   staffLoginRequestSchema,
+  staffResetPasswordRequestSchema,
   staffRoleChangeRequestSchema,
   staffTotpConfirmRequestSchema,
   type StaffAccount,
+  type StaffChangePasswordRequest,
+  type StaffForgotPasswordRequest,
   type StaffInviteAcceptRequest,
   type StaffInviteCreateRequest,
   type StaffLoginRequest,
+  type StaffResetPasswordRequest,
   type StaffRoleChangeRequest,
   type StaffSessionResponse,
   type StaffTotpConfirmRequest,
@@ -54,6 +60,9 @@ const confirmBody = new ZodBodyPipe(staffTotpConfirmRequestSchema);
 const inviteBody = new ZodBodyPipe(staffInviteCreateRequestSchema);
 const acceptBody = new ZodBodyPipe(staffInviteAcceptRequestSchema);
 const roleChangeBody = new ZodBodyPipe(staffRoleChangeRequestSchema);
+const changePasswordBody = new ZodBodyPipe(staffChangePasswordRequestSchema);
+const forgotPasswordBody = new ZodBodyPipe(staffForgotPasswordRequestSchema);
+const resetPasswordBody = new ZodBodyPipe(staffResetPasswordRequestSchema);
 
 @Controller('identity/v1/staff')
 export class StaffController {
@@ -133,6 +142,46 @@ export class StaffController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<void> {
     await this.staffAuth.logout(readStaffCookie(req));
     clearStaffRefreshCookie(res, this.isProd);
+  }
+
+  @Post('auth/change-password')
+  @HttpCode(204)
+  @UseGuards(StaffAuthGuard, RateLimitGuard)
+  @RateLimit({ name: 'staff:change-password', limit: 10, windowSeconds: 900 })
+  async changePassword(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Body(changePasswordBody) body: StaffChangePasswordRequest,
+  ): Promise<void> {
+    await this.staffAuth.changePassword(
+      actor.accountId,
+      body.currentPassword,
+      body.newPassword,
+      ctxOf(req),
+    );
+  }
+
+  @Post('auth/forgot-password')
+  @HttpCode(202)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ name: 'staff:forgot-password', limit: 5, windowSeconds: 900 })
+  async forgotPassword(
+    @Req() req: Request,
+    @Body(forgotPasswordBody) body: StaffForgotPasswordRequest,
+  ): Promise<{ data: { requested: true }; meta: { requestId: string } }> {
+    await this.staffAuth.forgotPassword(body.email, ctxOf(req));
+    return ok(req, { requested: true });
+  }
+
+  @Post('auth/reset-password')
+  @HttpCode(204)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ name: 'staff:reset-password', limit: 10, windowSeconds: 900 })
+  async resetPassword(
+    @Req() req: Request,
+    @Body(resetPasswordBody) body: StaffResetPasswordRequest,
+  ): Promise<void> {
+    await this.staffAuth.resetPassword(body.token, body.newPassword, ctxOf(req));
   }
 
   @Get('auth/session')

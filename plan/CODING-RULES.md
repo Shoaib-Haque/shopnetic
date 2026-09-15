@@ -1106,3 +1106,57 @@ compose file.
   `aria-current` (and `onClick`, `className`) from the rendered `<a>` — any
   test mocking `next/link` and asserting on more than `href` needs to spread
   the rest of the props through.
+- 2026-09-15 — Asked directly "did you apply G7 for a long email in the
+  staff list": no, only partially. The `truncate` class on the email
+  `TableCell` was inert — `Table` defaults to auto-layout + horizontal
+  scroll (`scrollX` true), so a long value just grows the column or scrolls
+  instead of clipping. Fixed to match `category-tree.tsx`'s established
+  pattern: `<Table className="table-fixed" scrollX={false}>` with explicit
+  widths on the narrow columns, `truncate` on an inner wrapper span (not the
+  `<td>` itself) with `title={account.email}` so the full value is still a
+  hover away. Also hadn't capped the email before interpolating it into
+  confirm-dialog messages, toasts, or the role-change modal description
+  (G7's "interpolated into a fixed-width dialog" rule) — added a local
+  `capForMessage(value, max=60)` helper and applied it at every interpolation
+  site in `staff-list.tsx`. Reminder: `truncate` alone proves nothing without
+  `table-fixed` (or an otherwise width-bounded ancestor) — check for that
+  first before trusting a truncate class is doing anything.
+- 2026-09-15 — Asked "didn't we talk about change password, audit log,
+  forgot password" — audited: the audit-log *API* existed
+  (`GET identity/v1/audit-events`) but had no admin UI; change-password and
+  forgot-password didn't exist at all, API or UI, for either plane. Built
+  all three, staff plane only (buyer plane deferred — explicit user choice,
+  not an oversight):
+  - **Audit log UI** (`(protected)/audit-log`): `AuditController` now joins
+    `actor: { select: { email } }` and returns `before`/`after` too (were
+    already columns, just never serialized). New BFF route + `bridge.ts`
+    helper `callIdentityApi` (base `identity/v1`, not `.../staff`) since
+    this endpoint isn't under `staff:manage`. `createApiClient` gained an
+    `opts.raw` flag — return the whole `{data, meta}` envelope instead of
+    unwrapping to `data` — the first caller (`auditLogApi`) that needs
+    `meta.nextCursor` for pagination; every earlier client only ever needed
+    `data`. Nav item is deliberately *not* `superAdminOnly`: Service Admin
+    and Admin both hold `auditlog:read` too (partial, vs Super Admin's
+    full — the API doesn't scope rows down for partial yet, a known gap).
+    This also means "Administration" no longer disappears for a normal
+    Admin (nav-config tests + admin-shell tests updated accordingly).
+  - **Change password** (self-service): `StaffAuthService.changePassword`
+    verifies the current password, then `revokeAllForAccount(id,
+    'password_change')` — a reason value that already existed in
+    `SessionService`'s type union, unused until now. `StaffAuthGuard` alone
+    (no `@RequirePermission`) since any staff member may change their own.
+  - **Forgot / reset password**: new `PasswordResetService`, deliberately
+    *not* folded into `VerificationService` even though both wrap the same
+    `email_verification` table (`purpose: password_reset` vs `verify_email`)
+    — kept separate so a staff-plane change can't touch the buyer-plane
+    verify-email flow. New `PASSWORD_RESET_TTL_HOURS` env (default 1h,
+    deliberately short — a live reset link is a bigger risk than a
+    verify-email link). `PASSWORD_RESET_TOKEN_INVALID` vs `_EXPIRED` as two
+    codes, matching the existing invite-token and verify-email-token split
+    rather than inventing a stricter single-code pattern.
+  - Recurring gotcha hit twice while verifying live: `apps/api`'s `node
+    --watch` process silently stopped picking up saves partway through this
+    session (routes kept 404ing against code that typechecked and had
+    passing tests) — `touch apps/api/src/main.ts` forces a real restart.
+    Always confirm the live route is actually mapped (`grep "Mapped.*route"
+    /tmp/api-dev.log`) after API changes, don't trust the watcher blindly.

@@ -59,6 +59,7 @@ export function AdminShell({
     <div className="flex h-dvh flex-col overflow-hidden">
       <Topbar
         email={email}
+        root={root}
         collapsed={collapsed}
         onToggleCollapsed={toggleCollapsed}
         onOpenMobile={() => setMobileOpen(true)}

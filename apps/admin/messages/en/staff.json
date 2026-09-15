@@ -11,6 +11,9 @@
       "newPassword": "Create a password",
       "passwordHint": "At least 8 characters.",
       "passwordTooShort": "Use at least 8 characters.",
+      "currentPassword": "Current password",
+      "confirmPassword": "Confirm new password",
+      "passwordsDontMatch": "Passwords don't match.",
       "code": "Authenticator code",
       "recoveryCode": "Recovery code",
       "showPassword": "Show password",
@@ -20,6 +23,7 @@
       "title": "Staff sign in",
       "submit": "Sign in",
       "submitting": "Signing in…",
+      "forgotPassword": "Forgot your password?",
       "inviteHint": "Have an invite link but ended up here?",
       "inviteLink": "Accept an invite"
     },
@@ -48,6 +52,31 @@
       "submit": "Create account",
       "submitting": "Creating…",
       "doneTitle": "You're all set",
+      "redirecting": "Redirecting to sign in…"
+    },
+    "changePassword": {
+      "title": "Change password",
+      "intro": "Changing your password signs you out everywhere, including this device — you'll need to sign in again with the new one.",
+      "submit": "Change password",
+      "submitting": "Changing…",
+      "doneTitle": "Password changed",
+      "redirecting": "Redirecting to sign in…"
+    },
+    "forgotPassword": {
+      "title": "Forgot your password?",
+      "intro": "Enter your staff email and we'll send you a link to reset your password.",
+      "submit": "Send reset link",
+      "submitting": "Sending…",
+      "doneTitle": "Check your email",
+      "doneIntro": "If an account exists for that address, a reset link is on its way. The link expires in 1 hour.",
+      "backToLogin": "Back to sign in"
+    },
+    "resetPassword": {
+      "title": "Choose a new password",
+      "intro": "This link is single-use and expires 1 hour after it was sent.",
+      "submit": "Reset password",
+      "submitting": "Resetting…",
+      "doneTitle": "Password reset",
       "redirecting": "Redirecting to sign in…"
     },
     "invite": {
@@ -125,6 +154,9 @@
       "network": "We couldn't reach the server. Check your connection and try again.",
       "validation": "Please check the highlighted fields and try again.",
       "invalidCredentials": "That email and password don't match.",
+      "wrongCurrentPassword": "Your current password is incorrect.",
+      "passwordResetTokenInvalid": "This reset link is invalid or has already been used.",
+      "passwordResetTokenExpired": "This reset link has expired.",
       "mfaRequired": "Enter your authenticator code.",
       "mfaInvalid": "That code isn't right. Try again.",
       "mfaAlreadyEnrolled": "An authenticator is already set up for this account.",

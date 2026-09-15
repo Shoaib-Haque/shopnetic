@@ -44,6 +44,26 @@ export const staffInviteAcceptRequestSchema = z.object({
 });
 export type StaffInviteAcceptRequest = z.infer<typeof staffInviteAcceptRequestSchema>;
 
+/** Self-service — the caller changes their own password, proven by supplying
+ * the current one; no admin action can do this for someone else. */
+export const staffChangePasswordRequestSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: passwordSchema,
+});
+export type StaffChangePasswordRequest = z.infer<typeof staffChangePasswordRequestSchema>;
+
+/** Enumeration-safe: always 202, whether or not the email exists (plan/16). */
+export const staffForgotPasswordRequestSchema = z.object({
+  email: emailSchema,
+});
+export type StaffForgotPasswordRequest = z.infer<typeof staffForgotPasswordRequestSchema>;
+
+export const staffResetPasswordRequestSchema = z.object({
+  token: z.string().min(10).max(200),
+  newPassword: passwordSchema,
+});
+export type StaffResetPasswordRequest = z.infer<typeof staffResetPasswordRequestSchema>;
+
 /** Returned when a staff account still needs to set up an authenticator app. */
 export const totpEnrolmentChallengeSchema = z.object({
   status: z.literal('totp_enrolment_required'),

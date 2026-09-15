@@ -12,6 +12,7 @@ import { SessionService } from './session.service.js';
 import { AccessTokenService } from './access-token.service.js';
 import { StaffInviteService } from './staff-invite.service.js';
 import { StaffAuthService } from './staff-auth.service.js';
+import { PasswordResetService } from './password-reset.service.js';
 import type { MailService } from './mail.service.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
@@ -27,6 +28,7 @@ const env = {
   ADMIN_WEB_URL: 'http://localhost:3002',
   ADMIN_BASE_PATH: 'x7f2k9t3m1qp',
   PASSWORD_BREACH_CHECK: false,
+  PASSWORD_RESET_TTL_HOURS: 1,
 } as ApiEnv;
 
 describe.skipIf(!hasDb)('staff plane (integration)', () => {
@@ -34,11 +36,13 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
   let invites: StaffInviteService;
   let staffAuth: StaffAuthService;
   let inviterId: string;
+  let accountId = '';
   let inviteToken = '';
+  let resetToken = '';
   let recoveryCodes: string[] = [];
   const stamp = Date.now();
   const staffEmail = `itest-staff-${stamp}@shopnetic.test`;
-  const staffPassword = 'staff-pass-1234-abcd';
+  let staffPassword = 'staff-pass-1234-abcd';
   let totpSecret = '';
 
   beforeAll(async () => {
@@ -58,10 +62,25 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
         inviteToken = new URL(url).searchParams.get('token') ?? '';
         return Promise.resolve();
       },
-    } as Pick<MailService, 'sendStaffInvite'> as MailService;
+      sendStaffPasswordReset: (_to: string, url: string): Promise<void> => {
+        resetToken = new URL(url).searchParams.get('token') ?? '';
+        return Promise.resolve();
+      },
+    } as Pick<MailService, 'sendStaffInvite' | 'sendStaffPasswordReset'> as MailService;
+    const passwordReset = new PasswordResetService(px, env);
 
     invites = new StaffInviteService(px, env, passwords, capturingMail, audit);
-    staffAuth = new StaffAuthService(px, env, passwords, totp, sessions, accessTokens, audit);
+    staffAuth = new StaffAuthService(
+      px,
+      env,
+      passwords,
+      totp,
+      sessions,
+      accessTokens,
+      audit,
+      capturingMail,
+      passwordReset,
+    );
 
     const superRole = await prisma.role.findUniqueOrThrow({ where: { key: 'SUPER_ADMIN' } });
     const inviter = await prisma.account.create({
@@ -84,6 +103,7 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
     );
     await prisma.recoveryCode.deleteMany({ where: { accountId: { in: ids } } });
     await prisma.totpSecret.deleteMany({ where: { accountId: { in: ids } } });
+    await prisma.emailVerification.deleteMany({ where: { accountId: { in: ids } } });
     await prisma.session.deleteMany({ where: { accountId: { in: ids } } });
     await prisma.grant.deleteMany({ where: { accountId: { in: ids } } });
     await prisma.staffInvite.deleteMany({ where: { email: staffEmail } });
@@ -97,7 +117,7 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
     await invites.create({ email: staffEmail, role: 'ADMIN' }, inviterId);
     expect(inviteToken).toMatch(/^[A-Za-z0-9_-]+$/);
 
-    const { accountId } = await invites.accept({ token: inviteToken, password: staffPassword });
+    ({ accountId } = await invites.accept({ token: inviteToken, password: staffPassword }));
     const account = await prisma.account.findUniqueOrThrow({
       where: { id: accountId },
       include: { grants: { include: { role: true } } },
@@ -176,5 +196,99 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
     await expect(
       staffAuth.login({ email: `nobody-${stamp}@shopnetic.test`, password: 'whatever12' }, {}),
     ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+  });
+
+  describe('change password', () => {
+    it('rejects a wrong current password, leaves the credential untouched', async () => {
+      await expect(
+        staffAuth.changePassword(accountId, 'not-the-real-password', 'new-pass-5678-efgh', {}),
+      ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+
+      // the old password still works — nothing got overwritten
+      const stillGood = await staffAuth.login(
+        { email: staffEmail, password: staffPassword, code: authenticator.generate(totpSecret) },
+        {},
+      );
+      expect(stillGood.kind).toBe('session');
+    });
+
+    it('changes the password — the old one stops working, the new one logs in', async () => {
+      const newPassword = 'new-pass-5678-efgh';
+      await staffAuth.changePassword(accountId, staffPassword, newPassword, {});
+
+      await expect(
+        staffAuth.login(
+          { email: staffEmail, password: staffPassword, code: authenticator.generate(totpSecret) },
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+
+      const outcome = await staffAuth.login(
+        { email: staffEmail, password: newPassword, code: authenticator.generate(totpSecret) },
+        {},
+      );
+      expect(outcome.kind).toBe('session');
+      staffPassword = newPassword; // so any later test in this file uses the current password
+    });
+
+    it('revokes every session on the account, the one that issued the request included', async () => {
+      const before = await prisma.session.findMany({ where: { accountId, revokedAt: null } });
+      expect(before.length).toBeGreaterThan(0); // the login just above issued one
+
+      await staffAuth.changePassword(accountId, staffPassword, 'yet-another-pass-9012', {});
+      staffPassword = 'yet-another-pass-9012';
+
+      const after = await prisma.session.findMany({ where: { accountId, revokedAt: null } });
+      expect(after).toHaveLength(0);
+    });
+  });
+
+  describe('forgot / reset password', () => {
+    it('is silent (no email, no throw) for an email that has no staff account — enumeration-safe', async () => {
+      await expect(
+        staffAuth.forgotPassword(`nobody-${stamp}@shopnetic.test`),
+      ).resolves.toBeUndefined();
+      expect(resetToken).toBe(''); // no mail was ever sent
+    });
+
+    it('issues a reset token and emails it for a real staff account', async () => {
+      await staffAuth.forgotPassword(staffEmail);
+      expect(resetToken).toMatch(/^[A-Za-z0-9_-]+$/);
+    });
+
+    it('rejects an unknown or already-used token', async () => {
+      await expect(
+        staffAuth.resetPassword('not-a-real-token', 'irrelevant-pass-1234'),
+      ).rejects.toMatchObject({ code: 'PASSWORD_RESET_TOKEN_INVALID' });
+    });
+
+    it('resets the password, revokes every session, and the token cannot be reused', async () => {
+      await staffAuth.forgotPassword(staffEmail);
+      const token = resetToken;
+      const newPassword = 'reset-flow-pass-3456';
+
+      await staffAuth.resetPassword(token, newPassword);
+      staffPassword = newPassword;
+
+      const login = await staffAuth.login(
+        {
+          email: staffEmail,
+          password: newPassword,
+          code: authenticator.generate(totpSecret),
+        },
+        {},
+      );
+      expect(login.kind).toBe('session');
+
+      const sessions = await prisma.session.findMany({
+        where: { accountId, revokedAt: null },
+      });
+      // only the one login just above — reset revoked everything before it
+      expect(sessions).toHaveLength(1);
+
+      await expect(staffAuth.resetPassword(token, 'another-pass-7890')).rejects.toMatchObject({
+        code: 'PASSWORD_RESET_TOKEN_INVALID',
+      });
+    });
   });
 });

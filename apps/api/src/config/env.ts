@@ -31,6 +31,9 @@ const envSchema = z.object({
   AUTH_REFRESH_TTL_DAYS: z.coerce.number().int().positive().max(400).default(30),
   AUTH_STAFF_REFRESH_TTL_HOURS: z.coerce.number().int().positive().max(72).default(8),
   VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().max(168).default(24),
+  /** Short on purpose — a live reset link is a bigger risk than an
+   * email-verify link, which only confirms address ownership. */
+  PASSWORD_RESET_TTL_HOURS: z.coerce.number().int().positive().max(24).default(1),
 
   // Staff TOTP: AES-256-GCM key for the stored seed (32 bytes, base64). Dev may omit.
   TOTP_ENC_KEY: z.string().optional(),

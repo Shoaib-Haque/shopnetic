@@ -16,6 +16,8 @@ const CODE_TO_KEY: Record<string, string> = {
   PASSWORD_BREACHED: 'errors.passwordBreached',
   FORBIDDEN: 'errors.forbidden',
   CANNOT_MODIFY_SELF: 'errors.cannotModifySelf',
+  PASSWORD_RESET_TOKEN_INVALID: 'errors.passwordResetTokenInvalid',
+  PASSWORD_RESET_TOKEN_EXPIRED: 'errors.passwordResetTokenExpired',
 };
 
 export function staffErrorKey(code: string | undefined): string {
