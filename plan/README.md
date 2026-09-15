@@ -44,6 +44,7 @@ Start at `00-vision-and-scope.md`, then `01-tech-stack.md` and
 | `28-page-loading-and-rendering.md` | Progressive PDP sections, optional-section hiding, hybrid pagination/infinite scroll, image/streaming strategy |
 | `29-cart-and-listing-change-alerts.md` | One-time "your cart changed" notices (price/stock/delisted) for returning buyers |
 | `30-reporting-and-analytics.md` | Admin & seller business reports — dimensions, rollup pipeline, provisional vs final, exports |
+| `31-background-jobs-and-queues.md` | BullMQ on Redis, outbox→relay→queue→worker chain, job catalog, queue-vs-cron, when-to-queue checklist |
 | `adr/` | Architecture Decision Records — one file per irreversible decision (see `adr/README.md`) |
 
 ### ADRs written so far
