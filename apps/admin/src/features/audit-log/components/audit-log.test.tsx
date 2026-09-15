@@ -28,6 +28,22 @@ function event(overrides: Partial<AuditEvent> = {}): AuditEvent {
   };
 }
 
+// jsdom doesn't apply the responsive `hidden md:block` / `md:hidden`
+// classes, so the desktop table and the mobile card list both render at
+// once — every event's action text appears twice. Real browsers show
+// exactly one; `findAllByText`/`getAllByText` is the honest query here, not
+// a workaround for a product bug. `tableRowFor` picks out the desktop
+// `<tr>` specifically, for tests that need to scope into one row's own
+// cells or its own expand toggle.
+function tableRowFor(text: string): HTMLElement {
+  const row = screen
+    .getAllByText(text)
+    .map((el) => el.closest('tr'))
+    .find((el): el is HTMLTableRowElement => el !== null);
+  if (!row) throw new Error(`no table row found for ${text}`);
+  return row;
+}
+
 afterEach(() => {
   cleanup();
   mockedListAuditEvents.mockReset();
@@ -43,7 +59,7 @@ describe('AuditLog', () => {
     expect(await screen.findByText('Couldn’t load the list.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByText('identity.staff_activated')).toBeInTheDocument();
+    expect((await screen.findAllByText('identity.staff_activated')).length).toBeGreaterThan(0);
     expect(mockedListAuditEvents).toHaveBeenCalledTimes(2);
   });
 
@@ -54,8 +70,8 @@ describe('AuditLog', () => {
     });
 
     renderAdmin(<AuditLog />);
-    expect(await screen.findByText('super@example.com')).toBeInTheDocument();
-    expect(screen.getByText('System')).toBeInTheDocument();
+    expect((await screen.findAllByText('super@example.com')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('System').length).toBeGreaterThan(0);
     expect(screen.getByText('No more items')).toBeInTheDocument();
   });
 
@@ -73,14 +89,16 @@ describe('AuditLog', () => {
       .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined });
 
     renderAdmin(<AuditLog />);
-    await screen.findByText('identity.staff_activated');
-    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(1);
+    await screen.findAllByText('identity.staff_activated');
+    // one event, shown twice (desktop table + mobile card)
+    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(2);
 
     const sentinel = screen.getByTestId('scroll-sentinel');
     act(() => triggerIntersection(sentinel));
 
     await screen.findByText('No more items');
-    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(2);
+    // two events now, each shown twice
+    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(4);
     expect(mockedListAuditEvents).toHaveBeenCalledWith('cursor-1');
     expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument();
   });
@@ -97,7 +115,7 @@ describe('AuditLog', () => {
     act(() => triggerIntersection(sentinel));
 
     await screen.findByText('No more items');
-    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(2);
+    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(4);
   });
 
   it('a failed later page keeps the already-loaded row and offers a retry, without wiping the list', async () => {
@@ -111,11 +129,11 @@ describe('AuditLog', () => {
     act(() => triggerIntersection(sentinel));
 
     expect(await screen.findByText('Couldn’t load the list.')).toBeInTheDocument();
-    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(1); // still there
+    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(2); // still there
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await screen.findByText('No more items');
-    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(2);
+    expect(screen.getAllByText('identity.staff_activated')).toHaveLength(4);
   });
 
   it('expanding a row with before/after shows the JSON diff; a row with nothing to show has no toggle', async () => {
@@ -128,17 +146,27 @@ describe('AuditLog', () => {
     });
 
     renderAdmin(<AuditLog />);
-    await screen.findByText('identity.staff_activated');
+    await screen.findAllByText('identity.staff_activated');
 
-    const bareRow = screen.getByText('identity.session_created').closest('tr')!;
+    const bareRow = tableRowFor('identity.session_created');
     expect(within(bareRow).queryByRole('button')).not.toBeInTheDocument();
 
     expect(screen.queryByText(/"status": "locked"/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'View details' }));
-    expect(screen.getByText(/"status": "locked"/)).toBeInTheDocument();
-    expect(screen.getByText(/"status": "active"/)).toBeInTheDocument();
+    // click only the desktop table's toggle — the shared `expanded` state
+    // means the mobile card's own copy of the detail opens too
+    fireEvent.click(
+      within(tableRowFor('identity.staff_activated')).getByRole('button', {
+        name: 'View details',
+      }),
+    );
+    expect(screen.getAllByText(/"status": "locked"/)).toHaveLength(2);
+    expect(screen.getAllByText(/"status": "active"/)).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide details' }));
+    fireEvent.click(
+      within(tableRowFor('identity.staff_activated')).getByRole('button', {
+        name: 'Hide details',
+      }),
+    );
     expect(screen.queryByText(/"status": "locked"/)).not.toBeInTheDocument();
   });
 });

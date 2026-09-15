@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { StaffAccount, StaffRole } from '@shopnetic/contracts';
@@ -134,6 +134,53 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
     }
   }
 
+  function renderMenu(account: StaffAccount): ReactNode {
+    const isSelf = account.email === currentEmail;
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={tCommon('actions.more')}
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <MoreHorizontal className="size-4" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem
+            disabled={isSelf}
+            onSelect={() => {
+              setRoleTarget(account);
+              setRoleChoice(account.roles[0] ?? 'ADMIN');
+            }}
+          >
+            {t('manage.actions.changeRole')}
+          </DropdownMenuItem>
+          {(account.status === 'locked' || account.status === 'disabled') && (
+            <DropdownMenuItem onSelect={() => setPendingConfirm({ kind: 'activate', account })}>
+              {t(
+                account.status === 'disabled'
+                  ? 'manage.actions.reactivate'
+                  : 'manage.actions.unlock',
+              )}
+            </DropdownMenuItem>
+          )}
+          {account.totpEnrolled && (
+            <DropdownMenuItem onSelect={() => setPendingConfirm({ kind: 'resetTotp', account })}>
+              {t('manage.actions.resetTotp')}
+            </DropdownMenuItem>
+          )}
+          {account.status !== 'disabled' && (
+            <DropdownMenuItem
+              disabled={isSelf}
+              onSelect={() => setPendingConfirm({ kind: 'deprovision', account })}
+            >
+              {t('manage.actions.deprovision')}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
   function confirmCopyFor(confirm: PendingConfirm): {
     title: string;
     message: string;
@@ -186,24 +233,66 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
           ))}
         </div>
       ) : (
-        <Table className="table-fixed" scrollX={false}>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('manage.cols.email')}</TableHead>
-              <TableHead className="w-36">{t('manage.cols.role')}</TableHead>
-              <TableHead className="w-28">{t('manage.cols.status')}</TableHead>
-              <TableHead className="w-36">{t('manage.cols.totp')}</TableHead>
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* desktop: full table (G7 — data tables, responsive by priority) */}
+          <div className="hidden rounded-md border border-border md:block">
+            <Table className="table-fixed" scrollX={false}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('manage.cols.email')}</TableHead>
+                  <TableHead className="w-36">{t('manage.cols.role')}</TableHead>
+                  <TableHead className="w-28">{t('manage.cols.status')}</TableHead>
+                  <TableHead className="w-36">{t('manage.cols.totp')}</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {accounts.map((account) => {
+                  const isSelf = account.email === currentEmail;
+                  return (
+                    <TableRow key={account.id}>
+                      <TableCell>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate" title={account.email}>
+                            {account.email}
+                          </span>
+                          {isSelf && (
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {t('manage.you')}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="truncate">
+                        {account.roles.map((role) => t(`invite.roles.${role}`)).join(', ')}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge tone={STATUS_TONE[account.status]}>
+                          {t(`manage.status.${account.status}`)}
+                        </StatusBadge>
+                      </TableCell>
+                      <TableCell className="truncate">
+                        {account.totpEnrolled
+                          ? t('manage.totpEnrolled')
+                          : t('manage.totpNotEnrolled')}
+                      </TableCell>
+                      <TableCell>{renderMenu(account)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          {/* mobile: one card per account — label + secondary fields on a
+              muted sub-line + the same menu as the primary action (G7). */}
+          <ul className="divide-y divide-border rounded-md border border-border md:hidden">
             {accounts.map((account) => {
               const isSelf = account.email === currentEmail;
               return (
-                <TableRow key={account.id}>
-                  <TableCell>
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate" title={account.email}>
+                <li key={account.id} className="flex items-start gap-3 px-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2">
+                      <span className="truncate font-medium" title={account.email}>
                         {account.email}
                       </span>
                       {isSelf && (
@@ -211,71 +300,29 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
                           {t('manage.you')}
                         </span>
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="truncate">
-                    {account.roles.map((role) => t(`invite.roles.${role}`)).join(', ')}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge tone={STATUS_TONE[account.status]}>
-                      {t(`manage.status.${account.status}`)}
-                    </StatusBadge>
-                  </TableCell>
-                  <TableCell className="truncate">
-                    {account.totpEnrolled ? t('manage.totpEnrolled') : t('manage.totpNotEnrolled')}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        aria-label={tCommon('actions.more')}
-                        className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      >
-                        <MoreHorizontal className="size-4" aria-hidden />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          disabled={isSelf}
-                          onSelect={() => {
-                            setRoleTarget(account);
-                            setRoleChoice(account.roles[0] ?? 'ADMIN');
-                          }}
-                        >
-                          {t('manage.actions.changeRole')}
-                        </DropdownMenuItem>
-                        {(account.status === 'locked' || account.status === 'disabled') && (
-                          <DropdownMenuItem
-                            onSelect={() => setPendingConfirm({ kind: 'activate', account })}
-                          >
-                            {t(
-                              account.status === 'disabled'
-                                ? 'manage.actions.reactivate'
-                                : 'manage.actions.unlock',
-                            )}
-                          </DropdownMenuItem>
-                        )}
-                        {account.totpEnrolled && (
-                          <DropdownMenuItem
-                            onSelect={() => setPendingConfirm({ kind: 'resetTotp', account })}
-                          >
-                            {t('manage.actions.resetTotp')}
-                          </DropdownMenuItem>
-                        )}
-                        {account.status !== 'disabled' && (
-                          <DropdownMenuItem
-                            disabled={isSelf}
-                            onSelect={() => setPendingConfirm({ kind: 'deprovision', account })}
-                          >
-                            {t('manage.actions.deprovision')}
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                      <span>
+                        {account.roles.map((role) => t(`invite.roles.${role}`)).join(', ')}
+                      </span>
+                      <span aria-hidden>·</span>
+                      <StatusBadge tone={STATUS_TONE[account.status]}>
+                        {t(`manage.status.${account.status}`)}
+                      </StatusBadge>
+                      <span aria-hidden>·</span>
+                      <span>
+                        {account.totpEnrolled
+                          ? t('manage.totpEnrolled')
+                          : t('manage.totpNotEnrolled')}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="shrink-0">{renderMenu(account)}</div>
+                </li>
               );
             })}
-          </TableBody>
-        </Table>
+          </ul>
+        </>
       )}
 
       {!loading && accounts.length > 0 && (

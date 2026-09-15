@@ -50,6 +50,22 @@ function render(currentEmail = ME.email) {
   return renderAdmin(<StaffList currentEmail={currentEmail} />);
 }
 
+// jsdom doesn't apply the responsive `hidden md:block` / `md:hidden` classes,
+// so the desktop table and the mobile card list both render at once — every
+// account's email (and the `title=` span carrying it) appears twice. Real
+// browsers show exactly one; `findAllByText`/`getAllByText` is the honest
+// query here, not a workaround for a product bug. `tableRowFor` picks out
+// the desktop `<tr>` specifically, for tests that need to scope into one
+// row's own cells or open its action menu.
+function tableRowFor(email: string): HTMLElement {
+  const row = screen
+    .getAllByText(email)
+    .map((el) => el.closest('tr'))
+    .find((el): el is HTMLTableRowElement => el !== null);
+  if (!row) throw new Error(`no table row found for ${email}`);
+  return row;
+}
+
 /** Open the row's "more actions" menu. Radix's trigger opens on `pointerdown`
  * (or Enter/Space/ArrowDown) — jsdom's `fireEvent.click` never fires a
  * `pointerdown` first the way a real browser interaction would, so a plain
@@ -77,7 +93,7 @@ describe('StaffList', () => {
     expect(await screen.findByText('Couldn’t load the list.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByText(ME.email)).toBeInTheDocument();
+    expect((await screen.findAllByText(ME.email)).length).toBeGreaterThan(0);
     expect(mockedListStaff).toHaveBeenCalledTimes(2);
   });
 
@@ -88,13 +104,13 @@ describe('StaffList', () => {
       .mockResolvedValueOnce(page([other], undefined));
 
     render();
-    await screen.findByText(ME.email);
+    await screen.findAllByText(ME.email);
     expect(screen.queryByText(other.email)).not.toBeInTheDocument();
 
     const sentinel = screen.getByTestId('scroll-sentinel');
     act(() => triggerIntersection(sentinel));
 
-    await screen.findByText(other.email);
+    await screen.findAllByText(other.email);
     expect(mockedListStaff).toHaveBeenCalledWith('cursor-1');
     expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument();
   });
@@ -111,10 +127,10 @@ describe('StaffList', () => {
     act(() => triggerIntersection(sentinel));
 
     expect(await screen.findByText('Couldn’t load the list.')).toBeInTheDocument();
-    expect(screen.getByText(ME.email)).toBeInTheDocument(); // still there
+    expect(screen.getAllByText(ME.email).length).toBeGreaterThan(0); // still there
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByText(other.email);
+    await screen.findAllByText(other.email);
   });
 
   it('renders each account’s role, status, TOTP state, and marks the signed-in row "You"', async () => {
@@ -122,13 +138,13 @@ describe('StaffList', () => {
     mockedListStaff.mockResolvedValueOnce(page([ME, other]));
 
     render();
-    expect(await screen.findByText(ME.email)).toBeInTheDocument();
-    const meRow = screen.getByText(ME.email).closest('tr')!;
+    await screen.findAllByText(ME.email);
+    const meRow = tableRowFor(ME.email);
     expect(within(meRow).getByText('You')).toBeInTheDocument();
     expect(within(meRow).getByText('Super Admin')).toBeInTheDocument();
     expect(within(meRow).getByText('Active')).toBeInTheDocument();
 
-    const otherRow = screen.getByText('locked@example.com').closest('tr')!;
+    const otherRow = tableRowFor('locked@example.com');
     expect(within(otherRow).getByText('Locked')).toBeInTheDocument();
     expect(within(otherRow).queryByText('You')).not.toBeInTheDocument();
   });
@@ -141,30 +157,30 @@ describe('StaffList', () => {
     mockedActivateStaff.mockResolvedValueOnce({ ...target, status: 'active' });
 
     render();
-    const cell = await screen.findByTitle(longEmail);
+    await screen.findAllByTitle(longEmail);
+    const cell = tableRowFor(longEmail).querySelector(`[title="${longEmail}"]`) as HTMLElement;
     expect(cell).toHaveClass('truncate');
-    // only the row itself has the full address — the confirm dialog that's
-    // about to open must not repeat it verbatim
-    expect(screen.getAllByText(longEmail)).toHaveLength(1);
+    // the table row and the mobile card each show the full address once —
+    // the confirm dialog that's about to open must not add a third copy
+    expect(screen.getAllByText(longEmail)).toHaveLength(2);
 
-    openRowMenu(cell.closest('tr')!);
+    openRowMenu(tableRowFor(longEmail));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Unlock' }));
     await screen.findByRole('button', { name: 'Unlock' });
-    expect(screen.getAllByText(longEmail)).toHaveLength(1);
+    expect(screen.getAllByText(longEmail)).toHaveLength(2);
     expect(screen.getByText(/…/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
     await screen.findByText(/…/); // the toast, once the dialog itself is gone
-    expect(screen.getAllByText(longEmail)).toHaveLength(1);
+    expect(screen.getAllByText(longEmail)).toHaveLength(2);
   });
 
   it('the signed-in user’s own row cannot change its role or deprovision itself', async () => {
     mockedListStaff.mockResolvedValueOnce(page([ME]));
     render();
-    await screen.findByText(ME.email);
+    await screen.findAllByText(ME.email);
 
-    const row = screen.getByText(ME.email).closest('tr')!;
-    openRowMenu(row);
+    openRowMenu(tableRowFor(ME.email));
 
     expect(await screen.findByRole('menuitem', { name: 'Change role' })).toHaveAttribute(
       'aria-disabled',
@@ -185,16 +201,16 @@ describe('StaffList', () => {
     });
     mockedListStaff.mockResolvedValueOnce(page([locked, disabled]));
     render();
-    await screen.findByText(locked.email);
+    await screen.findAllByText(locked.email);
 
-    openRowMenu(screen.getByText(locked.email).closest('tr')!);
+    openRowMenu(tableRowFor(locked.email));
     expect(await screen.findByRole('menuitem', { name: 'Unlock' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Reactivate' })).not.toBeInTheDocument();
     // still offered — deprovision doesn't require unlocking first
     expect(screen.getByRole('menuitem', { name: 'Deprovision' })).toBeInTheDocument();
 
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
-    openRowMenu(screen.getByText(disabled.email).closest('tr')!);
+    openRowMenu(tableRowFor(disabled.email));
     expect(await screen.findByRole('menuitem', { name: 'Reactivate' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Unlock' })).not.toBeInTheDocument();
     // hidden once already disabled — nothing to deprovision further
@@ -207,8 +223,8 @@ describe('StaffList', () => {
     mockedChangeStaffRole.mockResolvedValueOnce({ ...target, roles: ['SUPER_ADMIN'] });
 
     render();
-    await screen.findByText(target.email);
-    openRowMenu(screen.getByText(target.email).closest('tr')!);
+    await screen.findAllByText(target.email);
+    openRowMenu(tableRowFor(target.email));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Change role' }));
 
     fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'SUPER_ADMIN' } });
@@ -216,7 +232,7 @@ describe('StaffList', () => {
 
     expect(await screen.findByText('Role updated for target@example.com.')).toBeInTheDocument();
     expect(mockedChangeStaffRole).toHaveBeenCalledWith('acc-2', 'SUPER_ADMIN');
-    const row = screen.getByText(target.email).closest('tr')!;
+    const row = tableRowFor(target.email);
     expect(within(row).getByText('Super Admin')).toBeInTheDocument();
   });
 
@@ -226,8 +242,8 @@ describe('StaffList', () => {
     mockedActivateStaff.mockResolvedValueOnce({ ...locked, status: 'active' });
 
     render();
-    await screen.findByText(locked.email);
-    openRowMenu(screen.getByText(locked.email).closest('tr')!);
+    await screen.findAllByText(locked.email);
+    openRowMenu(tableRowFor(locked.email));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Unlock' }));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Unlock' }));
@@ -241,15 +257,15 @@ describe('StaffList', () => {
     mockedActivateStaff.mockResolvedValueOnce({ ...disabled, status: 'active' });
 
     render();
-    await screen.findByText(disabled.email);
-    openRowMenu(screen.getByText(disabled.email).closest('tr')!);
+    await screen.findAllByText(disabled.email);
+    openRowMenu(tableRowFor(disabled.email));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Reactivate' }));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Reactivate' }));
     expect(await screen.findByText('disabled@example.com reactivated.')).toBeInTheDocument();
     expect(mockedActivateStaff).toHaveBeenCalledWith('acc-2');
     // the row's status badge itself updates, not just the toast
-    const row = screen.getByText(disabled.email).closest('tr')!;
+    const row = tableRowFor(disabled.email);
     expect(within(row).getByText('Active')).toBeInTheDocument();
   });
 
@@ -259,8 +275,8 @@ describe('StaffList', () => {
     mockedResetStaffTotp.mockResolvedValueOnce({ ...target, totpEnrolled: false });
 
     render();
-    await screen.findByText(target.email);
-    openRowMenu(screen.getByText(target.email).closest('tr')!);
+    await screen.findAllByText(target.email);
+    openRowMenu(tableRowFor(target.email));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Reset authenticator' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Reset' }));
 
@@ -276,8 +292,8 @@ describe('StaffList', () => {
     mockedDeprovisionStaff.mockResolvedValueOnce({ ...target, status: 'disabled' });
 
     render();
-    await screen.findByText(target.email);
-    openRowMenu(screen.getByText(target.email).closest('tr')!);
+    await screen.findAllByText(target.email);
+    openRowMenu(tableRowFor(target.email));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Deprovision' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Deprovision' }));
 
@@ -291,8 +307,8 @@ describe('StaffList', () => {
     mockedActivateStaff.mockRejectedValueOnce(new AdminApiError('VALIDATION_ERROR', 422));
 
     render();
-    await screen.findByText(target.email);
-    openRowMenu(screen.getByText(target.email).closest('tr')!);
+    await screen.findAllByText(target.email);
+    openRowMenu(tableRowFor(target.email));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Unlock' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Unlock' }));
 
