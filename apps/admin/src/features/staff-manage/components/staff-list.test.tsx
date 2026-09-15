@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import type { StaffAccount } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
+import { triggerIntersection } from '@/test/intersection-observer';
 import { AdminApiError } from '@/features/admin-api/client';
 import {
   activateStaff,
@@ -9,6 +10,7 @@ import {
   deprovisionStaff,
   listStaff,
   resetStaffTotp,
+  type StaffListPage,
 } from '../api';
 import { StaffList } from './staff-list';
 
@@ -40,6 +42,10 @@ function account(overrides: Partial<StaffAccount> = {}): StaffAccount {
 
 const ME = account({ id: 'me', email: 'me@example.com', roles: ['SUPER_ADMIN'] });
 
+function page(accounts: StaffAccount[], nextCursor?: string): StaffListPage {
+  return { accounts, nextCursor };
+}
+
 function render(currentEmail = ME.email) {
   return renderAdmin(<StaffList currentEmail={currentEmail} />);
 }
@@ -65,7 +71,7 @@ afterEach(() => {
 
 describe('StaffList', () => {
   it('load error → shows the error state, retry re-fetches', async () => {
-    mockedListStaff.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([ME]);
+    mockedListStaff.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(page([ME]));
 
     render();
     expect(await screen.findByText('Couldn’t load the list.')).toBeInTheDocument();
@@ -75,9 +81,45 @@ describe('StaffList', () => {
     expect(mockedListStaff).toHaveBeenCalledTimes(2);
   });
 
+  it('scrolling the sentinel into view appends the next page; the sentinel disappears once there is no next cursor', async () => {
+    const other = account({ id: 'acc-2', email: 'other@example.com' });
+    mockedListStaff
+      .mockResolvedValueOnce(page([ME], 'cursor-1'))
+      .mockResolvedValueOnce(page([other], undefined));
+
+    render();
+    await screen.findByText(ME.email);
+    expect(screen.queryByText(other.email)).not.toBeInTheDocument();
+
+    const sentinel = screen.getByTestId('scroll-sentinel');
+    act(() => triggerIntersection(sentinel));
+
+    await screen.findByText(other.email);
+    expect(mockedListStaff).toHaveBeenCalledWith('cursor-1');
+    expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument();
+  });
+
+  it('a failed later page keeps the already-loaded row and offers a retry, without wiping the list', async () => {
+    const other = account({ id: 'acc-2', email: 'other@example.com' });
+    mockedListStaff
+      .mockResolvedValueOnce(page([ME], 'cursor-1'))
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(page([other], undefined));
+
+    render();
+    const sentinel = await screen.findByTestId('scroll-sentinel');
+    act(() => triggerIntersection(sentinel));
+
+    expect(await screen.findByText('Couldn’t load the list.')).toBeInTheDocument();
+    expect(screen.getByText(ME.email)).toBeInTheDocument(); // still there
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText(other.email);
+  });
+
   it('renders each account’s role, status, TOTP state, and marks the signed-in row "You"', async () => {
     const other = account({ id: 'acc-2', email: 'locked@example.com', status: 'locked' });
-    mockedListStaff.mockResolvedValueOnce([ME, other]);
+    mockedListStaff.mockResolvedValueOnce(page([ME, other]));
 
     render();
     expect(await screen.findByText(ME.email)).toBeInTheDocument();
@@ -95,7 +137,7 @@ describe('StaffList', () => {
     const longEmail =
       'a.very.long.address.that.goes.on.and.on.for.a.while@some-verbose-company-name.example.com';
     const target = account({ id: 'acc-long', email: longEmail, status: 'locked' });
-    mockedListStaff.mockResolvedValueOnce([ME, target]);
+    mockedListStaff.mockResolvedValueOnce(page([ME, target]));
     mockedActivateStaff.mockResolvedValueOnce({ ...target, status: 'active' });
 
     render();
@@ -117,7 +159,7 @@ describe('StaffList', () => {
   });
 
   it('the signed-in user’s own row cannot change its role or deprovision itself', async () => {
-    mockedListStaff.mockResolvedValueOnce([ME]);
+    mockedListStaff.mockResolvedValueOnce(page([ME]));
     render();
     await screen.findByText(ME.email);
 
@@ -141,7 +183,7 @@ describe('StaffList', () => {
       email: 'disabled@example.com',
       status: 'disabled',
     });
-    mockedListStaff.mockResolvedValueOnce([locked, disabled]);
+    mockedListStaff.mockResolvedValueOnce(page([locked, disabled]));
     render();
     await screen.findByText(locked.email);
 
@@ -161,7 +203,7 @@ describe('StaffList', () => {
 
   it('changes a role: opens the modal, submits the choice, updates the row, toasts', async () => {
     const target = account({ id: 'acc-2', email: 'target@example.com', roles: ['ADMIN'] });
-    mockedListStaff.mockResolvedValueOnce([ME, target]);
+    mockedListStaff.mockResolvedValueOnce(page([ME, target]));
     mockedChangeStaffRole.mockResolvedValueOnce({ ...target, roles: ['SUPER_ADMIN'] });
 
     render();
@@ -180,7 +222,7 @@ describe('StaffList', () => {
 
   it('unlocks a locked account through the confirm dialog', async () => {
     const locked = account({ id: 'acc-2', email: 'locked@example.com', status: 'locked' });
-    mockedListStaff.mockResolvedValueOnce([ME, locked]);
+    mockedListStaff.mockResolvedValueOnce(page([ME, locked]));
     mockedActivateStaff.mockResolvedValueOnce({ ...locked, status: 'active' });
 
     render();
@@ -195,7 +237,7 @@ describe('StaffList', () => {
 
   it('reactivates a deprovisioned (disabled) account through the confirm dialog', async () => {
     const disabled = account({ id: 'acc-2', email: 'disabled@example.com', status: 'disabled' });
-    mockedListStaff.mockResolvedValueOnce([ME, disabled]);
+    mockedListStaff.mockResolvedValueOnce(page([ME, disabled]));
     mockedActivateStaff.mockResolvedValueOnce({ ...disabled, status: 'active' });
 
     render();
@@ -213,7 +255,7 @@ describe('StaffList', () => {
 
   it('resets TOTP through the confirm dialog', async () => {
     const target = account({ id: 'acc-2', email: 'target@example.com', totpEnrolled: true });
-    mockedListStaff.mockResolvedValueOnce([ME, target]);
+    mockedListStaff.mockResolvedValueOnce(page([ME, target]));
     mockedResetStaffTotp.mockResolvedValueOnce({ ...target, totpEnrolled: false });
 
     render();
@@ -230,7 +272,7 @@ describe('StaffList', () => {
 
   it('deprovisions an account through the confirm dialog', async () => {
     const target = account({ id: 'acc-2', email: 'target@example.com' });
-    mockedListStaff.mockResolvedValueOnce([ME, target]);
+    mockedListStaff.mockResolvedValueOnce(page([ME, target]));
     mockedDeprovisionStaff.mockResolvedValueOnce({ ...target, status: 'disabled' });
 
     render();
@@ -245,7 +287,7 @@ describe('StaffList', () => {
 
   it('a failed action shows the mapped error copy, not a generic one', async () => {
     const target = account({ id: 'acc-2', email: 'target@example.com', status: 'locked' });
-    mockedListStaff.mockResolvedValueOnce([ME, target]);
+    mockedListStaff.mockResolvedValueOnce(page([ME, target]));
     mockedActivateStaff.mockRejectedValueOnce(new AdminApiError('VALIDATION_ERROR', 422));
 
     render();

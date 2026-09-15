@@ -12,6 +12,9 @@ type AccountWithGrantsAndTotp = Account & {
   totpSecret: { confirmedAt: Date | null } | null;
 };
 
+const DEFAULT_LIST_LIMIT = 20;
+const MAX_LIST_LIMIT = 100;
+
 /**
  * The staff directory: list + the account-lifecycle actions a Super Admin
  * needs (`staff:manage` — enforced by the controller's `@RequirePermission`,
@@ -26,13 +29,28 @@ export class StaffAccountsService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(): Promise<StaffAccount[]> {
+  /** Ordered by `id`, not `createdAt` — a v7 UUID sorts by creation time the
+   * same way `createdAt` would, but is the stable, unique field keyset
+   * pagination actually needs (matches `AuditController`'s same choice). */
+  async list(
+    cursor?: string,
+    limit = DEFAULT_LIST_LIMIT,
+  ): Promise<{
+    accounts: StaffAccount[];
+    nextCursor?: string;
+  }> {
+    const take = Math.min(Math.max(Math.trunc(limit), 1), MAX_LIST_LIMIT);
     const accounts = await this.prisma.account.findMany({
       where: { plane: 'staff', deletedAt: null },
       include: { grants: { include: { role: true } }, totpSecret: true },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { id: 'asc' },
+      take: take + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
-    return accounts.map(toStaffAccount);
+
+    const page = accounts.slice(0, take);
+    const nextCursor = accounts.length > take ? page.at(-1)?.id : undefined;
+    return { accounts: page.map(toStaffAccount), ...(nextCursor ? { nextCursor } : {}) };
   }
 
   async changeRole(

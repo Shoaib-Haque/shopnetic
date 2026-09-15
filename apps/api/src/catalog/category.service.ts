@@ -35,6 +35,29 @@ const COLUMNS = `id, parent_id, slug, name_i18n, path::text AS path, position, i
 /** ltree label = the uuid with dashes stripped (32 hex chars — a valid label). */
 const label = (id: string): string => id.replace(/-/g, '');
 
+const LIST_MAX_LIMIT = 100;
+
+/** Mirrors `apps/admin/src/lib/search.ts`'s `tokenize()` — same normalize
+ * (lower-case, apostrophes dropped, everything else non-alphanumeric
+ * collapsed to a space) and the same ≥2-char / ≤10-token rules — so a query
+ * matches the same rows server-side that it would have matched client-side.
+ * Search moved server-side specifically so pagination and search results
+ * stay consistent (a query now searches the whole table, not just whatever
+ * page happened to be loaded already). */
+function tokenizeForSql(query: string): string[] {
+  const normalized = query
+    .toLowerCase()
+    .replace(/['’"`]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const tokens = new Set<string>();
+  for (const tok of normalized.split(' ')) {
+    if (tok.length >= 2) tokens.add(tok);
+    if (tokens.size >= 10) break;
+  }
+  return [...tokens];
+}
+
 @Injectable()
 export class CategoryService {
   constructor(
@@ -42,7 +65,38 @@ export class CategoryService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(opts: { parentId?: string | null; status?: CategoryListStatus }): Promise<Category[]> {
+  /**
+   * `limit` omitted (the active tree's own load — it needs the whole
+   * subtree to build parent/child structure and can't render a page
+   * boundary without either breaking the hierarchy or prefetching
+   * ancestors) → every matching row, ordered `path, position`, same as
+   * always. `limit` given (the flat Archived/All views, and any search) →
+   * cursor-paginated.
+   *
+   * Two different cursor shapes depending on `q`, both opaque to the
+   * caller:
+   * - No search: the last-seen row's `path` (globally unique — it embeds
+   *   the row's own id — so `path > cursor` resumes with no gaps or
+   *   repeats). Since a parent's path is always a strict prefix of every
+   *   descendant's, and pages accumulate rather than replace, every
+   *   ancestor of a loaded row is guaranteed to have been loaded on an
+   *   earlier page — `useAncestorPath` on the frontend keeps resolving
+   *   correctly across pages for exactly this reason.
+   * - Search: a stringified offset. Results are ordered by match score,
+   *   not tree structure, so a simple keyset cursor doesn't apply; offset
+   *   pagination over a ranked result set is the standard trade-off here.
+   *   Known limitation, not a bug: an ancestor that doesn't itself match
+   *   the query and hasn't been paged in yet won't resolve in the "in A ›
+   *   B" breadcrumb (`useAncestorPath` already drops unresolved ancestors
+   *   silently, same as it does today for the unpaginated search case).
+   */
+  async list(opts: {
+    parentId?: string | null;
+    status?: CategoryListStatus;
+    q?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<{ categories: Category[]; nextCursor?: string }> {
     const where: string[] = [];
     const params: unknown[] = [];
     const status = opts.status ?? 'active';
@@ -56,14 +110,56 @@ export class CategoryService {
       where.push(`parent_id = $${params.length}::uuid`);
     }
 
+    const tokens = opts.q ? tokenizeForSql(opts.q) : [];
+    const isSearch = tokens.length > 0;
+    let scoreExpr = '0';
+    if (isSearch) {
+      const haystack = `regexp_replace(lower(coalesce(name_i18n->>'en', '') || ' ' || slug), '[^a-z0-9]+', ' ', 'g')`;
+      const matchExprs = tokens.map((tok) => {
+        params.push(`%${tok}%`);
+        return `(${haystack} LIKE $${params.length})`;
+      });
+      where.push(`(${matchExprs.join(' OR ')})`);
+      scoreExpr = matchExprs.map((e) => `${e}::int`).join(' + ');
+    }
+
+    const paginated = opts.limit !== undefined;
+    const take = paginated
+      ? Math.min(Math.max(Math.trunc(opts.limit!), 1), LIST_MAX_LIMIT)
+      : undefined;
+
+    let offset = 0;
+    if (paginated && opts.cursor) {
+      if (isSearch) {
+        offset = Math.max(0, Math.trunc(Number(opts.cursor)) || 0);
+      } else {
+        params.push(opts.cursor);
+        where.push(`path > $${params.length}::ltree`);
+      }
+    }
+
+    const orderBy = isSearch ? `${scoreExpr} DESC, path` : 'path, position';
+    const limitClause = paginated ? `LIMIT ${take! + 1}${isSearch ? ` OFFSET ${offset}` : ''}` : '';
+
     const rows = await this.prisma.$queryRawUnsafe<RawCategory[]>(
       `SELECT ${COLUMNS}
          FROM catalog.category
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-        ORDER BY path, position`,
+        ORDER BY ${orderBy}
+        ${limitClause}`,
       ...params,
     );
-    return rows.map(toView);
+
+    if (!paginated) return { categories: rows.map(toView) };
+
+    const page = rows.slice(0, take);
+    const hasMore = rows.length > take!;
+    const nextCursor = hasMore
+      ? isSearch
+        ? String(offset + take!)
+        : page.at(-1)?.path
+      : undefined;
+    return { categories: page.map(toView), ...(nextCursor ? { nextCursor } : {}) };
   }
 
   async get(id: string): Promise<Category> {
@@ -283,7 +379,7 @@ export class CategoryService {
 
     // `list` orders by the ltree path (uuid labels); re-sort the affected
     // sibling group by the freshly written `position`.
-    const siblings = await this.list({ parentId, status: 'active' });
+    const { categories: siblings } = await this.list({ parentId, status: 'active' });
     return siblings.sort((a, b) => a.position - b.position);
   }
 

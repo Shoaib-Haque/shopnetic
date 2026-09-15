@@ -263,4 +263,123 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
       position: 2,
     });
   });
+
+  describe('list: pagination and search', () => {
+    it('list() with no limit still returns everything under {categories} — the tree load-all path is unaffected', async () => {
+      const root = await svc.create({ slug: s('pg-root'), name: name('PgRoot') }, actor, {});
+      await svc.create(
+        { slug: s('pg-child'), name: name('PgChild'), parentId: root.id },
+        actor,
+        {},
+      );
+
+      const { categories, nextCursor } = await svc.list({ status: 'all' });
+      expect(nextCursor).toBeUndefined();
+      const slugs = categories.map((c) => c.slug);
+      expect(slugs).toContain(s('pg-root'));
+      expect(slugs).toContain(s('pg-child'));
+    });
+
+    it('paginates with a path cursor — no repeats, and a parent always lands on an earlier or equal page than its child', async () => {
+      const root = await svc.create({ slug: s('pag-root'), name: name('PagRoot') }, actor, {});
+      const child = await svc.create(
+        { slug: s('pag-child'), name: name('PagChild'), parentId: root.id },
+        actor,
+        {},
+      );
+      await svc.create({ slug: s('pag-sibling'), name: name('PagSibling') }, actor, {});
+
+      const pageOf: Record<string, number> = {};
+      let cursor: string | undefined;
+      let pageNum = 0;
+      const seen = new Set<string>();
+      do {
+        const res = await svc.list({ status: 'active', limit: 25, ...(cursor ? { cursor } : {}) });
+        pageNum += 1;
+        for (const c of res.categories) {
+          expect(seen.has(c.id)).toBe(false); // no repeats
+          seen.add(c.id);
+          pageOf[c.id] = pageNum;
+        }
+        cursor = res.nextCursor;
+      } while (cursor && pageNum < 50);
+
+      expect(seen.has(root.id)).toBe(true);
+      expect(seen.has(child.id)).toBe(true);
+      expect(pageOf[root.id]).toBeLessThanOrEqual(pageOf[child.id]!); // ancestor never after descendant
+    });
+
+    it('q searches server-side, ranked by matched-token count — OR semantics, same as the client-side matcher it replaces', async () => {
+      // every other `it` in this file also creates `itest-<stamp>-*` slugs,
+      // so a query token has to be something *only* these rows contain —
+      // `stamp` alone would (correctly, per OR semantics) match the whole
+      // file's fixtures via their shared slug prefix, not just these four
+      const marker = `srch${stamp}`;
+      const redWidget = await svc.create(
+        { slug: s('sw-rw'), name: { en: `${marker} Red Widget` } },
+        actor,
+        {},
+      );
+      const blueWidget = await svc.create(
+        { slug: s('sw-bw'), name: { en: `${marker} Blue Widget` } },
+        actor,
+        {},
+      );
+      const redGadget = await svc.create(
+        { slug: s('sw-rg'), name: { en: `${marker} Red Gadget` } },
+        actor,
+        {},
+      );
+      const markerOnly = await svc.create(
+        { slug: s('sw-un'), name: { en: `${marker} Something Else` } },
+        actor,
+        {},
+      );
+      const noMatch = await svc.create(
+        { slug: s('sw-nm'), name: name('No Match Here') },
+        actor,
+        {},
+      );
+
+      const { categories } = await svc.list({ status: 'all', q: `${marker} red widget` });
+      const ids = categories.map((c) => c.id);
+      // matches marker + red + widget (3 tokens) — ranks strictly first
+      expect(ids[0]).toBe(redWidget.id);
+      // OR semantics: matching only "widget" (2 tokens: marker+widget) or only
+      // "red" (2 tokens: marker+red) still qualifies, same as the client's
+      // `matchScore` — a query never requires *every* token to hit
+      expect(ids).toContain(blueWidget.id);
+      expect(ids).toContain(redGadget.id);
+      expect(ids).toContain(markerOnly.id); // marker alone (1 token) still qualifies
+      expect(ids).not.toContain(noMatch.id); // no token at all → excluded
+    });
+
+    it('q + limit paginates the ranked results with an offset cursor', async () => {
+      const marker = `pgoff${stamp}`;
+      const created = [];
+      for (const n of ['a', 'b', 'c']) {
+        created.push(
+          await svc.create({ slug: s(`off-${n}`), name: { en: `${marker} ${n}` } }, actor, {}),
+        );
+      }
+
+      const first = await svc.list({ status: 'all', q: marker, limit: 2 });
+      expect(first.categories).toHaveLength(2);
+      expect(first.nextCursor).toBeDefined();
+
+      const second = await svc.list({
+        status: 'all',
+        q: marker,
+        limit: 2,
+        cursor: first.nextCursor!,
+      });
+      expect(second.categories).toHaveLength(1);
+      const firstIds = new Set(first.categories.map((c) => c.id));
+      expect(second.categories.some((c) => firstIds.has(c.id))).toBe(false);
+      expect(second.nextCursor).toBeUndefined();
+      // together, exactly the three rows this test created — no more, no less
+      const allIds = new Set([...first.categories, ...second.categories].map((c) => c.id));
+      expect(allIds).toEqual(new Set(created.map((c) => c.id)));
+    });
+  });
 });

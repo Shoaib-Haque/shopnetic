@@ -1200,3 +1200,78 @@ compose file.
     guard-only bug is invisible to a test that instantiates the
     controller/service directly — it needs the actual guard class exercised
     against a real signed token, not just the downstream method.
+- 2026-09-15 — Built cursor-pagination + load-on-scroll for Audit Log, the
+  Staff directory, and Categories' flat views — the deferred backlog item
+  from `categories/README.md` ("Infinite-scroll the flat views"), plus the
+  two newer lists that never had it either.
+  - **Shared primitive**: `components/crud/use-scroll-load.ts`'s
+    `useScrollLoad`. First page on mount; a sentinel element (last child of
+    the rendered list) watched with an `IntersectionObserver` loads the
+    next page while it's inside the visible, scroll-clipped area — which is
+    true immediately, before any real scroll, whenever a page doesn't
+    already fill the viewport, so a short first page keeps auto-loading
+    until the list actually needs to scroll. No separate "does this fill
+    the viewport" check needed for that; an already-visible sentinel firing
+    on mount gives it for free. `resetKeys` (a query-key list — status tab,
+    debounced search, …) reloads from scratch when any of them change;
+    `enabled` skips fetching entirely for a data source that isn't the one
+    currently on screen (Categories' flat-mode fetch must not fire while
+    the tree is what's showing). `loadError` distinguishes the *first* page
+    failing (empty-state error view) from a *later* one failing (rows
+    already on screen must not disappear — a small "couldn't load more" +
+    retry near the bottom instead); `loadMore()` is exposed directly for
+    that retry, since the sentinel's observer only fires on a real
+    visibility change, not on every render. jsdom has no
+    `IntersectionObserver` at all — `src/test/intersection-observer.ts`
+    installs a controllable mock (`triggerIntersection(el)`) via
+    `vitest.setup.ts`.
+  - **Audit Log**: pure frontend change, the API already had cursor
+    pagination. Replaced the manual "Load more" button with the sentinel.
+  - **Staff directory**: `GET identity/v1/staff` gained `?cursor=&limit=`,
+    ordered by `id` (a v7 UUID — sorts by creation time the same way
+    `createdAt` would, and is the stable/unique field keyset pagination
+    needs) rather than `createdAt` directly, matching `AuditController`'s
+    same choice.
+  - **Categories**: the biggest piece — `CategoryService.list()` gained
+    `q`/`cursor`/`limit`, all optional; `limit` omitted (the active tree's
+    own load) behaves exactly as before, every matching row in `path,
+    position` order — a tree can't render a page boundary without either
+    breaking the hierarchy or prefetching ancestors, so it never
+    paginates. Search moved **server-side** in the same pass (a user
+    decision, not assumed): `tokenizeForSql` in `category.service.ts` is a
+    byte-for-byte port of `@/lib/search`'s tokenizer, so a query now
+    searches the whole table instead of whatever page happened to be
+    loaded — same normalize, same ≥2-char/≤10-token rules, same OR
+    semantics, same score ordering, just in SQL instead of `Array.filter`.
+    Two cursor shapes depending on whether there's a search query, both
+    opaque to the client: no-search pages on the row's `path` (globally
+    unique — embeds the row's own id); search pages on a stringified
+    offset instead, since a ranked result set has no natural keyset order.
+    Found and fixed two of my own wrong test assertions while building
+    this: I'd assumed OR-semantics search would *exclude* a partial match,
+    which is backwards — reverting the code to AND-semantics and
+    OR-semantics both needed to visibly break a test before I trusted
+    either was really being exercised (see G-something on meaningful
+    verification). The real architectural fork was the frontend: several
+    cross-cutting checks (`parentArchived`, `archivedDescendants`, the
+    create/edit modal's parent-picker) scan the *complete* active-category
+    set regardless of which view is on screen — paginating naively would
+    have made them silently see incomplete data. Resolved by leaving the
+    tree's own unpaginated `items` load running in the background
+    unconditionally (unchanged from before this pass) and adding the flat
+    paginated view as a **parallel**, independent data source used only
+    for the rendered table/cards — one extra background fetch on every
+    Archived/All tab switch that goes unused for that render, but zero
+    behavior change to anything that reads the complete set. `isFlatMode
+    = status !== 'active' || searching` is the one condition gating which
+    data source actually renders. Ancestor-breadcrumb resolution
+    (`useAncestorPath`) works correctly across pages for the *non-search*
+    case for a structural reason worth remembering: a parent's `path` is
+    always a strict prefix of every descendant's, and pages accumulate
+    rather than replace, so every ancestor of a loaded row has necessarily
+    already loaded on an earlier page — no special-casing needed. Search
+    results don't get that guarantee (ranked by score, not tree structure)
+    and can show an incomplete breadcrumb for an ancestor that doesn't
+    itself match the query — an accepted, documented limitation, not a bug,
+    matching `useAncestorPath`'s existing (pre-pagination) behavior for a
+    filtered result set.

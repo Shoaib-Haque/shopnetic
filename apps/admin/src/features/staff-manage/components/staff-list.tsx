@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { StaffAccount, StaffRole } from '@shopnetic/contracts';
@@ -25,6 +25,7 @@ import {
 import { PageHeader } from '@/components/crud/page-header';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { FormModal } from '@/components/crud/form-modal';
+import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { AdminApiError } from '@/features/admin-api/client';
 import { staffErrorKey } from '@/features/staff-auth/error-copy';
 import {
@@ -62,24 +63,27 @@ type PendingConfirm = { kind: 'activate' | 'resetTotp' | 'deprovision'; account:
 export function StaffList({ currentEmail }: { currentEmail: string }) {
   const t = useTranslations('staff');
   const tCommon = useTranslations('admin');
-  const [accounts, setAccounts] = useState<StaffAccount[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
   const [roleTarget, setRoleTarget] = useState<StaffAccount | null>(null);
   const [roleChoice, setRoleChoice] = useState<StaffRole>('ADMIN');
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(() => {
-    setLoadError(false);
-    listStaff()
-      .then(setAccounts)
-      .catch(() => setLoadError(true));
-  }, []);
-
-  useEffect(load, [load]);
+  const {
+    items: accounts,
+    setItems: setAccounts,
+    loading,
+    loadingMore,
+    loadError,
+    hasMore,
+    sentinelRef,
+    retry,
+    loadMore,
+  } = useScrollLoad<StaffAccount>((cursor) =>
+    listStaff(cursor).then((page) => ({ items: page.accounts, nextCursor: page.nextCursor })),
+  );
 
   function applyUpdate(updated: StaffAccount): void {
-    setAccounts((prev) => prev?.map((a) => (a.id === updated.id ? updated : a)) ?? prev);
+    setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
   }
 
   function reportError(err: unknown): void {
@@ -168,14 +172,14 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
     <section className="mb-8">
       <PageHeader title={t('manage.title')} description={t('manage.intro')} />
 
-      {loadError ? (
+      {loadError && accounts.length === 0 ? (
         <div className="flex flex-col items-start gap-2 text-sm">
           <p className="text-destructive">{tCommon('list.loadError')}</p>
-          <Button type="button" variant="outline" size="sm" onClick={load}>
+          <Button type="button" variant="outline" size="sm" onClick={retry}>
             {tCommon('list.retry')}
           </Button>
         </div>
-      ) : accounts === null ? (
+      ) : loading ? (
         <div className="flex flex-col gap-2">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-10 w-full" />
@@ -272,6 +276,30 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
             })}
           </TableBody>
         </Table>
+      )}
+
+      {!loading && accounts.length > 0 && (
+        <>
+          {hasMore && (
+            <div ref={sentinelRef} className="h-px" aria-hidden data-testid="scroll-sentinel" />
+          )}
+          <div className="mt-3">
+            {loadingMore && !loadError && (
+              <p className="text-xs text-muted-foreground">{tCommon('list.loading')}</p>
+            )}
+            {loadError && (
+              <div className="flex flex-col items-start gap-2">
+                <p className="text-sm text-destructive">{tCommon('list.loadError')}</p>
+                <Button type="button" variant="outline" size="sm" onClick={loadMore}>
+                  {tCommon('list.retry')}
+                </Button>
+              </div>
+            )}
+            {!hasMore && !loadError && (
+              <p className="text-xs text-muted-foreground">{tCommon('list.noMore')}</p>
+            )}
+          </div>
+        </>
       )}
 
       <FormModal

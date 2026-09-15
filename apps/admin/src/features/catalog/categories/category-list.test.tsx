@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import type { Category } from '@shopnetic/contracts';
 import { adminApi, AdminApiError } from '@/features/admin-api/client';
 import { renderAdmin } from '@/test/render';
+import { triggerIntersection } from '@/test/intersection-observer';
 import { CategoryList } from './category-list';
 
 vi.mock('@/features/admin-api/client', async () => {
@@ -95,6 +96,59 @@ describe('CategoryList error states', () => {
     expect(await screen.findByText(OFFLINE_ERROR)).toBeInTheDocument();
     expect(screen.getAllByText('Alpha').length).toBeGreaterThan(0);
     expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
+  });
+});
+
+describe('CategoryList flat/paginated views (Archived, All, search)', () => {
+  it('switching to Archived fetches a paginated flat page instead of the tree’s load-all', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
+      // switching tabs also re-triggers the tree's own (unpaginated, unrelated
+      // to what's shown) reload — pre-existing behavior, unchanged by this feature
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // Archived tab GET — flat, raw envelope
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await screen.findAllByText('Zulu');
+    expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
+  });
+
+  it('a search query is answered server-side, not filtered client-side over the tree’s rows', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
+      .mockResolvedValueOnce({ data: [cat('b', 'Bravo')], meta: {} }); // #2 search GET — whatever the server says, trusted as-is
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    fireEvent.change(screen.getByPlaceholderText('Search categories…'), {
+      target: { value: 'anything' },
+    });
+    // "Bravo" has no obvious relation to "anything" — this only renders if
+    // the result came from the mocked server response, not a client-side
+    // token match against the (unrelated) tree data already on screen
+    expect(await screen.findAllByText('Bravo', {}, { timeout: 2000 })).not.toHaveLength(0);
+    expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
+  });
+
+  it('scrolling the sentinel into view on a flat page appends the next page', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
+      .mockResolvedValueOnce([]) // the tree's own reload for the tab switch (see test above)
+      .mockResolvedValueOnce({ data: [cat('z1', 'Zulu1')], meta: { nextCursor: 'c1' } }) // Archived page 1
+      .mockResolvedValueOnce({ data: [cat('z2', 'Zulu2')], meta: {} }); // Archived page 2
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await screen.findAllByText('Zulu1');
+
+    const sentinel = screen.getByTestId('scroll-sentinel');
+    act(() => triggerIntersection(sentinel));
+    await screen.findAllByText('Zulu2');
   });
 });
 

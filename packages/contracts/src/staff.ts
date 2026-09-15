@@ -102,6 +102,7 @@ export type StaffAccount = z.infer<typeof staffAccountSchema>;
 
 export const staffListResponseSchema = z.object({
   accounts: z.array(staffAccountSchema),
+  nextCursor: z.string().optional(),
 });
 export type StaffListResponse = z.infer<typeof staffListResponseSchema>;
 

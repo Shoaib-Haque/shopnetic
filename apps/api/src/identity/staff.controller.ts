@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -224,8 +225,15 @@ export class StaffController {
   @RequirePermission(Permission.STAFF_MANAGE)
   async list(
     @Req() req: Request,
-  ): Promise<{ data: { accounts: StaffAccount[] }; meta: { requestId: string } }> {
-    return ok(req, { accounts: await this.accounts.list() });
+    @Query('cursor') cursor?: string,
+    @Query('limit') limitRaw?: string,
+  ): Promise<{
+    data: { accounts: StaffAccount[]; nextCursor?: string };
+    meta: { requestId: string };
+  }> {
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const page = await this.accounts.list(cursor, limit);
+    return ok(req, page);
   }
 
   @Patch(':accountId/role')

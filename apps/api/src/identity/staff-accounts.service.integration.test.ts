@@ -65,12 +65,40 @@ describe.skipIf(!hasDb)('StaffAccountsService (integration)', () => {
   });
 
   it('lists staff accounts, including the freshly created target with its role', async () => {
-    const list = await accounts.list();
+    // generous limit — this test only cares that the target shows up
+    // correctly, not about pagination itself (see the dedicated test below)
+    const { accounts: list } = await accounts.list(undefined, 100);
     const found = list.find((a) => a.id === targetId);
     expect(found).toBeDefined();
     expect(found?.roles).toEqual(['ADMIN']);
     expect(found?.status).toBe('active');
     expect(found?.totpEnrolled).toBe(false);
+  });
+
+  it('paginates with a cursor, oldest first — the second page never repeats the first', async () => {
+    const first = await accounts.list(undefined, 1);
+    expect(first.accounts).toHaveLength(1);
+    expect(first.nextCursor).toBeDefined();
+
+    const second = await accounts.list(first.nextCursor, 1);
+    expect(second.accounts).toHaveLength(1);
+    expect(second.accounts[0]?.id).not.toBe(first.accounts[0]?.id);
+
+    // walking the whole list this way eventually reaches our two fixtures
+    // without ever repeating an id
+    const seen = new Set([first.accounts[0]!.id, second.accounts[0]!.id]);
+    let cursor = second.nextCursor;
+    let guard = 0;
+    while (cursor && !(seen.has(superAdminId) && seen.has(targetId)) && guard++ < 50) {
+      const page = await accounts.list(cursor, 5);
+      for (const a of page.accounts) {
+        expect(seen.has(a.id)).toBe(false);
+        seen.add(a.id);
+      }
+      cursor = page.nextCursor;
+    }
+    expect(seen.has(superAdminId)).toBe(true);
+    expect(seen.has(targetId)).toBe(true);
   });
 
   it('changes a role, replacing the old grant rather than adding to it', async () => {

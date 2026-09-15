@@ -3,8 +3,19 @@
 import type { StaffAccount, StaffListResponse, StaffRole } from '@shopnetic/contracts';
 import { staffManageApi } from '@/features/admin-api/client';
 
-export function listStaff(): Promise<StaffAccount[]> {
-  return staffManageApi<StaffListResponse>('').then((r) => r.accounts);
+export interface StaffListPage {
+  accounts: StaffAccount[];
+  nextCursor: string | undefined;
+}
+
+export function listStaff(cursor?: string): Promise<StaffListPage> {
+  const params = new URLSearchParams();
+  if (cursor) params.set('cursor', cursor);
+  const qs = params.toString();
+  return staffManageApi<StaffListResponse>(qs ? `?${qs}` : '').then((r) => ({
+    accounts: r.accounts,
+    nextCursor: r.nextCursor,
+  }));
 }
 
 export function changeStaffRole(accountId: string, role: StaffRole): Promise<StaffAccount> {

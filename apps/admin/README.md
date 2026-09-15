@@ -34,15 +34,46 @@ instead" for the one-time alphanumeric fallback.
 `SMTP_URL`/`MAIL_FROM` (its own README's Env table) — Mailpit by default,
 real delivery if those are pointed at a real SMTP account.
 
-**`login` and `accept-invite` are public-only:** `redirectIfSignedIn`
-(`features/staff-auth/redirect-if-signed-in.ts`) sends an already-signed-in
-visitor straight to the dashboard instead of showing either page. This
-matters most for `accept-invite` — the session cookie is shared across every
-tab in a browser, not per-tab, so opening an invite link in the same browser
-that sent it (the common case) would otherwise silently accept the invite
-_and_ swap that browser's session over to the new account. Any future
-public-only page (forgot-password, …) should call the same helper rather
-than re-deriving the check.
+**`login`, `accept-invite`, `forgot-password` and `reset-password` are
+public-only:** `redirectIfSignedIn` (`features/staff-auth/
+redirect-if-signed-in.ts`) sends an already-signed-in visitor straight to the
+dashboard instead of showing any of them. This matters most for
+`accept-invite` — the session cookie is shared across every tab in a
+browser, not per-tab, so opening an invite link in the same browser that
+sent it (the common case) would otherwise silently accept the invite _and_
+swap that browser's session over to the new account. Any future
+public-only page should call the same helper rather than re-deriving the
+check.
+
+**Forgot / reset password** (staff plane only — buyer-plane self-service is
+a separate, not-yet-built thing): `login`'s "Forgot your password?" link →
+`forgot-password` (email only, always shows the same "check your email"
+state whether or not the address exists — enumeration-safe, same posture as
+buyer register) → `POST auth/forgot-password` (always 202) issues a
+single-use token (reusing the `email_verification` table's `password_reset`
+purpose, the same mechanism `verify_email` uses, kept in its own
+`PasswordResetService` so the buyer-plane verify-email flow stays
+untouched) and emails a link to `reset-password?token=`. That page sets a
+new password (`POST auth/reset-password`, 204) and, like `change-password`
+below, revokes every session on the account before redirecting to `login`
+after a 3s `TimerBar` delay (same pattern as `accept-invite`'s done state).
+Token TTL is short on purpose (`PASSWORD_RESET_TTL_HOURS`, default 1h) — a
+live reset link is a bigger risk than an email-verify link. Invalid/expired
+tokens are distinguished (`PASSWORD_RESET_TOKEN_INVALID` vs `_EXPIRED`),
+matching the existing invite-token and verify-email-token error split.
+
+**Change password** (self-service, signed-in staff only): topbar account
+menu → **Change password** → `(protected)/account/change-password`. Needs
+the current password (`StaffAuthGuard` alone, no `@RequirePermission` — any
+staff member may change their own) via `POST auth/change-password` (204).
+Also revokes every session, this one included — the caller's already-issued
+access token stays valid until it naturally expires (it's a self-contained
+JWT, not session-checked per request), but the next refresh anywhere,
+including this tab, fails and lands back on `login`. `INVALID_CREDENTIALS`
+here gets its own copy ("Your current password is incorrect.") rather than
+reusing login's "email and password don't match" — there's no email field
+on this form, so the shared `staffErrorKey` map would be misleading; the
+component maps its own error codes locally instead.
 
 The browser only talks to the admin's own `/api/staff-auth/*` route handlers;
 they call the identity **staff** API server-side and own a `sn_srt` httpOnly
@@ -84,6 +115,17 @@ server-side, in `apps/api/src/identity/staff-auth.integration.test.ts`.
 `(protected)/layout.test.tsx` covers the session guard directly: no
 session redirects to that locale/root's login and never renders the
 shell, a valid session renders it with no redirect.
+`forgot-password-form.test.tsx` covers the always-202 enumeration-safe
+success copy, a rate-limited attempt, offline, and the back-to-login link
+on both the form and the done state. `reset-password-form.test.tsx`
+covers the missing-token guard, a client-side confirm-password mismatch
+(never calls the API), expired vs invalid-or-reused token copy (distinct
+error codes, distinct messages), a breached new password, and the same
+3s-`TimerBar`-then-redirect success pattern as `accept-invite-form`.
+`change-password-form.test.tsx` covers the same confirm-mismatch and
+breached-password cases, plus the context-specific wrong-current-password
+copy (proving it does _not_ fall back to login's "email and password
+don't match" wording) and the redirect-after-204 flow.
 
 ## Staff management
 
@@ -97,8 +139,12 @@ reaches either page's server-enforced 403 in the first place — the "nav
 hides it, API still enforces it" pattern that used to be the whole story
 for this page no longer applies here.
 
-**`StaffList`**: one row per staff account (email, role(s), status, TOTP
-state), a `⋮` menu per row for the four lifecycle actions:
+**`StaffList`**: cursor-paginated and load-on-scroll (`useScrollLoad`, 20 a
+page — `GET identity/v1/staff` grew `?cursor=&limit=`, ordered by `id` (a v7
+UUID, so it sorts by creation time the same way `createdAt` would) since a
+stable, unique cursor field is what keyset pagination needs). One row per
+staff account (email, role(s), status, TOTP state), a `⋮` menu per row for
+the four lifecycle actions:
 
 - **Change role** — opens a small modal, `PATCH :accountId/role` _replaces_
   the account's role (not additive — the old grant is deleted in the same
@@ -145,13 +191,16 @@ Tested in `invite-staff-form.test.tsx` (invalid email, success, error paths)
 and `staff-list.test.tsx` (load error + retry, rendering, the self-row
 guard, each action's visibility rule and full flow, mapped error copy on
 failure — including that a locked row offers only "Unlock" and a disabled
-row offers only "Reactivate", never both). `staff-accounts.service.
+row offers only "Reactivate", never both; plus the same scroll-sentinel
+append/no-more-cursor/failed-later-page coverage as Audit Log — see its own
+section). `staff-accounts.service.
 integration.test.ts` covers the API side against a real DB:
 role-replace-not-add, both self-guards, `activate`'s already-active
 rejection, activating a locked account, **reactivating a deprovisioned
 (disabled) account** (the regression test for the "deprovision has no way
 back" bug), TOTP reset actually clearing rows, deprovision revoking
-sessions, and the 404 on a non-staff account. One jsdom gotcha
+sessions, cursor pagination (no repeats, walks the whole list), and the 404
+on a non-staff account. One jsdom gotcha
 worth knowing for any future Radix-menu test: `fireEvent.click` on a
 `DropdownMenuTrigger` silently does nothing — Radix opens it on
 `pointerdown` (or Enter/Space/ArrowDown), which jsdom's plain click never
@@ -162,7 +211,7 @@ that jsdom doesn't implement at all.
 
 `(protected)/layout.tsx` (Server Component, session guard) renders
 `components/layout/AdminShell` (client): a fixed **topbar** (app name, search
-placeholder, account dropdown → sign out), a **collapsible sidebar**
+placeholder, account dropdown → **Change password** / sign out), a **collapsible sidebar**
 (`components/layout/nav-config.ts`; collapse state in `localStorage`, mobile
 drawer, sign-out pinned at its bottom), a scrollable **main column**, and a
 **footer**. Only the main column scrolls; the sidebar scrolls on its own.
@@ -189,15 +238,21 @@ only, computed from `Grant`/`Role`, not trusted by the API itself) —
 `nav-config.ts`'s `visibleNavSections(roles)` drops any `superAdminOnly`
 item for a non-Super-Admin, and drops a section entirely once it has no
 visible items left (so "Administration" doesn't show as an empty heading).
-The **Staff** entry is the first (only, so far) item marked
-`superAdminOnly` — a normal Admin never sees it in the nav; the API's
-`@RequirePermission(STAFF_MANAGE)` was already the real gate, this closes
-the UX gap where they could see and submit a form that only then rejected
-them. Tested in `nav-config.test.ts` (the pure filter: drops the section,
-keeps it for a multi-role account that includes `SUPER_ADMIN`, never
-touches sections with no gated items) and `admin-shell.test.tsx` (the
-real `Sidebar` wiring: Super Admin sees the "Staff" group + the
-"Administration" heading, a normal Admin sees neither).
+The **Staff** entry is marked `superAdminOnly` — a normal Admin never sees
+it in the nav; the API's `@RequirePermission(STAFF_MANAGE)` was already the
+real gate, this closes the UX gap where they could see and submit a form
+that only then rejected them. **Audit log** (below), added to the same
+"Administration" section, deliberately is _not_ `superAdminOnly` — Service
+Admin and Admin both hold `auditlog:read` too (plan/03 section 4, "partial"
+vs Super Admin's "full"; the API doesn't yet scope rows down for "partial",
+so everyone with the permission currently sees the same feed — a known gap,
+not a bug). That's also why the "Administration" section no longer
+disappears entirely for a normal Admin the way it used to when Staff was
+the section's only item — it now always has at least Audit log. Tested in
+`nav-config.test.ts` (the pure filter: Super Admin sees `[staff, auditLog]`,
+everyone else sees `[auditLog]` only) and `admin-shell.test.tsx` (the real
+`Sidebar` wiring: Super Admin sees the "Staff" group + "Administration", a
+normal Admin sees "Administration" too — for Audit log — but not "Staff").
 
 **Staff is a nav group, not a single link.** `nav-config.ts`'s `NavItem` can
 carry `children: NavChildItem[]` instead of a `path` — one level only, a
@@ -217,6 +272,39 @@ a parent path like `/staff` is technically a prefix of `/staff/invite` too
 "current" one so only one sub-link is ever marked `aria-current`, not
 every ancestor along the way.
 
+## Audit log
+
+`(protected)/audit-log` (`AuditLog`) — every `AuditService.record(...)` call
+the API has ever made, newest first, cursor-paginated and **load-on-scroll**
+(`components/crud/use-scroll-load.ts`'s `useScrollLoad`, 25 rows a page — a
+sentinel row after the table, watched with an `IntersectionObserver`, loads
+the next page; a short first page keeps auto-loading until it actually needs
+to scroll, no separate "does this fill the viewport" check needed for that).
+Reads `GET identity/v1/audit-events` via its own BFF route
+(`/api/staff-auth/audit-events`, `callIdentityApi` — a third `bridge.ts`
+helper alongside `callAdminApi`/`callIdentityStaffApi`, since this endpoint
+lives under `identity/v1/*` directly, not `admin/v1` or `identity/v1/staff`)
+and its own client (`auditLogApi`, `features/admin-api/client.ts`). Table:
+time / actor (email, resolved server-side via `AuditEvent.actor` — falls
+back to "System" for a null `actorAccountId`) / action / target
+(`type:id`), plus a per-row expand toggle for rows that have a `reason`
+and/or a `before`/`after` diff (`JSON.stringify`'d, side by side) — most
+rows don't, so the toggle only renders when there's something to show.
+
+`createApiClient`'s `opts.raw` flag returns the whole `{data, meta}`
+envelope instead of unwrapping to just `data` — every other client
+(`adminApi`, `staffManageApi`) only ever needed `data`, but pagination
+needs `meta.nextCursor` too. Tested in `audit-log.test.tsx`: load error +
+retry, actor-email vs "System" fallback, empty state (no table at all, not
+an empty one), scrolling the sentinel into view appending a page and it
+disappearing once `nextCursor` is gone, a sentinel already on-screen at
+mount auto-loading with no scroll gesture, a failed _later_ page keeping
+already-loaded rows on screen with its own retry (not wiping the list back
+to a full-page error), and the expand/collapse toggle (present only on a
+row with something to expand). `useScrollLoad` itself (also used by the
+Staff directory and Categories' flat views — see their own sections) has
+its own focused test suite in `components/crud/use-scroll-load.test.ts`.
+
 ## Catalog (back office)
 
 `/[locale]/x7f2k9t3m1qp/(protected)/catalog/…` — currently **Categories**
@@ -228,6 +316,16 @@ toast (no confirm); restore keeps its confirm (it names the cascade). Below `md`
 there's **no tree** — a flat card list in parent-then-children order, each card
 name-only with an **Edit** button; Delete / Restore live inside that Edit modal.
 More entities land as follow-up slices.
+
+The active tree itself still loads everything in one shot (it needs the
+whole subtree to build parent/child structure); **Archived / All and any
+search are cursor-paginated and load-on-scroll** instead, same
+`useScrollLoad` primitive as Audit Log / Staff — and search moved
+server-side in the same pass, so a query covers the whole table rather than
+whatever page happened to be loaded. Full detail (the two different cursor
+shapes, the ancestor-breadcrumb trade-off, why the tree's own load-all
+keeps running in the background even while a flat view is on screen) is in
+`src/features/catalog/categories/README.md`.
 
 Categories is the **reference implementation** for these list/tree pages —
 patterns to reuse, corner-case log, and backlog are in

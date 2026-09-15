@@ -9,13 +9,20 @@ import { PageHeader } from '@/components/crud/page-header';
 import { ActionButton } from '@/components/crud/action-button';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { matchScore, tokenize } from '@/lib/search';
+import { tokenize } from '@/lib/search';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
+import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { CategoryCards, CategoryFlatTable, CategoryTree } from './category-tree';
 import { CategoryFormModal } from './category-form-modal';
 import { applyMoveLocally, type CategoryMove } from './reorder';
-import { deleteCategory, listCategories, reorderCategories, restoreCategory } from './api';
+import {
+  deleteCategory,
+  listCategories,
+  listCategoriesPage,
+  reorderCategories,
+  restoreCategory,
+} from './api';
 
 type ModalState =
   | { mode: 'create'; parentId?: string }
@@ -146,13 +153,6 @@ export function CategoryList() {
     setItems(null);
   }, [status]);
 
-  // post-mutation reload: keeps the rows on screen if the refresh itself fails
-  // (the mutation already surfaced its own error), never blanks to the skeleton
-  // or the error line.
-  const resync = useCallback(() => {
-    if (mounted.current) load({ background: true });
-  }, [load]);
-
   // briefly highlight the row that was just moved / restored, so it's easy to
   // find again after the tree re-sorts. Latest flash wins; it clears itself.
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -221,18 +221,47 @@ export function CategoryList() {
   const setAllCollapsed = (collapse: boolean): void =>
     setCollapsed(() => persistCollapsed(collapse ? new Set(parentIds) : new Set()));
 
-  const tokens = useMemo(() => tokenize(debouncedQ), [debouncedQ]);
+  // A query bypasses the tree entirely — a size-dependent tree/flat switch
+  // reads as unpredictable, drag is off during search anyway, and every
+  // comparable category admin shows a flat ranked list during search (see
+  // "Declined" in this feature's README). `tokenize` here is only for
+  // detecting "is there a query" — the actual matching moved server-side
+  // (`CategoryService.list`'s `q`, mirroring this same tokenizer) so a
+  // search covers the whole table, not just whatever page is loaded.
+  const searching = useMemo(() => tokenize(debouncedQ).length > 0, [debouncedQ]);
+  // Archived/All (any status but the live tree) or a search → the flat,
+  // paginated views. The active tree needs its whole subtree to build
+  // parent/child structure, so it alone stays on the old load-all `items`.
+  const isFlatMode = status !== 'active' || searching;
 
-  const matches = useMemo(() => {
-    if (!items || tokens.length === 0) return null;
-    return items
-      .map((c) => ({ c, score: matchScore(`${c.name['en'] ?? ''} ${c.slug}`, tokens) }))
-      .filter((r) => r.score > 0)
-      .sort(
-        (a, b) => b.score - a.score || (a.c.name['en'] ?? '').localeCompare(b.c.name['en'] ?? ''),
-      )
-      .map((r) => r.c);
-  }, [items, tokens]);
+  const flatFetchPage = useCallback(
+    (cursor: string | undefined) =>
+      listCategoriesPage({
+        status,
+        ...(debouncedQ && searching ? { q: debouncedQ } : {}),
+        ...(cursor ? { cursor } : {}),
+        limit: 30,
+      }).then((p) => ({ items: p.categories, nextCursor: p.nextCursor })),
+    [status, debouncedQ, searching],
+  );
+  const flatList = useScrollLoad<Category>(
+    flatFetchPage,
+    [status, debouncedQ, searching],
+    isFlatMode,
+  );
+  const flatRetry = flatList.retry;
+
+  // post-mutation reload: keeps the rows on screen if the refresh itself
+  // fails (the mutation already surfaced its own error), never blanks to the
+  // skeleton or the error line. Refreshes whichever data source is actually
+  // driving the current view — the tree's own `items`, and/or the flat
+  // paginated view when that's what's showing (a mutation reachable from a
+  // flat row — restore, delete — only ever happens while it is).
+  const resync = useCallback(() => {
+    if (!mounted.current) return;
+    load({ background: true });
+    if (isFlatMode) flatRetry();
+  }, [load, isFlatMode, flatRetry]);
 
   // Toasts and confirm-dialog copy interpolate this name into a sentence —
   // an unbounded name (FX's fixtures go past 200 chars) wraps a *fixed-width*
@@ -485,13 +514,18 @@ export function CategoryList() {
     </ActionButton>
   );
 
-  const flat = matches ?? items ?? [];
-  const emptyMsg =
-    matches !== null && matches.length === 0
-      ? t('categories.noMatch')
-      : (items?.length ?? 0) === 0
-        ? t('categories.empty')
-        : null;
+  const flat = isFlatMode ? flatList.items : (items ?? []);
+  const flatEmpty =
+    !flatList.loading && !flatList.loadError && flatList.items.length === 0
+      ? searching
+        ? t('categories.noMatch')
+        : t('categories.empty')
+      : null;
+  const emptyMsg = isFlatMode
+    ? flatEmpty
+    : (items?.length ?? 0) === 0
+      ? t('categories.empty')
+      : null;
 
   return (
     <section>
@@ -536,7 +570,7 @@ export function CategoryList() {
           ))}
         </div>
 
-        {matches === null && status === 'active' && parentIds.size > 0 && (
+        {!isFlatMode && parentIds.size > 0 && (
           // only meaningful for the tree, which is md+ only (<md renders the
           // flat CategoryCards list) — hidden below md, where it would do nothing
           <ActionButton
@@ -552,36 +586,81 @@ export function CategoryList() {
         )}
       </div>
 
-      {error !== null ? (
+      {isFlatMode && flatList.loadError && flatList.items.length === 0 ? (
+        <div className="flex flex-col items-start gap-2 px-6 py-10 text-sm">
+          <p className="text-destructive">{tCommon('list.loadError')}</p>
+          <ActionButton variant="outline" size="sm" onClick={flatList.retry}>
+            {tCommon('list.retry')}
+          </ActionButton>
+        </div>
+      ) : !isFlatMode && error !== null ? (
         <p className="px-6 py-10 text-center text-sm text-destructive">{error}</p>
+      ) : isFlatMode ? (
+        flatList.loading ? (
+          <CategoryListSkeleton />
+        ) : emptyMsg ? (
+          <p className="text-sm text-muted-foreground">{emptyMsg}</p>
+        ) : (
+          <>
+            {/* desktop: a flat table — Archived/All, or any search */}
+            <div className="hidden rounded-md border border-border md:block">
+              <CategoryFlatTable
+                items={flatList.items}
+                renderActions={rowActions}
+                flashId={flashId}
+              />
+            </div>
+            {/* mobile: always a flat card list, parent-then-children order */}
+            <div className="rounded-md border border-border md:hidden">
+              <CategoryCards items={flat} renderAction={cardAction} />
+            </div>
+            {/* one sentinel, not duplicated per breakpoint — jsdom aside, only
+                one of the two wrappers above ever actually has layout at a
+                time (the other is `hidden`), so either would do; this way
+                there's only ever one IntersectionObserver to keep track of. */}
+            {flatList.hasMore && (
+              <div
+                ref={flatList.sentinelRef}
+                className="h-px"
+                aria-hidden
+                data-testid="scroll-sentinel"
+              />
+            )}
+            <div className="mt-3">
+              {flatList.loadingMore && !flatList.loadError && (
+                <p className="text-xs text-muted-foreground">{tCommon('list.loading')}</p>
+              )}
+              {flatList.loadError && (
+                <div className="flex flex-col items-start gap-2">
+                  <p className="text-sm text-destructive">{tCommon('list.loadError')}</p>
+                  <ActionButton variant="outline" size="sm" onClick={flatList.loadMore}>
+                    {tCommon('list.retry')}
+                  </ActionButton>
+                </div>
+              )}
+              {!flatList.hasMore && !flatList.loadError && (
+                <p className="text-xs text-muted-foreground">{tCommon('list.noMore')}</p>
+              )}
+            </div>
+          </>
+        )
       ) : items === null ? (
         <CategoryListSkeleton />
       ) : emptyMsg ? (
         <p className="text-sm text-muted-foreground">{emptyMsg}</p>
       ) : (
         <>
-          {/* desktop: the tree (active + no search) or a flat table */}
+          {/* desktop: the active tree */}
           <div className="hidden rounded-md border border-border md:block">
-            {matches !== null ? (
-              <CategoryFlatTable
-                items={matches}
-                allCategories={items}
-                renderActions={rowActions}
-                flashId={flashId}
-              />
-            ) : status === 'active' ? (
-              <CategoryTree
-                items={items}
-                renderActions={rowActions}
-                flashId={flashId}
-                collapsed={collapsed}
-                onToggleCollapsed={toggleCollapsed}
-                onExpandCollapsed={expandCollapsed}
-                {...(canDrag ? { onReorder: applyMove, onNoop: noopMove } : {})}
-              />
-            ) : (
-              <CategoryFlatTable items={items} renderActions={rowActions} flashId={flashId} />
-            )}
+            <CategoryTree
+              items={items}
+              renderActions={rowActions}
+              flashId={flashId}
+              collapsed={collapsed}
+              onToggleCollapsed={toggleCollapsed}
+              onExpandCollapsed={expandCollapsed}
+              {...(canDrag ? { onReorder: applyMove, onNoop: noopMove } : {})}
+            />
           </div>
           {/* mobile: always a flat card list, parent-then-children order */}
           <div className="rounded-md border border-border md:hidden">

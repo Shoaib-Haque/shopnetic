@@ -269,21 +269,44 @@ shipped 2026-09-07/09 — see corner-case log rows 12–23.
   anyway, and the `in A › B` line already carries context — so search stays
   flat.
 
+**Infinite-scroll the flat views — shipped 2026-09-15.** Archived / All
+(desktop) and the mobile card list, plus any search, now cursor-paginate via
+a shared `useScrollLoad` hook (`components/crud/use-scroll-load.ts`) instead
+of `GET`-ing every row in one shot. `CategoryService.list()` grew `q` /
+`cursor` / `limit`, all optional and independent of the unpaginated call the
+active tree still makes (`limit` omitted → every matching row, `path,
+position` order, unchanged). Search moved **server-side** in the same pass —
+`tokenizeForSql` in `category.service.ts` is a byte-for-byte port of
+`@/lib/search`'s token/OR/score matcher, so a query now covers the whole
+table instead of whatever page happened to already be loaded, and the two
+kept identical: same normalize, same ≥2-char/≤10-token rules, same OR
+semantics (any token qualifies), same score ordering. Two cursor shapes,
+both opaque to the client: a plain (non-search) page pages on the row's
+`path` (globally unique — it embeds the row's own id — so `path > cursor`
+resumes with no gaps or repeats); a search page pages on a stringified
+offset instead, since ranked results don't have a natural keyset order.
+Known, accepted limitation: the `in A › B` ancestor breadcrumb
+(`useAncestorPath`) can't resolve a category that hasn't been paged in
+yet — for the plain case this never actually happens (a parent's `path` is
+always a strict prefix of its descendants', and pages accumulate rather
+than replace, so every ancestor of a loaded row has necessarily already
+loaded on an earlier page); for a search result whose ancestor doesn't
+itself match the query, the breadcrumb segment is silently dropped, same
+degradation `useAncestorPath` already had pre-pagination for a filtered
+result set. The active tree, and everything that reads its `items` (the
+create/edit modal's parent-picker, `parentArchived`/`archivedDescendants`,
+drag/reorder), is completely unchanged — deliberately: those need the
+_complete_ active set regardless of which view is on screen, so the tree's
+own load-all stays running in the background even while a flat/paginated
+view is what's actually rendered. The trade-off: switching to Archived/All
+(or typing a search query) costs one extra background fetch of the full
+active tree that goes unused for that render — pre-existing, not something
+this pass introduced (the tree's own `load()` already refetches on every
+tab switch), and away from what's actually gone: the flat views themselves
+no longer force-load their entire result set just to show the first page.
+
 **Still open**
 
-- **Infinite-scroll the flat views** — Archived / All (desktop) and the mobile
-  card list (which is _always_ the flat view, `< md`) currently `GET` and
-  render every row in one shot; discussed early in the project as something
-  these views should scroll-load instead. Deliberately **not** built blind
-  this pass — it's an API-shape decision, not a component tweak:
-  `listCategories` needs `limit` + `cursor` (contract + service + a DB index to
-  paginate on, likely `(status, path)` or a stable `id` tiebreak), the client
-  needs an `IntersectionObserver` sentinel that appends pages, and it has to
-  keep working with the existing search/filter and flash/scroll-into-view
-  behaviour. The **active tree stays load-all** — a tree can't render a page
-  boundary without either breaking the hierarchy or prefetching ancestors, and
-  a realistic category tree doesn't approach the row count where that matters
-  (see "No virtualization" below).
 - **Component-test residue** — the error / redirect / rollback paths are
   covered (see "Tests"). Still untested: the `pendingMove` queue's multi-drop
   path (only the single-drop rollback is), and the form modal

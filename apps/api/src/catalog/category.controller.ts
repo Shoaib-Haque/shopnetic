@@ -51,13 +51,29 @@ export class CategoryController {
     @Req() req: Request,
     @Query('parentId') parentId?: string,
     @Query('status') status?: string,
-  ): Promise<Envelope<Category[]>> {
+    @Query('q') q?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limitRaw?: string,
+  ): Promise<{
+    data: Category[];
+    meta: { requestId: string; count: number; nextCursor?: string };
+  }> {
     const opts: Parameters<CategoryService['list']>[0] = {
       status: categoryListStatusSchema.catch('active').parse(status ?? undefined),
     };
     if (parentId === 'null') opts.parentId = null;
     else if (parentId) opts.parentId = parentId;
-    return ok(req, await this.categories.list(opts));
+    if (q) opts.q = q;
+    if (cursor) opts.cursor = cursor;
+    if (limitRaw) opts.limit = Number(limitRaw);
+
+    const { categories, nextCursor } = await this.categories.list(opts);
+    const rid = req.headers['x-request-id'];
+    const requestId = (Array.isArray(rid) ? rid[0] : rid) ?? 'unknown';
+    return {
+      data: categories,
+      meta: { requestId, count: categories.length, ...(nextCursor ? { nextCursor } : {}) },
+    };
   }
 
   @Get(':id')
