@@ -59,6 +59,12 @@ The `identity` + `catalog` schemas and their tables are created by migrations, n
 ```bash
 cp .env.example .env                         # DATABASE_URL → local Postgres (port 5433)
 
+# Uncomment + set these in .env before seeding — with no BOOTSTRAP_SUPERADMIN_*
+# db:seed creates zero Super Admins, and staff login is invite-only, so there
+# is then no account that can sign in or invite anyone else. See Env below.
+#   BOOTSTRAP_SUPERADMIN_EMAIL="owner@example.com"
+#   BOOTSTRAP_SUPERADMIN_PASSWORD="change-me-please-1234"
+
 pnpm --filter @shopnetic/db generate         # prisma generate (also runs via turbo)
 pnpm --filter @shopnetic/db db:migrate       # create + apply a dev migration
 pnpm --filter @shopnetic/db db:migrate:deploy # apply pending migrations (CI/prod)
