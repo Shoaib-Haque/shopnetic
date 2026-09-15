@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { setRequestLocale } from 'next-intl/server';
 import { ADMIN_BASE_PATH } from '@/config/site';
 import { AcceptInviteForm } from '@/features/staff-auth/components/accept-invite-form';
 
@@ -17,12 +17,12 @@ export default async function AcceptInvitePage({ params, searchParams }: Props) 
   const { locale } = await params;
   setRequestLocale(locale);
   const { token } = await searchParams;
-  const t = await getTranslations('staff');
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 px-4">
-      <h1 className="text-xl font-semibold">{t('accept.title')}</h1>
-      <p className="text-sm text-muted-foreground">{t('accept.intro')}</p>
+    <main className="mx-auto flex min-h-dvh max-w-sm flex-col px-4 pt-20 sm:pt-28">
+      {/* the heading/intro vary by state (form / done / invalid link) — owned
+          by the form itself rather than fixed here, so "set a password" can't
+          linger once it's already been set */}
       <AcceptInviteForm token={token ?? null} locale={locale} basePath={ADMIN_BASE_PATH} />
     </main>
   );

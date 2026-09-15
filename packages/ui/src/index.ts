@@ -17,7 +17,7 @@ export {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from './components/dropdown-menu';
-export { Toaster, notify, toast } from './components/toast';
+export { Toaster, notify, toast, TimerBar } from './components/toast';
 export {
   Modal,
   ModalTrigger,

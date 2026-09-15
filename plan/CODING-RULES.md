@@ -1004,3 +1004,20 @@ compose file.
   existing proxy, refactored onto it) share one copy instead of growing a
   second one. `callIdentityStaffApi` (`admin-api/bridge.ts`) is
   `callAdminApi`'s twin pointed at `identity/v1/staff` instead of `admin/v1`.
+- 2026-09-15 — `accept-invite`'s heading/intro were fixed in `page.tsx`
+  (Server Component), so "Set a password for your new staff account." kept
+  showing under the done state after the password was already set. Moved
+  into `AcceptInviteForm` itself, one per branch (form / done / invalid
+  link), so the copy actually matches what's on screen. The done state then
+  changed again same day: instead of "Your account is ready." + a manual
+  "Go to sign in" link, it now auto-redirects to `login` after
+  `REDIRECT_DELAY_MS` (3s) via a `useEffect` + `setTimeout` — a lingering
+  manual link read as more work than a short, self-clearing wait. Also
+  nudged the page up (`pt-20 sm:pt-28` instead of `justify-center` on a
+  `min-h-dvh` column) — dead-center read as visually off for a two-line
+  screen.
+- 2026-09-15 — `@shopnetic/ui`'s toast `TimerBar` is now exported (D3):
+  static/full-width by default, `absolute inset-x-0 bottom-0` moved onto the
+  toast call sites' own `className` — so the same shrinking-bar primitive
+  can sit in page content too, not just inside a toast box.
+  `accept-invite`'s "redirecting" screen uses it.

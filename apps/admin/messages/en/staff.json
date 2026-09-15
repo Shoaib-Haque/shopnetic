@@ -47,8 +47,8 @@
       "intro": "Set a password for your new staff account.",
       "submit": "Create account",
       "submitting": "Creating…",
-      "done": "Your account is ready.",
-      "goToLogin": "Go to sign in"
+      "doneTitle": "You're all set",
+      "redirecting": "Redirecting to sign in…"
     },
     "invite": {
       "title": "Invite staff",

@@ -47,14 +47,18 @@ export function Toaster({ topOffset = 72 }: { topOffset?: number }) {
   );
 }
 
-function TimerBar({ ms, className }: { ms: number; className?: string }) {
+/**
+ * A shrinking progress bar that drains over `ms` — the toast timer bar,
+ * exported so any other "this resolves itself after N seconds" UI (e.g. an
+ * auto-redirect screen) uses the same one instead of a local reinvention
+ * (plan/CODING-RULES.md D3). Static/full-width by default; toasts overlay it
+ * on their own box via `className` (`absolute inset-x-0 bottom-0`).
+ */
+export function TimerBar({ ms, className }: { ms: number; className?: string }) {
   return (
     <span
       aria-hidden
-      className={cn(
-        'pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left',
-        className ?? 'bg-success/60',
-      )}
+      className={cn('block h-0.5 w-full origin-left', className ?? 'bg-success/60')}
       style={{ animation: `sn-toast-timer ${ms}ms linear forwards` }}
     />
   );
@@ -97,7 +101,7 @@ function BarToast({ tone, message, ms }: { tone: Tone; message: string; ms: numb
       <span className="line-clamp-2 min-w-0 flex-1" title={message}>
         {message}
       </span>
-      <TimerBar ms={ms} className={s.bar} />
+      <TimerBar ms={ms} className={cn('pointer-events-none absolute inset-x-0 bottom-0', s.bar)} />
     </div>
   );
 }
@@ -128,7 +132,10 @@ function UndoToast({
       >
         {undoLabel}
       </button>
-      <TimerBar ms={ms} className="bg-background/40" />
+      <TimerBar
+        ms={ms}
+        className="pointer-events-none absolute inset-x-0 bottom-0 bg-background/40"
+      />
     </div>
   );
 }

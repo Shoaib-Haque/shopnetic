@@ -58,7 +58,12 @@ recovery code (each stays on its own step rather than bouncing back), and
 confirming enrolment after the account got enrolled elsewhere
 (`MFA_ALREADY_ENROLLED`). `accept-invite-form.test.tsx` covers the
 missing-token guard, breached/expired-invite copy, and the success/done
-state. Each verified by disabling its fix and watching the test fail.
+state — on success it auto-redirects to `login` after a 3s
+`REDIRECT_DELAY_MS` (fake timers: not before, exactly at), no manual
+"Go to sign in" link, and shows a `@shopnetic/ui` `TimerBar` (the same
+shrinking-bar primitive `notify.*` toasts use) so the wait reads as
+self-resolving rather than a dead pause. Each verified by disabling its fix
+and watching the test fail.
 `TotpService`'s reuse-the-pending-secret idempotency is covered
 server-side, in `apps/api/src/identity/staff-auth.integration.test.ts`.
 `(protected)/layout.test.tsx` covers the session guard directly: no
