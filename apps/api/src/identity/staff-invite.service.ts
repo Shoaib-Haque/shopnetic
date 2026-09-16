@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ARGON2_PARAMS, isStaffRole } from '@shopnetic/auth';
 import type { StaffInviteAcceptRequest, StaffInviteCreateRequest } from '@shopnetic/contracts';
+import type { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { API_ENV, type ApiEnv } from '../config/env.js';
 import { AppError } from '../common/app-error.js';
@@ -70,20 +71,15 @@ export class StaffInviteService {
     return { email: input.email };
   }
 
+  async peek(token: string): Promise<void> {
+    await this.validate(token);
+  }
+
   async accept(
     input: StaffInviteAcceptRequest,
     meta: RequestMeta = {},
   ): Promise<{ accountId: string }> {
-    const invite = await this.prisma.staffInvite.findUnique({
-      where: { tokenHash: hashOpaqueToken(input.token) },
-      include: { role: true },
-    });
-    if (!invite || invite.acceptedAt != null) {
-      throw new AppError('INVITE_INVALID', 400, { detail: 'unknown or already-used invite' });
-    }
-    if (invite.expiresAt <= new Date()) {
-      throw new AppError('INVITE_EXPIRED', 410, { detail: 'invite expired' });
-    }
+    const invite = await this.validate(input.token);
     if (await this.prisma.account.findUnique({ where: { email: invite.email } })) {
       throw new AppError('INVITE_EMAIL_TAKEN', 409, {
         detail: 'an account with this email now exists',
@@ -92,6 +88,20 @@ export class StaffInviteService {
 
     await this.passwords.assertNotBreached(input.password);
     const passwordHash = await this.passwords.hash(input.password);
+
+    // Claim the invite before creating the account: only the request that
+    // actually flips `acceptedAt` proceeds, so two near-simultaneous accepts
+    // with the same token can't both create an account (same shape as
+    // `PasswordResetService.consume`'s atomic claim).
+    const claimed = await this.prisma.staffInvite.updateMany({
+      where: { id: invite.id, acceptedAt: null },
+      data: { acceptedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw new AppError('INVITE_ALREADY_ACCEPTED', 400, {
+        detail: 'invite already accepted (lost the race)',
+      });
+    }
 
     const account = await this.prisma.$transaction(async (tx) => {
       const created = await tx.account.create({
@@ -106,7 +116,7 @@ export class StaffInviteService {
       });
       await tx.staffInvite.update({
         where: { id: invite.id },
-        data: { acceptedAt: new Date(), acceptedAccountId: created.id },
+        data: { acceptedAccountId: created.id },
       });
       return created;
     });
@@ -120,6 +130,25 @@ export class StaffInviteService {
       ...pick(meta),
     });
     return { accountId: account.id };
+  }
+
+  private async validate(
+    token: string,
+  ): Promise<Prisma.StaffInviteGetPayload<{ include: { role: true } }>> {
+    const invite = await this.prisma.staffInvite.findUnique({
+      where: { tokenHash: hashOpaqueToken(token) },
+      include: { role: true },
+    });
+    if (!invite) {
+      throw new AppError('INVITE_INVALID', 400, { detail: 'unknown invite token' });
+    }
+    if (invite.acceptedAt != null) {
+      throw new AppError('INVITE_ALREADY_ACCEPTED', 400, { detail: 'invite already accepted' });
+    }
+    if (invite.expiresAt <= new Date()) {
+      throw new AppError('INVITE_EXPIRED', 410, { detail: 'invite expired' });
+    }
+    return invite;
   }
 
   private acceptUrl(token: string): string {

@@ -34,9 +34,17 @@ export const ErrorCode = {
   INVITE_INVALID: 'INVITE_INVALID',
   INVITE_EXPIRED: 'INVITE_EXPIRED',
   INVITE_EMAIL_TAKEN: 'INVITE_EMAIL_TAKEN',
+  /** Distinct from `INVITE_INVALID` (unknown/malformed token) — this
+   * invite was real and already accepted. Not a security problem, same
+   * reasoning as `PASSWORD_RESET_TOKEN_ALREADY_USED` below. */
+  INVITE_ALREADY_ACCEPTED: 'INVITE_ALREADY_ACCEPTED',
   CANNOT_MODIFY_SELF: 'CANNOT_MODIFY_SELF',
   PASSWORD_RESET_TOKEN_INVALID: 'PASSWORD_RESET_TOKEN_INVALID',
   PASSWORD_RESET_TOKEN_EXPIRED: 'PASSWORD_RESET_TOKEN_EXPIRED',
+  /** Distinct from `_INVALID` (unknown/malformed token) — this token was
+   * real and already consumed. Not a security problem, so it gets its own
+   * calmer message instead of reusing the "invalid" copy. */
+  PASSWORD_RESET_TOKEN_ALREADY_USED: 'PASSWORD_RESET_TOKEN_ALREADY_USED',
 
   // Catalog
   CATEGORY_SLUG_TAKEN: 'CATEGORY_SLUG_TAKEN',

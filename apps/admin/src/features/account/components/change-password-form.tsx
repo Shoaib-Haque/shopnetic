@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -89,6 +90,9 @@ export function ChangePasswordForm({ loginHref }: { loginHref: string }) {
               <TimerBar ms={REDIRECT_DELAY_MS} className="bg-primary/60" />
             </div>
           </div>
+          <Link href={loginHref} className="mt-4 inline-block text-sm underline underline-offset-2">
+            {t('changePassword.backToLogin')}
+          </Link>
         </div>
       </div>
     );

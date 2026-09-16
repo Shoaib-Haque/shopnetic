@@ -18,6 +18,13 @@ const CODE_TO_KEY: Record<string, string> = {
   CANNOT_MODIFY_SELF: 'errors.cannotModifySelf',
   PASSWORD_RESET_TOKEN_INVALID: 'errors.passwordResetTokenInvalid',
   PASSWORD_RESET_TOKEN_EXPIRED: 'errors.passwordResetTokenExpired',
+  // Defensive fallback only — ResetPasswordForm intercepts this code before
+  // it reaches staffErrorKey and shows a dedicated message-variant screen
+  // instead (calmer tone: this isn't a security problem, a prior submission
+  // of this exact link already succeeded).
+  PASSWORD_RESET_TOKEN_ALREADY_USED: 'errors.passwordResetTokenAlreadyUsed',
+  // Same defensive-fallback-only note, for AcceptInviteForm.
+  INVITE_ALREADY_ACCEPTED: 'errors.inviteAlreadyAccepted',
 };
 
 export function staffErrorKey(code: string | undefined): string {

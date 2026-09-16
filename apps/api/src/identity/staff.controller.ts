@@ -174,6 +174,23 @@ export class StaffController {
     return ok(req, { requested: true });
   }
 
+  /** Read-only status check — the reset page calls this on load so a dead
+   * link (used/expired/unknown) is obvious immediately, not only once the
+   * user has filled in and submitted a form that could never have worked.
+   * 200 with no meaningful body means "still good"; a dead token throws
+   * the same error codes `resetPassword` below does. */
+  @Get('auth/reset-password')
+  @HttpCode(200)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ name: 'staff:reset-password-check', limit: 20, windowSeconds: 900 })
+  async checkResetPassword(
+    @Req() req: Request,
+    @Query('token') token: string,
+  ): Promise<{ data: { valid: true }; meta: { requestId: string } }> {
+    await this.staffAuth.checkResetToken(token ?? '');
+    return ok(req, { valid: true });
+  }
+
   @Post('auth/reset-password')
   @HttpCode(204)
   @UseGuards(RateLimitGuard)
@@ -205,6 +222,18 @@ export class StaffController {
   ): Promise<{ data: { email: string }; meta: { requestId: string } }> {
     const result = await this.invites.create(body, actor.accountId, ctxOf(req));
     return ok(req, result);
+  }
+
+  @Get('invites/accept')
+  @HttpCode(200)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ name: 'staff:invite-accept-check', limit: 20, windowSeconds: 900 })
+  async checkInvite(
+    @Req() req: Request,
+    @Query('token') token: string,
+  ): Promise<{ data: { valid: true }; meta: { requestId: string } }> {
+    await this.invites.peek(token ?? '');
+    return ok(req, { valid: true });
   }
 
   @Post('invites/accept')

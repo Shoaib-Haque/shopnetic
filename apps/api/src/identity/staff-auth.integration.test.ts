@@ -44,6 +44,7 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
   const staffEmail = `itest-staff-${stamp}@shopnetic.test`;
   let staffPassword = 'staff-pass-1234-abcd';
   let totpSecret = '';
+  const extraInviteEmails: string[] = [];
 
   beforeAll(async () => {
     prisma = getPrismaClient();
@@ -97,7 +98,7 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
 
   afterAll(async () => {
     if (!prisma) return;
-    const emails = [staffEmail, `itest-inviter-${stamp}@shopnetic.test`];
+    const emails = [staffEmail, `itest-inviter-${stamp}@shopnetic.test`, ...extraInviteEmails];
     const ids = (await prisma.account.findMany({ where: { email: { in: emails } } })).map(
       (a) => a.id,
     );
@@ -106,7 +107,9 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
     await prisma.emailVerification.deleteMany({ where: { accountId: { in: ids } } });
     await prisma.session.deleteMany({ where: { accountId: { in: ids } } });
     await prisma.grant.deleteMany({ where: { accountId: { in: ids } } });
-    await prisma.staffInvite.deleteMany({ where: { email: staffEmail } });
+    await prisma.staffInvite.deleteMany({
+      where: { email: { in: [staffEmail, ...extraInviteEmails] } },
+    });
     await prisma.credential.deleteMany({ where: { accountId: { in: ids } } });
     await prisma.auditEvent.deleteMany({ where: { actorAccountId: { in: ids } } });
     await prisma.account.deleteMany({ where: { id: { in: ids } } });
@@ -127,10 +130,70 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
     expect(account.grants[0]?.role.key).toBe('ADMIN');
   });
 
-  it('rejects re-accepting the same invite', async () => {
+  it('rejects re-accepting the same invite — a real invite, just already accepted, distinct from unknown', async () => {
     await expect(
       invites.accept({ token: inviteToken, password: staffPassword }),
+    ).rejects.toMatchObject({ code: 'INVITE_ALREADY_ACCEPTED' });
+  });
+
+  it('rejects an unknown invite token', async () => {
+    await expect(
+      invites.accept({ token: 'not-a-real-invite-token', password: 'irrelevant-pass-1234' }),
     ).rejects.toMatchObject({ code: 'INVITE_INVALID' });
+  });
+
+  describe('peek — the mount-time status check, read-only', () => {
+    it('resolves for a live invite without consuming it — a real accept still works after', async () => {
+      const email = `itest-invite-peek-${stamp}@shopnetic.test`;
+      extraInviteEmails.push(email);
+      await invites.create({ email, role: 'ADMIN' }, inviterId);
+      const token = inviteToken;
+
+      await expect(invites.peek(token)).resolves.toBeUndefined();
+
+      // still usable — peeking didn't burn it
+      await expect(
+        invites.accept({ token, password: 'peeked-then-used-pass-1234' }),
+      ).resolves.toMatchObject({ accountId: expect.any(String) });
+    });
+
+    it('rejects an unknown token, same code the real accept would', async () => {
+      await expect(invites.peek('not-a-real-invite-token')).rejects.toMatchObject({
+        code: 'INVITE_INVALID',
+      });
+    });
+
+    it('reports already-accepted once the invite has actually been accepted', async () => {
+      const email = `itest-invite-peek2-${stamp}@shopnetic.test`;
+      extraInviteEmails.push(email);
+      await invites.create({ email, role: 'ADMIN' }, inviterId);
+      const token = inviteToken;
+      await invites.accept({ token, password: 'peeked2-then-used-pass-5678' });
+
+      await expect(invites.peek(token)).rejects.toMatchObject({ code: 'INVITE_ALREADY_ACCEPTED' });
+    });
+  });
+
+  it('two near-simultaneous accepts of the same invite: exactly one wins, the other loses the race cleanly, and only one account is created', async () => {
+    const email = `itest-invite-race-${stamp}@shopnetic.test`;
+    extraInviteEmails.push(email);
+    await invites.create({ email, role: 'ADMIN' }, inviterId);
+    const token = inviteToken;
+
+    const results = await Promise.allSettled([
+      invites.accept({ token, password: 'invite-race-a-pass-1234' }),
+      invites.accept({ token, password: 'invite-race-b-pass-5678' }),
+    ]);
+
+    const fulfilledCount = results.filter((r) => r.status === 'fulfilled').length;
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilledCount).toBe(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.reason).toMatchObject({ code: 'INVITE_ALREADY_ACCEPTED' });
+
+    // not two accounts, despite two accept() calls racing on the same token
+    const accountsForEmail = await prisma.account.findMany({ where: { email } });
+    expect(accountsForEmail).toHaveLength(1);
   });
 
   it('first login returns a TOTP enrolment challenge (no session yet)', async () => {
@@ -256,10 +319,41 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
       expect(resetToken).toMatch(/^[A-Za-z0-9_-]+$/);
     });
 
-    it('rejects an unknown or already-used token', async () => {
+    it('rejects an unknown token', async () => {
       await expect(
         staffAuth.resetPassword('not-a-real-token', 'irrelevant-pass-1234'),
       ).rejects.toMatchObject({ code: 'PASSWORD_RESET_TOKEN_INVALID' });
+    });
+
+    describe('checkResetToken — the mount-time status check, read-only', () => {
+      it('resolves for a live token without consuming it — a real resetPassword still works after', async () => {
+        await staffAuth.forgotPassword(staffEmail);
+        const token = resetToken;
+
+        await expect(staffAuth.checkResetToken(token)).resolves.toBeUndefined();
+
+        // still usable — peeking didn't burn it
+        const newPassword = 'peeked-then-used-pass-1234';
+        await expect(staffAuth.resetPassword(token, newPassword)).resolves.toBeUndefined();
+        staffPassword = newPassword;
+      });
+
+      it('rejects an unknown token, same code the real reset would', async () => {
+        await expect(staffAuth.checkResetToken('not-a-real-token')).rejects.toMatchObject({
+          code: 'PASSWORD_RESET_TOKEN_INVALID',
+        });
+      });
+
+      it('reports already-used once the token has actually been consumed', async () => {
+        await staffAuth.forgotPassword(staffEmail);
+        const token = resetToken;
+        await staffAuth.resetPassword(token, 'checked-after-use-pass-5678');
+        staffPassword = 'checked-after-use-pass-5678';
+
+        await expect(staffAuth.checkResetToken(token)).rejects.toMatchObject({
+          code: 'PASSWORD_RESET_TOKEN_ALREADY_USED',
+        });
+      });
     });
 
     it('resets the password, revokes every session, and the token cannot be reused', async () => {
@@ -286,9 +380,54 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
       // only the one login just above — reset revoked everything before it
       expect(sessions).toHaveLength(1);
 
+      // a real token, just already spent — distinct from "unknown" above
       await expect(staffAuth.resetPassword(token, 'another-pass-7890')).rejects.toMatchObject({
-        code: 'PASSWORD_RESET_TOKEN_INVALID',
+        code: 'PASSWORD_RESET_TOKEN_ALREADY_USED',
       });
+    });
+
+    it('two near-simultaneous uses of the same token: exactly one wins, the other loses the race cleanly', async () => {
+      await staffAuth.forgotPassword(staffEmail);
+      const token = resetToken;
+      const candidatePasswords = ['race-candidate-a-1234', 'race-candidate-b-5678'];
+
+      const results = await Promise.allSettled(
+        candidatePasswords.map((p) => staffAuth.resetPassword(token, p)),
+      );
+
+      const fulfilledCount = results.filter((r) => r.status === 'fulfilled').length;
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      expect(fulfilledCount).toBe(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]!.reason).toMatchObject({ code: 'PASSWORD_RESET_TOKEN_ALREADY_USED' });
+
+      // whichever of the two actually won the atomic claim is the real
+      // password now — find it by index rather than assuming an order,
+      // since which one wins is exactly the race this test exists to check
+      const winningIndex = results.findIndex((r) => r.status === 'fulfilled');
+      staffPassword = candidatePasswords[winningIndex]!;
+      const login = await staffAuth.login(
+        { email: staffEmail, password: staffPassword, code: authenticator.generate(totpSecret) },
+        {},
+      );
+      expect(login.kind).toBe('session');
+    });
+
+    it('using one reset link invalidates sibling links from earlier "forgot password" requests', async () => {
+      await staffAuth.forgotPassword(staffEmail);
+      const firstToken = resetToken;
+      await staffAuth.forgotPassword(staffEmail);
+      const secondToken = resetToken;
+      expect(secondToken).not.toBe(firstToken);
+
+      const newPassword = 'sibling-invalidation-pass-1234';
+      await staffAuth.resetPassword(secondToken, newPassword);
+      staffPassword = newPassword;
+
+      // never used directly, but a sibling of the one that was
+      await expect(staffAuth.resetPassword(firstToken, 'whatever-pass-5678')).rejects.toMatchObject(
+        { code: 'PASSWORD_RESET_TOKEN_ALREADY_USED' },
+      );
     });
   });
 });

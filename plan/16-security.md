@@ -11,6 +11,45 @@ Related: `03-users-and-rbac.md`, `08-api-design.md`, `13-payments-and-payouts.md
 - Length ≥ 8 (no silly composition rules), max 128, allow spaces/emoji.
 - Rate-limit + progressive delay + account lockout (soft) + CAPTCHA on abuse.
 
+### Password-reset eligibility — decision table
+
+"Forgot password" always returns the same response regardless of whether the
+email matches anything (enumeration-safe — `08-api-design.md`). What decides
+whether a mail actually sends is internal, and needs to hold for every
+plane/entity this ever gets built for, not just staff (built today):
+
+| Requesting surface | Email must resolve to | `Account.status` | Mail sent? | Status |
+|---|---|---|---|---|
+| Staff (`/identity/v1/staff/auth/forgot-password`) | `plane = 'staff'` | `active` | ✅ | **Built** |
+| Staff | `plane = 'staff'` | `disabled` (deprovisioned by a Super Admin) | ❌ | **Built** — matches "can't log in, shouldn't be able to touch the credential either" |
+| Staff | `plane = 'staff'` | `locked` (auto-lockout, soft) | ❌ today | **Open question**, see below |
+| Staff | no account, or a `marketplace`-plane account (buyer/seller) | — | ❌ | **Built** — verified live: a real buyer email and a made-up email both return the same `202`, neither enqueues mail |
+| Buyer/Seller (not built) | `plane = 'marketplace'` | `active` | ✅ | Not built. **One check, not two** — buyer and seller are the *same account* (`03` §1: "a single human may hold a Buyer account and a Seller account — same login, multiple role grants"), so there's no "does this email belong to a seller, not a buyer" case to handle; the plane check alone is sufficient, same shape as the staff row above |
+| Buyer/Seller | `plane = 'marketplace'` | `disabled` | ❌ | Not built, but same reasoning as staff's `disabled` row |
+| Seller-specific suspension (not built — no `Seller` model exists yet) | `plane = 'marketplace'` | `active` (the account itself; a separate seller-scoped flag/entity is what's actually restricted) | ✅ | Not built — different shape from account lockout: the person **can still log in** (just not use seller features), so the general rule below says send it — this is a permissions restriction, not a credential-access one |
+
+**The general rule, stated once so it doesn't need re-deriving per plane**: a
+password-reset link is gated on *"would this account be able to log in with
+the new password?"* — not on any narrower per-feature restriction. Full
+account lockout/deprovision (any plane) → no link, because it wouldn't help
+them get in anyway and just adds surface area. A feature-level restriction
+that leaves login itself intact (a suspended seller who can still browse and
+buy, for example) → still send it, because resetting the password is a
+legitimate, separate action from whatever feature got restricted.
+
+**Open question, not resolved — `locked` today**: staff's current check
+(`status === 'active'`) excludes `locked` the same as `disabled`, but
+`locked` is documented as a **soft, automatic** lockout (too many failed
+attempts), not a deliberate admin action — and password reset is often
+exactly how someone recovers from that (they forgot the password, kept
+mistyping it, got locked out). By the general rule above, a `locked` account
+usually *can* still log in once the lockout clears or the right password is
+entered — meaning it likely belongs in the "send it" bucket, not blocked
+like `disabled`. Not changed yet because nothing in the codebase currently
+sets `status = 'locked'` (the auto-lockout mechanism itself isn't built —
+this file's own bullet above lists it as planned). Decide this for real once
+that mechanism exists; until then this is a latent gap, not an active one.
+
 ### Tokens
 - **Access JWT**: 10–15 min TTL. Claims: `sub`, `sid` (session), `grants`
   (role+scope compact), `typ`, `iat`, `exp`, `iss`, `aud`. Signed **RS256/EdDSA**

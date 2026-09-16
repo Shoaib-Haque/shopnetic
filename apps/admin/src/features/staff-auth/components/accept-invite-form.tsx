@@ -1,19 +1,33 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { staffInviteAcceptRequestSchema } from '@shopnetic/contracts';
-import { Button, Field, PasswordInput, TimerBar } from '@shopnetic/ui';
-import { postJson } from '../submit';
+import { Button, Field, PasswordInput, Spinner, TimerBar } from '@shopnetic/ui';
+import { getJson, postJson } from '../submit';
 import { staffErrorKey, extractErrorCode } from '../error-copy';
 import { AuthPageSection } from './auth-page-section';
 
 type FormValues = { password: string };
 
 const REDIRECT_DELAY_MS = 3000;
+
+/** `done`/`alreadyAccepted` are calm outcomes — auto-redirect, same shape,
+ * just different copy. `invalid`/`expired` are real dead ends — no
+ * redirect, just a way back. `checking` is the token-status request that
+ * runs before the form is ever shown, so a dead link says so immediately
+ * instead of only on submit (same pattern as `ResetPasswordForm`). */
+type Status = 'checking' | 'form' | 'done' | 'alreadyAccepted' | 'invalid' | 'expired';
+
+function codeToStatus(code: string | undefined): Status {
+  if (code === 'INVITE_ALREADY_ACCEPTED') return 'alreadyAccepted';
+  if (code === 'INVITE_EXPIRED') return 'expired';
+  return 'invalid';
+}
 
 export function AcceptInviteForm({
   token,
@@ -26,7 +40,7 @@ export function AcceptInviteForm({
 }) {
   const t = useTranslations('staff');
   const router = useRouter();
-  const [done, setDone] = useState(false);
+  const [status, setStatus] = useState<Status>('checking');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -39,39 +53,80 @@ export function AcceptInviteForm({
     mode: 'onTouched',
   });
 
+  const loginHref = `/${locale}/${basePath}/login`;
+
+  // Check the link's status the moment the page loads — a dead link
+  // (accepted/expired/unknown) says so immediately instead of only once the
+  // user has filled in and submitted a form that could never have worked.
   useEffect(() => {
-    if (!done) return;
+    if (!token) {
+      setStatus('invalid');
+      return;
+    }
+    let cancelled = false;
+    void getJson(`/api/staff-auth/accept-invite?token=${encodeURIComponent(token)}`).then((res) => {
+      if (cancelled) return;
+      setStatus(res.status === 200 ? 'form' : codeToStatus(extractErrorCode(res.body)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (status !== 'done' && status !== 'alreadyAccepted') return;
     const timer = setTimeout(() => {
-      router.replace(`/${locale}/${basePath}/login`);
+      router.replace(loginHref);
       router.refresh();
     }, REDIRECT_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [done, router, locale, basePath]);
+  }, [status, router, loginHref]);
 
-  if (!token) {
+  if (status === 'checking') {
     return (
       <AuthPageSection variant="message">
-        <div className="flex flex-col gap-6">
-          <h1 className="text-xl font-semibold">{t('accept.title')}</h1>
-          <p className="text-sm text-destructive" role="alert">
-            {t('errors.inviteInvalid')}
-          </p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner />
+          {t('accept.checking')}
         </div>
       </AuthPageSection>
     );
   }
 
-  if (done) {
+  if (status === 'invalid' || status === 'expired') {
+    return (
+      <AuthPageSection variant="message">
+        <div className="flex flex-col gap-4">
+          <h1 className="text-xl font-semibold">{t('accept.title')}</h1>
+          <p className="text-sm text-destructive" role="alert">
+            {t(status === 'expired' ? 'errors.inviteExpired' : 'errors.inviteInvalid')}
+          </p>
+          <Link href={loginHref} className="text-sm underline underline-offset-2">
+            {t('accept.backToLogin')}
+          </Link>
+        </div>
+      </AuthPageSection>
+    );
+  }
+
+  if (status === 'done' || status === 'alreadyAccepted') {
+    const title = status === 'done' ? t('accept.doneTitle') : t('accept.alreadyAcceptedTitle');
     return (
       <AuthPageSection variant="message">
         <div className="flex flex-col gap-6">
-          <h1 className="text-xl font-semibold">{t('accept.doneTitle')}</h1>
+          <h1 className="text-xl font-semibold">{title}</h1>
           <div className="flex flex-col gap-2">
+            {status === 'alreadyAccepted' && (
+              <p className="text-sm text-muted-foreground">{t('accept.alreadyAcceptedIntro')}</p>
+            )}
             <p className="text-sm text-muted-foreground">{t('accept.redirecting')}</p>
             <div className="overflow-hidden rounded-full bg-muted">
               <TimerBar ms={REDIRECT_DELAY_MS} className="bg-primary/60" />
             </div>
           </div>
+          <Link href={loginHref} className="text-sm underline underline-offset-2">
+            {t('accept.backToLogin')}
+          </Link>
         </div>
       </AuthPageSection>
     );
@@ -93,12 +148,24 @@ export function AcceptInviteForm({
             const res = await postJson('/api/staff-auth/accept-invite', { token, password });
             setBusy(false);
             if (res.status === 202) {
-              setDone(true);
+              setStatus('done');
               return;
             }
-            setFormError(
-              res.status === 0 ? t('errors.network') : t(staffErrorKey(extractErrorCode(res.body))),
-            );
+            const code = extractErrorCode(res.body);
+            // A dead-token code discovered only now (raced past the mount
+            // check — the tab sat open past expiry, or a double-submit)
+            // gets the same dedicated screen the mount check would have
+            // shown; anything else (email taken, breached password,
+            // validation, offline) stays an inline error on this same form.
+            if (
+              code === 'INVITE_ALREADY_ACCEPTED' ||
+              code === 'INVITE_EXPIRED' ||
+              code === 'INVITE_INVALID'
+            ) {
+              setStatus(codeToStatus(code));
+              return;
+            }
+            setFormError(res.status === 0 ? t('errors.network') : t(staffErrorKey(code)));
           })}
         >
           <Field
@@ -124,6 +191,12 @@ export function AcceptInviteForm({
           <Button type="submit" loading={busy} loadingText={t('accept.submitting')}>
             {t('accept.submit')}
           </Button>
+          <Link
+            href={loginHref}
+            className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            {t('accept.backToLogin')}
+          </Link>
         </form>
       </div>
     </AuthPageSection>

@@ -19,3 +19,14 @@ export async function postJson(url: string, data: unknown): Promise<SubmitResult
     return { ok: false, status: 0, body: null };
   }
 }
+
+/** GET from a client component to an admin `/api/staff-auth/*` route. */
+export async function getJson(url: string): Promise<SubmitResult> {
+  try {
+    const res = await fetch(url);
+    const body: unknown = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, body };
+  } catch {
+    return { ok: false, status: 0, body: null };
+  }
+}

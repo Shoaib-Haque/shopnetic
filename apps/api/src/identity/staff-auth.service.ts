@@ -174,6 +174,14 @@ export class StaffAuthService {
     });
   }
 
+  /** Read-only status check for a reset link — lets the frontend tell a
+   * dead link (used/expired/unknown) apart from a live one the moment the
+   * page loads, instead of only discovering it once the user fills in and
+   * submits a form that was never going to work. */
+  async checkResetToken(token: string): Promise<void> {
+    await this.passwordReset.peek(token);
+  }
+
   async resetPassword(token: string, newPassword: string, ctx: SessionContext = {}): Promise<void> {
     const { accountId } = await this.passwordReset.consume(token);
     await this.passwords.assertNotBreached(newPassword);

@@ -126,6 +126,11 @@ describe('ChangePasswordForm', () => {
     // shell's nav must not be visible or clickable once sessions are being
     // revoked and a redirect to login is already in flight
     expect(container.firstElementChild).toHaveClass('fixed', 'inset-0', 'z-50');
+    // an immediate way out, not just a 3s timer to wait through
+    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute(
+      'href',
+      LOGIN_HREF,
+    );
     expect(mockedPostJson).toHaveBeenCalledWith('/api/staff-auth/change-password', {
       currentPassword: 'the-old-password',
       newPassword: 'a-strong-new-password',

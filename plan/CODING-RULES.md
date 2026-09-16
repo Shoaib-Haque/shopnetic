@@ -1504,3 +1504,158 @@ compose file.
   timers for `delayDuration` and be flakier for no real benefit. Audit
   Log's test also checks the tooltip text itself flips with state ("View
   details" ⇄ "Hide details"), not just that a tooltip exists at all.
+- 2026-09-16 — Discussed two real-world password-reset screenshots (Amazon's
+  "sign-in attempt was approved" and "someone is attempting to reset the
+  password... Deny") against our own staff-plane reset flow. Findings and
+  what got fixed:
+  - **A reused/already-consumed link showing a scary "invalid" message,
+    when it's actually a success** — split `PASSWORD_RESET_TOKEN_INVALID`
+    into two codes: `_INVALID` (unknown/malformed token) stays an error;
+    `_ALREADY_USED` (a real token, already spent) is not treated as an
+    error at all — `ResetPasswordForm` now shows a calm message-variant
+    screen ("Already reset... sign in with your new one") with the same
+    auto-redirect as the success (`done`) state, instead of a red form
+    error. Amazon's approved-sign-in screen was the reference for the
+    tone.
+  - **A same-channel "Deny this reset" link — considered, deliberately not
+    built.** Amazon's Deny mechanism only has real security value because
+    it travels a channel the attacker doesn't control (push to an
+    already-trusted device), separate from the reset-link email. We're
+    email-only — a Deny link in the *same* email as the reset link
+    protects against nothing an attacker with inbox access couldn't
+    already ignore. Revisit only if a second channel (push/SMS/a
+    companion app) ever exists; not worth building against the current
+    single channel.
+  - **A real race in `PasswordResetService.consume()`**: read-then-write
+    (`findUnique` then a separate `update`) meant two near-simultaneous
+    uses of the same token could both pass the "not yet consumed" check
+    before either write landed, both proceeding to reset the password.
+    Fixed with an atomic `updateMany({ where: { id, consumedAt: null } })`
+    — only the request that actually flips `consumedAt` gets `count: 1`;
+    the loser gets `count: 0` and is correctly treated as already-used.
+    Verified with a real concurrency test (`Promise.allSettled` on two
+    `resetPassword` calls with the same token) — reverted to the old
+    read-then-write to confirm the test actually catches it (both
+    succeeded without the fix) before restoring.
+  - **Sibling reset tokens staying valid after one was used**: requesting
+    "forgot password" more than once issues an independent token each
+    time; using one didn't invalidate the others, which stayed live until
+    their own separate expiry. `consume()` now also marks every other
+    unconsumed token for the same account+purpose as consumed once one
+    succeeds.
+- 2026-09-16 — Two real bugs found live, testing the fixes above: (1)
+  reopening an already-used reset link showed the password form again —
+  the new "already used" message from the earlier fix only fired on
+  *submit*, and the page never checked the link's status on *load*, so it
+  showed a form that could never have worked until the user filled it in
+  and hit submit. (2) the reset-password page had no way back to login at
+  all — `forgot-password`'s "Back to sign in" link never got copied over.
+  Fixed both:
+  - Added `PasswordResetService.peek()` (shares its checks with `consume()`
+    via a new private `validate()`) — read-only, doesn't touch
+    `consumedAt`, doesn't invalidate siblings. New `GET
+    identity/v1/staff/auth/reset-password?token=` (same path as the
+    existing `POST`, different verb) backs it; `StaffAuthService.
+    checkResetToken()` is the thin wrapper the controller calls.
+    `ResetPasswordForm` now fires this on mount before ever showing the
+    form — added a `checking` status shown while it's in flight, and a
+    dead link (already-used/expired/unknown) now shows its message
+    immediately, no submission needed. Verified `peek()` is actually
+    read-only with an integration test (peek, then a real `resetPassword`
+    with the same token still succeeds) — and confirmed the test is
+    meaningful by temporarily making `peek()` call `consume()` and
+    watching it correctly break.
+  - Elevated the *submission-time* discovery of the same three token
+    codes (a rare race — the tab sat open past expiry, or a double-submit)
+    to the same dedicated screens instead of an inline form error, so a
+    dead token gets the identical treatment whether it's caught on load or
+    on submit.
+  - Added a "Back to sign in" link (`resetPassword.backToLogin`, same
+    pattern as `forgotPassword.backToLogin` — a separate key, not shared
+    across namespaces, matching how every other generic string here
+    already has its own per-namespace copy) to every state on the reset
+    page: the form itself, both dead-link screens, and the already-
+    used/done screens (which also auto-redirect, but immediate access
+    beats waiting on a timer).
+  - `apps/admin/src/features/staff-auth/components/accept-invite-form.tsx`
+    has the exact same pair of gaps (no mount-time check, no back-to-login
+    link) — not fixed here, flagged for whenever that page is next
+    touched.
+- 2026-09-16 — Asked whether `forgotPassword` lets *any* email trigger a
+  reset — checked live rather than guessing: sent it for a real buyer
+  email and a made-up one, both got the identical `202`, but the mail
+  queue's completed count didn't move for either. Already correct — the
+  uniform response is deliberate (enumeration-safety), the actual gate
+  (`plane === 'staff' && status === 'active'`) runs silently behind it.
+  The follow-up question — the same decision, generalized to every future
+  plane/entity and account-status combination — got its own table rather
+  than a one-off answer, since it's exactly the kind of thing that's cheap
+  to get right once and easy to get wrong piecemeal later: **plan/16-
+  security.md**, "Password-reset eligibility — decision table" (Passwords
+  subsection). Corrected one assumption in how the question was framed
+  along the way: buyer and seller aren't separate accounts to check
+  against separately — `03-users-and-rbac.md` §1 already states a single
+  human can hold both via multiple role grants on **one** account, so
+  "does this email belong to a seller, not a buyer" isn't a real case; the
+  only real axis is plane (staff vs. marketplace). Landed on one general
+  rule instead of enumerating every plane separately: gate on "would this
+  account be able to log in with the new password" — full lockout/
+  deprovision (any plane) never gets a link (it wouldn't help and is just
+  surface area); a feature-level restriction that leaves login itself
+  intact (a suspended seller who can still browse/buy, once that concept
+  exists) still gets one, because resetting a password is a separate
+  action from whatever feature got restricted. Surfaced a real,
+  currently-latent gap while building the table: staff's `status ===
+  'active'` check excludes `locked` the same as `disabled`, but `locked`
+  is documented (this file, Passwords bullet above) as a *soft, automatic*
+  lockout — exactly the situation password reset is supposed to rescue
+  someone from, unlike a deliberate `disabled`. Not fixed — nothing in the
+  codebase sets `status = 'locked'` yet (the lockout mechanism itself
+  isn't built), so there's no live bug to reproduce, just a decision to
+  make correctly once it is.
+- 2026-09-16 — Two follow-ups from testing the reset-password fixes above.
+  (1) The "Back to sign in" link had landed on `forgotPassword` and
+  `resetPassword`'s auto-redirecting states but not on
+  `change-password-form.tsx`'s own auto-redirecting `done` overlay — an
+  inconsistency, not a deliberate distinction. Decided one firm rule
+  instead of a per-page judgment call: every screen that auto-redirects or
+  dead-ends gets an immediate way back to login, full stop — added the
+  missing link (and its own `changePassword.backToLogin` copy key,
+  matching the existing per-namespace-copy convention) to the
+  change-password done overlay; nothing removed anywhere.
+  (2) `accept-invite-form.tsx`, flagged above as having "the exact same
+  pair of gaps" as reset-password before its fixes, got the identical
+  treatment now rather than staying flagged: `StaffInviteService.accept`
+  had the same collapsed `!invite || invite.acceptedAt != null` →
+  `INVITE_INVALID` (now split into `INVITE_INVALID` vs. the new
+  `INVITE_ALREADY_ACCEPTED`) and the same TOCTOU race shape (a `findUnique`
+  read followed, much later, by a `$transaction` write) that
+  `PasswordResetService.consume` had. Fixed both: extracted a shared
+  `validate()` (mirroring `PasswordResetService`'s), added a read-only
+  `peek()` backing a new `GET invites/accept` endpoint (mirroring `GET
+  auth/reset-password`) so `AcceptInviteForm` can mount-check like
+  `ResetPasswordForm` does, and made the claim atomic via
+  `staffInvite.updateMany({ where: { id, acceptedAt: null } })` *before*
+  the account-creation transaction runs — checked `count === 0` and threw
+  `INVITE_ALREADY_ACCEPTED` — so two near-simultaneous accepts of the same
+  invite can no longer both create an account. `AcceptInviteForm` got the
+  full `ResetPasswordForm` status-machine treatment (`checking` → `form` /
+  `invalid` / `expired` / `alreadyAccepted` / `done`, all with a back-to-
+  login link). Verified meaningfully at every layer: reverted the atomic
+  claim back to a plain `update` and re-ran the integration race test —
+  got a Prisma unique-constraint crash (two accounts almost created) and
+  the wrong error code, confirming the fix is load-bearing, not
+  redundant; reverted `peek()` to actually consume the invite and re-ran
+  its "still usable after peeking" test — it failed for exactly that
+  reason; re-collapsed `validate()`'s two branches back into one
+  `INVITE_INVALID` and re-ran the split-code tests — both failed for
+  exactly that reason. Restored all three, confirmed the full API
+  integration suite (25 tests in this file, 84 total) and the admin unit
+  suite (118 tests, including 12 new ones for `AcceptInviteForm`) pass
+  green, then walked the fix live end-to-end through the running dev
+  stack (not just the test suite): created a disposable invite directly
+  in Postgres, hit the admin BFF's `GET`/`POST /api/staff-auth/accept-
+  invite` the same way the browser page does, confirmed the mount check
+  resolves before accepting, `INVITE_ALREADY_ACCEPTED` (not a generic
+  "invalid") comes back both from a second `GET` and a second `POST` after
+  accepting once, and cleaned up the disposable rows after.

@@ -51,8 +51,12 @@
       "intro": "Set a password for your new staff account.",
       "submit": "Create account",
       "submitting": "Creating…",
+      "checking": "Checking your link…",
       "doneTitle": "You're all set",
-      "redirecting": "Redirecting to sign in…"
+      "redirecting": "Redirecting to sign in…",
+      "alreadyAcceptedTitle": "Already accepted",
+      "alreadyAcceptedIntro": "This invite was already accepted — the account's already set up. Sign in with its password.",
+      "backToLogin": "Back to sign in"
     },
     "changePassword": {
       "title": "Change password",
@@ -60,7 +64,8 @@
       "submit": "Change password",
       "submitting": "Changing…",
       "doneTitle": "Password changed",
-      "redirecting": "Redirecting to sign in…"
+      "redirecting": "Redirecting to sign in…",
+      "backToLogin": "Back to sign in"
     },
     "forgotPassword": {
       "title": "Forgot your password?",
@@ -76,8 +81,12 @@
       "intro": "This link is single-use and expires 1 hour after it was sent.",
       "submit": "Reset password",
       "submitting": "Resetting…",
+      "checking": "Checking your link…",
       "doneTitle": "Password reset",
-      "redirecting": "Redirecting to sign in…"
+      "redirecting": "Redirecting to sign in…",
+      "alreadyUsedTitle": "Already reset",
+      "alreadyUsedIntro": "This link was already used — your password's already been changed. Sign in with your new one.",
+      "backToLogin": "Back to sign in"
     },
     "invite": {
       "title": "Invite staff",
@@ -155,16 +164,18 @@
       "validation": "Please check the highlighted fields and try again.",
       "invalidCredentials": "That email and password don't match.",
       "wrongCurrentPassword": "Your current password is incorrect.",
-      "passwordResetTokenInvalid": "This reset link is invalid or has already been used.",
+      "passwordResetTokenInvalid": "This reset link is invalid.",
       "passwordResetTokenExpired": "This reset link has expired.",
+      "passwordResetTokenAlreadyUsed": "This reset link was already used.",
       "mfaRequired": "Enter your authenticator code.",
       "mfaInvalid": "That code isn't right. Try again.",
       "mfaAlreadyEnrolled": "An authenticator is already set up for this account.",
       "accountLocked": "This account isn't available. Contact another Super Admin.",
       "rateLimited": "Too many attempts. Please wait a bit and try again.",
-      "inviteInvalid": "This invite link is invalid or has already been used.",
+      "inviteInvalid": "This invite link is invalid.",
       "inviteExpired": "This invite link has expired.",
       "inviteEmailTaken": "An account with this email already exists.",
+      "inviteAlreadyAccepted": "This invite was already accepted.",
       "passwordBreached": "This password has appeared in a data breach. Choose a different one.",
       "forbidden": "Only a Super Admin can do that.",
       "cannotModifySelf": "You can't do that to your own account."
