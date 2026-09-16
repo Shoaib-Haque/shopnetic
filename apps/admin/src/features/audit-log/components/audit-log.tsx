@@ -1,6 +1,7 @@
 'use client';
 
-import { Fragment, useCallback, useState, type MouseEvent } from 'react';
+import { Fragment, useCallback, useEffect, useState, type MouseEvent } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import type { AuditEvent } from '@shopnetic/contracts';
@@ -54,6 +55,10 @@ const SELECT_CLASSNAME =
 
 const DOMAINS: Array<AuditDomain | 'all'> = ['all', 'catalog', 'identity'];
 
+function parseDomain(v: string | null): AuditDomain | 'all' {
+  return v === 'catalog' || v === 'identity' ? v : 'all';
+}
+
 // Every `targetType` any `audit.record()` call site writes today (raw,
 // untranslated — matches how the Target column itself already renders
 // these strings as-is rather than humanized copy).
@@ -79,14 +84,40 @@ export function AuditLog() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const [q, setQ] = useState('');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Seeded from the URL once, at mount — a shared/refreshed/back-button'd
+  // link reopens on the same filtered view, same pattern Stripe's Events
+  // log and GitHub's issue search use. Not re-read after that: the effect
+  // below is a one-way state → URL sync, not a two-way binding, so typing
+  // never fights the browser over who owns the query string.
+  const [q, setQ] = useState(() => searchParams.get('q') ?? '');
   const debouncedQ = useDebouncedValue(q, 250);
-  const [domain, setDomain] = useState<AuditDomain | 'all'>('all');
-  const [targetType, setTargetType] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [domain, setDomain] = useState<AuditDomain | 'all'>(() =>
+    parseDomain(searchParams.get('domain')),
+  );
+  const [targetType, setTargetType] = useState(() => searchParams.get('targetType') ?? '');
+  const [from, setFrom] = useState(() => searchParams.get('from') ?? '');
+  const [to, setTo] = useState(() => searchParams.get('to') ?? '');
   const filtersActive =
     q !== '' || domain !== 'all' || targetType !== '' || from !== '' || to !== '';
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (debouncedQ) params.set('q', debouncedQ);
+    if (domain !== 'all') params.set('domain', domain);
+    if (targetType) params.set('targetType', targetType);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    // `replace`, not `push` — refining a filter isn't a new place to visit,
+    // it's adjusting the one you're on; only leaving the page (or arriving
+    // at it) should be a real back-button stop, or every keystroke/date
+    // pick would pile up its own history entry.
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [debouncedQ, domain, targetType, from, to, pathname, router]);
 
   function clearFilters(): void {
     setQ('');

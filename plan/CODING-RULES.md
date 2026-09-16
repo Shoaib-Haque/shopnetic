@@ -1855,3 +1855,26 @@ compose file.
   `md:`, confirmed the new breakpoint-assertion test failed by finding the
   old class exactly where expected, restored. Full admin suite (145
   tests, 1 new) and typecheck/lint green.
+- 2026-09-16 — Audit Log's filters (`q`/domain/targetType/from/to) now
+  sync to the URL query string, matching Stripe's Events log and GitHub's
+  issue search: a refresh, a back-button press, or a shared link reopens
+  on the same filtered view instead of losing it. State is seeded from
+  `useSearchParams()` once via each `useState`'s lazy initializer (a
+  one-way read, not an ongoing binding), then a `useEffect` keyed on the
+  filter values calls `router.replace` (never `push` — refining a filter
+  isn't a new place to visit, it's adjusting the one you're on; `push`
+  would pile up a history entry per keystroke/date-pick) to write them
+  back out. Deliberately scoped to filter values only, not pagination —
+  checked how Stripe/GitHub/Twitter handle this too: none of them restore
+  scroll depth or cursor position from a URL either, a shared/refreshed
+  link is expected to start from the top of that filtered view, which is
+  already what a fresh mount does. An unrecognized `domain` value in the
+  URL (hand-edited or stale) falls back to `'all'` rather than crashing or
+  silently sticking. Verified meaningfully: reverted the lazy-init seeding
+  back to plain empty defaults and confirmed exactly the two tests that
+  depend on it failed (pre-fill-from-URL, and clear-filters starting from
+  a pre-filtered URL) for the right reason, restored. Full admin suite
+  (149 tests, 4 new) and typecheck/lint green. One honest gap: the actual
+  browser URL-bar update is a client-side `router.replace` call with no
+  server round-trip, so unlike the rest of this session's live checks it
+  isn't curl-verifiable — needs a real browser look to confirm end-to-end.

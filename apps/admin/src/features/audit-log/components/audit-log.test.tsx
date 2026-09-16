@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { AuditEvent } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
@@ -7,6 +7,26 @@ import { listAuditEvents } from '../api';
 import { AuditLog } from './audit-log';
 
 vi.mock('../api', () => ({ listAuditEvents: vi.fn() }));
+
+const PATHNAME = '/en/x7f2k9t3m1qp/audit-log';
+const routerReplace = vi.fn();
+// per-test control over what `useSearchParams()` returns on mount —
+// reassigned (not mutated) in `beforeEach`, and the mock factory re-reads
+// this binding on every call rather than capturing one instance.
+let mockSearchParams = new URLSearchParams();
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: routerReplace,
+    refresh: vi.fn(),
+    push: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+  }),
+  usePathname: () => PATHNAME,
+  useSearchParams: () => mockSearchParams,
+}));
 
 const mockedListAuditEvents = vi.mocked(listAuditEvents);
 
@@ -43,6 +63,11 @@ function tableRowFor(text: string): HTMLElement {
   if (!row) throw new Error(`no table row found for ${text}`);
   return row;
 }
+
+beforeEach(() => {
+  mockSearchParams = new URLSearchParams();
+  routerReplace.mockReset();
+});
 
 afterEach(() => {
   cleanup();
@@ -447,5 +472,82 @@ describe('AuditLog — filter bar', () => {
     expect(screen.queryByText('Clear filters')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Domain')).toHaveValue('all');
     await waitFor(() => expect(mockedListAuditEvents).toHaveBeenLastCalledWith(undefined, {}));
+  });
+});
+
+describe('AuditLog — filters sync to the URL', () => {
+  it('a link with filters already in it pre-fills the panel and fetches that filtered view on mount', async () => {
+    mockSearchParams = new URLSearchParams({
+      q: 'sukanto',
+      domain: 'catalog',
+      targetType: 'category',
+      from: '2026-09-01',
+      to: '2026-09-16',
+    });
+    mockedListAuditEvents.mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
+
+    renderAdmin(<AuditLog />);
+    await screen.findAllByText('identity.staff_activated');
+
+    expect(mockedListAuditEvents).toHaveBeenCalledWith(undefined, {
+      q: 'sukanto',
+      domain: 'catalog',
+      targetType: 'category',
+      from: '2026-09-01',
+      to: '2026-09-16',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    expect(await screen.findByLabelText('Domain')).toHaveValue('catalog');
+    expect(screen.getByLabelText('Target type')).toHaveValue('category');
+    expect(screen.getByLabelText('From')).toHaveValue('2026-09-01');
+    expect(screen.getByLabelText('To')).toHaveValue('2026-09-16');
+  });
+
+  it('an unrecognized domain in the URL falls back to "all" rather than crashing or sticking', async () => {
+    mockSearchParams = new URLSearchParams({ domain: 'not-a-real-domain' });
+    mockedListAuditEvents.mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
+
+    renderAdmin(<AuditLog />);
+    await screen.findAllByText('identity.staff_activated');
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+
+    expect(await screen.findByLabelText('Domain')).toHaveValue('all');
+  });
+
+  it('changing a filter replaces the URL (not push, so refining a filter never piles up history)', async () => {
+    mockedListAuditEvents
+      .mockResolvedValueOnce({ events: [event({ id: 'evt-1' })], nextCursor: undefined })
+      .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined });
+
+    renderAdmin(<AuditLog />);
+    await screen.findAllByText('identity.staff_activated');
+    routerReplace.mockClear(); // drop the mount-time no-op replace
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    fireEvent.change(await screen.findByLabelText('Domain'), { target: { value: 'identity' } });
+
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?domain=identity`, {
+        scroll: false,
+      }),
+    );
+  });
+
+  it('clearing filters replaces the URL back down to just the bare pathname', async () => {
+    mockSearchParams = new URLSearchParams({ domain: 'catalog' });
+    mockedListAuditEvents
+      .mockResolvedValueOnce({ events: [event()], nextCursor: undefined })
+      .mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
+
+    renderAdmin(<AuditLog />);
+    await screen.findByText('Clear filters');
+    routerReplace.mockClear();
+
+    fireEvent.click(screen.getByText('Clear filters'));
+
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenLastCalledWith(PATHNAME, { scroll: false }),
+    );
   });
 });
