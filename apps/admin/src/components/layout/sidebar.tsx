@@ -35,7 +35,7 @@ export function Sidebar({
       {/* desktop rail */}
       <aside
         className={cn(
-          'hidden shrink-0 flex-col border-r border-border bg-background transition-[width] duration-200 md:flex',
+          'hidden shrink-0 flex-col border-r border-border bg-background transition-[width] duration-300 ease-out md:flex',
           collapsed ? 'w-14' : 'w-60',
         )}
       >
@@ -60,14 +60,14 @@ export function Sidebar({
       >
         <div
           className={cn(
-            'absolute inset-0 bg-foreground/30 transition-opacity',
+            'absolute inset-0 bg-foreground/30 transition-opacity duration-300 ease-out',
             mobileOpen ? 'opacity-100' : 'opacity-0',
           )}
           onClick={onCloseMobile}
         />
         <aside
           className={cn(
-            'absolute inset-y-0 left-0 flex w-64 flex-col border-r border-border bg-background shadow-xl transition-transform',
+            'absolute inset-y-0 left-0 flex w-64 flex-col border-r border-border bg-background shadow-xl transition-transform duration-300 ease-out',
             mobileOpen ? 'translate-x-0' : '-translate-x-full',
           )}
         >
@@ -253,12 +253,29 @@ function NavItemRow({
           <Icon className="size-4 shrink-0" aria-hidden />
           <span className="truncate">{label}</span>
           <ChevronDown
-            className={cn('ml-auto size-3.5 shrink-0 transition-transform', isOpen && 'rotate-180')}
+            className={cn(
+              'ml-auto size-3.5 shrink-0 transition-transform duration-300 ease-out',
+              isOpen && 'rotate-180',
+            )}
             aria-hidden
           />
         </button>
-        {isOpen && (
-          <ul className="ml-[1.625rem] mt-0.5 flex flex-col gap-0.5 border-l border-border pl-2.5">
+        {/* Always mounted — a conditional `{isOpen && <ul>}` has nothing to
+            animate from/to. `grid-rows-[0fr|1fr]` collapses/expands without
+            a hardcoded max-height (CODING-RULES section G — state changes
+            that hide/reveal content get a transition, not an instant
+            show/hide). `inert` while closed keeps its links out of tab
+            order and hit-testing even though the `<ul>` stays in the DOM. */}
+        <div
+          className={cn(
+            'grid transition-[grid-template-rows] duration-300 ease-out',
+            isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+          )}
+        >
+          <ul
+            className="ml-[1.625rem] mt-0.5 flex flex-col gap-0.5 overflow-hidden border-l border-border pl-2.5"
+            inert={!isOpen}
+          >
             {item.children.map((child) => {
               const childActive = child.key === activeChildKey;
               return (
@@ -280,7 +297,7 @@ function NavItemRow({
               );
             })}
           </ul>
-        )}
+        </div>
       </li>
     );
   }

@@ -316,4 +316,15 @@ describe('StaffList', () => {
       await screen.findByText('Please check the highlighted fields and try again.'),
     ).toBeInTheDocument();
   });
+
+  it('the row menu trigger shows a "More actions" tooltip on focus — PC users get a visible hint, not just an aria-label', async () => {
+    mockedListStaff.mockResolvedValueOnce(page([ME]));
+    render();
+    await screen.findAllByText(ME.email);
+    const trigger = tableRowFor(ME.email).querySelector('button[aria-label="More actions"]')!;
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    fireEvent.focus(trigger);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('More actions');
+  });
 });

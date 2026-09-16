@@ -18,6 +18,7 @@ export {
   DropdownMenuSeparator,
 } from './components/dropdown-menu';
 export { Toaster, notify, toast, TimerBar } from './components/toast';
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './components/tooltip';
 export {
   Modal,
   ModalTrigger,

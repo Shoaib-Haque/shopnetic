@@ -19,6 +19,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   notify,
   type StatusTone,
 } from '@shopnetic/ui';
@@ -138,12 +141,17 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
     const isSelf = account.email === currentEmail;
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label={tCommon('actions.more')}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <MoreHorizontal className="size-4" aria-hidden />
-        </DropdownMenuTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger
+              aria-label={tCommon('actions.more')}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <MoreHorizontal className="size-4" aria-hidden />
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{tCommon('actions.more')}</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent>
           <DropdownMenuItem
             disabled={isSelf}

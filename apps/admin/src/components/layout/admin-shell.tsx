@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Toaster, notify } from '@shopnetic/ui';
+import { Toaster, notify, TooltipProvider } from '@shopnetic/ui';
 import { postJson } from '@/features/staff-auth/submit';
 import { Topbar } from './topbar';
 import { Sidebar } from './sidebar';
@@ -56,35 +56,39 @@ export function AdminShell({
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden">
-      <Topbar
-        email={email}
-        root={root}
-        collapsed={collapsed}
-        onToggleCollapsed={toggleCollapsed}
-        onOpenMobile={() => setMobileOpen(true)}
-        onSignOut={signOut}
-        signingOut={signingOut}
-      />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <Sidebar
+    <TooltipProvider delayDuration={300}>
+      <div className="flex h-dvh flex-col overflow-hidden">
+        <Topbar
+          email={email}
           root={root}
-          roles={roles}
           collapsed={collapsed}
-          mobileOpen={mobileOpen}
-          onCloseMobile={() => setMobileOpen(false)}
+          onToggleCollapsed={toggleCollapsed}
+          onOpenMobile={() => setMobileOpen(true)}
           onSignOut={signOut}
           signingOut={signingOut}
-          expandedGroups={expandedGroups}
-          onToggleGroup={toggleGroup}
         />
-        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          {/* left-aligned, soft cap so tables don't sprawl on ultra-wide screens */}
-          <main className="w-full max-w-[1600px] flex-1 px-4 py-6 md:px-6 lg:px-8">{children}</main>
-          <Footer />
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <Sidebar
+            root={root}
+            roles={roles}
+            collapsed={collapsed}
+            mobileOpen={mobileOpen}
+            onCloseMobile={() => setMobileOpen(false)}
+            onSignOut={signOut}
+            signingOut={signingOut}
+            expandedGroups={expandedGroups}
+            onToggleGroup={toggleGroup}
+          />
+          <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+            {/* left-aligned, soft cap so tables don't sprawl on ultra-wide screens */}
+            <main className="w-full max-w-[1600px] flex-1 px-4 py-6 md:px-6 lg:px-8">
+              {children}
+            </main>
+            <Footer />
+          </div>
         </div>
+        <Toaster topOffset={TOPBAR_PX + 12} />
       </div>
-      <Toaster topOffset={TOPBAR_PX + 12} />
-    </div>
+    </TooltipProvider>
   );
 }

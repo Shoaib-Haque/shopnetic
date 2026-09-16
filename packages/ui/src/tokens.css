@@ -70,6 +70,40 @@
   animation: sn-row-flash 1200ms ease-out;
 }
 
+/* Fade+scale for Radix-driven popover content — dropdown menus now; Modal /
+   ConfirmDialog can reuse this same class when they get the same treatment
+   (plan/CODING-RULES.md section G11). Keyed off Radix's own `data-state`
+   attribute, not a class toggle a component would have to wire up itself —
+   drop `sn-popover` on the className and it just works. Popover-scale (a
+   menu, a tooltip) gets a quicker, snappier duration than a panel-scale
+   transition (sidebar, drawer) — see G11's duration guidance. */
+@keyframes sn-popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes sn-popover-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+}
+.sn-popover[data-state='open'] {
+  animation: sn-popover-in 150ms ease-out;
+}
+.sn-popover[data-state='closed'] {
+  animation: sn-popover-out 100ms ease-in;
+}
+
 /* Slim, modern scrollbars everywhere something scrolls — the page, a modal
    body, a table wrapper, a dropdown menu. Firefox only exposes a coarse
    `thin` / `auto` / `none` preset (no pixel control — its actual rendered
@@ -104,4 +138,20 @@
 }
 *::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* plan/CODING-RULES.md section G11 — every transition/animation still
+   completes (the end state is correct either way), just without the
+   motion. A near-zero duration, not `0s`/`none`: some code (Radix included)
+   waits on a `transitionend`/`animationend` event to know a state change is
+   done, which a duration of exactly zero never fires. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

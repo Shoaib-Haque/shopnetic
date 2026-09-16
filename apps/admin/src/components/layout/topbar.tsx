@@ -83,7 +83,7 @@ export function Topbar({
         <DropdownMenuTrigger
           aria-label={t('shell.account')}
           className={cn(
-            'flex items-center gap-2 rounded-md px-1.5 py-1 outline-none',
+            'group flex items-center gap-2 rounded-md px-1.5 py-1 outline-none',
             'hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring',
           )}
         >
@@ -91,7 +91,10 @@ export function Topbar({
             {initials}
           </span>
           <span className="hidden max-w-40 truncate text-sm sm:inline">{email}</span>
-          <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
+          <ChevronDown
+            className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 ease-out group-data-[state=open]:rotate-180"
+            aria-hidden
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>

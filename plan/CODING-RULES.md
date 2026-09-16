@@ -418,6 +418,20 @@ tab is hidden — treat it as indicative, not exact.
 - Primary/secondary form actions (Save, Cancel, a destructive confirm) already
   get full `Button` styling — unchanged.
 
+**Every icon-only control gets a hover tooltip on PC — an `aria-label` alone
+only reaches a screen reader, not a mouse user.** Use `Tooltip`/
+`TooltipTrigger`/`TooltipContent` (`@shopnetic/ui`, `TooltipProvider` already
+wraps the whole app in `AdminShell`) — a real, `.sn-popover`-styled tooltip
+with a consistent ~300ms hover delay (instant on focus, so keyboard users
+aren't held up), not a bare `title=` attribute (browser-default styling,
+inconsistent delay/behavior across browsers, can't be a token color).
+Older code (`category-list.tsx`, `category-tree.tsx`, three of `topbar.tsx`'s
+own buttons) still uses `title=` — it works, not a bug, just the older
+convention; migrate opportunistically when touching that component, `Tooltip`
+is what new icon-only controls reach for. Same tooltip text as the
+`aria-label` (reuse the same translation key) — don't maintain two copies of
+the same hint.
+
 **A tooltip / label that names two opposite states never shows a fixed string
 for both** — "Collapse or expand sidebar" is true regardless of which one a
 click will actually do. Read the *current* state and say what the click will
@@ -431,6 +445,96 @@ happened to add `overflow-auto`: a global, token-colored, theme-aware
 covers the page, modals, tables — anywhere something scrolls — with no classic
 up/down arrow buttons. A native `<select>` popup is OS-rendered and can't be
 restyled from CSS; that one's a known gap, not a missed selector.
+
+### G11. A state change animates — it doesn't snap
+Anything that shows/hides, resizes, or repositions in response to user
+interaction (not initial page load) gets a transition. An instant show/hide
+reads as broken or laggy even when it's working correctly; a smooth one reads
+as responsive. This was already true for the parts of the app that had it —
+the desktop sidebar's collapse (`transition-[width]`), the mobile drawer's
+open/close (`transition-transform` + `transition-opacity`) — the rule is to
+apply it *everywhere* this shape shows up, not just where someone happened to
+reach for it.
+
+**Any disclosure-style trigger** — a sidebar/nav group, a dropdown, a drawer,
+an accordion, a future `Select`-style control, anything that opens/closes a
+region of UI — gets *both* pieces together, not just the transition:
+1. **The content transitions** (technique below).
+2. **If the trigger has a directional icon** (a chevron is the common case),
+   **it rotates/flips with the open state** — `group` +
+   `group-data-[state=open]:rotate-180` when the trigger is a Radix
+   primitive (it already exposes `data-state`, no extra wiring), or the
+   same `rotate-180` keyed off local `isOpen` state otherwise. Reference
+   implementations: `sidebar.tsx`'s nav-group chevron (local state),
+   `topbar.tsx`'s account-menu chevron (Radix `data-state`).
+3. **Per G10**, if there's a label/tooltip naming the action, it names the
+   *current* state's action, not a fixed string for both.
+A new disclosure-style component that only does the transition and skips
+the chevron/label state-matching is half-done, not just missing polish.
+
+**Technique by what's changing:**
+- **Size/position that's already a token value** (width, a translate,
+  opacity) — a plain Tailwind `transition-*` + `duration-*` on the property
+  that's changing. This covers most cases (sidebar width, drawer slide,
+  overlay fade, a chevron's `rotate-180`).
+- **Height, when the expanded size isn't a fixed value** (a disclosure's
+  child list, an accordion body) — `grid-rows-[0fr]` ⇄ `grid-rows-[1fr]`
+  with `transition-[grid-template-rows]` on a wrapper `div`, and
+  `overflow-hidden` on the single grid child holding the real content. This
+  needs no magic max-height number and handles content of any length.
+  **The content must stay mounted** (no `{open && <content>}`) — an
+  unmounted node has nothing to animate from/to; toggle `inert` on it
+  instead of unmounting, so it's still out of tab order and hit-testing
+  while collapsed. Reference implementation:
+  `components/layout/sidebar.tsx`'s nav-group expand/collapse.
+- **A modal/dialog/popover already on Radix** — Radix exposes
+  `data-[state=open]`/`data-[state=closed]` on its content/overlay; style
+  those with a fade+scale keyed off `data-state`, not the default instant
+  mount/unmount. `.sn-popover` (`packages/ui/src/tokens.css`) is the
+  ready-made class for this — drop it on the `className` and it just works,
+  no per-component animation wiring. Reference implementation:
+  `DropdownMenuContent` (`packages/ui/src/components/dropdown-menu.tsx`) —
+  fixing the shared component fixed the topbar account menu *and* every
+  per-row `⋮` action menu at once (G2: shared component, not four copies).
+
+**Duration has two tiers, not one** — pick by scale, not habit:
+- **Panel-scale** (sidebar collapse, drawer slide, a disclosure's
+  expand/collapse — anything that reflows layout or occupies real screen
+  real estate while open) — `duration-300 ease-out`. Tailwind's un-suffixed
+  `transition-*` default (150ms) reads as too quick to actually perceive at
+  that size, which is exactly the "very quick, make it more visible"
+  feedback that bumped every one of these from 200ms.
+- **Popover-scale** (a dropdown menu, a tooltip — small, click-triggered,
+  expected to feel closer to instant) — `.sn-popover`'s built-in 150ms
+  open / 100ms close (asymmetric on purpose: closing quicker than opening
+  reads as responsive, not delayed, when dismissing). Don't apply
+  panel-scale's 300ms here — it would read as sluggish for something this
+  small.
+
+Either way: everything that's part of *one* compound interaction shares its
+tier's duration (the sidebar nav-group's chevron rotates in the same 300ms
+its list expands in) — a part finishing early reads as desynced, not
+snappy. A small, contained affordance with no attached panel/menu (a
+button's hover/focus state alone) can stay at the Tailwind default —
+neither tier applies until something is actually opening.
+
+**`prefers-reduced-motion` is handled globally, not per component**: a
+`@media (prefers-reduced-motion: reduce)` rule in `packages/ui/src/tokens.css`
+collapses every `animation-duration`/`transition-duration` to near-zero (not
+`0s`, which never fires `transitionend`/`animationend` — some code, Radix
+included, waits on that event). The state change still completes correctly,
+just without the interpolation. Nothing to do per component.
+
+**Known gaps this rule surfaces, not yet fixed** — same "found via applying
+a new rule, filed not silently ignored" pattern as G7's retrofit list:
+Radix `Modal`/`ConfirmDialog` open/close is still an instant snap — same fix
+as `DropdownMenuContent` got, drop `.sn-popover` on its content className
+(panel-scale content, so worth checking whether 150ms/100ms still reads
+right there or whether a modal wants the 300ms panel-scale duration
+instead, not just the class copied blind); the audit-log per-row detail
+expand and the category tree's row-reveal-on-expand both still pop
+instantly. Fix opportunistically when touching that component, or as a
+dedicated pass — not blocking on this note.
 
 ---
 
@@ -1316,3 +1420,87 @@ compose file.
   double-submit isn't deduped) — none of today's call sites have an
   obvious stable key to build one from without more design, and it's
   low-stakes enough to file as a follow-up rather than block the slice on.
+- 2026-09-15 — Asked directly whether the sidebar's nav-group expand/collapse
+  (the "Staff" group opening to show List/Invite) animated. It didn't — the
+  chevron rotated but the child list itself was a plain `{isOpen && <ul>}`,
+  popping in/out instantly. Fixed with `grid-rows-[0fr]` ⇄ `grid-rows-[1fr]`
+  + `transition-[grid-template-rows]` on a wrapper, `overflow-hidden` on the
+  single grid child — no hardcoded max-height, works for content of any
+  length. Had to stop unmounting the `<ul>` when closed (a conditional
+  mount has nothing to animate from/to) and use `inert` instead, so its
+  links stay out of tab order/hit-testing while collapsed without actually
+  leaving the DOM — `admin-shell.test.tsx`'s "expanding it shows List +
+  Invite" test updated to assert the `inert` attribute flips, not presence/
+  absence in the document. Generalized into new section **G11** rather than
+  just fixing the one spot: any state change that shows/hides, resizes, or
+  repositions now needs a transition, with the technique keyed to what's
+  changing (plain `transition-*` for a token value already changing;
+  `grid-rows` for a height that isn't fixed; Radix's `data-state` for
+  anything already on Radix). Added the global
+  `prefers-reduced-motion` handling this rule leans on
+  (`packages/ui/src/tokens.css` — collapses durations near-zero, doesn't
+  use `transition: none` since some code waits on the end event). Flagged,
+  not fixed, three existing instant-toggle spots the new rule catches:
+  `Modal`/`ConfirmDialog` open/close, the audit-log per-row detail expand,
+  the category tree's row-reveal-on-expand.
+- 2026-09-16 — Feedback on the G11 work above, live: the sidebar transitions
+  were "very quick," even though they weren't skipped (200ms). Bumped every
+  one (desktop rail width, mobile drawer transform+opacity, nav-group
+  grid-rows, the group's chevron rotation) to 300ms so they'd sync at the
+  new duration too — the chevron finishing its rotation early, while the
+  list was still 200ms into expanding underneath it, would have read as
+  desynced rather than just "now slower." Turned into the concrete
+  `duration-300 ease-out` guideline in G11 above rather than a one-off
+  number, since the same "too quick to perceive" gap is likely to recur
+  anywhere else this pattern gets used.
+- 2026-09-16 — Asked about the topbar account dropdown (email → Change
+  password / Sign out) — same G11 gap, an instant snap, Radix `data-state`
+  never styled. `DropdownMenuContent` is shared by the topbar menu *and*
+  every per-row `⋮` action menu (Staff List, Audit Log), so fixing the one
+  component fixed all of it at once. Built `.sn-popover`
+  (`packages/ui/src/tokens.css`) — a fade+scale keyed off `data-state`,
+  reusable by any other Radix popover — instead of inlining the animation
+  in `dropdown-menu.tsx` directly, since `Modal`/`ConfirmDialog` need the
+  exact same treatment and were already on the known-gaps list. Surfaced
+  that G11's single `duration-300` guidance didn't fit a small click-to-open
+  menu — reads sluggish at panel-scale duration — so split it into two
+  tiers: panel-scale (300ms, unchanged) and popover-scale (150ms open/100ms
+  close, asymmetric on purpose — closing quicker than opening reads as
+  responsive when dismissing). `Modal`/`ConfirmDialog` remains open per the
+  gap note above pending a decision on which tier a modal actually wants.
+- 2026-09-16 — Asked "shouldn't the topbar account-menu chevron flip when
+  open, like the Staff nav-group's does" — yes, same G10 ("a control looks
+  like what it does") + G11 (state-driven visual) shape, just not applied
+  to this second trigger yet. Fixed with a different technique than the
+  nav-group's (which flips off local `isOpen` state): the trigger is
+  `RDropdown.Trigger`, and Radix already puts `data-state="open"|"closed"`
+  on it directly — marked the trigger `group`, the chevron
+  `group-data-[state=open]:rotate-180`, no local state needed at all.
+  Reusable for any future Radix-trigger-plus-chevron pairing (a `Select`-
+  style control, if one gets built) without wiring a controlled `open`
+  prop just to drive an icon. Test asserts the wiring (`group` present,
+  `data-state` actually flips on interaction) rather than the rendered
+  rotation, which is a CSS cascade jsdom doesn't evaluate — reverted each
+  half (the `group` class, the chevron's own class) separately to confirm
+  the test catches either one going missing, not just both together.
+- 2026-09-16 — Flagged: Staff List's row `⋮` and Audit Log's expand chevron
+  had no hover hint at all on PC — just an `aria-label`, invisible to a
+  mouse user. Checked first whether this was a missing convention or a
+  missed spot: turned out `category-list.tsx`/`category-tree.tsx` and three
+  of `topbar.tsx`'s own buttons already use a native `title=` for exactly
+  this, so it's a missed spot on these two, not a net-new pattern to
+  invent. Built the nicer version instead of just copying `title=`, since
+  the infra for it (`.sn-popover`, `TooltipProvider`) already existed from
+  the dropdown-menu work: a new `Tooltip`/`TooltipTrigger`/`TooltipContent`
+  wrapper over `@radix-ui/react-tooltip` (`packages/ui/src/components/
+  tooltip.tsx`), `TooltipProvider` wrapping `AdminShell` once so every page
+  gets it for free, and `renderAdmin` (the test helper) wrapped the same
+  way so component tests don't need their own provider setup. Documented
+  in G10 as the new default for icon-only controls, `title=` left as the
+  older-but-working convention elsewhere — not retrofitting everything in
+  one pass. Tests trigger via `fireEvent.focus`, not simulated hover: focus
+  shows a Radix tooltip immediately (no delay, and it's the correct
+  behavior for a keyboard user regardless), where hover would need fake
+  timers for `delayDuration` and be flakier for no real benefit. Audit
+  Log's test also checks the tooltip text itself flips with state ("View
+  details" ⇄ "Hide details"), not just that a tooltip exists at all.

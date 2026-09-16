@@ -13,6 +13,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   cn,
 } from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
@@ -110,21 +113,28 @@ export function AuditLog() {
                         </TableCell>
                         <TableCell>
                           {expandable && (
-                            <button
-                              type="button"
-                              onClick={() => toggleExpanded(event.id)}
-                              aria-expanded={isOpen}
-                              aria-label={isOpen ? t('hideDetails') : t('viewDetails')}
-                              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                            >
-                              <ChevronDown
-                                className={cn(
-                                  'size-4 transition-transform',
-                                  isOpen && 'rotate-180',
-                                )}
-                                aria-hidden
-                              />
-                            </button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpanded(event.id)}
+                                  aria-expanded={isOpen}
+                                  aria-label={isOpen ? t('hideDetails') : t('viewDetails')}
+                                  className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                  <ChevronDown
+                                    className={cn(
+                                      'size-4 transition-transform',
+                                      isOpen && 'rotate-180',
+                                    )}
+                                    aria-hidden
+                                  />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {isOpen ? t('hideDetails') : t('viewDetails')}
+                              </TooltipContent>
+                            </Tooltip>
                           )}
                         </TableCell>
                       </TableRow>
@@ -176,18 +186,25 @@ export function AuditLog() {
                       </p>
                     </div>
                     {expandable && (
-                      <button
-                        type="button"
-                        onClick={() => toggleExpanded(event.id)}
-                        aria-expanded={isOpen}
-                        aria-label={isOpen ? t('hideDetails') : t('viewDetails')}
-                        className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      >
-                        <ChevronDown
-                          className={cn('size-4 transition-transform', isOpen && 'rotate-180')}
-                          aria-hidden
-                        />
-                      </button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(event.id)}
+                            aria-expanded={isOpen}
+                            aria-label={isOpen ? t('hideDetails') : t('viewDetails')}
+                            className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <ChevronDown
+                              className={cn('size-4 transition-transform', isOpen && 'rotate-180')}
+                              aria-hidden
+                            />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {isOpen ? t('hideDetails') : t('viewDetails')}
+                        </TooltipContent>
+                      </Tooltip>
                     )}
                   </div>
                   {isOpen && (

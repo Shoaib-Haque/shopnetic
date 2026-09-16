@@ -169,4 +169,24 @@ describe('AuditLog', () => {
     );
     expect(screen.queryByText(/"status": "locked"/)).not.toBeInTheDocument();
   });
+
+  it('the expand toggle\'s tooltip names the current state\'s action — "View details" ⇄ "Hide details"', async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [event({ before: { status: 'locked' }, after: { status: 'active' } })],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog />);
+    await screen.findAllByText('identity.staff_activated');
+    const toggle = within(tableRowFor('identity.staff_activated')).getByRole('button', {
+      name: 'View details',
+    });
+
+    fireEvent.focus(toggle);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('View details');
+
+    fireEvent.click(toggle);
+    fireEvent.focus(toggle);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Hide details');
+  });
 });

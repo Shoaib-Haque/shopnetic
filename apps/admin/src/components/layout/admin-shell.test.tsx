@@ -108,6 +108,24 @@ describe('AdminShell sign-out', () => {
     resolveLogout({ ok: true, status: 200, body: { data: { ok: true } } });
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(LOGIN_HREF));
   });
+
+  it("the account menu chevron rotates with the trigger's open/closed state", () => {
+    render();
+    const trigger = screen.getByRole('button', { name: 'Account menu' });
+    // `group-data-[state=open]:...` only works if Radix's own `data-state`
+    // ends up on this same element and it's marked `group` — a Tailwind CSS
+    // selector, not something jsdom evaluates, so this asserts the wiring
+    // (the class is on the right elements, the state actually flips), not
+    // the rendered rotation itself.
+    expect(trigger).toHaveClass('group');
+    expect(trigger).toHaveAttribute('data-state', 'closed');
+    const chevron = trigger.querySelector('svg')!;
+    expect(chevron).toHaveClass('group-data-[state=open]:rotate-180');
+
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    expect(trigger).toHaveAttribute('data-state', 'open');
+  });
 });
 
 describe('AdminShell nav — role-gated items', () => {
@@ -116,9 +134,13 @@ describe('AdminShell nav — role-gated items', () => {
     expect(screen.getAllByText('Administration').length).toBeGreaterThan(0);
     const toggles = screen.getAllByRole('button', { name: 'Staff' });
     expect(toggles.length).toBeGreaterThan(0);
-    expect(screen.queryByRole('link', { name: 'List' })).not.toBeInTheDocument();
+    // the collapsed group's list stays mounted (so the expand has something
+    // to animate) but is `inert` — out of tab order and hit-testing
+    const list = screen.getByRole('link', { name: 'List' }).closest('ul')!;
+    expect(list).toHaveAttribute('inert');
 
     fireEvent.click(toggles[0]!);
+    expect(list).not.toHaveAttribute('inert');
     expect(screen.getByRole('link', { name: 'List' })).toHaveAttribute(
       'href',
       '/en/x7f2k9t3m1qp/staff',
