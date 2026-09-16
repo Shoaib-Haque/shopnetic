@@ -1659,3 +1659,43 @@ compose file.
   resolves before accepting, `INVITE_ALREADY_ACCEPTED` (not a generic
   "invalid") comes back both from a second `GET` and a second `POST` after
   accepting once, and cleaned up the disposable rows after.
+- 2026-09-16 — Added a "back to top" affordance for long admin lists
+  (`ScrollToTopButton`, `packages/ui/src/components/scroll-to-top-button.tsx`),
+  wired into Category List, Staff List, and Audit Log. Two real bugs found
+  and fixed while building it, both worth keeping in mind for any future
+  "floating over scrolled content" component in this codebase:
+  (1) The admin shell doesn't scroll `window` — `admin-shell.tsx` has
+  `h-dvh overflow-hidden` on its root, and the actual scrolling happens on
+  an inner `overflow-y-auto` div wrapping `<main>`. A plain
+  `window.addEventListener('scroll', …)` would silently never fire.
+  (2) First attempt found the real scroll container by walking up the DOM
+  from mount and requiring the ancestor to *already be overflowing*
+  (`scrollHeight > clientHeight`) at that instant — reasonable-looking, but
+  wrong for any cursor-paginated "load on scroll" list (Audit Log
+  especially): its first page can render before it has enough rows to
+  overflow yet, so the one-shot check at mount fails, skips past the real
+  container, and locks onto `window` for the component's whole lifetime —
+  live-tested, reported by the user as "cannot see [it] in audit-log."
+  Fixed by matching on the CSS `overflow-y: auto`/`scroll` property alone,
+  which is the correct, timing-independent signal for "this is the element
+  that scrolls" — dropped the "is it currently overflowing" condition
+  entirely. Added a regression test reproducing the exact scenario
+  (container not yet overflowing at mount, then grows past it) and
+  confirmed it fails against the old logic with the identical symptom,
+  passes with the fix. (3) The requested "glassy" look
+  (`bg-background/NN` + `backdrop-blur`) rendered as a plain white circle,
+  reported as "bg look more white" — not a tuning bug, a structural one:
+  `--background` in light mode is literally `0 0% 100%` (pure white), so a
+  `background`-tinted glass over a mostly-white admin panel has zero
+  hue/lightness difference from the page for the blur to reveal, at any
+  opacity. Fixed by tinting with `foreground` instead — the one token
+  that's defined to always contrast against `background` in either theme
+  (dark-on-light in light mode, light-on-dark in dark mode) — so the glass
+  reads as visible against the page by construction, not by luck of what
+  happens to be behind it. Exported as `GLASS_SURFACE` from
+  `@shopnetic/ui` so a future button can opt into the same look without
+  re-deriving this; nothing else uses it today, and it's not a new
+  default. All three list pages share one `admin.actions.backToTop` copy
+  key (unlike the auth-flow "Back to sign in" links, which are
+  page-specific enough to warrant separate copy each) since this text is
+  identical everywhere it appears.

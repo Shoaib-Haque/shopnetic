@@ -11,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Field,
+  ScrollToTopButton,
   Skeleton,
   StatusBadge,
   Table,
@@ -402,6 +403,8 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
           tone={pendingConfirm.kind === 'deprovision' ? 'danger' : 'primary'}
         />
       )}
+
+      <ScrollToTopButton label={tCommon('actions.backToTop')} />
     </section>
   );
 }

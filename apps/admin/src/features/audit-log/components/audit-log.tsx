@@ -6,6 +6,7 @@ import { ChevronDown } from 'lucide-react';
 import type { AuditEvent } from '@shopnetic/contracts';
 import {
   Button,
+  ScrollToTopButton,
   Skeleton,
   Table,
   TableBody,
@@ -243,6 +244,8 @@ export function AuditLog() {
           </div>
         </>
       )}
+
+      <ScrollToTopButton label={tCommon('actions.backToTop')} />
     </section>
   );
 }

@@ -34,3 +34,8 @@ export {
 export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './components/table';
 export { StatusBadge, type StatusTone } from './components/status-badge';
 export { Checkbox } from './components/checkbox';
+export {
+  ScrollToTopButton,
+  GLASS_SURFACE,
+  type ScrollToTopButtonProps,
+} from './components/scroll-to-top-button';

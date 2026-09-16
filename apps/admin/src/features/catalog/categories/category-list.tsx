@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArchiveRestore, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category, CategoryListStatus } from '@shopnetic/contracts';
-import { cn, notify, SearchInput, Skeleton } from '@shopnetic/ui';
+import { cn, notify, ScrollToTopButton, SearchInput, Skeleton } from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
 import { ActionButton } from '@/components/crud/action-button';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
@@ -713,6 +713,8 @@ export function CategoryList() {
         loading={restoring}
         onConfirm={confirmRestore}
       />
+
+      <ScrollToTopButton label={tCommon('actions.backToTop')} />
     </section>
   );
 }
