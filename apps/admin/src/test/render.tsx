@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { Toaster, TooltipProvider } from '@shopnetic/ui';
@@ -14,6 +14,26 @@ import auditLog from '../../messages/en/audit-log.json';
 const messages = { ...common, ...staff, ...admin, ...catalog, ...auditLog };
 
 /**
+ * The same provider tree `renderAdmin` mounts, exported separately for a
+ * test that needs RTL's own `rerender` (e.g. simulating a client-side
+ * navigation by changing a mocked `usePathname()` and re-rendering, without
+ * losing the component's own state the way a full unmount/remount would).
+ * `rerender` reconciles against the *previous* root element, so it must be
+ * called with this same wrapper — passing it the bare inner element on its
+ * own would swap the tree's root type and force a full remount instead.
+ */
+export function AdminTestProviders({ children }: { children: ReactNode }) {
+  return (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <TooltipProvider delayDuration={300}>
+        {children}
+        <Toaster />
+      </TooltipProvider>
+    </NextIntlClientProvider>
+  );
+}
+
+/**
  * Render helper for components that call `useTranslations` and/or `notify.*`
  * (Sonner toasts): provides the real `NextIntlClientProvider`, mounts
  * `<Toaster />` alongside so toast assertions (`screen.findByText(...)`) work
@@ -22,12 +42,5 @@ const messages = { ...common, ...staff, ...admin, ...catalog, ...auditLog };
  * under test uses works the same as it does in production.
  */
 export function renderAdmin(ui: ReactElement): RenderResult {
-  return render(
-    <NextIntlClientProvider locale="en" messages={messages}>
-      <TooltipProvider delayDuration={300}>
-        {ui}
-        <Toaster />
-      </TooltipProvider>
-    </NextIntlClientProvider>,
-  );
+  return render(<AdminTestProviders>{ui}</AdminTestProviders>);
 }

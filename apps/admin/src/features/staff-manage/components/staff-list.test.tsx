@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { StaffAccount } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
 import { triggerIntersection } from '@/test/intersection-observer';
@@ -342,6 +342,21 @@ describe('StaffList', () => {
     ).toBeInTheDocument();
   });
 
+  it("the Role column is hidden between md and lg — Email doesn't have room to share the row with it in that band", async () => {
+    // jsdom doesn't apply real responsive breakpoints, so this only proves
+    // the structural mechanism (`hidden lg:table-cell`, the same technique
+    // `category-tree.tsx`'s own Brand column uses for the identical reason)
+    // is actually in place — not that it visually collapses at a given width.
+    mockedListStaff.mockResolvedValueOnce(page([ME]));
+    render();
+    await screen.findAllByText(ME.email);
+
+    const roleHeader = screen.getByRole('columnheader', { name: 'Role' });
+    expect(roleHeader).toHaveClass('hidden', 'lg:table-cell');
+    const roleCell = tableRowFor(ME.email).querySelector('td:nth-child(2)');
+    expect(roleCell).toHaveClass('hidden', 'lg:table-cell');
+  });
+
   it('the row menu trigger shows a "More actions" tooltip on focus — PC users get a visible hint, not just an aria-label', async () => {
     mockedListStaff.mockResolvedValueOnce(page([ME]));
     render();
@@ -381,12 +396,80 @@ describe('StaffList — deep link from Audit Log (?highlight=accountId)', () => 
     expect(mockedListStaff).toHaveBeenCalledWith('cursor-1');
   });
 
-  it('without a highlight param, nothing flashes and the URL is left alone', async () => {
+  it('without a highlight param, nothing flashes and the URL never gets a highlight param added', async () => {
     mockedListStaff.mockResolvedValueOnce(page([ME]));
     render();
     await screen.findAllByText(ME.email);
 
     expect(document.querySelector(`[data-staff-row="${ME.id}"]`)).not.toHaveClass('sn-row-flash');
-    expect(routerReplace).not.toHaveBeenCalled();
+    // the q-sync effect below still fires a mount-time no-op replace (same
+    // as Category List / Audit Log's own filter sync) — what matters here
+    // is that `highlight` never appears in any of those calls
+    for (const [url] of routerReplace.mock.calls) {
+      expect(url).not.toContain('highlight');
+    }
+  });
+});
+
+describe('StaffList — search', () => {
+  it('typing a query re-fetches (debounced) with q, and the URL syncs to it', async () => {
+    const target = account({ id: 'acc-2', email: 'search-target@example.com' });
+    mockedListStaff.mockResolvedValueOnce(page([ME])).mockResolvedValueOnce(page([target]));
+
+    render();
+    await screen.findAllByText(ME.email);
+
+    fireEvent.change(screen.getByPlaceholderText('Search staff by email…'), {
+      target: { value: 'search-target' },
+    });
+
+    await screen.findAllByText(target.email);
+    expect(mockedListStaff).toHaveBeenLastCalledWith(undefined, 'search-target');
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?q=search-target`, {
+        scroll: false,
+      }),
+    );
+  });
+
+  it('a link with ?q= already in it pre-fills the search box and fetches that filtered view on mount', async () => {
+    mockSearchParams = new URLSearchParams({ q: 'sukanto' });
+    mockedListStaff.mockResolvedValueOnce(page([ME]));
+
+    render();
+    await screen.findAllByText(ME.email);
+
+    expect(screen.getByPlaceholderText('Search staff by email…')).toHaveValue('sukanto');
+    expect(mockedListStaff).toHaveBeenCalledWith(undefined, 'sukanto');
+  });
+
+  it('no matches shows "no staff match your search", not the generic empty state', async () => {
+    mockedListStaff.mockResolvedValueOnce(page([ME])).mockResolvedValueOnce(page([]));
+
+    render();
+    await screen.findAllByText(ME.email);
+
+    fireEvent.change(screen.getByPlaceholderText('Search staff by email…'), {
+      target: { value: 'nobody-matches-this' },
+    });
+
+    expect(await screen.findByText('No staff match your search.')).toBeInTheDocument();
+    expect(screen.queryByText('No staff accounts yet.')).not.toBeInTheDocument();
+  });
+
+  it('clearing the search box goes back to the unfiltered list and the bare URL', async () => {
+    mockSearchParams = new URLSearchParams({ q: 'sukanto' });
+    mockedListStaff.mockResolvedValueOnce(page([ME])).mockResolvedValueOnce(page([ME]));
+
+    render();
+    await screen.findAllByText(ME.email);
+    routerReplace.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+
+    await waitFor(() => expect(mockedListStaff).toHaveBeenLastCalledWith(undefined));
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenLastCalledWith(PATHNAME, { scroll: false }),
+    );
   });
 });

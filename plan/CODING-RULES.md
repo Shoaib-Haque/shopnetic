@@ -2036,3 +2036,118 @@ compose file.
   stays plain text" test failed with the buyer/marketplace row wrongly
   linking to `/staff`, restored. Full admin suite green throughout (170
   tests / 19 files); typecheck and lint clean.
+- 2026-09-16 — Added search to the Staff directory (`/staff` had none;
+  Category List and Audit Log already did, and were the requested
+  reference for the UI/UX to match). Server: `StaffAccountsService.list`
+  takes an optional `q`, filtered as a plain Prisma `email: { contains,
+  mode: insensitive }` — email is the only free-text field a staff account
+  has (no name field on the model) — and, unlike `CategoryService.list`'s
+  scored tree search, never re-ranks the page, so the cursor stays the
+  same plain `id` bound with or without a search active (same reasoning
+  `AuditController` already uses for its own `q`). `StaffController.list`
+  passes `@Query('q')` straight through; no contracts change needed since
+  list query params were never part of the Zod schema layer to begin with.
+  Client: `SearchInput` + `useDebouncedValue` (250ms) + a URL-sync effect,
+  matching Category List's/Audit Log's own pattern exactly — `?q=` seeded
+  once at mount, `router.replace` (not `push`) on every debounced change.
+  Consolidated with the existing `?highlight=` deep-link handling built
+  the same day: previously the highlight-found effect did its own
+  `router.replace(pathname)` once it located the target row, which would
+  have silently wiped out an active `?q=` the moment a deep link resolved
+  while a search was also typed. Removed that manual call — the new q-sync
+  effect already strips `highlight` from the URL on its own first run
+  (same as Category List's own comment on this exact mechanism explains),
+  so there's nothing left to special-case. Also added the empty/no-match
+  states the page never had (CODING-RULES E5) — zero results was
+  previously unreachable before search existed, so its absence hadn't
+  surfaced as a gap yet; `noMatch` (search active) is worded distinctly
+  from `empty` (genuinely no staff), same split Category List already
+  makes. Verified via revert-confirm-restore at both layers: reverting the
+  Prisma `where` filter reproduced the exact failure (`ITEST-TARGET`
+  wrongly also matching the Super Admin fixture) in the integration test
+  against the real dev DB, restored; full admin suite (174 tests) and API
+  integration suite (95 tests, live DB) green; typecheck/lint clean on
+  both packages. Browser-level check left to the user, same caveat as
+  every other client-rendered feature this session — logging in as a
+  disposable Super Admin to exercise the endpoint over curl would need
+  scripting TOTP enrolment/confirmation just for this, out of proportion
+  to a one-line `@Query('q')` passthrough that's already covered against
+  the real database at the service layer.
+- 2026-09-16 — Two Staff List follow-ups from a live browser check of the
+  search just shipped:
+  1. **Search matched the literal query as one substring, not by word** —
+     a user report: `"  shoaib  shopnetic  "` should match an email
+     containing *either* word, with the stray spaces just trimmed away, not
+     compared literally. `StaffAccountsService.list`'s single Prisma
+     `email: { contains: q }` did neither (it would look for that exact
+     padded, unsplit string). Replaced it with the same `tokenizeForSql` +
+     `OR`-across-tokens shape `CategoryService.list`/`AuditController`
+     already use (duplicated per their own established precedent of not
+     sharing this across files) — normalize, split on whitespace/
+     punctuation runs (dashes included, so an email's own `-`/`.`/`@`
+     don't need special-casing), `OR` a `contains` per token. A real
+     behavior consequence worth noting: because the tokenizer also splits
+     on punctuation, a hyphenated query like `"itest-target"` now
+     tokenizes into `["itest", "target"]` and matches *any* email
+     containing either word, not just one containing the literal
+     substring `"itest-target"` — correct per the ask, but it did
+     invalidate the previous day's test's assumption that a hyphenated
+     fragment discriminates between two fixtures sharing a common prefix;
+     rewrote it against words that are each unique to one fixture instead.
+     Verified via revert-confirm-restore: reverting to the old single-
+     `contains` form reproduced the exact failure (the multi-word OR test
+     going from matching both fixtures to only one), restored; API
+     integration suite green (96 tests, live DB) throughout.
+  2. **The Role column crowded Email in the `md`–`lg` band** — between
+     768–1023px the table's fixed-width Role/Status/Authenticator columns
+     left too little room for Email, which the same viewport's mobile
+     card fallback below `md` doesn't have this problem with (Email is
+     the only thing on its own line there). Same fix `category-tree.tsx`'s
+     Brand column already uses for the identical class of problem: `hidden
+     lg:table-cell` on Role's header and cell — dropped in that band with
+     no inline fallback (G7: the row and the Edit modal still have it),
+     reappears at `lg`+. Verified structurally via revert-confirm-restore
+     (jsdom doesn't apply real responsive breakpoints, so the test can
+     only assert the class is present, not that it visually collapses at
+     a given width) — reverting the class change failed the new test as
+     expected, restored. Full admin suite (175 tests) green; typecheck/
+     lint clean on both packages.
+- 2026-09-16 — Fixed an inconsistent Staff sidebar-group collapse, reported
+  from a live browser check: clicking the "Staff" group header to collapse
+  it while already on `/staff` (or `/staff/invite`) visibly did nothing,
+  and afterwards, navigating to an unrelated page sometimes left the group
+  collapsed and sometimes left it expanded, depending on how many times the
+  header had been clicked while on that page — with no visible feedback in
+  between to explain why. Root cause: `sidebar.tsx`'s `NavItemRow` rendered
+  `isOpen` as `expanded || anyChildActive`, and the header's `onClick`
+  always flipped `expanded` regardless. While a child of the group is the
+  active route, `anyChildActive` alone already forces `isOpen` true, so a
+  click there has no visible effect — but it silently keeps toggling the
+  hidden `expanded` bit anyway, and *that* bit is what decides `isOpen`
+  once `anyChildActive` goes back to false after navigating away. The
+  post-navigation state was really just that bit's parity — invisible while
+  it was accumulating, surprising once it mattered. Discussed two ways to
+  make it deterministic (always collapse on leaving vs. always stay open,
+  regardless of click count) and picked neither literally: instead, the
+  header's `onClick` is now a no-op while `anyChildActive` is true, so
+  `expanded` only ever changes from *outside* the section — clicking it
+  any number of times while inside has zero effect, visible or hidden, and
+  leaving the section always reflects whatever it was explicitly set to
+  before entering (collapsed if it was never touched, open if it was
+  explicitly opened from elsewhere and not later explicitly closed from
+  elsewhere). Simpler than picking an arbitrary fixed rule, since it
+  removes the parity bug at its source rather than working around its
+  symptom. New regression tests in `admin-shell.test.tsx` needed to
+  simulate a same-shell client-side navigation (`AdminShell` never remounts
+  on a real route change, only `pathname` changes) — RTL's `rerender`
+  reconciles against the *previous* root, so it has to be called with the
+  exact same provider wrapper the initial render used or React swaps the
+  root element type and force-remounts, silently resetting `useSidebar`'s
+  state and defeating the test. Extracted that wrapper out of
+  `test/render.tsx`'s `renderAdmin` into a newly-exported
+  `AdminTestProviders`, reused by both the initial `render` and every
+  `rerender` call. Verified via revert-confirm-restore: reverting the
+  `onClick` guard reproduced the exact reported symptom (three clicks while
+  active — an odd count — left the group open after navigating away, when
+  it should have gone back to closed), restored; full admin suite (177
+  tests) green; typecheck/lint clean.

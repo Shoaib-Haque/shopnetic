@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
   Field,
   ScrollToTopButton,
+  SearchInput,
   Skeleton,
   StatusBadge,
   Table,
@@ -32,6 +33,7 @@ import { PageHeader } from '@/components/crud/page-header';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { FormModal } from '@/components/crud/form-modal';
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useFindById } from '@/hooks/use-find-by-id';
 import { AdminApiError } from '@/features/admin-api/client';
 import { staffErrorKey } from '@/features/staff-auth/error-copy';
@@ -80,9 +82,34 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
   const searchParams = useSearchParams();
   // A deep link from Audit Log's Target column — `?highlight=accountId` —
   // read once at mount, same pattern as Category List's own highlight/status
-  // sync. No other filters live on this page's URL, so once handled it's
-  // just stripped back down to the bare pathname (see the effect below).
+  // sync. No separate cleanup call is needed to strip it back out: the q-sync
+  // effect below doesn't know about `highlight`, so it naturally drops out of
+  // the URL the first time that effect runs (same reasoning Category List's
+  // own version of this comment gives).
   const [highlightId] = useState(() => searchParams.get('highlight'));
+  const [q, setQ] = useState(() => searchParams.get('q') ?? '');
+  const debouncedQ = useDebouncedValue(q, 250);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (debouncedQ) params.set('q', debouncedQ);
+    const qs = params.toString();
+    // `replace`, not `push` — refining a search isn't a new place to visit,
+    // same reasoning as Audit Log / Category List's own filter sync.
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [debouncedQ, pathname, router]);
+
+  // Keeps the mount-time call shape identical to before search existed
+  // (`listStaff(cursor)`, one arg) when no search is active, rather than
+  // always passing a possibly-empty second argument.
+  const fetchPage = useCallback(
+    (cursor: string | undefined) =>
+      (debouncedQ ? listStaff(cursor, debouncedQ) : listStaff(cursor)).then((page) => ({
+        items: page.accounts,
+        nextCursor: page.nextCursor,
+      })),
+    [debouncedQ],
+  );
 
   const {
     items: accounts,
@@ -94,9 +121,7 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
     sentinelRef,
     retry,
     loadMore,
-  } = useScrollLoad<StaffAccount>((cursor) =>
-    listStaff(cursor).then((page) => ({ items: page.accounts, nextCursor: page.nextCursor })),
-  );
+  } = useScrollLoad<StaffAccount>(fetchPage, [debouncedQ]);
 
   // briefly highlight the row a deep link landed on, so it's easy to spot in
   // a long list — same `sn-row-flash` affordance Category List already uses
@@ -116,8 +141,7 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
     setFlashId(highlightedAccount.id);
     clearTimeout(flashTimer.current);
     flashTimer.current = setTimeout(() => setFlashId(null), 1400);
-    router.replace(pathname, { scroll: false });
-  }, [highlightedAccount, pathname, router]);
+  }, [highlightedAccount]);
   useEffect(() => {
     if (!flashId) return;
     document
@@ -267,6 +291,17 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
     <section className="mb-8">
       <PageHeader title={t('manage.title')} description={t('manage.intro')} />
 
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <SearchInput
+          value={q}
+          onValueChange={setQ}
+          onClear={() => setQ('')}
+          clearLabel={tCommon('actions.clear')}
+          placeholder={t('manage.searchPlaceholder')}
+          className="w-full max-w-xs"
+        />
+      </div>
+
       {loadError && accounts.length === 0 ? (
         <div className="flex flex-col items-start gap-2 text-sm">
           <p className="text-destructive">{tCommon('list.loadError')}</p>
@@ -280,6 +315,10 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
             <Skeleton key={i} className="h-10 w-full" />
           ))}
         </div>
+      ) : accounts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {debouncedQ ? t('manage.noMatch') : t('manage.empty')}
+        </p>
       ) : (
         <>
           {/* desktop: full table (G7 — data tables, responsive by priority) */}
@@ -288,7 +327,9 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>{t('manage.cols.email')}</TableHead>
-                  <TableHead className="w-36">{t('manage.cols.role')}</TableHead>
+                  <TableHead className="hidden w-36 lg:table-cell">
+                    {t('manage.cols.role')}
+                  </TableHead>
                   <TableHead className="w-28">{t('manage.cols.status')}</TableHead>
                   <TableHead className="w-36">{t('manage.cols.totp')}</TableHead>
                   <TableHead className="w-10" />
@@ -315,7 +356,7 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="truncate">
+                      <TableCell className="hidden truncate lg:table-cell">
                         {account.roles.map((role) => t(`invite.roles.${role}`)).join(', ')}
                       </TableCell>
                       <TableCell>

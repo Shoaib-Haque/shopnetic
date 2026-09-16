@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import { renderAdmin } from '@/test/render';
+import { cleanup, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { AdminTestProviders, renderAdmin } from '@/test/render';
 import { postJson } from '@/features/staff-auth/submit';
 import { AdminShell } from './admin-shell';
 
@@ -166,5 +166,88 @@ describe('AdminShell nav — role-gated items', () => {
     expect(screen.getAllByText('Administration').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: 'Staff' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Audit log' }).length).toBeGreaterThan(0);
+  });
+
+  // Regression: `isOpen` used to be `expanded || anyChildActive`, and the
+  // toggle button always flipped `expanded` on click. While on a child page
+  // (`anyChildActive` true), that click has no visible effect — masked by
+  // the `||` — but *does* still flip the hidden `expanded` bit, so leaving
+  // the section afterwards landed on whichever state that bit's parity
+  // happened to be, not anything the user could see coming. Clicking the
+  // toggle while a child is active is now a no-op — `expanded` only ever
+  // changes from outside the section — so however many times it's clicked
+  // while inside, leaving always reflects the state from before entering.
+  // `rerender` reconciles against the *previous* root, so every call here
+  // goes through the same `AdminTestProviders` wrapper `renderAdmin` uses
+  // internally — passing the bare `<AdminShell>` on its own would swap the
+  // tree's root element type and force a full remount, silently resetting
+  // `useSidebar`'s state and defeating the point of these two tests (that
+  // state must survive a same-shell client-side navigation, the way it
+  // does in the real app where `AdminShell` never remounts on route change).
+  function shell(roles: string[] = ['SUPER_ADMIN']) {
+    return (
+      <AdminTestProviders>
+        <AdminShell
+          email="staff@example.com"
+          roles={roles}
+          root="/en/x7f2k9t3m1qp"
+          loginHref={LOGIN_HREF}
+        >
+          <p>page content</p>
+        </AdminShell>
+      </AdminTestProviders>
+    );
+  }
+
+  it('the toggle is a no-op while a child of the group is the active route — clicking it any number of times leaves the post-navigation state unchanged', () => {
+    mockPathname = '/en/x7f2k9t3m1qp/staff';
+    const { rerender } = rtlRender(shell());
+
+    const toggle = screen.getAllByRole('button', { name: 'Staff' })[0]!;
+    expect(toggle).toHaveAttribute('aria-expanded', 'true'); // forced open by the active child
+
+    // three clicks — an odd number, the case that used to flip the parity
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true'); // still open, no visible change
+
+    // navigate to an unrelated page — before this fix, an odd click count
+    // here would have left the group open even though it was never
+    // explicitly expanded from outside
+    mockPathname = '/en/x7f2k9t3m1qp/catalog/categories';
+    rerender(shell());
+
+    expect(screen.getAllByRole('button', { name: 'Staff' })[0]!).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('the toggle still works normally from outside the section — clicking it expands/collapses, and that state survives entering and leaving the section', () => {
+    mockPathname = '/en/x7f2k9t3m1qp'; // not under /staff at all
+    const { rerender } = rtlRender(shell());
+
+    const toggle = screen.getAllByRole('button', { name: 'Staff' })[0]!;
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    // navigate into the section, then back out — the explicit "open" from
+    // outside must still be there, undisturbed by anything the active-child
+    // masking did in between
+    mockPathname = '/en/x7f2k9t3m1qp/staff';
+    rerender(shell());
+    expect(screen.getAllByRole('button', { name: 'Staff' })[0]!).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+
+    mockPathname = '/en/x7f2k9t3m1qp/catalog/categories';
+    rerender(shell());
+    expect(screen.getAllByRole('button', { name: 'Staff' })[0]!).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 });

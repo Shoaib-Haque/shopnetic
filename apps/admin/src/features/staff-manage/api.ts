@@ -8,9 +8,10 @@ export interface StaffListPage {
   nextCursor: string | undefined;
 }
 
-export function listStaff(cursor?: string): Promise<StaffListPage> {
+export function listStaff(cursor?: string, q?: string): Promise<StaffListPage> {
   const params = new URLSearchParams();
   if (cursor) params.set('cursor', cursor);
+  if (q) params.set('q', q);
   const qs = params.toString();
   return staffManageApi<StaffListResponse>(qs ? `?${qs}` : '').then((r) => ({
     accounts: r.accounts,

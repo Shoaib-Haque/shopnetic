@@ -108,6 +108,9 @@
     "manage": {
       "title": "Staff",
       "intro": "Everyone with access to the admin panel, and their role.",
+      "empty": "No staff accounts yet.",
+      "noMatch": "No staff match your search.",
+      "searchPlaceholder": "Search staff by email…",
       "cols": { "email": "Email", "role": "Role", "status": "Status", "totp": "Authenticator" },
       "status": {
         "active": "Active",

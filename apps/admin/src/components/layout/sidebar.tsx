@@ -241,12 +241,27 @@ function NavItemRow({
         </li>
       );
     }
-    const isOpen = expanded || anyChildActive;
+    // While one of its own children is the active route, the group is
+    // always shown open — collapsing the section you're currently looking
+    // at doesn't make sense, so the toggle is a no-op here rather than
+    // updating `expanded` anyway. Without this, a click while `anyChildActive`
+    // already forces the group open has no visible effect (masked by the
+    // `||` below) but *does* still flip the hidden `expanded` bit, so its
+    // parity — not anything the user can see — decides whether the group
+    // stays open or collapses once they navigate to an unrelated page.
+    // Ignoring the click here means `expanded` only ever changes from
+    // *outside* this section, so leaving it always reflects whatever it was
+    // set to before you arrived, regardless of how many times you clicked
+    // while inside.
+    const isOpen = anyChildActive || expanded;
     return (
       <li>
         <button
           type="button"
-          onClick={() => onToggleGroup(item.key)}
+          onClick={() => {
+            if (anyChildActive) return;
+            onToggleGroup(item.key);
+          }}
           aria-expanded={isOpen}
           className={cn(base, 'w-full text-muted-foreground hover:bg-muted hover:text-foreground')}
         >

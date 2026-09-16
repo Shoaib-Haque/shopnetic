@@ -75,6 +75,26 @@ describe.skipIf(!hasDb)('StaffAccountsService (integration)', () => {
     expect(found?.totpEnrolled).toBe(false);
   });
 
+  it('is case-insensitive and excludes accounts that share no word with the query', async () => {
+    // "target" only appears in targetEmail's local part, not superAdminEmail's
+    const upper = await accounts.list(undefined, 100, 'TARGET');
+    expect(upper.accounts.some((a) => a.id === targetId)).toBe(true);
+    expect(upper.accounts.some((a) => a.id === superAdminId)).toBe(false);
+
+    const noMatch = await accounts.list(undefined, 100, 'zzzznomatchzzzz');
+    expect(noMatch.accounts).toHaveLength(0);
+  });
+
+  it('tokenizes a multi-word query and matches an email containing ANY word, trimming stray whitespace for free', async () => {
+    // "target" only appears in targetEmail's local part, "super" only in
+    // superAdminEmail's — querying both (with leading/trailing/doubled
+    // whitespace, no separate `.trim()` needed) returns the union of both,
+    // not just an account matching the literal two-word phrase.
+    const { accounts: matched } = await accounts.list(undefined, 100, '  target   super  ');
+    expect(matched.some((a) => a.id === targetId)).toBe(true);
+    expect(matched.some((a) => a.id === superAdminId)).toBe(true);
+  });
+
   it('paginates with a cursor, oldest first — the second page never repeats the first', async () => {
     const first = await accounts.list(undefined, 1);
     expect(first.accounts).toHaveLength(1);

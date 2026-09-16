@@ -256,12 +256,13 @@ export class StaffController {
     @Req() req: Request,
     @Query('cursor') cursor?: string,
     @Query('limit') limitRaw?: string,
+    @Query('q') q?: string,
   ): Promise<{
     data: { accounts: StaffAccount[]; nextCursor?: string };
     meta: { requestId: string };
   }> {
     const limit = limitRaw ? Number(limitRaw) : undefined;
-    const page = await this.accounts.list(cursor, limit);
+    const page = await this.accounts.list(cursor, limit, q);
     return ok(req, page);
   }
 

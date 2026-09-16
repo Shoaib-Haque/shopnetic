@@ -15,6 +15,28 @@ type AccountWithGrantsAndTotp = Account & {
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
 
+/** Mirrors `CategoryService`'s and `AuditController`'s own `tokenizeForSql`
+ * (same normalize + rules) — duplicated rather than shared, following those
+ * files' own precedent of not extracting this into a cross-package util.
+ * Splits on whitespace/punctuation runs (so extra/leading/trailing spaces
+ * are handled for free, not via a separate `.trim()`) into individual
+ * search words, each matched with its own `OR` clause below — a query of
+ * "shoaib shopnetic" matches an email containing *either* word, not the
+ * literal two-word phrase. */
+function tokenizeForSql(query: string): string[] {
+  const normalized = query
+    .toLowerCase()
+    .replace(/['’"`]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const tokens = new Set<string>();
+  for (const tok of normalized.split(' ')) {
+    if (tok.length >= 2) tokens.add(tok);
+    if (tokens.size >= 10) break;
+  }
+  return [...tokens];
+}
+
 /**
  * The staff directory: list + the account-lifecycle actions a Super Admin
  * needs (`staff:manage` — enforced by the controller's `@RequirePermission`,
@@ -31,17 +53,34 @@ export class StaffAccountsService {
 
   /** Ordered by `id`, not `createdAt` — a v7 UUID sorts by creation time the
    * same way `createdAt` would, but is the stable, unique field keyset
-   * pagination actually needs (matches `AuditController`'s same choice). */
+   * pagination actually needs (matches `AuditController`'s same choice).
+   * `q` is tokenized the same way Category List's/Audit Log's own search is
+   * — case-insensitive, whitespace/punctuation-trimmed, matched against
+   * `email` (the only free-text field a staff account has) with `OR` across
+   * tokens, not one literal-phrase `contains` — and, like `AuditController`'s
+   * simpler flat-list search (not `CategoryService.list`'s scored tree
+   * search), never re-ranks the result, so `cursor` stays the same plain
+   * `id` bound whether or not a search is active. */
   async list(
     cursor?: string,
     limit = DEFAULT_LIST_LIMIT,
+    q?: string,
   ): Promise<{
     accounts: StaffAccount[];
     nextCursor?: string;
   }> {
     const take = Math.min(Math.max(Math.trunc(limit), 1), MAX_LIST_LIMIT);
+    const tokens = q ? tokenizeForSql(q) : [];
     const accounts = await this.prisma.account.findMany({
-      where: { plane: 'staff', deletedAt: null },
+      where: {
+        plane: 'staff',
+        deletedAt: null,
+        ...(tokens.length > 0
+          ? {
+              OR: tokens.map((tok) => ({ email: { contains: tok, mode: 'insensitive' as const } })),
+            }
+          : {}),
+      },
       include: { grants: { include: { role: true } }, totpSecret: true },
       orderBy: { id: 'asc' },
       take: take + 1,
