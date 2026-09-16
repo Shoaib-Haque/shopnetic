@@ -1963,3 +1963,34 @@ compose file.
   Admin's had none of them, while both saw identical `staff_login_failed`/
   `staff_session_created`/`staff_password_*` rows — then cleaned up the
   disposable accounts and rows after.
+- 2026-09-16 — Added `@@index([action])` on `audit_event` (last of the
+  deferred items from the Audit Log thread) — speeds up the Domain filter
+  (`action LIKE 'catalog.%'`, a leading-wildcard-free prefix a btree index
+  can range-scan) and the partial/full scoping's `NOT IN (...)`; doesn't
+  help the free-text search's `LIKE '%token%'` (leading wildcard, needs
+  `pg_trgm` + GIN instead — deliberately still out of scope). Migration
+  generation (`prisma migrate dev`) surfaced a real, pre-existing, unrelated
+  landmine: it also proposed `DROP INDEX "catalog"."category_path_gist_idx"`
+  — a hand-managed raw-SQL GIST index on `Category.path` from an earlier
+  migration that `schema.prisma` has no way to declare (`@@index` has no
+  GIST option without the `extendedIndexes` preview feature, not enabled;
+  the column is `Unsupported("ltree")` regardless, likely not targetable
+  even with it on). Because it's genuinely invisible to Prisma's schema,
+  it reads as drift on *every* migration, not just this one — confirmed by
+  checking the live dev DB directly: the index really was gone after the
+  migration applied. Not a one-time fluke to quietly patch — the same
+  proposal reappeared from a fresh `prisma migrate diff` even after fixing
+  this migration's own SQL, meaning any *future* migration (for anything,
+  by anyone) will propose dropping it again. Fixed what's fixable now:
+  recreated the index directly against the dev DB (`CREATE INDEX IF NOT
+  EXISTS ... USING GIST`, confirmed via `pg_indexes`), edited this
+  migration's own `migration.sql` to recreate it too (so a fresh
+  `migrate deploy` on a clean DB doesn't lose it), and added a loud warning
+  comment directly on `Category.path` in `schema.prisma` telling whoever
+  generates the next migration to check for that exact `DROP INDEX` line
+  before applying. The structural gap itself — Prisma can't represent this
+  index, so the warning is the only guard until something more permanent
+  is decided — is intentionally left open, flagged rather than silently
+  routed around. Verified: full API integration suite (94 tests, including
+  the category-tree subtree-op tests that exercise the GIST index's actual
+  job) green after restoring it; typecheck/lint clean.

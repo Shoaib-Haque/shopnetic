@@ -258,6 +258,14 @@ model AuditEvent {
   @@index([actorAccountId])
   @@index([targetType, targetId])
   @@index([createdAt])
+  // Speeds up the Domain filter (`action LIKE 'catalog.%'`, a leading-
+  // wildcard-free prefix match a btree index can range-scan) and the
+  // partial/full scoping exclusion (`action NOT IN (...)`) — not the
+  // free-text search's `LIKE '%token%'`, which has a leading wildcard a
+  // plain btree can't use; that would need pg_trgm + a GIN index instead,
+  // deliberately out of scope (plan/CODING-RULES.md's dated entry on this
+  // table).
+  @@index([action])
   @@map("audit_event")
   @@schema("identity")
 }
@@ -350,6 +358,18 @@ model Category {
   // rows. Enforced by hand-managed partial unique indexes (`WHERE deleted_at IS
   // NULL`) — Prisma cannot express partial / expression indexes — plus an
   // app-level pre-check for friendly errors. See the `_global_unique` migration.
+  //
+  // `path` also has a hand-managed GIST index (`category_path_gist_idx`,
+  // powers subtree ops) that isn't declared here either — `@@index` has no
+  // GIST option without the `extendedIndexes` preview feature (not enabled),
+  // and it likely couldn't target `Unsupported("ltree")` even then. Because
+  // it's genuinely invisible to Prisma, `migrate dev`/`migrate diff` treats
+  // it as drift and proposes dropping it on *every* future migration, not
+  // just ones that touch this table — confirmed live 2026-09-16 (an
+  // unrelated `audit_event` index migration silently dropped it). Before
+  // applying any generated migration, check its SQL for
+  // `DROP INDEX ... category_path_gist_idx` and delete that line (or add
+  // the matching `CREATE INDEX ... USING GIST` back if it already ran).
   @@index([parentId])
   @@index([deletedAt])
   @@map("category")
