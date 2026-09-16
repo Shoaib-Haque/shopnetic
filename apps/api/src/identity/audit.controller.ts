@@ -2,7 +2,6 @@ import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { Permission } from '@shopnetic/auth';
 import type { AuditEvent } from '@shopnetic/contracts';
-import type { AuditEvent as AuditEventRow } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
@@ -10,6 +9,23 @@ import { RequirePermission } from '../auth/require-permission.decorator.js';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+const DOMAINS = ['catalog', 'identity'] as const;
+type Domain = (typeof DOMAINS)[number];
+
+interface RawAuditEvent {
+  id: string;
+  actor_account_id: string | null;
+  actor_email: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  before: unknown;
+  after: unknown;
+  reason: string | null;
+  ip: string | null;
+  correlation_id: string | null;
+  created_at: Date;
+}
 
 /** `auditlog:read` is staff-only in practice (plan/03 section 4) — this must
  * be `StaffAuthGuard` (`aud=admin` + `plane=staff`), not the generic
@@ -20,24 +36,84 @@ const MAX_LIMIT = 100;
 export class AuditController {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Newest-first, cursor-paginated. `id` is a v7 UUID so it sorts by time. */
+  /** Newest-first, cursor-paginated, with optional filters. `id` is a v7
+   * UUID so it sorts by time — filtering never changes that order (unlike
+   * `CategoryService.list`'s search mode, which re-ranks by score), so
+   * `cursor` stays a plain `id <` bound in every case. */
   @Get('audit-events')
   @RequirePermission(Permission.AUDITLOG_READ)
   async list(
     @Req() req: Request,
     @Query('cursor') cursor?: string,
     @Query('limit') limitRaw?: string,
+    @Query('q') q?: string,
+    @Query('domain') domainRaw?: string,
+    @Query('targetType') targetType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ): Promise<{
     data: AuditEvent[];
     meta: { requestId: string; nextCursor?: string; count: number };
   }> {
     const limit = clamp(Number(limitRaw) || DEFAULT_LIMIT, 1, MAX_LIMIT);
-    const rows = await this.prisma.auditEvent.findMany({
-      take: limit + 1,
-      orderBy: { id: 'desc' },
-      include: { actor: { select: { email: true } } },
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
+    const domain = (DOMAINS as readonly string[]).includes(domainRaw ?? '')
+      ? (domainRaw as Domain)
+      : undefined;
+
+    const params: unknown[] = [];
+    const where: string[] = [];
+
+    if (cursor) {
+      params.push(cursor);
+      where.push(`ae.id < $${params.length}::uuid`);
+    }
+    if (domain) {
+      params.push(`${domain}.%`);
+      where.push(`ae.action LIKE $${params.length}`);
+    }
+    if (targetType) {
+      params.push(targetType);
+      where.push(`ae.target_type = $${params.length}`);
+    }
+    if (from) {
+      params.push(new Date(from));
+      where.push(`ae.created_at >= $${params.length}`);
+    }
+    if (to) {
+      // date-only input (`YYYY-MM-DD`) parses to that day's UTC midnight —
+      // used as an exclusive upper bound one day later so the picked "to"
+      // day is included in full, not cut off at its own midnight.
+      params.push(new Date(new Date(to).getTime() + 24 * 3600 * 1000));
+      where.push(`ae.created_at < $${params.length}`);
+    }
+    const tokens = q ? tokenizeForSql(q) : [];
+    if (tokens.length > 0) {
+      // Only predictable, known-shape columns/keys — not a general JSON
+      // search (plan/16-security.md section 8 leaves deep investigation to
+      // the SIEM). `after`/`before ->> 'email'` is the one JSON key worth
+      // including: it's the only place a *marketplace* signup's email lives
+      // (`account_registered` has no other admin lookup surface yet).
+      const haystack = `lower(coalesce(acc.email, '') || ' ' || coalesce(ae.target_id, '') || ' ' ||
+        ae.action || ' ' || coalesce(ae.reason, '') || ' ' ||
+        coalesce(ae.after->>'email', '') || ' ' || coalesce(ae.before->>'email', ''))`;
+      const matchExprs = tokens.map((tok) => {
+        params.push(`%${tok}%`);
+        return `(${haystack} LIKE $${params.length})`;
+      });
+      where.push(`(${matchExprs.join(' OR ')})`);
+    }
+
+    const rows = await this.prisma.$queryRawUnsafe<RawAuditEvent[]>(
+      `SELECT ae.id, ae.actor_account_id, acc.email AS actor_email, ae.action,
+              ae.target_type, ae.target_id, ae.before, ae.after, ae.reason,
+              ae.ip::text AS ip, ae.correlation_id, ae.created_at
+         FROM identity.audit_event ae
+         LEFT JOIN identity.account acc ON acc.id = ae.actor_account_id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY ae.id DESC
+        LIMIT ${limit + 1}`,
+      ...params,
+    );
 
     const page = rows.slice(0, limit);
     const nextCursor = rows.length > limit ? page.at(-1)?.id : undefined;
@@ -50,20 +126,38 @@ export class AuditController {
   }
 }
 
-function toAuditView(row: AuditEventRow & { actor: { email: string } | null }): AuditEvent {
+/** Mirrors `CategoryService`'s own `tokenizeForSql` (same normalize + rules,
+ * matching `@/lib/search.ts`'s client-side `tokenize()`) — duplicated
+ * rather than shared, following that file's own precedent of not
+ * extracting this into a cross-package util. */
+function tokenizeForSql(query: string): string[] {
+  const normalized = query
+    .toLowerCase()
+    .replace(/['’"`]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const tokens = new Set<string>();
+  for (const tok of normalized.split(' ')) {
+    if (tok.length >= 2) tokens.add(tok);
+    if (tokens.size >= 10) break;
+  }
+  return [...tokens];
+}
+
+function toAuditView(row: RawAuditEvent): AuditEvent {
   return {
     id: row.id,
-    actorAccountId: row.actorAccountId,
-    actorEmail: row.actor?.email ?? null,
+    actorAccountId: row.actor_account_id,
+    actorEmail: row.actor_email,
     action: row.action,
-    targetType: row.targetType,
-    targetId: row.targetId,
+    targetType: row.target_type,
+    targetId: row.target_id,
     before: row.before,
     after: row.after,
     reason: row.reason,
     ip: row.ip,
-    correlationId: row.correlationId,
-    createdAt: row.createdAt.toISOString(),
+    correlationId: row.correlation_id,
+    createdAt: row.created_at.toISOString(),
   };
 }
 

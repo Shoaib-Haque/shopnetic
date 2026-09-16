@@ -123,4 +123,161 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
     expect(guards).toContain(StaffAuthGuard);
     expect(guards).not.toContain(AuthGuard);
   });
+
+  describe('filters', () => {
+    it('domain narrows to that action prefix only', async () => {
+      await audit.record({ actorAccountId: actorId, action: 'catalog.itest_domain_probe' });
+      await audit.record({ actorAccountId: actorId, action: 'identity.itest_domain_probe' });
+
+      const catalogOnly = await controller.list(req, undefined, '50', undefined, 'catalog');
+      const actions = catalogOnly.data.map((e) => e.action);
+      expect(actions).toContain('catalog.itest_domain_probe');
+      expect(actions).not.toContain('identity.itest_domain_probe');
+
+      const identityOnly = await controller.list(req, undefined, '50', undefined, 'identity');
+      const identityActions = identityOnly.data.map((e) => e.action);
+      expect(identityActions).toContain('identity.itest_domain_probe');
+      expect(identityActions).not.toContain('catalog.itest_domain_probe');
+    });
+
+    it('targetType narrows to an exact match', async () => {
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'itest.audit_target_probe',
+        targetType: 'itest_widget_a',
+        targetId: 'w-a',
+      });
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'itest.audit_target_probe',
+        targetType: 'itest_widget_b',
+        targetId: 'w-b',
+      });
+
+      const res = await controller.list(
+        req,
+        undefined,
+        '50',
+        undefined,
+        undefined,
+        'itest_widget_a',
+      );
+      const targets = res.data.map((e) => e.targetType);
+      expect(targets).toContain('itest_widget_a');
+      expect(targets).not.toContain('itest_widget_b');
+    });
+
+    it('"from" excludes rows before it', async () => {
+      const px = prisma as PrismaService;
+      const oldRow = await px.auditEvent.create({
+        data: {
+          actorAccountId: actorId,
+          action: 'itest.audit_date_probe_old',
+          createdAt: new Date('2020-01-01T00:00:00.000Z'),
+        },
+      });
+      const recentRow = await px.auditEvent.create({
+        data: {
+          actorAccountId: actorId,
+          action: 'itest.audit_date_probe_recent',
+          createdAt: new Date(),
+        },
+      });
+
+      const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+      const res = await controller.list(
+        req,
+        undefined,
+        '50',
+        undefined,
+        undefined,
+        undefined,
+        yesterday,
+      );
+      const actions = res.data.map((e) => e.action);
+      expect(actions).toContain('itest.audit_date_probe_recent');
+      expect(actions).not.toContain('itest.audit_date_probe_old');
+
+      await px.auditEvent.deleteMany({ where: { id: { in: [oldRow.id, recentRow.id] } } });
+    });
+
+    it('"to" is inclusive of its whole day, not cut off at that day\'s own midnight', async () => {
+      const px = prisma as PrismaService;
+      // a timestamp deliberately *after* today's UTC midnight — a naive
+      // `created_at <= parsedToDate` (parsed to 00:00 UTC) would wrongly
+      // exclude this, even though it falls on the day the caller picked.
+      const lateToday = new Date();
+      lateToday.setUTCHours(23, 59, 0, 0);
+      const row = await px.auditEvent.create({
+        data: {
+          actorAccountId: actorId,
+          action: 'itest.audit_to_inclusive_probe',
+          createdAt: lateToday,
+        },
+      });
+
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await controller.list(
+        req,
+        undefined,
+        '50',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        today,
+      );
+      expect(res.data.map((e) => e.action)).toContain('itest.audit_to_inclusive_probe');
+
+      await px.auditEvent.deleteMany({ where: { id: row.id } });
+    });
+
+    it('free text matches actor email, targetId, action, and reason — OR across typed words', async () => {
+      const searchEmail = `itest-search-${stamp}@shopnetic.test`;
+      const searchActor = await prisma.account.create({
+        data: { email: searchEmail, plane: 'staff', status: 'active', emailVerifiedAt: new Date() },
+      });
+      await audit.record({
+        actorAccountId: searchActor.id,
+        action: 'itest.audit_search_probe',
+        targetType: 'account',
+        targetId: 'unrelated-target',
+      });
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'itest.audit_search_probe_reason',
+        reason: 'a very particular reason phrase',
+      });
+
+      const byActorFragment = await controller.list(req, undefined, '50', 'itest-search');
+      expect(byActorFragment.data.map((e) => e.actorAccountId)).toContain(searchActor.id);
+
+      const byReason = await controller.list(req, undefined, '50', 'particular');
+      expect(byReason.data.map((e) => e.action)).toContain('itest.audit_search_probe_reason');
+
+      // OR, not AND: one query, two unrelated words — both rows come back
+      const combined = await controller.list(req, undefined, '50', 'itest-search particular');
+      const combinedActions = combined.data.map((e) => e.action);
+      expect(combinedActions).toContain('itest.audit_search_probe');
+      expect(combinedActions).toContain('itest.audit_search_probe_reason');
+
+      await prisma.auditEvent.deleteMany({ where: { actorAccountId: searchActor.id } });
+      await prisma.account.delete({ where: { id: searchActor.id } });
+    });
+
+    it('free text also reaches the registration email inside `after` JSON', async () => {
+      await audit.record({
+        actorAccountId: null,
+        action: 'identity.account_registered',
+        targetType: 'account',
+        targetId: 'itest-json-email-target',
+        after: { email: `itest-jsonsearch-${stamp}@shopnetic.test`, plane: 'marketplace' },
+      });
+
+      const res = await controller.list(req, undefined, '50', `itest-jsonsearch-${stamp}`);
+      expect(res.data.map((e) => e.targetId)).toContain('itest-json-email-target');
+
+      await prisma.auditEvent.deleteMany({ where: { targetId: 'itest-json-email-target' } });
+    });
+  });
 });

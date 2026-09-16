@@ -11,6 +11,23 @@
     "reason": "Reason",
     "correlationId": "Correlation ID",
     "before": "Before",
-    "after": "After"
+    "after": "After",
+    "changed": "Changed",
+    "noOtherChanges": "Nothing else changed.",
+    "searchPlaceholder": "Search actor, target, action…",
+    "filter": {
+      "title": "Filters",
+      "domain": {
+        "label": "Domain",
+        "all": "All",
+        "catalog": "Catalog",
+        "identity": "Identity"
+      },
+      "targetType": "Target type",
+      "targetTypeAll": "All types",
+      "from": "From",
+      "to": "To",
+      "clear": "Clear filters"
+    }
   }
 }

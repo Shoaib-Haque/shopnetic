@@ -1699,3 +1699,159 @@ compose file.
   key (unlike the auth-flow "Back to sign in" links, which are
   page-specific enough to warrant separate copy each) since this text is
   identical everywhere it appears.
+- 2026-09-16 — Added filtering to Audit Log: free text (actor email,
+  `targetId`, `action`, `reason`, plus `after`/`before ->> 'email'` — the
+  one JSON key worth reaching, since `identity.account_registered` has no
+  other admin lookup surface yet), a Domain tab (All/Catalog/Identity,
+  matched via `action LIKE '<domain>.%'`), a Target type select, and a
+  From/To date range — `AuditController.list` moved from a plain
+  `prisma.auditEvent.findMany` to `$queryRawUnsafe`, mirroring
+  `CategoryService.list`'s own tokenized-search raw-SQL pattern
+  (`tokenizeForSql` duplicated rather than shared, same as that file's own
+  precedent). Deliberately scoped narrower than a general JSON/full-text
+  search — plan/16-security.md section 8 already draws that line: security
+  events go to a SIEM for real investigation, `audit_event` is the durable
+  structured record, not a search engine. No new DB index added yet (fine
+  at ~600 rows; `action` has none today, worth adding before this gets to
+  real production volume, not before). One correctness bug caught by its
+  own test before it shipped: the first "to" implementation used `<=` on
+  the parsed date-only string, which parses to that day's UTC midnight —
+  so picking today as "to" would have silently excluded every row from
+  today after 00:00 UTC, the opposite of what a "through this day"
+  date-range control should do. Fixed with an exclusive upper bound one
+  day later instead. Verified meaningfully at every layer: reverted the
+  domain filter, the "to" fix, and the frontend's domain-tab wiring in
+  turn and confirmed each specific test failed for the right reason before
+  restoring; ran the full API integration suite (90 tests) and admin unit
+  suite (128 tests) green; then walked it live through the running dev
+  stack with a disposable Super Admin account (logged in for real via
+  `DEV_AUTH_RELAXED`, no mocking) — confirmed Domain+Target-type combined
+  correctly narrows to real staff-management history, free text on an
+  invitee's email address matches both the row where they're the actor
+  *and* the separate row where their email is the `targetId`, and an
+  impossible date range (`to=2020-01-01`) correctly comes back empty
+  rather than erroring — then cleaned up the disposable account after.
+- 2026-09-16 — Three UI follow-ups on the Audit Log filter bar above, from
+  the user actually looking at it once built. (1) Four filter controls
+  sitting in the toolbar read as too much — moved Domain/Target
+  type/From/To into a collapsible side panel, added a new `Drawer` family
+  (`packages/ui/src/components/drawer.tsx`, exported alongside `Modal`):
+  built on the *same* Radix `Dialog` primitive `Modal` uses (real focus
+  trap, Escape, backdrop click-to-close — not a hand-rolled div like the
+  sidebar's own mobile drawer), just positioned as a right-edge slide-in
+  instead of a centered scale-in, since a filter panel is a distinct
+  enough shape from a create/edit form to want its own primitive rather
+  than a `Modal` variant prop. Search box and the "Clear filters" button
+  (pushed to the row's far right via `ml-auto`, unchanged in place per the
+  ask) stay in the always-visible toolbar; only the four filters moved
+  behind the new "Filters" trigger. (2) Domain went from segmented tabs to
+  a `<select>`, matching Target type's own control and reading better
+  stacked vertically in the drawer than a button-row would. (3) A native
+  `<input type="date">` only opens its picker from the small calendar-icon
+  glyph by default — added an `onClick` calling `el.showPicker()`
+  (feature-detected; a harmless no-op in a browser without it, e.g.
+  Safari, which falls back to the native default) so clicking anywhere in
+  the field opens it, matching how the rest of the control already reads
+  as one clickable unit. Verified meaningfully: removed the `showPicker()`
+  wiring and confirmed its test failed for exactly that reason before
+  restoring it; the drawer's open/trigger/close wiring is exercised
+  end-to-end by seven of the filter bar's fifteen tests (every one that
+  needs the drawer open first calls a shared `openFiltersDrawer()` helper
+  — if that wiring broke, most of the suite would fail with it, not just
+  one dedicated test). Full admin suite (130 tests) and both packages'
+  typecheck/lint stayed green throughout.
+- 2026-09-16 — Two more Audit Log filter-bar follow-ups, both from the
+  user actually using it. (1) "Clear filters" used `ml-auto` to sit at the
+  toolbar's far right — at 767–830px the row wraps to two lines and
+  `ml-auto` flings it onto an orphaned second line, disconnected from the
+  Filters button (screenshot from the user caught this). Dropped
+  `ml-auto`; it now just sits immediately after Filters and wraps together
+  with it as one unit. (2) The user asked, unprompted, whether needing to
+  close the filters panel before clicking back into the search box was
+  real-world UX — it wasn't a vague complaint, it was a real, findable bug:
+  the "drawer" from the entry above was `Drawer`, built on the same Radix
+  `Dialog` primitive `Modal` uses, which defaults to `modal={true}` —
+  focus-trapped and pointer-events-blocking on the rest of the page while
+  open, i.e. clicking the search box while it was open did nothing at all,
+  by design of the primitive, not by any explicit choice. Swapped to a new
+  `Popover` primitive (`packages/ui/src/components/popover.tsx`, added
+  `@radix-ui/react-popover` — same version series as the other Radix
+  packages here) — Radix's `Popover` has no `Overlay`/backdrop primitive
+  at all, so there's structurally nothing to block the rest of the page;
+  clicking another control while it's open both dismisses the popover and
+  reaches that control in the same interaction, matching how GitHub's
+  Labels/Milestone dropdowns and Gmail's filter icon behave, not how a
+  modal does. `Drawer` itself wasn't deleted — kept as a real,
+  independent primitive for the shape it's actually suited to (a
+  create/edit form, a bulk action — something meant to be used
+  exclusively, not alongside a search box) — swapping `audit-log.tsx`
+  between the two is a one-file, import-level change if the user's own
+  UI test prefers the Drawer's look after all. Verified meaningfully, and
+  this one had unusually concrete proof available: swapped back to
+  `Drawer` temporarily and ran the new structural test — it failed by
+  finding exactly the mechanism in question, a real DOM node:
+  `<div class="fixed inset-0 ... " style="pointer-events: auto" data-aria-hidden="true">`
+  covering the full viewport. `Popover` renders no such element at any
+  point. Restored `Popover`; full admin suite (131 tests, 1 new) and both
+  packages' typecheck/lint green.
+- 2026-09-16 — Audit Log's Before/After panel switched from a full
+  before/after dump to a diff: only the fields that actually changed,
+  `field: old → new` (old struck through in `text-destructive`, new in
+  `text-success`), instead of two full JSON blocks a reader has to eyeball
+  field-by-field to spot the one that moved (a real screenshot showed a
+  12-field category where only `name.en` differed). Discussed real-world
+  precedent first: field-history/audit-log tools (Salesforce Field
+  History, most admin activity logs) show only-what-changed; code/text
+  diff tools (GitHub PRs, Notion/Docs revision history) show full content
+  with changes highlighted; raw event logs (CloudTrail, Stripe events)
+  dump the full payload with no diffing at all, because their job is
+  proving exactly what was sent, not helping a human spot an edit. This
+  page is the first category, not the third — landed on diff-only, not
+  full-dump-with-highlighting, since the highlighting variant solves a
+  problem (scanning a big block of mostly-identical text) that diff-only
+  avoids having in the first place. New pure function `diffRecords`
+  (`apps/admin/src/features/audit-log/diff.ts`, tested directly rather
+  than only through the component, matching `reorder.ts`/`reorder.test.ts`'s
+  own precedent in the sibling categories feature): flattens nested plain
+  objects into dot paths (`name.en`), leaves arrays as one comparable unit
+  rather than diffing per index, deep-equals leaf values, excludes `id`
+  and `updatedAt` from the comparison — `id` can never differ on an update
+  (it's the record's own key, already shown as the row's own `targetId`),
+  and `updatedAt` changes on every write regardless of what else did, so
+  including it would mean literally every diff, forever, carries at least
+  one guaranteed-uninteresting line. A create or delete (only one side of
+  before/after present) has nothing to diff *against* — every field there
+  is the whole relevant state, not a change — so that case still renders
+  the previous full, wrapped JSON dump; diffing only applies when both
+  sides exist. An update where the only differences are the excluded keys
+  now shows "Nothing else changed." rather than a blank, broken-looking
+  list. Verified meaningfully: 10 direct unit tests on `diffRecords`
+  (nested paths, array-as-a-unit, added/removed fields, `null` vs
+  missing, exclusion, alphabetical ordering for determinism) plus updated
+  component tests; emptied `EXCLUDED_KEYS` and confirmed 3 tests failed
+  by finding `updatedAt` leaking into the rendered diff exactly as
+  expected, then restored. Full admin suite (144 tests, 12 new) and
+  typecheck/lint green throughout.
+- 2026-09-16 — Two screenshots (768px, 900px) caught the Audit Log table's
+  Target column and expand chevron getting cut off, not wrapped or
+  scrolled, invisible and unreachable. Root cause: the table opted out of
+  `Table`'s default `scrollX={true}` (using `scrollX={false}` →
+  `overflow: clip`) specifically to keep its `sticky` header working —
+  `overflow-x-auto` has a documented side effect of also forcing
+  `overflow-y` to `auto`, which would trap the sticky header inside the
+  table's own scroll box instead of the page's. That trade-off is correct
+  at real desktop widths but backfires between 768–960px: the five
+  `table-fixed` columns (Time 160px + Actor 208px + Action 208px + Target
+  + the 40px chevron) don't all fit there, and `clip` means the overflow
+  is silently discarded rather than reachable via scroll. Discussed three
+  options (widen the table/card breakpoint; turn on `scrollX` and accept
+  the sticky-header trade-off; reflow the column widths) — went with
+  widening `hidden md:block`/`md:hidden` to `hidden lg:block`/`lg:hidden`
+  on the table and card-list wrappers respectively: the card list already
+  renders this same content correctly (time/actor/action/target
+  stacked, same expand toggle), so the fix is redirecting the existing
+  working layout to cover the zone the table doesn't fit, not building
+  anything new. Verified meaningfully: reverted both wrappers back to
+  `md:`, confirmed the new breakpoint-assertion test failed by finding the
+  old class exactly where expected, restored. Full admin suite (145
+  tests, 1 new) and typecheck/lint green.

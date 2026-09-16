@@ -39,3 +39,21 @@ export {
   GLASS_SURFACE,
   type ScrollToTopButtonProps,
 } from './components/scroll-to-top-button';
+export {
+  Drawer,
+  DrawerTrigger,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerBody,
+  type DrawerContentProps,
+} from './components/drawer';
+export {
+  Popover,
+  PopoverTrigger,
+  PopoverClose,
+  PopoverAnchor,
+  PopoverContent,
+  type PopoverContentProps,
+} from './components/popover';
