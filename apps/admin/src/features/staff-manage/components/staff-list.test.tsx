@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import type { StaffAccount } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
@@ -20,6 +20,26 @@ vi.mock('../api', () => ({
   activateStaff: vi.fn(),
   resetStaffTotp: vi.fn(),
   deprovisionStaff: vi.fn(),
+}));
+
+const PATHNAME = '/en/x7f2k9t3m1qp/staff';
+const routerReplace = vi.fn();
+// per-test control over what `useSearchParams()` returns on mount —
+// reassigned (not mutated) in `beforeEach`, and the mock factory re-reads
+// this binding on every call rather than capturing one instance.
+let mockSearchParams = new URLSearchParams();
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: routerReplace,
+    refresh: vi.fn(),
+    push: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+  }),
+  usePathname: () => PATHNAME,
+  useSearchParams: () => mockSearchParams,
 }));
 
 const mockedListStaff = vi.mocked(listStaff);
@@ -75,6 +95,11 @@ function openRowMenu(row: HTMLElement) {
   trigger.focus();
   fireEvent.keyDown(trigger, { key: 'Enter' });
 }
+
+beforeEach(() => {
+  mockSearchParams = new URLSearchParams();
+  routerReplace.mockReset();
+});
 
 afterEach(() => {
   cleanup();
@@ -326,5 +351,42 @@ describe('StaffList', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     fireEvent.focus(trigger);
     expect(await screen.findByRole('tooltip')).toHaveTextContent('More actions');
+  });
+});
+
+describe('StaffList — deep link from Audit Log (?highlight=accountId)', () => {
+  it('flashes the target row when it is already on the first page, and strips the param from the URL', async () => {
+    const target = account({ id: 'acc-2', email: 'target@example.com' });
+    mockSearchParams = new URLSearchParams({ highlight: target.id });
+    mockedListStaff.mockResolvedValueOnce(page([ME, target]));
+
+    render();
+    await screen.findAllByText(target.email);
+
+    expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('sn-row-flash');
+    expect(routerReplace).toHaveBeenCalledWith(PATHNAME, { scroll: false });
+  });
+
+  it('keeps loading pages until the target turns up, then flashes it', async () => {
+    const target = account({ id: 'acc-9', email: 'later-page@example.com' });
+    mockSearchParams = new URLSearchParams({ highlight: target.id });
+    mockedListStaff
+      .mockResolvedValueOnce(page([ME], 'cursor-1'))
+      .mockResolvedValueOnce(page([target], undefined));
+
+    render();
+    await screen.findAllByText(target.email);
+
+    expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('sn-row-flash');
+    expect(mockedListStaff).toHaveBeenCalledWith('cursor-1');
+  });
+
+  it('without a highlight param, nothing flashes and the URL is left alone', async () => {
+    mockedListStaff.mockResolvedValueOnce(page([ME]));
+    render();
+    await screen.findAllByText(ME.email);
+
+    expect(document.querySelector(`[data-staff-row="${ME.id}"]`)).not.toHaveClass('sn-row-flash');
+    expect(routerReplace).not.toHaveBeenCalled();
   });
 });

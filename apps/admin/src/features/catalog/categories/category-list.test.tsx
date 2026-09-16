@@ -321,3 +321,30 @@ describe('CategoryList drag-reorder rollback', () => {
     );
   });
 });
+
+describe('CategoryList — deep link from Audit Log (?status=all&highlight=categoryId)', () => {
+  it('flashes the target row once the flat/all view has it, even when it is not on the first page', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'all', highlight: 'z' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: { nextCursor: 'c1' } }) // flat page 1
+      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // flat page 2 — has the target
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Zulu');
+
+    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('sn-row-flash');
+  });
+
+  it('without a highlight param, nothing flashes', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'all' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // tree's own unconditional load
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }); // flat page
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    expect(document.querySelector('[data-cat-row="a"]')).not.toHaveClass('sn-row-flash');
+  });
+});

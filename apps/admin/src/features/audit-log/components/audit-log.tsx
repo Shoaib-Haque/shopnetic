@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState, type MouseEvent } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
@@ -78,7 +79,49 @@ const TARGET_TYPES = [
   'media_asset',
 ];
 
-export function AuditLog() {
+// Only these two target types have any admin page to land on today (per
+// `plan/CODING-RULES.md`'s dated entry on this feature) — every other
+// `targetType` still renders as plain text. `account` is further gated to
+// staff-originated actions only: an `account` row can also be a
+// buyer/marketplace account, which has no admin page, and `identity.staff_*`
+// is exactly the action-name prefix used by both the STAFF_MANAGE-gated
+// actions (invite/role-change/etc., performed on someone else) and the
+// self-service ones (password change, TOTP), so it never matches a non-staff
+// account.
+function targetHref(event: AuditEvent, locale: string, basePath: string): string | null {
+  if (!event.targetId) return null;
+  if (event.targetType === 'category') {
+    return `/${locale}/${basePath}/catalog/categories?status=all&highlight=${encodeURIComponent(event.targetId)}`;
+  }
+  if (event.targetType === 'account' && event.action.startsWith('identity.staff_')) {
+    return `/${locale}/${basePath}/staff?highlight=${encodeURIComponent(event.targetId)}`;
+  }
+  return null;
+}
+
+function TargetCell({
+  event,
+  locale,
+  basePath,
+  className,
+}: {
+  event: AuditEvent;
+  locale: string;
+  basePath: string;
+  className?: string;
+}) {
+  if (!event.targetType) return <span className={className}>—</span>;
+  const label = `${event.targetType}${event.targetId ? `:${event.targetId}` : ''}`;
+  const href = targetHref(event, locale, basePath);
+  if (!href) return <span className={className}>{label}</span>;
+  return (
+    <Link href={href} className={cn(className, 'underline-offset-2 hover:underline')}>
+      {label}
+    </Link>
+  );
+}
+
+export function AuditLog({ locale, basePath }: { locale: string; basePath: string }) {
   const t = useTranslations('auditLog');
   const tCommon = useTranslations('admin');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -295,9 +338,7 @@ export function AuditLog() {
                           {event.action}
                         </TableCell>
                         <TableCell className="truncate text-xs text-muted-foreground">
-                          {event.targetType
-                            ? `${event.targetType}${event.targetId ? `:${event.targetId}` : ''}`
-                            : '—'}
+                          <TargetCell event={event} locale={locale} basePath={basePath} />
                         </TableCell>
                         <TableCell>
                           {expandable && (
@@ -369,9 +410,7 @@ export function AuditLog() {
                         {event.action}
                       </p>
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {event.targetType
-                          ? `${event.targetType}${event.targetId ? `:${event.targetId}` : ''}`
-                          : '—'}
+                        <TargetCell event={event} locale={locale} basePath={basePath} />
                       </p>
                     </div>
                     {expandable && (

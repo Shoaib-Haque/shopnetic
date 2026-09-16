@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/crud/page-header';
 import { ActionButton } from '@/components/crud/action-button';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useFindById } from '@/hooks/use-find-by-id';
 import { tokenize } from '@/lib/search';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
@@ -85,6 +86,13 @@ export function CategoryList() {
     parseStatus(searchParams.get('status')),
   );
   const [error, setError] = useState<string | null>(null);
+  // A deep link from Audit Log's Target column — `?status=all&highlight=id`
+  // — always arrives with `status=all`, so it's already covered by the
+  // seeding above; this is read once the same way and never re-read from
+  // the URL after (the status/q-sync effect below doesn't know about it, so
+  // it naturally drops out of the URL the first time that effect runs —
+  // no separate cleanup needed).
+  const [highlightId] = useState(() => searchParams.get('highlight'));
   const [q, setQ] = useState(() => searchParams.get('q') ?? '');
   const debouncedQ = useDebouncedValue(q, 250);
   const [modal, setModal] = useState<ModalState>(null);
@@ -277,6 +285,22 @@ export function CategoryList() {
     isFlatMode,
   );
   const flatRetry = flatList.retry;
+
+  // Deep link landed on a specific category — keep loading pages of the
+  // flat/all view until it turns up, then reuse the exact same flash/scroll
+  // affordance a move or restore already gets, rather than also auto-opening
+  // its edit modal: the row itself (plus the audit diff that sent someone
+  // here in the first place) already says what changed.
+  const highlightedCategory = useFindById(
+    highlightId,
+    flatList.items,
+    flatList.hasMore,
+    flatList.loading || flatList.loadingMore,
+    flatList.loadMore,
+  );
+  useEffect(() => {
+    if (highlightedCategory) flash(highlightedCategory.id);
+  }, [highlightedCategory, flash]);
 
   // post-mutation reload: keeps the rows on screen if the refresh itself
   // fails (the mutation already surfaced its own error), never blanks to the

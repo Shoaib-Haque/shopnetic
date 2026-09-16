@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { AuditEvent } from '@shopnetic/contracts';
@@ -14,6 +15,22 @@ const routerReplace = vi.fn();
 // reassigned (not mutated) in `beforeEach`, and the mock factory re-reads
 // this binding on every call rather than capturing one instance.
 let mockSearchParams = new URLSearchParams();
+
+vi.mock('next/link', () => ({
+  default: ({
+    children,
+    href,
+    className,
+  }: {
+    children: ReactNode;
+    href: string;
+    className?: string;
+  }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  ),
+}));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -80,7 +97,7 @@ describe('AuditLog', () => {
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     expect(await screen.findByText('Couldn’t load the list.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
@@ -94,7 +111,7 @@ describe('AuditLog', () => {
       nextCursor: undefined,
     });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     expect((await screen.findAllByText('super@example.com')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('System').length).toBeGreaterThan(0);
     expect(screen.getByText('No more items')).toBeInTheDocument();
@@ -107,7 +124,7 @@ describe('AuditLog', () => {
     // not scrolled, so Target and the expand toggle become unreachable.
     mockedListAuditEvents.mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
 
-    const { container } = renderAdmin(<AuditLog />);
+    const { container } = renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
 
     // two levels up: <table> → Table's own scroll wrapper → this page's
@@ -124,7 +141,7 @@ describe('AuditLog', () => {
   it('an empty result shows the empty state, not a table', async () => {
     mockedListAuditEvents.mockResolvedValueOnce({ events: [], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     expect(await screen.findByText('No audit events yet.')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
@@ -134,7 +151,7 @@ describe('AuditLog', () => {
       .mockResolvedValueOnce({ events: [event({ id: 'evt-1' })], nextCursor: 'cursor-1' })
       .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     // one event, shown twice (desktop table + mobile card)
     expect(screen.getAllByText('identity.staff_activated')).toHaveLength(2);
@@ -154,7 +171,7 @@ describe('AuditLog', () => {
       .mockResolvedValueOnce({ events: [event({ id: 'evt-1' })], nextCursor: 'cursor-1' })
       .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     const sentinel = await screen.findByTestId('scroll-sentinel');
     // simulates the observer firing on mount because the sentinel was
     // already visible — no scroll gesture involved
@@ -170,7 +187,7 @@ describe('AuditLog', () => {
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     const sentinel = await screen.findByTestId('scroll-sentinel');
     act(() => triggerIntersection(sentinel));
 
@@ -195,7 +212,7 @@ describe('AuditLog', () => {
       nextCursor: undefined,
     });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
 
     const bareRow = tableRowFor('identity.session_created');
@@ -236,7 +253,7 @@ describe('AuditLog', () => {
       nextCursor: undefined,
     });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     fireEvent.click(
       within(tableRowFor('identity.staff_activated')).getByRole('button', {
@@ -256,7 +273,7 @@ describe('AuditLog', () => {
       nextCursor: undefined,
     });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     fireEvent.click(
       within(tableRowFor('identity.staff_activated')).getByRole('button', {
@@ -279,7 +296,7 @@ describe('AuditLog', () => {
       nextCursor: undefined,
     });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     fireEvent.click(
       within(tableRowFor('identity.staff_activated')).getByRole('button', {
@@ -298,7 +315,7 @@ describe('AuditLog', () => {
       nextCursor: undefined,
     });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     const toggle = within(tableRowFor('identity.staff_activated')).getByRole('button', {
       name: 'View details',
@@ -323,7 +340,7 @@ describe('AuditLog — filter bar', () => {
       .mockResolvedValueOnce({ events: [event({ id: 'evt-1' })], nextCursor: undefined })
       .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
 
     fireEvent.change(screen.getByPlaceholderText('Search actor, target, action…'), {
@@ -341,7 +358,7 @@ describe('AuditLog — filter bar', () => {
   it('the Filters panel opens on trigger click and closes on its own close button', async () => {
     mockedListAuditEvents.mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     expect(screen.queryByLabelText('Domain')).not.toBeInTheDocument();
 
@@ -364,7 +381,7 @@ describe('AuditLog — filter bar', () => {
   it('opening the filters panel renders no blocking backdrop, and the search box stays in the accessible tree', async () => {
     mockedListAuditEvents.mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
 
     openFiltersPanel();
@@ -381,7 +398,7 @@ describe('AuditLog — filter bar', () => {
       .mockResolvedValueOnce({ events: [event({ id: 'evt-1' })], nextCursor: undefined })
       .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
 
     openFiltersPanel();
@@ -396,7 +413,7 @@ describe('AuditLog — filter bar', () => {
       .mockResolvedValueOnce({ events: [event({ id: 'evt-1' })], nextCursor: undefined })
       .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
 
     openFiltersPanel();
@@ -414,7 +431,7 @@ describe('AuditLog — filter bar', () => {
       .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined })
       .mockResolvedValueOnce({ events: [event({ id: 'evt-3' })], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
 
     openFiltersPanel();
@@ -434,7 +451,7 @@ describe('AuditLog — filter bar', () => {
   it('clicking anywhere in a date field opens its native picker, not just the calendar icon', async () => {
     mockedListAuditEvents.mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     openFiltersPanel();
 
@@ -453,7 +470,7 @@ describe('AuditLog — filter bar', () => {
       .mockResolvedValueOnce({ events: [event({ id: 'evt-3' })], nextCursor: undefined })
       .mockResolvedValueOnce({ events: [event({ id: 'evt-4' })], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     expect(screen.queryByText('Clear filters')).not.toBeInTheDocument();
 
@@ -486,7 +503,7 @@ describe('AuditLog — filters sync to the URL', () => {
     });
     mockedListAuditEvents.mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
 
     expect(mockedListAuditEvents).toHaveBeenCalledWith(undefined, {
@@ -508,7 +525,7 @@ describe('AuditLog — filters sync to the URL', () => {
     mockSearchParams = new URLSearchParams({ domain: 'not-a-real-domain' });
     mockedListAuditEvents.mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
 
@@ -520,7 +537,7 @@ describe('AuditLog — filters sync to the URL', () => {
       .mockResolvedValueOnce({ events: [event({ id: 'evt-1' })], nextCursor: undefined })
       .mockResolvedValueOnce({ events: [event({ id: 'evt-2' })], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
     routerReplace.mockClear(); // drop the mount-time no-op replace
 
@@ -540,7 +557,7 @@ describe('AuditLog — filters sync to the URL', () => {
       .mockResolvedValueOnce({ events: [event()], nextCursor: undefined })
       .mockResolvedValueOnce({ events: [event()], nextCursor: undefined });
 
-    renderAdmin(<AuditLog />);
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findByText('Clear filters');
     routerReplace.mockClear();
 
@@ -549,5 +566,84 @@ describe('AuditLog — filters sync to the URL', () => {
     await waitFor(() =>
       expect(routerReplace).toHaveBeenLastCalledWith(PATHNAME, { scroll: false }),
     );
+  });
+});
+
+describe('AuditLog — Target column deep-links to the live record', () => {
+  // Only `category` and staff-originated `account` rows have anywhere real
+  // to land — every other targetType (or a non-staff `account`, like a
+  // buyer/marketplace one) stays plain text since there's no admin page to
+  // send it to.
+  it('a category row links to the Category List, forcing status=all and highlighting the row', async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [
+        event({ targetType: 'category', targetId: 'cat-9', action: 'catalog.category_updated' }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    const links = await screen.findAllByText('category:cat-9');
+    for (const link of links) {
+      expect(link.closest('a')).toHaveAttribute(
+        'href',
+        '/en/x7f2k9t3m1qp/catalog/categories?status=all&highlight=cat-9',
+      );
+    }
+  });
+
+  it('a staff-action account row (e.g. a role change) links to the Staff List', async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [
+        event({ targetType: 'account', targetId: 'acc-9', action: 'identity.staff_role_changed' }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    const links = await screen.findAllByText('account:acc-9');
+    for (const link of links) {
+      expect(link.closest('a')).toHaveAttribute('href', '/en/x7f2k9t3m1qp/staff?highlight=acc-9');
+    }
+  });
+
+  it('a non-staff account row (e.g. a buyer registering) stays plain text — no admin page to send it to', async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [
+        event({ targetType: 'account', targetId: 'acc-9', action: 'identity.account_registered' }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    const texts = await screen.findAllByText('account:acc-9');
+    for (const text of texts) expect(text.closest('a')).toBeNull();
+  });
+
+  it('a targetType with no admin page yet (e.g. brand) stays plain text', async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [
+        event({ targetType: 'brand', targetId: 'brand-1', action: 'catalog.brand_created' }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    const texts = await screen.findAllByText('brand:brand-1');
+    for (const text of texts) expect(text.closest('a')).toBeNull();
+  });
+
+  it('a row with no targetType renders the em dash, not a link', async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [event({ targetType: null, targetId: null })],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    const dashes = await screen.findAllByText('—');
+    // page header/other chrome doesn't use an em dash, so every one found
+    // here is the Target cell's (desktop + mobile)
+    expect(dashes.length).toBeGreaterThan(0);
+    for (const dash of dashes) expect(dash.closest('a')).toBeNull();
   });
 });

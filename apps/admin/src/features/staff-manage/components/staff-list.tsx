@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { StaffAccount, StaffRole } from '@shopnetic/contracts';
 import {
   Button,
+  cn,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -30,6 +32,7 @@ import { PageHeader } from '@/components/crud/page-header';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { FormModal } from '@/components/crud/form-modal';
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
+import { useFindById } from '@/hooks/use-find-by-id';
 import { AdminApiError } from '@/features/admin-api/client';
 import { staffErrorKey } from '@/features/staff-auth/error-copy';
 import {
@@ -72,6 +75,15 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // A deep link from Audit Log's Target column — `?highlight=accountId` —
+  // read once at mount, same pattern as Category List's own highlight/status
+  // sync. No other filters live on this page's URL, so once handled it's
+  // just stripped back down to the bare pathname (see the effect below).
+  const [highlightId] = useState(() => searchParams.get('highlight'));
+
   const {
     items: accounts,
     setItems: setAccounts,
@@ -85,6 +97,33 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
   } = useScrollLoad<StaffAccount>((cursor) =>
     listStaff(cursor).then((page) => ({ items: page.accounts, nextCursor: page.nextCursor })),
   );
+
+  // briefly highlight the row a deep link landed on, so it's easy to spot in
+  // a long list — same `sn-row-flash` affordance Category List already uses
+  // for its own move/restore/deep-link cases.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(flashTimer.current), []);
+  const highlightedAccount = useFindById(
+    highlightId,
+    accounts,
+    hasMore,
+    loading || loadingMore,
+    loadMore,
+  );
+  useEffect(() => {
+    if (!highlightedAccount) return;
+    setFlashId(highlightedAccount.id);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlashId(null), 1400);
+    router.replace(pathname, { scroll: false });
+  }, [highlightedAccount, pathname, router]);
+  useEffect(() => {
+    if (!flashId) return;
+    document
+      .querySelector(`[data-staff-row="${CSS.escape(flashId)}"]`)
+      ?.scrollIntoView({ block: 'center' });
+  }, [flashId]);
 
   function applyUpdate(updated: StaffAccount): void {
     setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
@@ -259,7 +298,11 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
                 {accounts.map((account) => {
                   const isSelf = account.email === currentEmail;
                   return (
-                    <TableRow key={account.id}>
+                    <TableRow
+                      key={account.id}
+                      data-staff-row={account.id}
+                      className={cn('scroll-my-24', flashId === account.id && 'sn-row-flash')}
+                    >
                       <TableCell>
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="truncate" title={account.email}>
@@ -298,7 +341,14 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
             {accounts.map((account) => {
               const isSelf = account.email === currentEmail;
               return (
-                <li key={account.id} className="flex items-start gap-3 px-3 py-3">
+                <li
+                  key={account.id}
+                  data-staff-row={account.id}
+                  className={cn(
+                    'flex items-start gap-3 scroll-my-24 px-3 py-3',
+                    flashId === account.id && 'sn-row-flash',
+                  )}
+                >
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-2">
                       <span className="truncate font-medium" title={account.email}>

@@ -1994,3 +1994,45 @@ compose file.
   routed around. Verified: full API integration suite (94 tests, including
   the category-tree subtree-op tests that exercise the GIST index's actual
   job) green after restoring it; typecheck/lint clean.
+- 2026-09-16 — Deep-link from an Audit Log row's Target column to its live
+  record. Scoped by auditing which admin pages actually exist rather than
+  guessing: of the 13 `targetType` values `audit.record()` writes, only
+  `category` (`/catalog/categories` exists) and `account` when
+  `event.action.startsWith('identity.staff_')` (`/staff` exists; an
+  unqualified `account` could also be a buyer/marketplace account, which has
+  no admin page — the prefix check is exactly the boundary between the
+  STAFF_MANAGE-gated staff actions and the self-service `identity.staff_*`
+  ones, and never matches a non-staff account) have anywhere real to land.
+  Everything else stays plain text. Lands as scroll-to + flash-highlight on
+  the target row, not an auto-opened edit modal — Category has one canonical
+  edit dialog but Staff List doesn't (only a `⋮` menu with consequential
+  actions that shouldn't auto-fire), and the row itself plus the audit
+  entry's own diff already answer "does it still exist / what changed";
+  one more click (the existing Edit button) reaches full detail. URL shape:
+  Category reuses its existing status/q URL-sync (`?status=all&highlight=id`
+  — always forces `status=all` so the target is reachable regardless of its
+  current archived state, and `highlight` falls out of the URL for free the
+  first time that sync effect runs); Staff List had no URL-sync before, so
+  `?highlight=id` gets a small dedicated `router.replace(pathname)` once
+  handled. New shared `useFindById` hook (`apps/admin/src/hooks/
+  use-find-by-id.ts`) progressively calls a cursor-pagination's `loadMore()`
+  (bounded, 40 attempts) until the target `id` turns up or `hasMore` goes
+  false — genuinely shared (unlike other accepted small duplication this
+  project), since both call sites needed identical bounded-retry logic.
+  Ported (not shared — Staff List had no equivalent) Category's existing
+  `flash()`/`sn-row-flash`/`data-*-row` pattern into Staff List for its own
+  highlight. Found and fixed a real bug via the usual revert-confirm-restore
+  discipline: `useFindById`'s "is a fetch in flight" parameter first only
+  covered `loadingMore` (a later page) — `useScrollLoad`'s own automatic
+  first-page fetch is tracked by a separate `loading` flag, so the hook
+  could call `loadMore()` before the first page resolved, firing two calls
+  both with `cursor=undefined`. Renamed the parameter to `isBusy` and made
+  both call sites pass `loading || loadingMore`; reverting Staff List's call
+  site back to the old form reproduced the exact symptom (`loadMore` called
+  twice with an unset cursor) in its integration test, confirming the test
+  actually covers the bug, not just the happy path. Also verified the
+  `account` staff-vs-non-staff gate the same way: temporarily dropped the
+  `.startsWith('identity.staff_')` check, confirmed the "non-staff account
+  stays plain text" test failed with the buyer/marketplace row wrongly
+  linking to `/staff`, restored. Full admin suite green throughout (170
+  tests / 19 files); typecheck and lint clean.
