@@ -1,16 +1,32 @@
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
-import { Permission } from '@shopnetic/auth';
+import { can, Permission, type Actor } from '@shopnetic/auth';
 import type { AuditEvent } from '@shopnetic/contracts';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { RequirePermission } from '../auth/require-permission.decorator.js';
+import { CurrentActor } from '../auth/current-actor.decorator.js';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const DOMAINS = ['catalog', 'identity'] as const;
 type Domain = (typeof DOMAINS)[number];
+
+/** Every `staff:manage`-gated action (`staff.controller.ts`'s invite/role/
+ * activate/reset-totp/deprovision endpoints) — the slice `auditlog:read`'s
+ * "partial" tier hides (plan/03 section 4). Kept as actions, not as a
+ * `targetType`/`STAFF_MANAGE` check, because the audit row itself doesn't
+ * record which permission gated the request that wrote it — only what
+ * happened. */
+const STAFF_MANAGE_ACTIONS = [
+  'identity.staff_invited',
+  'identity.staff_invite_accepted',
+  'identity.staff_role_changed',
+  'identity.staff_activated',
+  'identity.staff_deprovisioned',
+  'identity.staff_totp_reset',
+];
 
 interface RawAuditEvent {
   id: string;
@@ -44,6 +60,7 @@ export class AuditController {
   @RequirePermission(Permission.AUDITLOG_READ)
   async list(
     @Req() req: Request,
+    @CurrentActor() actor: Actor,
     @Query('cursor') cursor?: string,
     @Query('limit') limitRaw?: string,
     @Query('q') q?: string,
@@ -66,6 +83,13 @@ export class AuditController {
     if (cursor) {
       params.push(cursor);
       where.push(`ae.id < $${params.length}::uuid`);
+    }
+    if (!can(actor, Permission.AUDITLOG_READ_FULL)) {
+      const placeholders = STAFF_MANAGE_ACTIONS.map((action) => {
+        params.push(action);
+        return `$${params.length}`;
+      });
+      where.push(`ae.action NOT IN (${placeholders.join(', ')})`);
     }
     if (domain) {
       params.push(`${domain}.%`);

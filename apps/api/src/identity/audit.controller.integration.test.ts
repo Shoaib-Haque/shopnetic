@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import type { ExecutionContext } from '@nestjs/common';
 import type { Request } from 'express';
+import { Permission, type Actor } from '@shopnetic/auth';
 import type { ApiEnv } from '../config/env.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -14,6 +15,14 @@ import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { AuditController } from './audit.controller.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
+
+function actorWith(accountId: string, permissions: Permission[]): Actor {
+  return {
+    accountId,
+    plane: 'staff',
+    grants: [{ role: 'itest-role', scopeType: 'global', scopeId: null, permissions }],
+  };
+}
 
 const env = {
   NODE_ENV: 'test',
@@ -33,6 +42,8 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
   let controller: AuditController;
   let audit: AuditService;
   let actorId: string;
+  let superAdmin: Actor;
+  let serviceAdmin: Actor;
   let staffToken = '';
   let jwks: JwksService;
   const stamp = Date.now();
@@ -49,6 +60,8 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
       data: { email: actorEmail, plane: 'staff', status: 'active', emailVerifiedAt: new Date() },
     });
     actorId = actor.id;
+    superAdmin = actorWith(actorId, [Permission.AUDITLOG_READ, Permission.AUDITLOG_READ_FULL]);
+    serviceAdmin = actorWith(actorId, [Permission.AUDITLOG_READ]);
 
     // Shared across the whole describe block: with no JWT_PRIVATE_KEY/PUBLIC_KEY
     // configured, JwksService generates a fresh ephemeral keypair per instance —
@@ -76,7 +89,7 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
       after: { status: 'active' },
     });
 
-    const res = await controller.list(req, undefined, '5');
+    const res = await controller.list(req, superAdmin, undefined, '5');
     const row = res.data.find((e) => e.action === 'itest.audit_probe');
 
     expect(row).toBeDefined();
@@ -91,11 +104,11 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
       await audit.record({ actorAccountId: actorId, action: `itest.audit_page_${i}` });
     }
 
-    const first = await controller.list(req, undefined, '2');
+    const first = await controller.list(req, superAdmin, undefined, '2');
     expect(first.data).toHaveLength(2);
     expect(first.meta.nextCursor).toBeDefined();
 
-    const second = await controller.list(req, first.meta.nextCursor, '2');
+    const second = await controller.list(req, superAdmin, first.meta.nextCursor, '2');
     const firstIds = new Set(first.data.map((e) => e.id));
     expect(second.data.some((e) => firstIds.has(e.id))).toBe(false);
   });
@@ -129,12 +142,26 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
       await audit.record({ actorAccountId: actorId, action: 'catalog.itest_domain_probe' });
       await audit.record({ actorAccountId: actorId, action: 'identity.itest_domain_probe' });
 
-      const catalogOnly = await controller.list(req, undefined, '50', undefined, 'catalog');
+      const catalogOnly = await controller.list(
+        req,
+        superAdmin,
+        undefined,
+        '50',
+        undefined,
+        'catalog',
+      );
       const actions = catalogOnly.data.map((e) => e.action);
       expect(actions).toContain('catalog.itest_domain_probe');
       expect(actions).not.toContain('identity.itest_domain_probe');
 
-      const identityOnly = await controller.list(req, undefined, '50', undefined, 'identity');
+      const identityOnly = await controller.list(
+        req,
+        superAdmin,
+        undefined,
+        '50',
+        undefined,
+        'identity',
+      );
       const identityActions = identityOnly.data.map((e) => e.action);
       expect(identityActions).toContain('identity.itest_domain_probe');
       expect(identityActions).not.toContain('catalog.itest_domain_probe');
@@ -156,6 +183,7 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
 
       const res = await controller.list(
         req,
+        superAdmin,
         undefined,
         '50',
         undefined,
@@ -187,6 +215,7 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
       const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
       const res = await controller.list(
         req,
+        superAdmin,
         undefined,
         '50',
         undefined,
@@ -219,6 +248,7 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
       const today = new Date().toISOString().slice(0, 10);
       const res = await controller.list(
         req,
+        superAdmin,
         undefined,
         '50',
         undefined,
@@ -249,14 +279,26 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
         reason: 'a very particular reason phrase',
       });
 
-      const byActorFragment = await controller.list(req, undefined, '50', 'itest-search');
+      const byActorFragment = await controller.list(
+        req,
+        superAdmin,
+        undefined,
+        '50',
+        'itest-search',
+      );
       expect(byActorFragment.data.map((e) => e.actorAccountId)).toContain(searchActor.id);
 
-      const byReason = await controller.list(req, undefined, '50', 'particular');
+      const byReason = await controller.list(req, superAdmin, undefined, '50', 'particular');
       expect(byReason.data.map((e) => e.action)).toContain('itest.audit_search_probe_reason');
 
       // OR, not AND: one query, two unrelated words — both rows come back
-      const combined = await controller.list(req, undefined, '50', 'itest-search particular');
+      const combined = await controller.list(
+        req,
+        superAdmin,
+        undefined,
+        '50',
+        'itest-search particular',
+      );
       const combinedActions = combined.data.map((e) => e.action);
       expect(combinedActions).toContain('itest.audit_search_probe');
       expect(combinedActions).toContain('itest.audit_search_probe_reason');
@@ -274,10 +316,100 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
         after: { email: `itest-jsonsearch-${stamp}@shopnetic.test`, plane: 'marketplace' },
       });
 
-      const res = await controller.list(req, undefined, '50', `itest-jsonsearch-${stamp}`);
+      const res = await controller.list(
+        req,
+        superAdmin,
+        undefined,
+        '50',
+        `itest-jsonsearch-${stamp}`,
+      );
       expect(res.data.map((e) => e.targetId)).toContain('itest-json-email-target');
 
       await prisma.auditEvent.deleteMany({ where: { targetId: 'itest-json-email-target' } });
+    });
+  });
+
+  describe('auditlog:read partial/full scoping (plan/03 section 4)', () => {
+    it('a partial actor (no AUDITLOG_READ_FULL) never sees a staff:manage-gated action', async () => {
+      await audit.record({ actorAccountId: actorId, action: 'identity.staff_role_changed' });
+
+      const partial = await controller.list(req, serviceAdmin, undefined, '50');
+      expect(partial.data.map((e) => e.action)).not.toContain('identity.staff_role_changed');
+
+      const full = await controller.list(req, superAdmin, undefined, '50');
+      expect(full.data.map((e) => e.action)).toContain('identity.staff_role_changed');
+    });
+
+    it('every staff:manage-gated action is hidden from a partial actor, not just one', async () => {
+      const staffManageActions = [
+        'identity.staff_invited',
+        'identity.staff_invite_accepted',
+        'identity.staff_role_changed',
+        'identity.staff_activated',
+        'identity.staff_deprovisioned',
+        'identity.staff_totp_reset',
+      ];
+      for (const action of staffManageActions) {
+        await audit.record({ actorAccountId: actorId, action });
+      }
+
+      const partial = await controller.list(req, serviceAdmin, undefined, '50');
+      const partialActions = partial.data.map((e) => e.action);
+      for (const action of staffManageActions) {
+        expect(partialActions).not.toContain(action);
+      }
+
+      const full = await controller.list(req, superAdmin, undefined, '50');
+      const fullActions = full.data.map((e) => e.action);
+      for (const action of staffManageActions) {
+        expect(fullActions).toContain(action);
+      }
+    });
+
+    it('a partial actor still sees everything else — general security/identity and catalog events', async () => {
+      await audit.record({ actorAccountId: actorId, action: 'identity.staff_login_failed' });
+      await audit.record({ actorAccountId: actorId, action: 'identity.token_reuse_detected' });
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'catalog.itest_partial_visible_probe',
+      });
+
+      const partial = await controller.list(req, serviceAdmin, undefined, '50');
+      const partialActions = partial.data.map((e) => e.action);
+      expect(partialActions).toContain('identity.staff_login_failed');
+      expect(partialActions).toContain('identity.token_reuse_detected');
+      expect(partialActions).toContain('catalog.itest_partial_visible_probe');
+    });
+
+    it('the domain/targetType/date/search filters still compose correctly for a partial actor', async () => {
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'identity.staff_role_changed', // excluded regardless
+        targetType: 'itest_scoped_widget',
+      });
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'identity.itest_scoped_probe', // not excluded, but wrong targetType
+        targetType: 'other_widget',
+      });
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'identity.itest_scoped_probe',
+        targetType: 'itest_scoped_widget',
+      });
+
+      const res = await controller.list(
+        req,
+        serviceAdmin,
+        undefined,
+        '50',
+        undefined,
+        'identity',
+        'itest_scoped_widget',
+      );
+      const targets = res.data.map((e) => `${e.action}:${e.targetType}`);
+      expect(targets).toContain('identity.itest_scoped_probe:itest_scoped_widget');
+      expect(targets).not.toContain('identity.staff_role_changed:itest_scoped_widget');
     });
   });
 });

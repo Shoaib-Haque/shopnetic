@@ -57,6 +57,14 @@ export const Permission = {
   FEATUREFLAG_TOGGLE: 'featureflag:toggle',
   CONFIG_MANAGE: 'config:manage',
   AUDITLOG_READ: 'auditlog:read',
+  /** The "full" half of `auditlog:read`'s partial/full split (plan/03
+   * section 4's permission matrix) — every staff role holds `AUDITLOG_READ`
+   * itself (the endpoint's actual gate), but only a grant carrying *this*
+   * permission too sees rows from another staff member's own account being
+   * managed (invited/role-changed/unlocked/deprovisioned/TOTP-reset — every
+   * `staff:manage`-gated action, plan/03's Super-Admin-only "Staff
+   * management: invite/create/suspend/remove Admins and Service Admins"). */
+  AUDITLOG_READ_FULL: 'auditlog.full:read',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -115,7 +123,7 @@ const SERVICE_ADMIN_PERMS: Permission[] = [
   P.DISPUTE_WORK,
   P.DISPUTE_REFUND, // refund cap is enforced in code, not by a separate permission
   P.CONTENT_MODERATE,
-  P.AUDITLOG_READ, // partial in practice; scoped down in the read query
+  P.AUDITLOG_READ, // "partial" — see AUDITLOG_READ_FULL's doc comment
 ];
 
 const ADMIN_PERMS: Permission[] = [
@@ -141,6 +149,7 @@ const SUPER_ADMIN_PERMS: Permission[] = [
   P.ROLE_DEFINE,
   P.FEATUREFLAG_TOGGLE,
   P.CONFIG_MANAGE,
+  P.AUDITLOG_READ_FULL,
 ];
 
 /** Role → permission keys. De-duplicated; used by the DB seed. */

@@ -73,8 +73,9 @@ export const NAV_SECTIONS: NavSection[] = [
       },
       // not superAdminOnly: Service Admin and Admin both hold `auditlog:read`
       // too (plan/03 section 4), just "partial" vs Super Admin's "full" — the
-      // API doesn't yet scope rows down for partial, so everyone with the
-      // permission currently sees the same feed.
+      // API scopes rows down for partial (hides staff:manage-gated events),
+      // so this nav link is the same for everyone even though the feed
+      // itself isn't.
       { key: 'auditLog', path: '/audit-log', icon: History },
     ],
   },

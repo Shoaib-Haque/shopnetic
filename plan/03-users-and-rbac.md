@@ -183,6 +183,17 @@ this doc uses ✅ / — / ⚠️, see the legend at the top.)
 +-----------------------------------------------------+-------+--------+---------------+---------+-------------+
 | `auditlog:read`                                     | —     | —      | partial       | partial | full        |
 +-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+| `auditlog.full:read`                                | —     | —      | —             | —       | yes         |
++-----------------------------------------------------+-------+--------+---------------+---------+-------------+
+
+`auditlog:read`'s "partial" concretely means: every `staff:manage`-gated
+action (inviting, role-changing, unlocking/reactivating, deprovisioning, or
+resetting another staff member's TOTP — section 3's Super-Admin-only "Staff
+management: invite/create/suspend/remove Admins and Service Admins") is
+excluded. Everything else — catalog events, and identity events about an
+account's own security/lifecycle (logins, password resets, MFA, session/
+token-reuse events) — stays visible; Service Admin's trust-and-safety remit
+needs that security visibility even though it can't itself manage staff.
 
 ## 5. Auth mechanics (details in `16-security.md`)
 

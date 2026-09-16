@@ -1912,3 +1912,54 @@ compose file.
   column's own Active/Inactive/Archived vocabulary. Left `archived`/`all`
   alone — an Archived-tab row showing an "Archived" badge is consistent,
   not confusing, so there's no collision to fix there.
+- 2026-09-16 — Fixed the `AUDITLOG_READ` scoping gap flagged a few entries
+  back: `packages/auth/src/permissions.ts`'s comment said Service Admin's
+  grant was "partial in practice; scoped down in the read query," but
+  `AuditController.list` never actually scoped anything — every row went
+  to everyone with the permission. Decided the policy before touching
+  code, from what was already written rather than guessing: plan/03
+  section 4's permission matrix already lists `auditlog:read` as
+  `partial | partial | full` for Service Admin/Admin/Super Admin (a
+  single row using that convention nowhere else in the table), and
+  section 3's role write-ups name exactly one thing as Super-Admin-
+  exclusive here — "Staff management: invite/create/suspend/remove
+  Admins and Service Admins." That maps precisely onto one concrete,
+  already-`staff:manage`-gated set of actions (checked `staff.controller.ts`:
+  every invite/role-change/activate/reset-totp/deprovision endpoint
+  requires `STAFF_MANAGE`, which only `SUPER_ADMIN_PERMS` holds) — so
+  "partial" = hide `identity.staff_invited/staff_invite_accepted/
+  staff_role_changed/staff_activated/staff_deprovisioned/staff_totp_reset`,
+  nothing else. Deliberately left visible to partial: general identity
+  security events (login failures, MFA, session/token-reuse, password
+  resets) and all catalog events — Service Admin's own "trust and safety,
+  keeps eyes on the marketplace" remit needs that visibility even though
+  it can't perform `staff:manage` actions itself. Implementation: added
+  `Permission.AUDITLOG_READ_FULL` (`auditlog.full:read` — the codebase's
+  own house rule is "business code checks permissions, never role
+  strings," so this is a second permission Super Admin alone holds, not a
+  role-name check in the controller), granted only in `SUPER_ADMIN_PERMS`;
+  `AuditController.list` takes `@CurrentActor()` now and adds a `NOT IN`
+  clause over the six actions when `can(actor, AUDITLOG_READ_FULL)` is
+  false. Caught and fixed a real regression before it shipped:
+  `permissions.test.ts` enforces a strict one-colon `resource:verb` key
+  shape on every permission, which `auditlog:read:full` broke — renamed
+  to `auditlog.full:read`, matching the same dotted-qualifier convention
+  `coupon.platform:manage`/`seller.analytics:read` already use. Added a
+  new "auditlog:read:full" row to plan/03's matrix and a short prose note
+  spelling out concretely what "partial" excludes, so the next reader
+  doesn't have to re-derive this decision from source. Verified
+  meaningfully: reverted the exclusion to `if (false)` and confirmed
+  exactly the 3 dependent tests failed (a 4th, "still sees everything
+  else," correctly kept passing since it doesn't depend on the
+  exclusion), restored; full API unit+integration suites (21 + 94) and
+  `@shopnetic/auth`'s own suite (17, including the regression) green.
+  Then re-seeded the dev DB (`db:seed` — idempotent upsert, confirmed
+  "35 permissions" / "SUPER_ADMIN: 25 permissions", up from 34/24) and
+  walked it live end-to-end: created a disposable Super Admin and a
+  disposable Service Admin, logged in as each for real, hit the same
+  `GET /api/staff-auth/audit-events` query as both — Super Admin's
+  results included `staff_role_changed`/`staff_activated`/
+  `staff_deprovisioned`/`staff_invited`/`staff_invite_accepted`; Service
+  Admin's had none of them, while both saw identical `staff_login_failed`/
+  `staff_session_created`/`staff_password_*` rows — then cleaned up the
+  disposable accounts and rows after.

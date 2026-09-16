@@ -34,6 +34,19 @@ describe('permission catalog', () => {
     }
   });
 
+  it('only SUPER_ADMIN holds AUDITLOG_READ_FULL — Service Admin and Admin get the base (partial) AUDITLOG_READ only', () => {
+    for (const role of SYSTEM_ROLES) {
+      const hasFull = ROLE_PERMISSIONS[role].includes(Permission.AUDITLOG_READ_FULL);
+      expect(hasFull).toBe(role === Role.SUPER_ADMIN);
+    }
+    for (const role of [Role.SERVICE_ADMIN, Role.ADMIN, Role.SUPER_ADMIN]) {
+      expect(ROLE_PERMISSIONS[role]).toContain(Permission.AUDITLOG_READ);
+    }
+    for (const role of [Role.BUYER, Role.SELLER]) {
+      expect(ROLE_PERMISSIONS[role]).not.toContain(Permission.AUDITLOG_READ);
+    }
+  });
+
   it('buyer cannot fulfil orders or approve products', () => {
     const buyer = ROLE_PERMISSIONS[Role.BUYER];
     expect(buyer).not.toContain(Permission.SELLER_ORDER_FULFIL);
