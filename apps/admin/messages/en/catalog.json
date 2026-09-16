@@ -21,7 +21,7 @@
         "orphanHint": "This category’s parent isn’t in the current list — it’s shown at the top level.",
         "ariaLabel": "Category tree"
       },
-      "filter": { "active": "Active", "archived": "Archived", "all": "All" },
+      "filter": { "active": "Live", "archived": "Archived", "all": "All" },
       "status": {
         "active": "Active",
         "inactive": "Inactive",

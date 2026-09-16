@@ -13,6 +13,26 @@ vi.mock('@/features/admin-api/client', async () => {
   return { ...actual, adminApi: vi.fn() };
 });
 
+const PATHNAME = '/en/x7f2k9t3m1qp/catalog/categories';
+const routerReplace = vi.fn();
+// per-test control over what `useSearchParams()` returns on mount —
+// reassigned (not mutated) in `beforeEach`, and the mock factory re-reads
+// this binding on every call rather than capturing one instance.
+let mockSearchParams = new URLSearchParams();
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: routerReplace,
+    refresh: vi.fn(),
+    push: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+  }),
+  usePathname: () => PATHNAME,
+  useSearchParams: () => mockSearchParams,
+}));
+
 const mockedAdminApi = vi.mocked(adminApi);
 
 /** minimal Category fixture — only the fields the list actually renders vary. */
@@ -35,6 +55,11 @@ function cat(id: string, name: string): Category {
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 const OFFLINE_ERROR = 'You appear to be offline. Check your connection and try again.';
+
+beforeEach(() => {
+  mockSearchParams = new URLSearchParams();
+  routerReplace.mockReset();
+});
 
 afterEach(() => {
   cleanup();
@@ -132,6 +157,63 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     // token match against the (unrelated) tree data already on screen
     expect(await screen.findAllByText('Bravo', {}, { timeout: 2000 })).not.toHaveLength(0);
     expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
+  });
+
+  it('a link with status/q already in it pre-fills the tab and search box, and fetches that view on mount', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'archived' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // #1 mount GET — the tree's own load, unconditional
+      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // #2 Archived flat GET
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Zulu');
+
+    expect(screen.getByRole('button', { name: 'Archived' })).toHaveClass('bg-muted');
+  });
+
+  it('an unrecognized status in the URL falls back to Live (the "active" status value) rather than crashing or sticking', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'not-a-real-status' });
+    mockedAdminApi.mockResolvedValueOnce([cat('a', 'Alpha')]);
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    expect(screen.getByRole('button', { name: 'Live' })).toHaveClass('bg-muted');
+  });
+
+  it('switching status tabs replaces the URL (not push, so tab-switching never piles up history)', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
+      .mockResolvedValueOnce([]) // #2 the tree's own reload for the tab switch
+      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // #3 Archived flat GET
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+    routerReplace.mockClear(); // drop the mount-time no-op replace
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await screen.findAllByText('Zulu');
+
+    expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?status=archived`, {
+      scroll: false,
+    });
+  });
+
+  it('typing a search query replaces the URL once the debounce settles', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
+      .mockResolvedValueOnce({ data: [cat('b', 'Bravo')], meta: {} }); // #2 search GET
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+    routerReplace.mockClear();
+
+    fireEvent.change(screen.getByPlaceholderText('Search categories…'), {
+      target: { value: 'bravo' },
+    });
+    await screen.findAllByText('Bravo', {}, { timeout: 2000 });
+
+    expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?q=bravo`, { scroll: false });
   });
 
   it('scrolling the sentinel into view on a flat page appends the next page', async () => {

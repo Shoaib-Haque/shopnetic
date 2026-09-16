@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ArchiveRestore, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category, CategoryListStatus } from '@shopnetic/contracts';
@@ -30,6 +31,10 @@ type ModalState =
   | null;
 const STATUSES: CategoryListStatus[] = ['active', 'archived', 'all'];
 const COLLAPSE_KEY = 'sn_adm_cat_collapsed';
+
+function parseStatus(v: string | null): CategoryListStatus {
+  return v === 'archived' || v === 'all' ? v : 'active';
+}
 
 // Depth per row + a name-width fraction, loosely echoing a real tree shape
 // (root / child / child / grandchild / child / root) so the placeholder
@@ -66,14 +71,36 @@ export function CategoryList() {
   const t = useTranslations('catalog');
   const tCommon = useTranslations('admin');
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [items, setItems] = useState<Category[] | null>(null);
-  const [status, setStatus] = useState<CategoryListStatus>('active');
+  // Seeded from the URL once, at mount (same pattern as Audit Log's filter
+  // sync) — a refresh or a back-button press after opening an Edit form
+  // reopens on the same status tab/search instead of silently resetting to
+  // Active with no query. Not re-read after that: the effect below is a
+  // one-way state → URL sync, not a two-way binding.
+  const [status, setStatus] = useState<CategoryListStatus>(() =>
+    parseStatus(searchParams.get('status')),
+  );
   const [error, setError] = useState<string | null>(null);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(() => searchParams.get('q') ?? '');
   const debouncedQ = useDebouncedValue(q, 250);
   const [modal, setModal] = useState<ModalState>(null);
   const [restoreTarget, setRestoreTarget] = useState<Category | null>(null);
   const [restoring, setRestoring] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (status !== 'active') params.set('status', status);
+    if (debouncedQ) params.set('q', debouncedQ);
+    const qs = params.toString();
+    // `replace`, not `push` — same reasoning as Audit Log: switching tabs
+    // or refining a search isn't a new place to visit, it's adjusting the
+    // one you're on.
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [status, debouncedQ, pathname, router]);
 
   // still mounted? an undo toast outlives this page, and its `onUndo` must not
   // `setState` after the user has navigated away. Set the flag in the effect

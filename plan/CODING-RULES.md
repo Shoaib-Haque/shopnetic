@@ -1878,3 +1878,37 @@ compose file.
   browser URL-bar update is a client-side `router.replace` call with no
   server round-trip, so unlike the rest of this session's live checks it
   isn't curl-verifiable — needs a real browser look to confirm end-to-end.
+- 2026-09-16 — Same URL-sync applied to Category List's `status`/`q`, on
+  request after Audit Log's version above. Checked the component's actual
+  state first rather than assuming: `collapsed` (tree expand/collapse) is
+  already persisted, deliberately to `localStorage` not the URL — that's
+  the right call as-is (it's view state, like scroll position, the same
+  category Audit Log's own pagination cursor was kept out of the URL for)
+  and this change doesn't touch it. Identical shape to Audit Log's:
+  lazy-`useState` seeding from `useSearchParams()` once at mount, a
+  `useEffect` on `[status, debouncedQ]` writing back via `router.replace`
+  (never `push`), an unrecognized `status` value falling back to `'active'`
+  instead of crashing or sticking. Verified meaningfully: reverted both
+  lazy initializers to plain empty/`'active'` defaults and confirmed the
+  pre-fill-from-URL test failed — the mocked Archived-tab response never
+  got consumed because status silently stayed `'active'` — restored. Full
+  admin suite (153 tests, 4 new) and typecheck/lint green. Same honest
+  gap as Audit Log's version: the URL-bar update itself is client-side
+  and not curl-verifiable, needs a real browser check.
+- 2026-09-16 — A screenshot caught the "Active" status tab showing a row
+  whose own Status badge read "Inactive," flagged as confusing. Not a
+  logic bug — the tab is a lifecycle filter (`archivedAt == null`, per
+  `plan/07-data-model.md`'s "catalog delete means archive" — the tab's
+  own copy key doc-comments it as "which lifecycle slice"), a genuinely
+  different axis from the Status column's `isActive` boolean, and a
+  category can correctly be both "not archived" and "inactive" at once —
+  the fixture that surfaced this was even named `FX Hidden but live
+  (inactive)` for exactly that case. The actual bug was naming: `filter.
+  active` and `status.active` in `catalog.json` were the literal same
+  string, "Active," so the tab and the badge looked like they were
+  claiming the same thing when they weren't. Renamed the tab to "Live" —
+  keeps the `active` key (still maps to the same `CategoryListStatus`
+  value), changes only the displayed word, distinct from the Status
+  column's own Active/Inactive/Archived vocabulary. Left `archived`/`all`
+  alone — an Archived-tab row showing an "Archived" badge is consistent,
+  not confusing, so there's no collision to fix there.
