@@ -77,7 +77,14 @@ describe('AcceptInviteForm — mount-time link check (before the form ever shows
   it('no token at all → invalid immediately, never calls the check endpoint', async () => {
     await render(null);
 
-    expect(screen.getByText('This invite link is invalid.')).toBeInTheDocument();
+    // the message itself is the heading now — no separate "Accept your
+    // staff invite" title above it (that's the action this screen is
+    // saying isn't available, so pairing them read as mismatched). Queried
+    // by `role="alert"`, not `role="heading"` — the explicit `alert` role
+    // (so screen readers announce it) replaces the `<h1>`'s implicit
+    // heading role rather than stacking with it.
+    expect(screen.getByRole('alert')).toHaveTextContent('This invite link is invalid.');
+    expect(screen.queryByText('Accept your staff invite')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute(
       'href',
       LOGIN_HREF,

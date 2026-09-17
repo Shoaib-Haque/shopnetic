@@ -100,13 +100,15 @@ export function AcceptInviteForm({
   }
 
   if (status === 'invalid' || status === 'expired') {
+    // No separate "Accept your staff invite" title above this — that's the
+    // action this screen exists to say *isn't* available, so pairing it
+    // with the error read as mismatched. The message itself is the heading.
     return (
       <AuthPageSection variant="message">
         <div className="flex flex-col gap-4">
-          <h1 className="text-xl font-semibold">{t('accept.title')}</h1>
-          <p className="text-sm text-destructive" role="alert">
+          <h1 className="text-xl font-semibold text-destructive" role="alert">
             {t(status === 'expired' ? 'errors.inviteExpired' : 'errors.inviteInvalid')}
-          </p>
+          </h1>
           <Link href={loginHref} className="text-sm underline underline-offset-2">
             {t('accept.backToLogin')}
           </Link>

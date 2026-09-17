@@ -2395,3 +2395,51 @@ compose file.
      exact right reason, restored). Full admin suite green throughout
      (201 tests, +1 from the spinner regression test); typecheck/lint
      clean.
+- 2026-09-17 — Two more small discussion-first items:
+  1. **`AcceptInviteForm`'s dead-token screen paired a mismatched title with
+     the error.** "Accept your staff invite" sitting above "This invite link
+     is invalid." reads oddly — that title names the exact action this
+     screen exists to say isn't available. Dropped the separate title; the
+     error message is now the screen's one `<h1>` (still `text-destructive`
+     + `role="alert"`, same accessibility behavior as before — announces to
+     screen readers, just no longer also exposing an implicit `heading`
+     role, since an explicit ARIA role replaces the native one rather than
+     stacking with it; the new regression test queries `role="alert"`
+     accordingly, not `role="heading"`). Explicitly **not** changed: the
+     "already accepted" state stays its own richer screen (title +
+     explanation + auto-redirect) — discussed first, decided the two cases
+     genuinely differ (one is a known-safe "you already did this," the
+     other is a genuine unknown, so auto-redirecting there would be
+     presumptuous) rather than collapsing them into one generic message.
+     Checked every other auth page for the same "title above a dead-link
+     message" shape before treating this as isolated: `ResetPasswordForm`
+     had the identical pattern (fixed the same way); Login has no
+     token-based invalid/expired state; Forgot Password's link is never
+     itself consumed/validated so it has no such state; Change Password is
+     an authenticated in-session action, no token involved. Verified via
+     revert-confirm-restore on the Accept Invite side (reverted to the old
+     two-element form, the new "no separate title" test failed for the
+     exact right reason, restored). Full admin suite green (201 tests);
+     typecheck/lint clean.
+  2. **Discussed, decided not necessary (for now): `redirectIfSignedIn`'s
+     silent bounce-to-dashboard.** Reported scenario: a signed-in browser
+     clicking an invite/reset link (their own or someone else's) gets
+     silently redirected to the dashboard with zero explanation, and —
+     since every one of Login/Forgot Password/Reset Password/Accept
+     Invite carries the same guard — there's no page reachable from that
+     bounce that would let them sign out and retry, short of already
+     knowing to use the Account menu. The guard's underlying reasoning is
+     sound and stays as-is (the session cookie is shared browser-wide, not
+     per-tab, so silently letting the page load would swap sessions onto
+     whatever account the link belongs to) — what's missing is an
+     interstitial ("You're signed in as X — continue to dashboard, or sign
+     out to use this link") instead of the blind redirect, the pattern
+     bigger products use for this exact situation. Judged not necessary
+     right now: this is an internal tool for a small set of trusted staff,
+     and the token itself isn't consumed by a blocked visit (it stays
+     valid — nothing is lost, just some confusion in a narrow, low-
+     frequency scenario), with a recoverable-if-non-obvious path out via
+     the existing Account → Sign Out. Left as a known, deliberately-
+     deferred gap rather than built now — revisit if it becomes a real
+     recurring complaint, at which point it's a real (if small) feature
+     touching all four pages via the shared guard, not a quick patch.
