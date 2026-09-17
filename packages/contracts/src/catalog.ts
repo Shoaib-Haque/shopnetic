@@ -175,6 +175,7 @@ export const brandSchema = z.object({
   displayName: localizedTextSchema.nullable(),
   logoKey: z.string().nullable(),
   status: brandStatusSchema,
+  isRestricted: z.boolean(),
   mergedIntoBrandId: z.string().nullable(),
   aliases: z.array(brandAliasSchema),
   createdAt: z.string(),
@@ -187,6 +188,7 @@ export const createBrandRequestSchema = z.object({
   slug: slugSchema.optional(),
   displayName: localizedTextSchema.optional(),
   status: brandStatusSchema.optional(),
+  isRestricted: z.boolean().optional(),
   aliases: z.array(brandNameSchema).max(50).optional(),
 });
 export type CreateBrandRequest = z.infer<typeof createBrandRequestSchema>;
@@ -198,6 +200,7 @@ export const updateBrandRequestSchema = z
     displayName: localizedTextSchema.nullable(),
     logoKey: z.string().max(500).nullable(),
     status: brandStatusSchema,
+    isRestricted: z.boolean(),
   })
   .partial();
 export type UpdateBrandRequest = z.infer<typeof updateBrandRequestSchema>;

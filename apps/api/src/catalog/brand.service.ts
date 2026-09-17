@@ -80,6 +80,7 @@ export class BrandService {
           name: input.name,
           slug,
           status: input.status ?? 'active',
+          isRestricted: input.isRestricted ?? false,
           ...(input.displayName ? { displayNameI18n: input.displayName } : {}),
           aliases: { create: aliases.map((alias) => ({ alias })) },
         },
@@ -113,6 +114,7 @@ export class BrandService {
     if (input.name !== undefined) data.name = input.name;
     if (input.slug !== undefined) data.slug = input.slug;
     if (input.status !== undefined) data.status = input.status;
+    if (input.isRestricted !== undefined) data.isRestricted = input.isRestricted;
     if (input.logoKey !== undefined) data.logoKey = input.logoKey;
     if (input.displayName !== undefined) {
       data.displayNameI18n = input.displayName === null ? Prisma.DbNull : input.displayName;
@@ -226,14 +228,48 @@ export class BrandService {
 
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
     const current = await this.rowOrThrow(id);
-    await this.prisma.$transaction(async (tx) => {
+    // A plain remove is for a brand that's meant to be truly unused; unlike
+    // `merge()` (the preferred path when real products still reference it,
+    // since it relinks + preserves the name as an alias), this just cuts
+    // any remaining stragglers loose — plan/25 §2.3, plan/26 §brands:
+    // "never leave products pointing at a deleted brand id."
+    const relinked = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.product.updateMany({
+        where: { brandId: id, deletedAt: null },
+        data: { brandId: null },
+      });
       await tx.brand.update({ where: { id }, data: { deletedAt: new Date() } });
-      await writeCatalogOutbox(tx, 'brand', 'brand.deleted', id, { id });
+      await writeCatalogOutbox(tx, 'brand', 'brand.deleted', id, { id, productsRelinked: count });
+      return count;
     });
     await this.record(actor, 'catalog.brand_deleted', id, meta, {
       before: toView(current),
-      reason: 'soft delete',
+      reason:
+        relinked > 0
+          ? `soft delete (${relinked} product${relinked === 1 ? '' : 's'} relinked to no brand)`
+          : 'soft delete',
     });
+  }
+
+  /** Restore an archived brand. Blocked when the freed name/slug was picked
+   * up by a live row in the meantime (same reasoning as `category.restore`)
+   * — no subtree/cascade here, though: brand is flat. */
+  async restore(id: string, actor: Actor, meta: RequestMeta): Promise<Brand> {
+    const current = await this.archivedRowOrThrow(id);
+    await this.assertSlugFree(current.slug, id);
+    await this.assertNameFree(current.name, id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.brand.update({ where: { id }, data: { deletedAt: null } });
+      await writeCatalogOutbox(tx, 'brand', 'brand.restored', id, { id });
+    });
+
+    const view = await this.get(id);
+    await this.record(actor, 'catalog.brand_restored', id, meta, {
+      after: view,
+      reason: 'restore',
+    });
+    return view;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -244,6 +280,15 @@ export class BrandService {
       include: { aliases: true },
     });
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'brand not found' });
+    return row;
+  }
+
+  private async archivedRowOrThrow(id: string): Promise<BrandWithAliases> {
+    const row = await this.prisma.brand.findFirst({
+      where: { id, deletedAt: { not: null } },
+      include: { aliases: true },
+    });
+    if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'archived brand not found' });
     return row;
   }
 
@@ -297,6 +342,7 @@ function toView(row: BrandWithAliases): Brand {
     displayName: (row.displayNameI18n as Record<string, string> | null) ?? null,
     logoKey: row.logoKey,
     status: row.status,
+    isRestricted: row.isRestricted,
     mergedIntoBrandId: row.mergedIntoBrandId,
     aliases: row.aliases
       .map((a) => ({ id: a.id, alias: a.alias, createdAt: a.createdAt.toISOString() }))

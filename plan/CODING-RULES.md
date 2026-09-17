@@ -2599,3 +2599,61 @@ compose file.
     for the exact right reason with the fix reverted, restored, reconfirmed
     green. Full API suite green (109 integration incl. 8 new, 25 unit);
     typecheck/lint clean.
+
+- 2026-09-17 — Discussed and started the Brands admin feature (backend
+  layer first, admin UI to follow). Two decisions made before touching
+  code:
+  - **`is_restricted` (counterfeit-prone flag, plan/26 §brands) is a new
+    boolean column, not a 4th `status` value.** `status`
+    (`pending`/`active`/`rejected`) answers "is this brand approved to
+    exist"; restricted answers "does a listing under it need extra
+    verification" *while* active — the common real case is a fully
+    approved, actively-sold brand that's also frequently counterfeited.
+    Folding it into `status` would make "active and restricted"
+    unrepresentable and lose information the moment it needs to be
+    un-flagged. New migration
+    `20260917105603_brand_is_restricted` (plain `ALTER TABLE ADD COLUMN
+    ... DEFAULT false`, applied via `prisma migrate deploy` since
+    `migrate dev` needs a TTY this environment doesn't have — the
+    migration folder + SQL were written by hand in the same style as the
+    existing ones, then applied and the client regenerated). Not consumed
+    by anything downstream yet (no listing-moderation flow exists) — the
+    column and the admin toggle exist so it's available when that flow is
+    built.
+  - **Brand delete is soft-only** (matches plan/25 row 116), but auditing
+    `remove()` against that same doctrine surfaced a real bug: it set
+    `deletedAt` and stopped, with no guard for products still referencing
+    the brand — contradicting plan/26 §brands' explicit "soft-delete with
+    `product.brand_id → SET NULL` for any stragglers... never leave
+    products pointing at a deleted brand id." Unlike `category.remove()`
+    (which *blocks* on live children), brand's `remove()` is meant to be a
+    blunt tool for a "truly unused" brand — `merge()` is the documented
+    path when real products still reference it (preserves the brand
+    identity via relink + alias). Fixed: `remove()` now `updateMany`s
+    every live `product.brand_id` pointing at it to `null` in the same
+    transaction as the soft-delete, and the audit `reason` reports the
+    relinked count (`"soft delete (N products relinked to no brand)"`).
+  - **`restore()` and its controller route didn't exist at all** despite
+    plan/25 saying brand restore is supported (same row) — added, mirroring
+    `category.restore()`'s collision-checking (blocked if a live row has
+    since taken the name/slug) but without the tree/cascade machinery
+    category needs (brand is flat). Surfaced a second schema asymmetry
+    while testing it: `category.slug`'s global uniqueness is a **partial**
+    index (live rows only, migrated in for exactly this reason — see the
+    2026-09-04 entry), but `brand.slug` is a **full** unique constraint —
+    a soft-deleted brand's slug can never be picked up by anything else,
+    ever, even after restore-blocking logic would otherwise allow it. Not
+    changed (a broader uniqueness-semantics call, flagged for the user
+    rather than decided solo) — the new integration test exercises the
+    *name* collision instead (app-level only, filtered to live rows —
+    actually reachable), and notes why the slug variant isn't.
+  - `Brand`/`CreateBrandRequest`/`UpdateBrandRequest` contracts
+    (`packages/contracts/src/catalog.ts`) gained `isRestricted`.
+  - New integration tests: `isRestricted` round-trips independently of
+    `status`; `remove()`'s relink behavior (verified via
+    revert-confirm-restore — reverting to the old no-guard delete left a
+    dangling `product.brand_id`, exactly the bug being fixed); `restore()`
+    happy path + the not-found/not-archived/name-collision cases. Full API
+    suite green (112 integration incl. 3 new, 25 unit); typecheck/lint
+    clean. Admin UI (list, create/update form, merge dialog) is the next
+    stage — not started yet.

@@ -413,6 +413,11 @@ model Brand {
   displayNameI18n   Json?        @map("display_name_i18n")
   logoKey           String?      @map("logo_key")
   status            BrandStatus  @default(active)
+  /// Counterfeit-prone brand — orthogonal to `status` (a restricted brand
+  /// can still be `active`); new listings under it need extra verification
+  /// (plan/26 §brands, plan/16 §6). Not yet consumed by anything — the
+  /// listing-moderation flow that would read it isn't built.
+  isRestricted      Boolean      @default(false) @map("is_restricted")
   mergedIntoBrandId String?      @map("merged_into_brand_id") @db.Uuid
   mergedInto        Brand?       @relation("BrandMerge", fields: [mergedIntoBrandId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   mergedFrom        Brand[]      @relation("BrandMerge")

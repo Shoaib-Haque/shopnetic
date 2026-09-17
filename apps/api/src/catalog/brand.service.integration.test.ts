@@ -3,6 +3,7 @@ import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import type { Actor } from '@shopnetic/auth';
 import { AuditService } from '../audit/audit.service.js';
 import { BrandService } from './brand.service.js';
+import { ProductService } from './product.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
@@ -10,17 +11,33 @@ const hasDb = Boolean(process.env['DATABASE_URL']);
 describe.skipIf(!hasDb)('BrandService (integration)', () => {
   let prisma: PrismaClient;
   let svc: BrandService;
+  let products: ProductService;
   let actor: Actor;
   const stamp = Date.now();
   const s = (x: string): string => `itest-brand-${stamp}-${x}`;
+  const t = (en: string): Record<string, string> => ({ en: s(en) });
+
+  let categoryId: string;
 
   beforeAll(async () => {
     prisma = getPrismaClient();
-    svc = new BrandService(prisma as PrismaService, new AuditService(prisma as PrismaService));
+    const pr = prisma as PrismaService;
+    svc = new BrandService(pr, new AuditService(pr));
+    products = new ProductService(pr, new AuditService(pr));
     const acc = await prisma.account.create({
       data: { email: `itest-brand-${stamp}@shopnetic.test`, plane: 'staff', status: 'active' },
     });
     actor = { accountId: acc.id, plane: 'staff', grants: [] };
+
+    const cat = await prisma.category.create({
+      data: { slug: s('cat'), nameI18n: t('Cat'), brandRequirement: 'optional' },
+    });
+    await prisma.$executeRawUnsafe(
+      `UPDATE catalog.category SET path = $1::ltree WHERE id = $2::uuid`,
+      cat.id.replace(/-/g, ''),
+      cat.id,
+    );
+    categoryId = cat.id;
   });
 
   afterAll(async () => {
@@ -32,8 +49,15 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
       `DELETE FROM catalog.outbox WHERE aggregate_type = 'brand' AND aggregate_id = ANY($1::text[])`,
       ids,
     );
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM catalog.outbox WHERE aggregate_type = 'product' AND aggregate_id IN
+         (SELECT id::text FROM catalog.product WHERE category_id = $1::uuid)`,
+      categoryId,
+    );
+    await prisma.product.deleteMany({ where: { categoryId } });
     await prisma.brandAlias.deleteMany({ where: { brandId: { in: ids } } });
     await prisma.brand.deleteMany({ where: { id: { in: ids } } });
+    await prisma.$executeRawUnsafe(`DELETE FROM catalog.category WHERE id = $1::uuid`, categoryId);
     await prisma.auditEvent.deleteMany({ where: { actorAccountId: actor.accountId } });
     await prisma.account.deleteMany({ where: { id: actor.accountId } });
     await prisma.$disconnect();
@@ -152,5 +176,76 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     await expect(svc.get(b.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
     const { items } = await svc.list({ q: s('gone') });
     expect(items).toHaveLength(0);
+  });
+
+  it('isRestricted is orthogonal to status — settable on create and update, independently of it', async () => {
+    const b = await svc.create(
+      { name: s('flagged'), slug: s('flagged'), isRestricted: true },
+      actor,
+      {},
+    );
+    expect(b).toMatchObject({ status: 'active', isRestricted: true });
+
+    const unflagged = await svc.update(b.id, { isRestricted: false }, actor, {});
+    expect(unflagged).toMatchObject({ status: 'active', isRestricted: false });
+
+    // flipping status doesn't touch isRestricted, and vice versa
+    const reflagged = await svc.update(b.id, { isRestricted: true, status: 'active' }, actor, {});
+    expect(reflagged).toMatchObject({ status: 'active', isRestricted: true });
+  });
+
+  it('remove() relinks any live products to no brand rather than leaving them dangling — the 2026-09-17 fix', async () => {
+    const b = await svc.create({ name: s('relink-host'), slug: s('relink-host') }, actor, {});
+    const p1 = await products.create(
+      { categoryId, title: t('Relink P1'), slug: s('relink-p1'), brandId: b.id },
+      actor,
+      {},
+    );
+    const p2 = await products.create(
+      { categoryId, title: t('Relink P2'), slug: s('relink-p2'), brandId: b.id },
+      actor,
+      {},
+    );
+
+    await svc.remove(b.id, actor, {});
+
+    expect((await products.get(p1.id)).brandId).toBeNull();
+    expect((await products.get(p2.id)).brandId).toBeNull();
+
+    const event = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.brand_deleted', targetId: b.id },
+    });
+    expect(event.reason).toBe('soft delete (2 products relinked to no brand)');
+  });
+
+  it('restore brings an archived brand back, blocked once a live row has taken its name/slug', async () => {
+    const b = await svc.create({ name: s('rs-brand'), slug: s('rs-brand') }, actor, {});
+    await svc.remove(b.id, actor, {});
+    await expect(svc.get(b.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    await expect(svc.restore(crypto.randomUUID(), actor, {})).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    // a live brand isn't "archived" — restore only targets a deleted one
+    const live = await svc.create({ name: s('rs-live'), slug: s('rs-live') }, actor, {});
+    await expect(svc.restore(live.id, actor, {})).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    const restored = await svc.restore(b.id, actor, {});
+    expect(restored).toMatchObject({ id: b.id, name: s('rs-brand') });
+    const event = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.brand_restored', targetId: b.id },
+    });
+    expect(event.after).toMatchObject({ id: b.id });
+
+    // a live row now holds the freed *name* → restore is blocked until it
+    // moves. (Unlike category, `brand.slug` is a full — not partial —
+    // unique DB constraint, so a soft-deleted brand's slug can never be
+    // picked up by anything else in the first place; only name collisions
+    // are reachable here.)
+    await svc.remove(b.id, actor, {});
+    const squatter = await svc.create({ name: s('rs-brand'), slug: s('rs-squatter') }, actor, {});
+    await expect(svc.restore(b.id, actor, {})).rejects.toMatchObject({ code: 'BRAND_NAME_TAKEN' });
+    await svc.update(squatter.id, { name: s('rs-squatter-2') }, actor, {});
+    await expect(svc.restore(b.id, actor, {})).resolves.toMatchObject({ id: b.id });
   });
 });

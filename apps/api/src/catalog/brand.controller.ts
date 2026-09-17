@@ -134,4 +134,13 @@ export class BrandController {
   ): Promise<void> {
     await this.brands.remove(id, actor, meta(req));
   }
+
+  @Post(':id/restore')
+  async restore(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+  ): Promise<Envelope<Brand>> {
+    return ok(req, await this.brands.restore(id, actor, meta(req)));
+  }
 }
