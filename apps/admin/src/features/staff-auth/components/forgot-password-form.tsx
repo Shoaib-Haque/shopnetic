@@ -1,12 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { staffForgotPasswordRequestSchema } from '@shopnetic/contracts';
-import { Button, Field, Input } from '@shopnetic/ui';
+import { Button, Field, Input, Link } from '@shopnetic/ui';
 import { postJson } from '../submit';
 import { staffErrorKey, extractErrorCode } from '../error-copy';
 import { AuthPageSection } from './auth-page-section';
@@ -36,7 +35,7 @@ export function ForgotPasswordForm({ locale, basePath }: { locale: string; baseP
         <div className="flex flex-col gap-4">
           <h1 className="text-xl font-semibold">{t('forgotPassword.doneTitle')}</h1>
           <p className="text-sm text-muted-foreground">{t('forgotPassword.doneIntro')}</p>
-          <Link href={loginHref} className="text-sm underline underline-offset-2">
+          <Link href={loginHref} className="text-sm">
             {t('forgotPassword.backToLogin')}
           </Link>
         </div>
@@ -91,10 +90,7 @@ export function ForgotPasswordForm({ locale, basePath }: { locale: string; baseP
           <Button type="submit" loading={busy} loadingText={t('forgotPassword.submitting')}>
             {t('forgotPassword.submit')}
           </Button>
-          <Link
-            href={loginHref}
-            className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          >
+          <Link href={loginHref} className="self-start text-xs">
             {t('forgotPassword.backToLogin')}
           </Link>
         </form>

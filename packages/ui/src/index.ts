@@ -8,6 +8,7 @@ export { PasswordInput, type PasswordInputProps } from './components/password-in
 export { OtpInput, type OtpInputProps } from './components/otp-input';
 export { QrCode, type QrCodeProps } from './components/qr-code';
 export { Field, type FieldProps } from './components/field';
+export { Link } from './components/link';
 export {
   DropdownMenu,
   DropdownMenuTrigger,

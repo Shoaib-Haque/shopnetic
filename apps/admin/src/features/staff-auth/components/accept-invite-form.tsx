@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { z } from 'zod';
 import { staffInviteAcceptRequestSchema } from '@shopnetic/contracts';
-import { Button, Field, PasswordInput, Spinner, TimerBar } from '@shopnetic/ui';
+import { Button, Field, Link, PasswordInput, Spinner, TimerBar } from '@shopnetic/ui';
 import { getJson, postJson } from '../submit';
 import { staffErrorKey, extractErrorCode } from '../error-copy';
 import { AuthPageSection } from './auth-page-section';
@@ -109,7 +108,7 @@ export function AcceptInviteForm({
           <h1 className="text-xl font-semibold text-destructive" role="alert">
             {t(status === 'expired' ? 'errors.inviteExpired' : 'errors.inviteInvalid')}
           </h1>
-          <Link href={loginHref} className="text-sm underline underline-offset-2">
+          <Link href={loginHref} className="text-sm">
             {t('accept.backToLogin')}
           </Link>
         </div>
@@ -132,7 +131,7 @@ export function AcceptInviteForm({
               <TimerBar ms={REDIRECT_DELAY_MS} className="bg-primary/60" />
             </div>
           </div>
-          <Link href={loginHref} className="text-sm underline underline-offset-2">
+          <Link href={loginHref} className="text-sm">
             {t('accept.backToLogin')}
           </Link>
         </div>
@@ -213,10 +212,7 @@ export function AcceptInviteForm({
           <Button type="submit" loading={busy} loadingText={t('accept.submitting')}>
             {t('accept.submit')}
           </Button>
-          <Link
-            href={loginHref}
-            className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          >
+          <Link href={loginHref} className="self-start text-xs">
             {t('accept.backToLogin')}
           </Link>
         </form>

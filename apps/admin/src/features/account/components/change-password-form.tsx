@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { z } from 'zod';
 import { staffChangePasswordRequestSchema } from '@shopnetic/contracts';
-import { Button, Field, PasswordInput, TimerBar } from '@shopnetic/ui';
+import { Button, Field, Link, PasswordInput, TimerBar } from '@shopnetic/ui';
 import { postJson } from '@/features/staff-auth/submit';
 import { extractErrorCode } from '@/features/staff-auth/error-copy';
 
@@ -90,7 +89,7 @@ export function ChangePasswordForm({ loginHref }: { loginHref: string }) {
               <TimerBar ms={REDIRECT_DELAY_MS} className="bg-primary/60" />
             </div>
           </div>
-          <Link href={loginHref} className="mt-4 inline-block text-sm underline underline-offset-2">
+          <Link href={loginHref} className="mt-4 inline-block text-sm">
             {t('changePassword.backToLogin')}
           </Link>
         </div>

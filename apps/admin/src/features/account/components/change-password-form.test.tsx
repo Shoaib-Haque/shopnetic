@@ -127,10 +127,11 @@ describe('ChangePasswordForm', () => {
     // revoked and a redirect to login is already in flight
     expect(container.firstElementChild).toHaveClass('fixed', 'inset-0', 'z-50');
     // an immediate way out, not just a 3s timer to wait through
-    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute(
-      'href',
-      LOGIN_HREF,
-    );
+    const backLink = screen.getByRole('link', { name: 'Back to sign in' });
+    expect(backLink).toHaveAttribute('href', LOGIN_HREF);
+    // the shared `@shopnetic/ui` `Link`'s default hover treatment — was
+    // missing on this specific link before 2026-09-17
+    expect(backLink).toHaveClass('hover:text-foreground');
     expect(mockedPostJson).toHaveBeenCalledWith('/api/staff-auth/change-password', {
       currentPassword: 'the-old-password',
       newPassword: 'a-strong-new-password',

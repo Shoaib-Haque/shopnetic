@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { z } from 'zod';
 import { staffResetPasswordRequestSchema } from '@shopnetic/contracts';
-import { Button, Field, PasswordInput, Spinner, TimerBar } from '@shopnetic/ui';
+import { Button, Field, Link, PasswordInput, Spinner, TimerBar } from '@shopnetic/ui';
 import { getJson, postJson } from '../submit';
 import { staffErrorKey, extractErrorCode } from '../error-copy';
 import { AuthPageSection } from './auth-page-section';
@@ -115,7 +114,7 @@ export function ResetPasswordForm({
                 : 'errors.passwordResetTokenInvalid',
             )}
           </h1>
-          <Link href={loginHref} className="text-sm underline underline-offset-2">
+          <Link href={loginHref} className="text-sm">
             {t('resetPassword.backToLogin')}
           </Link>
         </div>
@@ -139,7 +138,7 @@ export function ResetPasswordForm({
               <TimerBar ms={REDIRECT_DELAY_MS} className="bg-primary/60" />
             </div>
           </div>
-          <Link href={loginHref} className="text-sm underline underline-offset-2">
+          <Link href={loginHref} className="text-sm">
             {t('resetPassword.backToLogin')}
           </Link>
         </div>
@@ -220,10 +219,7 @@ export function ResetPasswordForm({
           <Button type="submit" loading={busy} loadingText={t('resetPassword.submitting')}>
             {t('resetPassword.submit')}
           </Button>
-          <Link
-            href={loginHref}
-            className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          >
+          <Link href={loginHref} className="self-start text-xs">
             {t('resetPassword.backToLogin')}
           </Link>
         </form>

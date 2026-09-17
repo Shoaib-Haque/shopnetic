@@ -2443,3 +2443,50 @@ compose file.
      deferred gap rather than built now — revisit if it becomes a real
      recurring complaint, at which point it's a real (if small) feature
      touching all four pages via the shared guard, not a quick patch.
+- 2026-09-17 — Reported: "Forgot your password?" had a hover effect, "Back
+  to sign in" on the invite-invalid screen didn't. Audited every plain
+  inline link in `apps/admin/src` (not nav items or menu items — those have
+  their own `hover:bg-muted` treatment, a different idiom entirely) and
+  found the same drift repeated ~11 times: `underline underline-offset-2`
+  with or without `text-muted-foreground hover:text-foreground` tacked on,
+  inconsistently, because every call site imported `next/link` directly and
+  hand-rolled its own className with nothing sharing the definition — the
+  "form" screens' back-links happened to get the hover treatment, the
+  "message" (done/invalid/expired/already-used) screens' didn't, plus one
+  outlier (`login-form.tsx`'s "Accept an invite") with a bare `underline`
+  and no offset or hover at all. Root cause matched `plan/CODING-RULES.md`
+  D1 exactly — `Link` is one of the primitives that rule already says
+  should have a thin `@shopnetic/ui` wrapper, and never got one. Built it:
+  new `packages/ui/src/components/link.tsx`, a `next/link` wrapper
+  defaulting to `underline underline-offset-2 text-muted-foreground
+  hover:text-foreground`, `className` merged on top via `cn`/tailwind-merge
+  so each call site keeps its own size/position utilities. Required adding
+  `next` as a peer + dev dependency to `@shopnetic/ui` (previously had zero
+  `next` imports anywhere in the package) — all three apps that consume it
+  (admin, storefront, seller) are Next apps already, so this just makes
+  explicit a dependency that was implicitly fine. Updated all ~11 call
+  sites across `login-form.tsx`, `forgot-password-form.tsx`,
+  `reset-password-form.tsx`, `accept-invite-form.tsx`, and
+  `change-password-form.tsx` to import `Link` from `@shopnetic/ui` instead
+  of `next/link` directly, dropping the now-redundant underline/color/hover
+  classes from each. Deliberately **not** touched: Audit Log's Target-
+  column deep-link (a dense table cell — underlined *only* on hover by
+  design, the opposite default, to avoid every row reading as a link at
+  rest) and the sidebar/topbar nav and menu links (their own established,
+  non-underline hover idiom). New/extended regression tests across five
+  test files assert the shared `hover:text-foreground` class specifically
+  — surfaced a real, unrelated test-infra gap along the way: three test
+  files' own `next/link` mocks only forwarded `children`/`href`, silently
+  dropping `className` (and every other prop) instead of spreading the
+  rest, so a hover-class assertion against them would have falsely reported
+  "missing" even after the fix — updated those three mocks to spread
+  `...rest`, matching the already-correct pattern `admin-shell.test.tsx`'s
+  own mock used (its own comment already explains exactly why: "forwards
+  aria-current/onClick/etc, not just href"). Verified via revert-confirm-
+  restore on the shared component itself: temporarily dropped
+  `hover:text-foreground` from `link.tsx`, all 5 of the new/extended
+  assertions failed for the exact right reason across every affected file,
+  restored. Full admin suite green (202 tests, +1 new file); `@shopnetic/ui`
+  and `@shopnetic/storefront` typecheck/lint/test all clean too (storefront
+  doesn't consume the new `Link` yet, but shares the package it now lives
+  in).

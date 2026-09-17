@@ -2,12 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { staffLoginRequestSchema } from '@shopnetic/contracts';
-import { Button, Field, Input, OtpInput, PasswordInput, QrCode } from '@shopnetic/ui';
+import { Button, Field, Input, Link, OtpInput, PasswordInput, QrCode } from '@shopnetic/ui';
 import { postJson } from '../submit';
 import { staffErrorKey, extractErrorCode } from '../error-copy';
 
@@ -294,10 +293,7 @@ export function StaffLoginForm({
           {...register('password')}
         />
       </Field>
-      <Link
-        href={`/${locale}/${basePath}/forgot-password`}
-        className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-      >
+      <Link href={`/${locale}/${basePath}/forgot-password`} className="self-start text-xs">
         {t('login.forgotPassword')}
       </Link>
       {formError ? (
@@ -310,9 +306,7 @@ export function StaffLoginForm({
       </Button>
       <p className="text-xs text-muted-foreground">
         {t('login.inviteHint')}{' '}
-        <Link href={`/${locale}/${basePath}/accept-invite`} className="underline">
-          {t('login.inviteLink')}
-        </Link>
+        <Link href={`/${locale}/${basePath}/accept-invite`}>{t('login.inviteLink')}</Link>
       </p>
     </form>
   );

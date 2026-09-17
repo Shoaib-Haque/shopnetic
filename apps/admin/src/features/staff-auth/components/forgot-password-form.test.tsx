@@ -78,19 +78,19 @@ describe('ForgotPasswordForm', () => {
     ).toBeInTheDocument();
   });
 
-  it('has a link back to sign in on both the form and the done state', async () => {
+  it('has a link back to sign in on both the form and the done state, with a hover state on both', async () => {
     mockedPostJson.mockResolvedValueOnce({ ok: true, status: 202, body: null });
 
     render();
-    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute(
-      'href',
-      '/en/x7f2k9t3m1qp/login',
-    );
+    const formLink = screen.getByRole('link', { name: 'Back to sign in' });
+    expect(formLink).toHaveAttribute('href', '/en/x7f2k9t3m1qp/login');
+    // the shared `@shopnetic/ui` `Link`'s default hover treatment — was
+    // missing on this specific link before 2026-09-17
+    expect(formLink).toHaveClass('hover:text-foreground');
 
     submitEmail();
-    expect(await screen.findByRole('link', { name: 'Back to sign in' })).toHaveAttribute(
-      'href',
-      '/en/x7f2k9t3m1qp/login',
-    );
+    const doneLink = await screen.findByRole('link', { name: 'Back to sign in' });
+    expect(doneLink).toHaveAttribute('href', '/en/x7f2k9t3m1qp/login');
+    expect(doneLink).toHaveClass('hover:text-foreground');
   });
 });

@@ -20,9 +20,17 @@ vi.mock('next/navigation', () => ({
 }));
 
 // next/link reads AppRouterContext, which isn't mounted here — a plain <a> is enough.
+// forwards className/etc, not just href — a hover-class assertion on a
+// rendered link needs it (matches admin-shell.test.tsx's own mock)
 vi.mock('next/link', () => ({
-  default: ({ children, href }: { children: ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  default: ({
+    children,
+    href,
+    ...rest
+  }: { children: ReactNode; href: string } & Record<string, unknown>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
   ),
 }));
 
@@ -60,6 +68,19 @@ afterEach(() => {
 });
 
 describe('StaffLoginForm', () => {
+  it('the forgot-password and accept-invite links both have the shared hover state', () => {
+    render();
+    // "Accept an invite" was a bare `underline` with no hover feedback
+    // before the shared `@shopnetic/ui` `Link` fix (2026-09-17); "Forgot
+    // your password?" already had it, kept here as the working reference
+    expect(screen.getByRole('link', { name: 'Forgot your password?' })).toHaveClass(
+      'hover:text-foreground',
+    );
+    expect(screen.getByRole('link', { name: 'Accept an invite' })).toHaveClass(
+      'hover:text-foreground',
+    );
+  });
+
   it('wrong credentials → shows the invalid-credentials message, stays on the password step', async () => {
     mockedPostJson.mockResolvedValueOnce({
       ok: false,

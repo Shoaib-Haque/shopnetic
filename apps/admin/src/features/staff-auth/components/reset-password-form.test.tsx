@@ -19,9 +19,17 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
+// forwards className/etc, not just href — a hover-class assertion on a
+// rendered link needs it (matches admin-shell.test.tsx's own mock)
 vi.mock('next/link', () => ({
-  default: ({ children, href }: { children: ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  default: ({
+    children,
+    href,
+    ...rest
+  }: { children: ReactNode; href: string } & Record<string, unknown>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
   ),
 }));
 
@@ -87,10 +95,12 @@ describe('ResetPasswordForm — mount-time link check (before the form ever show
     // heading role rather than stacking with it.
     expect(screen.getByRole('alert')).toHaveTextContent('This reset link is invalid.');
     expect(screen.queryByText('Choose a new password')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute(
-      'href',
-      LOGIN_HREF,
-    );
+    const backLink = screen.getByRole('link', { name: 'Back to sign in' });
+    expect(backLink).toHaveAttribute('href', LOGIN_HREF);
+    // the shared `@shopnetic/ui` `Link`'s default hover treatment — was
+    // missing on this specific (invalid/expired) screen's link before
+    // 2026-09-17
+    expect(backLink).toHaveClass('hover:text-foreground');
     expect(mockedGetJson).not.toHaveBeenCalled();
   });
 
