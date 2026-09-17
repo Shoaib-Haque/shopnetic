@@ -140,6 +140,25 @@ describe('StaffList', () => {
     expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument();
   });
 
+  it('a later page in flight shows a centered spinner + text, not a bare text line', async () => {
+    let resolveSecondPage!: (v: ReturnType<typeof page>) => void;
+    mockedListStaff
+      .mockResolvedValueOnce(page([ME], 'cursor-1'))
+      .mockReturnValueOnce(new Promise((resolve) => (resolveSecondPage = resolve)));
+
+    render();
+    await screen.findAllByText(ME.email);
+    const sentinel = screen.getByTestId('scroll-sentinel');
+    act(() => triggerIntersection(sentinel));
+
+    const status = await screen.findByRole('status');
+    expect(status).toBeInTheDocument(); // the Spinner's accessible role
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+
+    await act(async () => resolveSecondPage(page([], undefined)));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('a failed later page keeps the already-loaded row and offers a retry, without wiping the list', async () => {
     const other = account({ id: 'acc-2', email: 'other@example.com' });
     mockedListStaff

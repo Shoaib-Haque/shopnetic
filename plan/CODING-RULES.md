@@ -2342,3 +2342,56 @@ compose file.
      the categories feature README's Ordering section and its pagination-
      cursor-shapes paragraph, both updated to describe the new behavior
      rather than just flag the old gap.
+- 2026-09-17 — Two more from the same post-sweep UI pass, plus a "should
+  this even change" question that turned out to be a non-issue:
+  1. **Not a bug, confirmed after checking**: the category "moved" toast's
+     dark background vs. the "updated" toast's light green one. Checked
+     `packages/ui/src/components/toast.tsx` — `notify.undo` (drag-move) is
+     deliberately the dark Gmail-style variant (CODING-RULES G8/G9); every
+     other toast in the app (`notify.saved`/`error`/`info`) is the light
+     `BarToast`. Audited all 13 `notify.*` call sites in `apps/admin/src`:
+     the split is applied consistently — every action that actually offers
+     an Undo button is dark, nothing else is. No change made.
+  2. **The "load more" footer showed a bare left-aligned `<p>Loading…</p>`**
+     — functional but inconsistent with the app's own established "an
+     async action is happening" idiom (`<Spinner />` + text, already used
+     by Reset Password/Accept Invite's "Checking your link…"). Per this
+     file's own E4 ("skeletons for first load, spinners for actions") —
+     appending a page to an already-visible list is an action, not a first
+     load, so a skeleton row was ruled out too (and would've meant a
+     different skeleton shape per page, breaking `ScrollLoadFooter`'s
+     whole point of being one shared, shape-agnostic component across
+     Category/Staff/Audit Log). Centered `<Spinner />` + the same text.
+     New regression test (`staff-list.test.tsx`) using a controllable,
+     not-yet-resolved second-page promise to assert the spinner (`role=
+     "status"`) appears while a later page is genuinely in flight and
+     disappears once it resolves. Verified via revert-confirm-restore.
+  3. **Login page's title sometimes rendered visibly before the form** —
+     root-caused, not just patched. `login/page.tsx` was the *only* file
+     in the whole admin app using `<Suspense>` — `StaffLoginForm` called
+     `useSearchParams()` (for the post-login `?next=` redirect), which
+     Next's App Router requires wrapping in Suspense; the page's own
+     `<h1>` sat outside that boundary, and the boundary's `fallback={null}`
+     meant a real gap — title paints as part of the static shell, form
+     pops in later once the boundary resolves, timing (hence "sometimes")
+     depending on hydration speed. Audited every other page for the same
+     shape first (per the standing "check before assuming it's isolated"
+     habit): Category List/Staff List/Audit Log each render their own
+     title *inside* the same client component as their list, so there's
+     no static-shell/Suspense split to gap in the first place; Reset
+     Password and Accept Invite already resolve their own `?token=`
+     *server-side* in `page.tsx` and pass it down as a plain prop, which
+     is exactly the fix Login was missing — it was the one page that
+     didn't follow the pattern the other two auth pages already got
+     right. Fixed the same way: `page.tsx` now reads `next` from its own
+     `searchParams` prop and passes it into `StaffLoginForm` as `next:
+     string | null`; the component no longer calls `useSearchParams()` at
+     all, and the `<Suspense>` wrapper is gone — title and form are back
+     to rendering as one atomic server-rendered unit, same as every other
+     page. Test file updated to pass `next` via the render helper instead
+     of a mocked `useSearchParams().get()`. Verified via revert-confirm-
+     restore (temporarily hardcoded the redirect destination, the existing
+     "honors a path genuinely inside the admin root" test failed for the
+     exact right reason, restored). Full admin suite green throughout
+     (201 tests, +1 from the spinner regression test); typecheck/lint
+     clean.

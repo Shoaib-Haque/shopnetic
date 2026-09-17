@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Button, Skeleton } from '@shopnetic/ui';
+import { Button, Skeleton, Spinner } from '@shopnetic/ui';
 
 /**
  * Three pieces every `useScrollLoad`-backed list ended up hand-rolling the
@@ -66,7 +66,15 @@ export function ScrollLoadFooter({
       )}
       <div className="mt-3">
         {loadingMore && !loadError && (
-          <p className="text-xs text-muted-foreground">{t('list.loading')}</p>
+          // centered, not left-aligned — same "something's loading" idiom
+          // the auth forms already use (Spinner + text), not a one-off
+          // text-only line; centering keeps it where the eye already is
+          // right after scrolling to the bottom (E4: spinners for actions,
+          // this is the "loading more" action, not a first load).
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <Spinner />
+            {t('list.loading')}
+          </div>
         )}
         {loadError && (
           <div className="flex flex-col items-start gap-2">

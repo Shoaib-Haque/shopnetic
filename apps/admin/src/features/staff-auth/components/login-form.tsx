@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,14 +18,29 @@ type Step =
   | { name: 'enrol'; secret: string; otpauthUri: string }
   | { name: 'recovery'; codes: string[] };
 
-export function StaffLoginForm({ locale, basePath }: { locale: string; basePath: string }) {
+export function StaffLoginForm({
+  locale,
+  basePath,
+  next,
+}: {
+  locale: string;
+  basePath: string;
+  /** `?next=` resolved server-side (`page.tsx` already has `searchParams`) and
+   * passed down as a plain prop, instead of reading it here via
+   * `useSearchParams()` — that call requires wrapping this whole form in a
+   * `<Suspense>` boundary, and with the page's own `<h1>` sitting outside
+   * it, the title could paint before the (empty-fallback) boundary resolved
+   * the form — a real, reported flash. Resolving `next` on the server
+   * removes the need for the boundary entirely, matching how
+   * `ResetPasswordForm`/`AcceptInviteForm` already receive their own
+   * `?token=` the same way. */
+  next: string | null;
+}) {
   const t = useTranslations('staff');
   const router = useRouter();
-  const searchParams = useSearchParams();
   const dashboard = `/${locale}/${basePath}`;
   // only follow `next` back into this same admin root — never off-app
-  const rawNext = searchParams.get('next');
-  const destination = rawNext && rawNext.startsWith(`${dashboard}/`) ? rawNext : dashboard;
+  const destination = next && next.startsWith(`${dashboard}/`) ? next : dashboard;
 
   const [step, setStep] = useState<Step>({ name: 'password' });
   const [creds, setCreds] = useState<Credentials>({ email: '', password: '' });

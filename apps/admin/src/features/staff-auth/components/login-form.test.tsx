@@ -7,8 +7,6 @@ import { StaffLoginForm } from './login-form';
 
 const routerReplace = vi.fn();
 const routerRefresh = vi.fn();
-// per-test control over what `useSearchParams().get('next')` returns
-let nextParam: string | null = null;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -19,7 +17,6 @@ vi.mock('next/navigation', () => ({
     back: vi.fn(),
     forward: vi.fn(),
   }),
-  useSearchParams: () => ({ get: (k: string) => (k === 'next' ? nextParam : null) }),
 }));
 
 // next/link reads AppRouterContext, which isn't mounted here — a plain <a> is enough.
@@ -35,8 +32,8 @@ const mockedPostJson = vi.mocked(postJson);
 
 const DASHBOARD = '/en/x7f2k9t3m1qp';
 
-function render() {
-  return renderAdmin(<StaffLoginForm locale="en" basePath="x7f2k9t3m1qp" />);
+function render(next: string | null = null) {
+  return renderAdmin(<StaffLoginForm locale="en" basePath="x7f2k9t3m1qp" next={next} />);
 }
 
 function fillCredentials(email = 'staff@example.com', password = 'correct-horse-battery') {
@@ -53,7 +50,6 @@ function pasteOtp(text: string) {
 }
 
 beforeEach(() => {
-  nextParam = null;
   routerReplace.mockReset();
   routerRefresh.mockReset();
 });
@@ -391,8 +387,8 @@ describe('StaffLoginForm', () => {
         body: { data: { user: { id: 'u1' } } },
       });
 
-    async function signInAndGetDestination(): Promise<string> {
-      render();
+    async function signInAndGetDestination(next: string | null): Promise<string> {
+      render(next);
       fillCredentials();
       fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
       await waitFor(() => expect(routerReplace).toHaveBeenCalled());
@@ -400,21 +396,20 @@ describe('StaffLoginForm', () => {
     }
 
     it('ignores an absolute off-app URL, falls back to the dashboard', async () => {
-      nextParam = 'https://evil.example.com/phish';
       succeed();
-      expect(await signInAndGetDestination()).toBe(DASHBOARD);
+      expect(await signInAndGetDestination('https://evil.example.com/phish')).toBe(DASHBOARD);
     });
 
     it('ignores a path that only looks like it starts under the admin root', async () => {
-      nextParam = '/en/x7f2k9t3m1qp-evil/steal';
       succeed();
-      expect(await signInAndGetDestination()).toBe(DASHBOARD);
+      expect(await signInAndGetDestination('/en/x7f2k9t3m1qp-evil/steal')).toBe(DASHBOARD);
     });
 
     it('honors a path genuinely inside the admin root', async () => {
-      nextParam = '/en/x7f2k9t3m1qp/catalog/categories';
       succeed();
-      expect(await signInAndGetDestination()).toBe('/en/x7f2k9t3m1qp/catalog/categories');
+      expect(await signInAndGetDestination('/en/x7f2k9t3m1qp/catalog/categories')).toBe(
+        '/en/x7f2k9t3m1qp/catalog/categories',
+      );
     });
   });
 });
