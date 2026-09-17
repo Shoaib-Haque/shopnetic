@@ -84,7 +84,7 @@ const TARGET_TYPES = [
   'media_asset',
 ];
 
-// Only these two target types have any admin page to land on today (per
+// Only these target types have any admin page to land on today (per
 // `plan/CODING-RULES.md`'s dated entry on this feature) — every other
 // `targetType` still renders as plain text. `account` is further gated to
 // staff-originated actions only: an `account` row can also be a
@@ -92,11 +92,19 @@ const TARGET_TYPES = [
 // is exactly the action-name prefix used by both the STAFF_MANAGE-gated
 // actions (invite/role-change/etc., performed on someone else) and the
 // self-service ones (password change, TOTP), so it never matches a non-staff
-// account.
+// account. `brand` always deep-links to the *live* list (unlike category's
+// combined `status=all`) — Brand's list has no single combined live+archived
+// view, only a live/archived toggle; a `brand_deleted`/`brand_merged` event
+// (whose target is now archived) simply won't find its row there, same as
+// any not-found id (`useFindById` just stops trying, no error shown). The
+// far more common case — created/updated, still live — works as-is.
 function targetHref(event: AuditEvent, locale: string, basePath: string): string | null {
   if (!event.targetId) return null;
   if (event.targetType === 'category') {
     return `/${locale}/${basePath}/catalog/categories?status=all&highlight=${encodeURIComponent(event.targetId)}`;
+  }
+  if (event.targetType === 'brand') {
+    return `/${locale}/${basePath}/catalog/brands?highlight=${encodeURIComponent(event.targetId)}`;
   }
   if (event.targetType === 'account' && event.action.startsWith('identity.staff_')) {
     return `/${locale}/${basePath}/staff?highlight=${encodeURIComponent(event.targetId)}`;

@@ -35,12 +35,18 @@ export class BrandService {
 
   async list(opts: {
     status?: Brand['status'];
+    /** List archived (soft-deleted) rows instead of live ones — the only
+     * way to reach `restore()` again once the delete's undo-toast window
+     * has passed. */
+    archived?: boolean;
     q?: string;
     cursor?: string;
     limit?: number;
   }): Promise<{ items: Brand[]; nextCursor?: string }> {
     const limit = clampLimit(opts.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
-    const where: Prisma.BrandWhereInput = { deletedAt: null };
+    const where: Prisma.BrandWhereInput = opts.archived
+      ? { deletedAt: { not: null } }
+      : { deletedAt: null };
     if (opts.status) where.status = opts.status;
     if (opts.q) {
       where.OR = [

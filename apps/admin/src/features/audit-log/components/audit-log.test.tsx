@@ -592,6 +592,24 @@ describe('AuditLog — Target column deep-links to the live record', () => {
     }
   });
 
+  it('a brand row links to the Brand List, highlighting the row', async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [
+        event({ targetType: 'brand', targetId: 'brand-9', action: 'catalog.brand_updated' }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    const links = await screen.findAllByText('brand:brand-9');
+    for (const link of links) {
+      expect(link.closest('a')).toHaveAttribute(
+        'href',
+        '/en/x7f2k9t3m1qp/catalog/brands?highlight=brand-9',
+      );
+    }
+  });
+
   it('a staff-action account row (e.g. a role change) links to the Staff List', async () => {
     mockedListAuditEvents.mockResolvedValueOnce({
       events: [
@@ -620,16 +638,20 @@ describe('AuditLog — Target column deep-links to the live record', () => {
     for (const text of texts) expect(text.closest('a')).toBeNull();
   });
 
-  it('a targetType with no admin page yet (e.g. brand) stays plain text', async () => {
+  it('a targetType with no admin page yet (e.g. option_type) stays plain text', async () => {
     mockedListAuditEvents.mockResolvedValueOnce({
       events: [
-        event({ targetType: 'brand', targetId: 'brand-1', action: 'catalog.brand_created' }),
+        event({
+          targetType: 'option_type',
+          targetId: 'ot-1',
+          action: 'catalog.option_type_created',
+        }),
       ],
       nextCursor: undefined,
     });
 
     renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
-    const texts = await screen.findAllByText('brand:brand-1');
+    const texts = await screen.findAllByText('option_type:ot-1');
     for (const text of texts) expect(text.closest('a')).toBeNull();
   });
 

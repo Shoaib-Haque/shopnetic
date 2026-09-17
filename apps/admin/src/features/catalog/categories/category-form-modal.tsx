@@ -9,6 +9,7 @@ import { isReservedSlug, type Category } from '@shopnetic/contracts';
 import { cn, Field, Input } from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
 import { capForMessage } from '@/lib/format';
+import { slugify, slugifyLive } from '@/lib/slugify';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { createCategory, updateCategory } from './api';
@@ -62,35 +63,6 @@ const norm = (s: string): string => s.trim().toLowerCase();
  * G7's *other* sub-rule (64, not the dialog/toast default of 60) — see
  * `capForMessage`'s own doc comment. */
 const clip = (s: string, max = 64): string => capForMessage(s, max);
-
-/** lowercase, strip accents, drop apostrophes, other punctuation → single hyphens. */
-function slugify(s: string): string {
-  return s
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/['’`"]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-}
-
-/**
- * `slugify` for a field being typed into — keeps a **trailing** hyphen so
- * "foo-bar" stays typable one key at a time. Runs on every change / paste;
- * `slugify` (which also trims the trailing `-`) runs on blur.
- */
-function slugifyLive(s: string): string {
-  return s
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/['’`"]/g, '')
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+/, '')
-    .slice(0, 80);
-}
 
 /** collapse whitespace runs (incl. pasted newlines / tabs) to single spaces. */
 const collapseWs = (s: string): string => s.replace(/\s+/g, ' ').trim();

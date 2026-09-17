@@ -80,6 +80,77 @@
         }
       }
     },
+    "brands": {
+      "title": "Brands",
+      "subtitle": "The shared brand list products pick from. Delete relinks any of its products to no brand; Merge preserves the brand identity by relinking them to a survivor instead.",
+      "new": "New brand",
+      "empty": "No brands yet.",
+      "noMatch": "No brands match your search.",
+      "searchPlaceholder": "Search brands…",
+      "cols": { "name": "Name", "status": "Status", "aliases": "Aliases" },
+      "filter": { "live": "Live", "archived": "Archived" },
+      "statusFilter": {
+        "all": "All statuses",
+        "pending": "Pending",
+        "active": "Active",
+        "rejected": "Rejected"
+      },
+      "status": { "pending": "Pending", "active": "Active", "rejected": "Rejected" },
+      "restricted": "Restricted",
+      "restrictedHint": "Counterfeit-prone — new listings under this brand need extra verification.",
+      "edit": "Edit",
+      "delete": "Delete",
+      "restore": "Restore",
+      "merge": "Merge",
+      "undo": "Undo",
+      "cancel": "Cancel",
+      "restoreTitle": "Restore brand?",
+      "restoreMessage": "“{name}” will be moved back to the live list.",
+      "toast": {
+        "created": "Brand “{name}” created.",
+        "updated": "Brand “{name}” saved.",
+        "deleted": "Brand “{name}” deleted.",
+        "restored": "Brand “{name}” restored.",
+        "merged": "“{name}” merged into “{target}”.",
+        "aliasAdded": "Alias “{alias}” added.",
+        "aliasRemoved": "Alias “{alias}” removed."
+      },
+      "form": {
+        "createTitle": "New brand",
+        "editTitle": "Edit brand",
+        "name": "Name",
+        "slug": "Slug",
+        "slugHint": "Lowercase letters, digits and single hyphens. Left blank on create, it’s derived from the name.",
+        "displayName": "Display name (English)",
+        "displayNameHint": "Optional — shown to buyers instead of the canonical name. Leave blank to use the name as-is.",
+        "status": "Status",
+        "isRestricted": "Restricted (counterfeit-prone)",
+        "isRestrictedHint": "Independent of status — an active brand can also be restricted.",
+        "logoKey": "Logo key",
+        "logoKeyHint": "An object-storage key, not a file — upload isn’t built yet.",
+        "aliases": "Aliases",
+        "aliasesHint": "Alternate spellings that resolve to this brand (e.g. “JBL”, “jbl”, “JBL Audio”).",
+        "addAliasPlaceholder": "Add an alias…",
+        "add": "Add",
+        "remove": "Remove",
+        "save": "Save",
+        "err": {
+          "required": "This field is required.",
+          "nameLong": "Keep the name to 120 characters or fewer.",
+          "slugLong": "Keep the slug to 80 characters or fewer.",
+          "slugFormat": "Lowercase letters, digits and single hyphens only.",
+          "logoKeyLong": "Keep the logo key to 500 characters or fewer."
+        }
+      },
+      "mergeDialog": {
+        "title": "Merge “{name}” into…",
+        "description": "Its aliases and any products move to the target; its own name becomes an alias of the target. “{name}” is archived and kept for audit/redirects.",
+        "searchPlaceholder": "Search for the surviving brand…",
+        "noResults": "No matching brands.",
+        "confirm": "Merge",
+        "cancel": "Cancel"
+      }
+    },
     "errors": {
       "categorySlugTaken": "That slug is already in use by another category.",
       "categoryNameTaken": "Another category already has that name (names are case-insensitive).",
@@ -89,6 +160,8 @@
       "categoryCycle": "A category cannot be moved under its own descendant.",
       "brandSlugTaken": "That brand slug is already in use.",
       "brandNameTaken": "A brand with that name already exists (names are case-insensitive).",
+      "brandAliasTaken": "That alias already maps to a brand.",
+      "brandMergeInvalid": "That merge isn’t possible — check that both brands are still live and distinct.",
       "conflict": "That action conflicts with the current state — reload and try again.",
       "validation": "Please check the highlighted fields.",
       "unauthenticated": "Your session expired. Please sign in again.",

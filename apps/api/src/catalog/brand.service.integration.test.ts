@@ -248,4 +248,15 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     await svc.update(squatter.id, { name: s('rs-squatter-2') }, actor, {});
     await expect(svc.restore(b.id, actor, {})).resolves.toMatchObject({ id: b.id });
   });
+
+  it('list({archived: true}) is the only way back to a soft-deleted row once the delete undo window has passed', async () => {
+    const b = await svc.create({ name: s('arch-me'), slug: s('arch-me') }, actor, {});
+    await svc.remove(b.id, actor, {});
+
+    const live = await svc.list({ q: s('arch-me') });
+    expect(live.items.map((x) => x.id)).not.toContain(b.id);
+
+    const archived = await svc.list({ archived: true, q: s('arch-me') });
+    expect(archived.items.map((x) => x.id)).toContain(b.id);
+  });
 });

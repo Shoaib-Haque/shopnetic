@@ -2655,5 +2655,51 @@ compose file.
     dangling `product.brand_id`, exactly the bug being fixed); `restore()`
     happy path + the not-found/not-archived/name-collision cases. Full API
     suite green (112 integration incl. 3 new, 25 unit); typecheck/lint
-    clean. Admin UI (list, create/update form, merge dialog) is the next
-    stage — not started yet.
+    clean.
+
+- 2026-09-17 — Brands admin UI (second/final stage of the same feature).
+  List page + create/update form + a dedicated merge dialog, mirroring
+  Categories' CRUD-kit pattern minus everything tree-specific (Brand is
+  flat). New files: `features/catalog/brands/{api,brand-list,
+  brand-form-modal,brand-merge-dialog}.tsx` + route at
+  `catalog/brands/page.tsx`. Delete uses the established soft-delete +
+  undo-toast idiom (not `ConfirmDialog` — that's reserved for restore,
+  matching Category List's own split); merge gets its own dialog rather
+  than reusing delete's, per the design decision from this feature's
+  planning discussion (merge is brand's real "remove" path and has
+  real, non-undoable consequences a one-click undo can't cover).
+  - **Filter layout**: Brand has two independent axes — `status`
+    (pending/active/rejected) and archived-or-not (`deletedAt`) — where
+    Category only had one (archived-or-not, handled by a 3-way
+    live/archived/all tab). Went with a Live/Archived tab (Archived is
+    where `restore` lives) plus a status dropdown shown only on the Live
+    tab, rather than a combined status×archived tab set.
+  - **Surfaced a real gap while building this**: `BrandService.list()`
+    had no way to ever list archived rows (`deletedAt: null` was
+    hardcoded) — meaning `restore()` (added in the last stage) had no
+    discoverable entry point beyond the immediate delete's undo-toast
+    window. Added an `archived` list option + `?archived=true` query
+    param, mirroring Category's equivalent. New integration test; API
+    suite now 113.
+  - **Known limitation, not fixed**: the Audit Log's brand deep-link
+    always targets the *live* list (Brand has no combined `status=all`
+    view the way Category does). A `brand_deleted`/`brand_merged` audit
+    row's target (now archived) simply won't be found there — degrades
+    to "link does nothing" (same as any not-found id), not an error.
+    Documented inline in `audit-log.tsx`; revisit if this turns out to
+    matter in practice.
+  - Extracted the admin app's `slugify`/`slugifyLive` helpers (previously
+    private to `category-form-modal.tsx`) to `apps/admin/src/lib/
+    slugify.ts` on their 2nd genuine occurrence, per the standing reuse
+    rule — Categories' own form now imports the shared version too, no
+    behavior change (verified byte-identical regex ranges).
+  - Built and reviewed via a fork (91 tool calls, ~389k tokens) with the
+    full feature context from this conversation's planning discussion;
+    every file it touched was read back and independently re-verified
+    (typecheck/lint/test, not just the fork's own claim) before staging.
+    Admin suite: 25 files / 209 tests (was 204, +5 new, 0 broken). Full
+    API suite: 113 (was 112, +1). Not yet live-verified in a browser —
+    the route resolves (307 → login redirect when signed out, not a
+    404) but nothing beyond that has been clicked through; next step is
+    the user's own UI walkthrough, same as every other feature this
+    project.

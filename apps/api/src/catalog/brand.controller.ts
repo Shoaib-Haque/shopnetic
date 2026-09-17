@@ -50,12 +50,14 @@ export class BrandController {
   async list(
     @Req() req: Request,
     @Query('status') status?: string,
+    @Query('archived') archived?: string,
     @Query('q') q?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ): Promise<Envelope<Brand[]>> {
     const opts: Parameters<BrandService['list']>[0] = {};
     if (status === 'pending' || status === 'active' || status === 'rejected') opts.status = status;
+    if (archived === 'true') opts.archived = true;
     if (q) opts.q = q;
     if (cursor) opts.cursor = cursor;
     if (limit) opts.limit = Number(limit);

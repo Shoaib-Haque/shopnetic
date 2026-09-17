@@ -11,6 +11,8 @@ const CODE_TO_KEY: Record<string, string> = {
   CATEGORY_CYCLE: 'errors.categoryCycle',
   BRAND_SLUG_TAKEN: 'errors.brandSlugTaken',
   BRAND_NAME_TAKEN: 'errors.brandNameTaken',
+  BRAND_ALIAS_TAKEN: 'errors.brandAliasTaken',
+  BRAND_MERGE_INVALID: 'errors.brandMergeInvalid',
   CONFLICT: 'errors.conflict',
   VALIDATION_ERROR: 'errors.validation',
   UNAUTHENTICATED: 'errors.unauthenticated',
