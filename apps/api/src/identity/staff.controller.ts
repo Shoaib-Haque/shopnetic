@@ -47,6 +47,7 @@ import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { RequirePermission } from '../auth/require-permission.decorator.js';
 import { CurrentActor } from '../auth/current-actor.decorator.js';
+import { requestMeta as ctxOf } from '../common/request-meta.js';
 import { StaffAuthService } from './staff-auth.service.js';
 import { StaffInviteService } from './staff-invite.service.js';
 import { StaffAccountsService } from './staff-accounts.service.js';
@@ -327,14 +328,4 @@ export class StaffController {
 
 function readStaffCookie(req: Request): string | undefined {
   return (req as Request & { cookies?: Record<string, string> }).cookies?.[STAFF_REFRESH_COOKIE];
-}
-
-function ctxOf(req: Request): { ip?: string; userAgent?: string; correlationId?: string } {
-  const ua = req.headers['user-agent'];
-  const cid = req.headers['x-correlation-id'];
-  return {
-    ...(req.ip ? { ip: req.ip } : {}),
-    ...(typeof ua === 'string' ? { userAgent: ua } : {}),
-    ...(typeof cid === 'string' ? { correlationId: cid } : {}),
-  };
 }

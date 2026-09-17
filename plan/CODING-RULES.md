@@ -2151,3 +2151,194 @@ compose file.
   active — an odd count — left the group open after navigating away, when
   it should have gone back to closed), restored; full admin suite (177
   tests) green; typecheck/lint clean.
+- 2026-09-17 — Whitespace-only search fix, then a full codebase-wide DRY/
+  reuse audit and cleanup (user-requested, four batches run in parallel).
+  - **Whitespace-only query bug** (found live: typing "   " into Staff
+    List's search box showed a skeleton-then-rows cycle for a query that
+    was never actually a search). Root cause: `debouncedQ` fed both the
+    server request and `useScrollLoad`'s `resetKeys`/the URL-sync effect
+    directly — a whitespace-only string still counts as "changed" even
+    though it's not an effective search. New `apps/admin/src/hooks/
+    use-debounced-search.ts` composes the existing generic
+    `useDebouncedValue` and `.trim()`s the result — the raw `q` state
+    feeding the visible `<SearchInput>` stays untouched (never fight the
+    user's keystrokes, including the earlier "match any word, trim stray
+    spaces" search behavior), only the derived copy used for reload/URL/
+    server decisions is trimmed. Category List, Staff List, and Audit Log
+    all switched from `useDebouncedValue(q, 250)` to `useDebouncedSearch(q)`.
+  - **Audit scope**: user asked to check the *whole* monorepo, not just
+    admin. Four read-only audits ran in parallel (apps/admin, apps/api,
+    storefront+seller+cross-app, packages/*+small worker apps), each
+    calibrated against two known examples from this session — the
+    debounce-trim fix above (genuine same-app duplicated logic, worth
+    extracting) and `tokenizeForSql`'s deliberate 3x duplication across the
+    admin/api package boundary (small, cross-runtime, correctly left alone)
+    — so "looks like repeated code" wasn't conflated with "worth an
+    abstraction." Findings were presented to the user before any code
+    changed; they approved all four implementation batches. Four parallel
+    forks then implemented, each restricted to disjoint files:
+  - **apps/admin** (6 items, all wired into Category List/Staff List/
+    Audit Log/the invite form's cookie routes): `apps/admin/src/lib/
+    api-route.ts`'s `parseJsonBody()` replaces the identical "Zod-validate
+    the body or 422" block that was copy-pasted into all 7 `/api/
+    staff-auth/*/route.ts` handlers, and `session-cookie.ts`'s new
+    `applyAuthCookies()` folds in the 3 handlers that also repeated
+    "set both cookies on success." `components/crud/scroll-load-states.tsx`
+    (`ScrollLoadError`/`ScrollLoadSkeleton`/`ScrollLoadFooter`) replaces the
+    load-error/skeleton/footer JSX all three list pages hand-rolled —
+    Category List keeps its own top-level error/skeleton (a genuinely
+    different tree-shaped skeleton + dual tree/flat mode) but shares the
+    footer. `hooks/use-url-params-sync.ts` replaces each page's own
+    "build URLSearchParams, skip falsy values, `router.replace`" effect
+    (a plain object of param→value-or-falsy in, everything else handled —
+    including the "a fresh object literal every render" dep-array gotcha,
+    solved by keying the effect on `Object.values(params)` instead of the
+    object itself). `hooks/use-row-flash.ts` replaces Category List's and
+    Staff List's own copies of the flash-highlight-and-scroll mechanism
+    (`data-*-row` attribute name is now a parameter) and fixes a real small
+    bug for free: Staff List's hand-rolled copy was missing the H7 mount-
+    safety guard (`if (mounted) setFlashId(null)`) Category's had, so
+    navigating away within the 1400ms flash window risked a `setState`
+    after unmount — the shared hook has the guard unconditionally, with a
+    dedicated regression test (mount, flash, unmount, advance the timer,
+    assert no console.error). `lib/format.ts`'s `capForMessage()` (default
+    max 60, matching G7's documented value) replaces the identical
+    truncate-for-a-toast/dialog one-liner duplicated as `clip`/
+    `capForMessage` with two different magic-number defaults.
+  - **apps/api** (5 items): `audit/audit-record-for.ts`'s `auditRecordFor()`
+    factory replaces the byte-identical 17-line audit-wrapper method 7
+    catalog services each defined (differing only in a hardcoded
+    `targetType` string) plus `category.service.ts`'s 6 inline calls of the
+    same shape; also dropped `!== undefined` guards the 7 wrappers
+    duplicated needlessly on top of guards `AuditService.record()` already
+    does internally. `common/request-meta.ts` replaces an identical
+    `meta(req)` helper duplicated across 9 catalog controllers.
+    `common/pagination.ts`'s `clampLimit()`/`paginate()` replace a
+    `slice`+`nextCursor` pattern duplicated 3x and a `clamp()`/inlined-
+    equivalent duplicated 5-6x. `envelope.ts`'s `ok()` now accepts an
+    optional extra-meta argument, so `category.controller.ts` and
+    `audit.controller.ts` no longer each reimplement their own
+    request-id/count/nextCursor envelope construction by hand.
+    `product-option.service.ts`'s audit call genuinely differs (no
+    `action` param, a composite target id, a fixed action string) — kept a
+    thin local wrapper delegating to the shared factory rather than forcing
+    a non-fitting shape onto it.
+  - **Cross-app** (storefront ↔ admin, 3 items, new package): both apps had
+    independently hand-built byte-identical `postJson`/`getJson` (storefront
+    lacked `getJson`) and `extractErrorCode`, and near-identical Set-Cookie
+    parsers differing only in the hardcoded cookie name (`sn_rt` vs.
+    `sn_srt`). New workspace package `@shopnetic/http-client`
+    (`packages/http-client`, modelled on `packages/auth`'s structure, its
+    own 13 unit tests) now owns all three; each app's own file re-exports/
+    thin-wraps the shared implementation under its existing names so none
+    of the ~30 call sites across both apps needed touching. App-specific
+    bits (each app's own error-code-to-message table, each cookie's literal
+    name) stayed local — this wasn't a merge of the two apps' auth
+    architectures, just the handful of genuinely identical low-level
+    utilities underneath them.
+  - **packages/ui** (1 item): `lib/overlay-parts.tsx` (`OverlayCloseButton`,
+    `DialogHeader`, `DialogTitle`) replaces the close-button/header/title
+    boilerplate `Modal`/`Drawer`/`Popover` each duplicated almost verbatim —
+    pure internal dedup, every component's public export name and rendered
+    output stays identical (`ModalHeader`/`DrawerHeader`/etc. are now
+    re-exports of the shared implementation, which only changes what React
+    DevTools labels them as, not anything rendered or behavioral).
+  - **Verification**: every batch ran its own revert-confirm-restore on at
+    least its highest-blast-radius change (the mount-safety fix, the
+    `auditRecordFor` `targetType` wiring, the `parseSetCookie` cookie-name
+    parameterization, the close-button `aria-label`) before reporting done.
+    One fork (apps/admin) was cut off mid-report by a session rate limit;
+    its actual code changes were already complete and correct — verified
+    independently afterward rather than re-run, since re-doing finished,
+    already-tested work would have been wasted effort. Final full sweep,
+    all green: `@shopnetic/admin` 198 tests / typecheck / lint;
+    `@shopnetic/api` 25 unit + 96 integration (live dev DB) / typecheck /
+    lint; `@shopnetic/ui` typecheck / lint (no runtime tests of its own;
+    verified instead via every admin/storefront consumer's own suite
+    staying green); `@shopnetic/storefront` 5 tests / typecheck / lint;
+    `@shopnetic/http-client` 13 tests / typecheck / lint. The new package's
+    build-pipeline wiring was double-checked separately: `dist/` is
+    gitignored like every other workspace package, and root-level `pnpm
+    build`/`dev`/`test`/`typecheck` all run through `turbo run <task>`,
+    whose `dependsOn: ["^build"]` already builds any workspace dependency
+    (including a brand-new one) before its consumers run — nothing
+    package-specific needed adding to `turbo.json`.
+- 2026-09-17 — Post-sweep manual UI pass (real MFA login with
+  `DEV_AUTH_RELAXED=false`, change/reset/forgot password, invite/accept-
+  invite, Modal/Drawer/Popover, the three list pages) surfaced three real
+  items, two fixed same day, one scoped and fixed as its own piece of work:
+  1. **`AcceptInviteForm` had no Confirm Password field** — the only one of
+     the three password-setting forms (Change/Reset/Accept) without one.
+     Brought in line with `ResetPasswordForm`'s exact pattern: local
+     `formSchema` (`staffInviteAcceptRequestSchema.omit({token:true})
+     .extend({confirmPassword}).refine(...)`), a second `PasswordInput`,
+     the existing `fields.confirmPassword`/`fields.passwordsDontMatch`
+     translation keys (no new copy needed). Verified via revert-confirm-
+     restore (broke the `refine`, confirmed the new mismatch test failed
+     for the right reason — an unmocked `postJson` call fired — restored);
+     13/13 tests in that file, 199/199 admin suite.
+  2. **Modal/ConfirmDialog opened and closed with an instant snap** — a
+     known, already-documented G11 gap (Drawer and DropdownMenuContent had
+     the fade/slide treatment; Modal never did). Added the panel-scale
+     (duration-300, per G11's own tier split — not `.sn-popover`'s
+     150/100ms popover-scale) fade+scale, keyed off Radix's own
+     `data-state` the same way `DrawerContent` already does it — overlay
+     fades, content fades+scales. `ConfirmDialog` is built directly on
+     `Modal`/`ModalContent`, so one change fixed both. New regression test
+     in `staff-list.test.tsx` (jsdom can't run the actual transition, so it
+     asserts the class wiring, same approach the sidebar chevron test
+     already uses) — reverting the new classes failed it for the right
+     reason, restored; 200/200 admin suite, `@shopnetic/ui` typecheck/lint
+     clean.
+  3. **Category flat/paginated view (Archived/All) ordered siblings by the
+     ltree `path`, not drag `position`** — reported live: a category dragged
+     to the top of Active showed up at the bottom of All. Root cause: the
+     active tree's own client-side `buildForest` already re-sorts every
+     level by `position` (documented), but the flat, paginated view has no
+     equivalent — it rendered rows in raw SQL order, and `path`'s labels are
+     the row's own stripped uuid (`label()`), carrying no relationship to
+     `position` at all, so sibling order there was effectively random.
+     Discussed as its own scoped task before writing code (per the standing
+     "discuss big batches first" rule) — the real fix turned out to be more
+     architecturally coupled than a typical bug: `path` is load-bearing for
+     this view's gap-free `path > cursor` pagination, and it's `path`
+     staying untouched by a plain reorder (only a reparent rewrites it) that
+     keeps reordering cheap; encoding position into `path` itself, or into a
+     second materialized column, would flip that — every reorder would need
+     a whole-subtree rewrite instead of a handful of sibling rows, on a
+     schema area (`path`/ltree/GIST index) already flagged fragile from the
+     09-16 index-drift incident. Fetching everything and sorting client-side
+     (what the tree already does) was ruled out too — that's exactly what
+     the 09-15 pagination work was built to avoid for a large archived
+     history. Landed instead as a **read-time-only** fix, `CategoryService`'s
+     new `listRankedFlat`: a recursive CTE walks the real, unfiltered
+     parent/child structure and computes each row's `rank_path` (an int
+     array of `[ancestor position, …, own position]`) — the same shape
+     `buildForest` produces, computed in SQL instead of client-side since
+     this view can't fetch the whole table to sort locally. A row whose
+     immediate parent doesn't satisfy the current status filter restarts its
+     `rank_path` at just its own position — matching `buildForest`'s
+     "parent missing from the result → orphan, shown at root" rule for the
+     case that can't happen on the always-complete active tree but routinely
+     does here (a category archived while its parent stays active). No
+     schema change, no migration, no touch to reorder/reparent/move at all —
+     purely additive to this one query, gated to exactly the case that had
+     the bug (`paginated && parentId === undefined && !isSearch`; a
+     `parentId`-scoped listing is already a single flat sibling level,
+     directly `position`-orderable, no walk needed). Trade-off, accepted
+     deliberately: this case's pagination is now offset-based, the same
+     weaker (not gap-free) guarantee the search case already lives with —
+     traded the strict guarantee for correctness on the property that
+     actually matters here (visible order matches drag order). Three new
+     integration tests (reorder into a deliberately-scrambled-relative-to-
+     path sequence, confirm the flat view returns exactly that sequence;
+     nested parent/child with an explicit reorder; the archived-child/
+     active-parent orphan case) plus the two new tests' revert-confirm-
+     restore (temporarily forced `rankedFlat = false`, both new order tests
+     failed with the exact scrambled-order symptom, restored). Full API
+     suite green throughout (99 integration incl. 3 new + the pre-existing
+     14, 25 unit); admin suite unaffected (200/200, no client change needed
+     — same response shape, just correctly ordered). Docs: this file, plus
+     the categories feature README's Ordering section and its pagination-
+     cursor-shapes paragraph, both updated to describe the new behavior
+     rather than just flag the old gap.

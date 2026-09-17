@@ -12,6 +12,8 @@ import type { Brand as BrandRow, BrandAlias as BrandAliasRow } from '@shopnetic/
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
+import { auditRecordFor } from '../audit/audit-record-for.js';
+import { clampLimit, paginate } from '../common/pagination.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
@@ -22,10 +24,14 @@ const MAX_LIMIT = 100;
 
 @Injectable()
 export class BrandService {
+  private readonly record: ReturnType<typeof auditRecordFor>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) {
+    this.record = auditRecordFor(this.audit, 'brand');
+  }
 
   async list(opts: {
     status?: Brand['status'];
@@ -33,7 +39,7 @@ export class BrandService {
     cursor?: string;
     limit?: number;
   }): Promise<{ items: Brand[]; nextCursor?: string }> {
-    const limit = clamp(opts.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const limit = clampLimit(opts.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
     const where: Prisma.BrandWhereInput = { deletedAt: null };
     if (opts.status) where.status = opts.status;
     if (opts.q) {
@@ -51,8 +57,7 @@ export class BrandService {
       take: limit + 1,
       ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
     });
-    const page = rows.slice(0, limit);
-    const nextCursor = rows.length > limit ? page.at(-1)?.id : undefined;
+    const { page, nextCursor } = paginate(rows, limit);
     return { items: page.map(toView), ...(nextCursor ? { nextCursor } : {}) };
   }
 
@@ -273,26 +278,6 @@ export class BrandService {
       });
     }
   }
-
-  private async record(
-    actor: Actor,
-    action: string,
-    targetId: string,
-    meta: RequestMeta,
-    extra: { before?: unknown; after?: unknown; reason?: string },
-  ): Promise<void> {
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action,
-      targetType: 'brand',
-      targetId,
-      ...(extra.before !== undefined ? { before: extra.before } : {}),
-      ...(extra.after !== undefined ? { after: extra.after } : {}),
-      ...(extra.reason !== undefined ? { reason: extra.reason } : {}),
-      ...(meta.ip !== undefined ? { ip: meta.ip } : {}),
-      ...(meta.correlationId !== undefined ? { correlationId: meta.correlationId } : {}),
-    });
-  }
 }
 
 function toView(row: BrandWithAliases): Brand {
@@ -328,8 +313,4 @@ function dedupe(xs: string[]): string[] {
     seen.add(k);
     return true;
   });
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(Math.max(Math.trunc(n), lo), hi);
 }

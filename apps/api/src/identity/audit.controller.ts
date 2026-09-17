@@ -3,6 +3,8 @@ import type { Request } from 'express';
 import { can, Permission, type Actor } from '@shopnetic/auth';
 import type { AuditEvent } from '@shopnetic/contracts';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { clampLimit, paginate } from '../common/pagination.js';
+import { ok } from '../common/envelope.js';
 import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { RequirePermission } from '../auth/require-permission.decorator.js';
@@ -72,7 +74,7 @@ export class AuditController {
     data: AuditEvent[];
     meta: { requestId: string; nextCursor?: string; count: number };
   }> {
-    const limit = clamp(Number(limitRaw) || DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const limit = clampLimit(Number(limitRaw) || DEFAULT_LIMIT, 1, MAX_LIMIT);
     const domain = (DOMAINS as readonly string[]).includes(domainRaw ?? '')
       ? (domainRaw as Domain)
       : undefined;
@@ -139,14 +141,11 @@ export class AuditController {
       ...params,
     );
 
-    const page = rows.slice(0, limit);
-    const nextCursor = rows.length > limit ? page.at(-1)?.id : undefined;
-    const requestId = headerValue(req, 'x-request-id') ?? 'unknown';
-
-    return {
-      data: page.map(toAuditView),
-      meta: { requestId, count: page.length, ...(nextCursor ? { nextCursor } : {}) },
-    };
+    const { page, nextCursor } = paginate(rows, limit);
+    return ok(req, page.map(toAuditView), {
+      count: page.length,
+      ...(nextCursor ? { nextCursor } : {}),
+    });
   }
 }
 
@@ -183,13 +182,4 @@ function toAuditView(row: RawAuditEvent): AuditEvent {
     correlationId: row.correlation_id,
     createdAt: row.created_at.toISOString(),
   };
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(Math.max(Math.trunc(n), lo), hi);
-}
-
-function headerValue(req: Request, name: string): string | undefined {
-  const v = req.headers[name];
-  return Array.isArray(v) ? v[0] : v;
 }

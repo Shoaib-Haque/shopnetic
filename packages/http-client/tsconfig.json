@@ -1,0 +1,12 @@
+{
+  "extends": "@shopnetic/config/tsconfig/base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    // This package's code runs in the browser (client-component `fetch`
+    // calls), unlike the Node-only default `lib` the base config sets for
+    // API/worker packages — `fetch` and friends come from DOM, not Node.
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src"]
+}

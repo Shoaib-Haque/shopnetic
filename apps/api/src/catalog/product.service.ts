@@ -6,6 +6,8 @@ import type { Product as ProductRow } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
+import { auditRecordFor } from '../audit/audit-record-for.js';
+import { clampLimit, paginate } from '../common/pagination.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
@@ -19,10 +21,14 @@ const MAX_LIMIT = 100;
  */
 @Injectable()
 export class ProductService {
+  private readonly record: ReturnType<typeof auditRecordFor>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) {
+    this.record = auditRecordFor(this.audit, 'product');
+  }
 
   async list(opts: {
     categoryId?: string;
@@ -32,7 +38,7 @@ export class ProductService {
     cursor?: string;
     limit?: number;
   }): Promise<{ items: Product[]; nextCursor?: string }> {
-    const limit = clamp(opts.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const limit = clampLimit(opts.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
     const where: Prisma.ProductWhereInput = { deletedAt: null };
     if (opts.categoryId) where.categoryId = opts.categoryId;
     if (opts.brandId) where.brandId = opts.brandId;
@@ -45,8 +51,7 @@ export class ProductService {
       take: limit + 1,
       ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
     });
-    const page = rows.slice(0, limit);
-    const nextCursor = rows.length > limit ? page.at(-1)?.id : undefined;
+    const { page, nextCursor } = paginate(rows, limit);
     return { items: page.map(toView), ...(nextCursor ? { nextCursor } : {}) };
   }
 
@@ -214,26 +219,6 @@ export class ProductService {
     if (clash)
       throw new AppError('PRODUCT_SLUG_TAKEN', 409, { detail: `slug "${slug}" is in use` });
   }
-
-  private async record(
-    actor: Actor,
-    action: string,
-    targetId: string,
-    meta: RequestMeta,
-    extra: { before?: unknown; after?: unknown; reason?: string },
-  ): Promise<void> {
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action,
-      targetType: 'product',
-      targetId,
-      ...(extra.before !== undefined ? { before: extra.before } : {}),
-      ...(extra.after !== undefined ? { after: extra.after } : {}),
-      ...(extra.reason !== undefined ? { reason: extra.reason } : {}),
-      ...(meta.ip !== undefined ? { ip: meta.ip } : {}),
-      ...(meta.correlationId !== undefined ? { correlationId: meta.correlationId } : {}),
-    });
-  }
 }
 
 function assertPriceCoherent(priceMinor: number | null, currency: string | null): void {
@@ -261,8 +246,4 @@ function toView(row: ProductRow): Product {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(Math.max(Math.trunc(n), lo), hi);
 }

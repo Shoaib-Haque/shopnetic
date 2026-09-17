@@ -12,6 +12,8 @@ import type { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
+import { auditRecordFor } from '../audit/audit-record-for.js';
+import { clampLimit } from '../common/pagination.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 
@@ -31,6 +33,11 @@ interface RawCategory {
 
 const COLUMNS = `id, parent_id, slug, name_i18n, path::text AS path, position, is_active,
         brand_requirement, created_at, updated_at, deleted_at`;
+/** Same columns as `COLUMNS`, `c.`-prefixed — for a query that joins `catalog.category c`
+ * against something else (the ranked-flat-view CTE below), where bare column names would
+ * be ambiguous against the other side of the join. */
+const COLUMNS_C = `c.id, c.parent_id, c.slug, c.name_i18n, c.path::text AS path, c.position,
+        c.is_active, c.brand_requirement, c.created_at, c.updated_at, c.deleted_at`;
 
 /** ltree label = the uuid with dashes stripped (32 hex chars — a valid label). */
 const label = (id: string): string => id.replace(/-/g, '');
@@ -60,10 +67,14 @@ function tokenizeForSql(query: string): string[] {
 
 @Injectable()
 export class CategoryService {
+  private readonly record: ReturnType<typeof auditRecordFor>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) {
+    this.record = auditRecordFor(this.audit, 'category');
+  }
 
   /**
    * `limit` omitted (the active tree's own load — it needs the whole
@@ -124,13 +135,31 @@ export class CategoryService {
     }
 
     const paginated = opts.limit !== undefined;
-    const take = paginated
-      ? Math.min(Math.max(Math.trunc(opts.limit!), 1), LIST_MAX_LIMIT)
-      : undefined;
+    const take = paginated ? clampLimit(opts.limit!, 1, LIST_MAX_LIMIT) : undefined;
+
+    // The whole-catalog flat, *paginated* view (Archived/All — no `parentId`
+    // scoping, no search) needs sibling order to match the tree's own
+    // `position`-based order, the same way `buildForest` already re-sorts
+    // the (unpaginated, always-complete) active tree client-side. Plain
+    // `path, position` ordering can't give that here: `path`'s labels are
+    // the row's own uuid (`label()` below), not anything derived from
+    // `position`, so ordering by it sorts each sibling group essentially at
+    // random relative to drag order. Gated on `paginated` too: the
+    // *unpaginated* tree load (`limit` omitted) doesn't need this fix at
+    // all — `buildForest` discards and rebuilds the order client-side
+    // regardless of what SQL order it arrives in, so paying for the
+    // recursive walk there would be pure waste on a path that runs on every
+    // category-page visit. `parentId`-scoped calls (a specific parent's
+    // direct children, or `parentId: null` for roots-only) don't have the
+    // ordering problem either — a single flat sibling level is already
+    // directly, correctly orderable by `position` with no tree-walk needed.
+    // See `plan/CODING-RULES.md`'s 2026-09-17 dated entry for the full
+    // design discussion.
+    const rankedFlat = paginated && opts.parentId === undefined && !isSearch;
 
     let offset = 0;
     if (paginated && opts.cursor) {
-      if (isSearch) {
+      if (isSearch || rankedFlat) {
         offset = Math.max(0, Math.trunc(Number(opts.cursor)) || 0);
       } else {
         params.push(opts.cursor);
@@ -138,28 +167,96 @@ export class CategoryService {
       }
     }
 
-    const orderBy = isSearch ? `${scoreExpr} DESC, path` : 'path, position';
-    const limitClause = paginated ? `LIMIT ${take! + 1}${isSearch ? ` OFFSET ${offset}` : ''}` : '';
+    const limitClause = paginated
+      ? `LIMIT ${take! + 1}${isSearch || rankedFlat ? ` OFFSET ${offset}` : ''}`
+      : '';
 
-    const rows = await this.prisma.$queryRawUnsafe<RawCategory[]>(
-      `SELECT ${COLUMNS}
-         FROM catalog.category
-        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-        ORDER BY ${orderBy}
-        ${limitClause}`,
-      ...params,
-    );
+    const rows = rankedFlat
+      ? await this.listRankedFlat(status, limitClause)
+      : await this.prisma.$queryRawUnsafe<RawCategory[]>(
+          `SELECT ${COLUMNS}
+             FROM catalog.category
+            ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+            ORDER BY ${isSearch ? `${scoreExpr} DESC, path` : 'path, position'}
+            ${limitClause}`,
+          ...params,
+        );
 
     if (!paginated) return { categories: rows.map(toView) };
 
     const page = rows.slice(0, take);
     const hasMore = rows.length > take!;
     const nextCursor = hasMore
-      ? isSearch
+      ? isSearch || rankedFlat
         ? String(offset + take!)
         : page.at(-1)?.path
       : undefined;
     return { categories: page.map(toView), ...(nextCursor ? { nextCursor } : {}) };
+  }
+
+  /**
+   * The `rankedFlat` case above: every category, across every parent,
+   * ordered so a parent always precedes its own descendants and each
+   * sibling group is ordered by `position` (then name) — exactly what
+   * `buildForest` produces for the tree, just flattened, and computed
+   * here instead of client-side because this view is paginated and can't
+   * fetch the whole table to sort locally.
+   *
+   * Walks the *real, unfiltered* parent/child structure (so a node's true
+   * position in the actual tree is always used — the walk itself doesn't
+   * care about `status`), but a node whose immediate parent does *not*
+   * satisfy `status` is treated as an effective root: its `rank_path`
+   * restarts at just its own `position`, dropping the excluded parent's
+   * prefix. This mirrors `buildForest`'s own "parent missing from the
+   * result → orphan, shown at root level" rule (`category-tree.tsx`) for
+   * the one case that can't happen on the always-complete active tree but
+   * routinely does here — an archived-only view where a category is
+   * archived but its parent isn't (or vice versa for "all", which can't
+   * actually produce this case today since nothing is hard-deleted, but
+   * costs nothing extra to handle correctly anyway).
+   *
+   * Cursor: `rankedFlat` always paginates by offset (set by the caller),
+   * same trade-off the search branch already has — a rank isn't a stable
+   * keyset the way `path` is, so a page fetched mid-edit could rarely
+   * skip or repeat a row if the tree changed between fetches. Accepted for
+   * the same reason it already was for search: this is a low-traffic
+   * admin list, not a high-concurrency public one.
+   */
+  private async listRankedFlat(
+    status: CategoryListStatus,
+    limitClause: string,
+  ): Promise<RawCategory[]> {
+    const pFilter =
+      status === 'active'
+        ? 'p.deleted_at IS NULL'
+        : status === 'archived'
+          ? 'p.deleted_at IS NOT NULL'
+          : 'true';
+    const cFilter =
+      status === 'active'
+        ? 'c.deleted_at IS NULL'
+        : status === 'archived'
+          ? 'c.deleted_at IS NOT NULL'
+          : 'true';
+    return this.prisma.$queryRawUnsafe<RawCategory[]>(
+      `WITH RECURSIVE eff AS (
+         SELECT c.id, c.parent_id, ARRAY[c.position] AS rank_path
+           FROM catalog.category c
+          WHERE c.parent_id IS NULL
+             OR NOT EXISTS (SELECT 1 FROM catalog.category p WHERE p.id = c.parent_id AND ${pFilter})
+         UNION ALL
+         SELECT c.id, c.parent_id, e.rank_path || c.position
+           FROM catalog.category c
+           JOIN eff e ON c.parent_id = e.id
+          WHERE EXISTS (SELECT 1 FROM catalog.category p WHERE p.id = c.parent_id AND ${pFilter})
+       )
+       SELECT ${COLUMNS_C}
+         FROM eff e
+         JOIN catalog.category c ON c.id = e.id
+        WHERE ${cFilter}
+        ORDER BY e.rank_path, coalesce(c.name_i18n->>'en', c.slug)
+        ${limitClause}`,
+    );
   }
 
   async get(id: string): Promise<Category> {
@@ -198,14 +295,7 @@ export class CategoryService {
       })
       .catch(mapUniqueViolation);
 
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action: 'catalog.category_created',
-      targetType: 'category',
-      targetId: view.id,
-      after: view,
-      ...pick(meta),
-    });
+    await this.record(actor, 'catalog.category_created', view.id, meta, { after: view });
     return view;
   }
 
@@ -270,14 +360,9 @@ export class CategoryService {
       .catch(mapUniqueViolation);
 
     const view = await this.get(id);
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action: 'catalog.category_updated',
-      targetType: 'category',
-      targetId: id,
+    await this.record(actor, 'catalog.category_updated', id, meta, {
       before: toView(current),
       after: view,
-      ...pick(meta),
     });
     return view;
   }
@@ -301,14 +386,9 @@ export class CategoryService {
     });
 
     const view = await this.get(id);
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action: 'catalog.category_moved',
-      targetType: 'category',
-      targetId: id,
+    await this.record(actor, 'catalog.category_moved', id, meta, {
       before: { parentId: self.parent_id, path: self.path },
       after: { parentId: view.parentId, path: view.path },
-      ...pick(meta),
     });
     return view;
   }
@@ -367,14 +447,9 @@ export class CategoryService {
       });
     });
 
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action: 'catalog.categories_reordered',
-      targetType: 'category',
-      targetId: parentId ?? 'root',
+    await this.record(actor, 'catalog.categories_reordered', parentId ?? 'root', meta, {
       before: null,
       after: { parentId, orderedIds: input.orderedIds, movedIds },
-      ...pick(meta),
     });
 
     // `list` orders by the ltree path (uuid labels); re-sort the affected
@@ -397,14 +472,9 @@ export class CategoryService {
       await writeCatalogOutbox(tx, 'category', 'category.deleted', id, { id });
     });
 
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action: 'catalog.category_deleted',
-      targetType: 'category',
-      targetId: id,
+    await this.record(actor, 'catalog.category_deleted', id, meta, {
       before: toView(self),
       reason: 'soft delete',
-      ...pick(meta),
     });
   }
 
@@ -478,14 +548,9 @@ export class CategoryService {
       .catch(mapUniqueViolation);
 
     const view = await this.get(self.id);
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action: 'catalog.category_restored',
-      targetType: 'category',
-      targetId: self.id,
+    await this.record(actor, 'catalog.category_restored', self.id, meta, {
       after: view,
       reason: `restore (${subtreeIds.length} row${subtreeIds.length === 1 ? '' : 's'})`,
-      ...pick(meta),
     });
     return view;
   }
@@ -666,12 +731,5 @@ function toView(r: RawCategory): Category {
     archivedAt: r.deleted_at ? r.deleted_at.toISOString() : null,
     createdAt: r.created_at.toISOString(),
     updatedAt: r.updated_at.toISOString(),
-  };
-}
-
-function pick(meta: RequestMeta): { ip?: string; correlationId?: string } {
-  return {
-    ...(meta.ip !== undefined ? { ip: meta.ip } : {}),
-    ...(meta.correlationId !== undefined ? { correlationId: meta.correlationId } : {}),
   };
 }

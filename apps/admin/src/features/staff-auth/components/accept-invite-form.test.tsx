@@ -44,8 +44,11 @@ async function render(token: string | null = VALID_TOKEN) {
   return result;
 }
 
-function submitPassword(password = 'a-strong-password') {
+function submitPassword(password = 'a-strong-password', confirm = password) {
   fireEvent.change(screen.getByLabelText('Create a password'), { target: { value: password } });
+  fireEvent.change(screen.getByLabelText('Confirm new password'), {
+    target: { value: confirm },
+  });
   fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
 }
 
@@ -150,6 +153,14 @@ describe('AcceptInviteForm — submitting the form', () => {
 
     const { container: form } = await render();
     expect(form.firstElementChild).toHaveClass('justify-center');
+  });
+
+  it('mismatched confirmation → validation error, never calls the API', async () => {
+    await render();
+    submitPassword('a-strong-password', 'a-different-password');
+
+    expect(await screen.findByText("Passwords don't match.")).toBeInTheDocument();
+    expect(mockedPostJson).not.toHaveBeenCalled();
   });
 
   it('a dead-token code discovered only at submit time (raced past the mount check) gets the same dedicated screen', async () => {

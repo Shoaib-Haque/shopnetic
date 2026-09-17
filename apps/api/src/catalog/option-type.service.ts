@@ -12,6 +12,7 @@ import type { OptionType as OptionTypeRow, OptionValue as OptionValueRow } from 
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
+import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
@@ -24,10 +25,14 @@ type OptionTypeWithValues = OptionTypeRow & { values: OptionValueRow[] };
  */
 @Injectable()
 export class OptionTypeService {
+  private readonly record: ReturnType<typeof auditRecordFor>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) {
+    this.record = auditRecordFor(this.audit, 'option_type');
+  }
 
   async list(opts: {
     status?: OptionType['status'];
@@ -284,26 +289,6 @@ export class OptionTypeService {
         detail: `an option type is already named "${nameEn}" (names are case-insensitive)`,
       });
     }
-  }
-
-  private async record(
-    actor: Actor,
-    action: string,
-    targetId: string,
-    meta: RequestMeta,
-    extra: { before?: unknown; after?: unknown; reason?: string },
-  ): Promise<void> {
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action,
-      targetType: 'option_type',
-      targetId,
-      ...(extra.before !== undefined ? { before: extra.before } : {}),
-      ...(extra.after !== undefined ? { after: extra.after } : {}),
-      ...(extra.reason !== undefined ? { reason: extra.reason } : {}),
-      ...(meta.ip !== undefined ? { ip: meta.ip } : {}),
-      ...(meta.correlationId !== undefined ? { correlationId: meta.correlationId } : {}),
-    });
   }
 }
 

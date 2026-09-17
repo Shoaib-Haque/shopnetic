@@ -35,6 +35,9 @@ importers:
       '@shopnetic/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@shopnetic/http-client':
+        specifier: workspace:*
+        version: link:../../packages/http-client
       '@shopnetic/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -289,6 +292,9 @@ importers:
       '@shopnetic/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@shopnetic/http-client':
+        specifier: workspace:*
+        version: link:../../packages/http-client
       '@shopnetic/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -498,6 +504,21 @@ importers:
       typescript:
         specifier: 5.7.3
         version: 5.7.3
+
+  packages/http-client:
+    devDependencies:
+      '@shopnetic/config':
+        specifier: workspace:*
+        version: link:../config
+      eslint:
+        specifier: 9.18.0
+        version: 9.18.0(jiti@2.6.1)
+      typescript:
+        specifier: 5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@22.10.5)(jsdom@30.0.1)
 
   packages/i18n:
     devDependencies:

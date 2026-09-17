@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { ArchiveRestore, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category, CategoryListStatus } from '@shopnetic/contracts';
@@ -9,8 +9,12 @@ import { cn, notify, ScrollToTopButton, SearchInput, Skeleton } from '@shopnetic
 import { PageHeader } from '@/components/crud/page-header';
 import { ActionButton } from '@/components/crud/action-button';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
-import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { ScrollLoadFooter } from '@/components/crud/scroll-load-states';
+import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useFindById } from '@/hooks/use-find-by-id';
+import { useRowFlash } from '@/hooks/use-row-flash';
+import { useUrlParamsSync } from '@/hooks/use-url-params-sync';
+import { capForMessage } from '@/lib/format';
 import { tokenize } from '@/lib/search';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
@@ -72,8 +76,6 @@ export function CategoryList() {
   const t = useTranslations('catalog');
   const tCommon = useTranslations('admin');
 
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const [items, setItems] = useState<Category[] | null>(null);
@@ -94,21 +96,12 @@ export function CategoryList() {
   // no separate cleanup needed).
   const [highlightId] = useState(() => searchParams.get('highlight'));
   const [q, setQ] = useState(() => searchParams.get('q') ?? '');
-  const debouncedQ = useDebouncedValue(q, 250);
+  const debouncedQ = useDebouncedSearch(q);
   const [modal, setModal] = useState<ModalState>(null);
   const [restoreTarget, setRestoreTarget] = useState<Category | null>(null);
   const [restoring, setRestoring] = useState(false);
 
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (status !== 'active') params.set('status', status);
-    if (debouncedQ) params.set('q', debouncedQ);
-    const qs = params.toString();
-    // `replace`, not `push` — same reasoning as Audit Log: switching tabs
-    // or refining a search isn't a new place to visit, it's adjusting the
-    // one you're on.
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [status, debouncedQ, pathname, router]);
+  useUrlParamsSync({ status: status !== 'active' ? status : undefined, q: debouncedQ });
 
   // still mounted? an undo toast outlives this page, and its `onUndo` must not
   // `setState` after the user has navigated away. Set the flag in the effect
@@ -190,26 +183,11 @@ export function CategoryList() {
 
   // briefly highlight the row that was just moved / restored, so it's easy to
   // find again after the tree re-sorts. Latest flash wins; it clears itself.
-  const [flashId, setFlashId] = useState<string | null>(null);
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const flash = useCallback((id: string) => {
-    setFlashId(id);
-    clearTimeout(flashTimer.current);
-    flashTimer.current = setTimeout(() => {
-      if (mounted.current) setFlashId(null);
-    }, 1400);
-  }, []);
-  useEffect(() => () => clearTimeout(flashTimer.current), []);
-
-  // keep the flashed row on screen — after a drag move, its undo, or a no-op
-  // drop, the row can land off-screen (and scroll anchoring only follows it in
-  // one direction). Re-runs when the list reloads so it lands on the final row.
-  useEffect(() => {
-    if (!flashId) return;
-    document
-      .querySelector(`[data-cat-row="${CSS.escape(flashId)}"]`)
-      ?.scrollIntoView({ block: 'nearest' });
-  }, [flashId, items]);
+  // `rescrollOn: items` — after a drag move, its undo, or a no-op drop, the
+  // row can land off-screen (and scroll anchoring only follows it in one
+  // direction), so this re-runs when the list reloads too, to land on the
+  // row's final position, not just where it was when flash() was called.
+  const { flashId, flash } = useRowFlash('data-cat-row', { rescrollOn: items });
 
   // collapsed tree nodes — lifted out of CategoryTree so the toolbar's
   // expand-all / collapse-to-roots control can sit next to the search box.
@@ -319,11 +297,8 @@ export function CategoryList() {
   // dialog into a wall of text (tmp/Restore.png). The full name is always one
   // hover/click away (the row's title, the Edit form), so cap what a message
   // embeds; a single ellipsis reads better than the dialog stretching tall.
-  const MESSAGE_NAME_MAX = 60;
-  const clipName = (s: string): string =>
-    s.length > MESSAGE_NAME_MAX ? `${s.slice(0, MESSAGE_NAME_MAX - 1)}…` : s;
   const labelOf = (c: Category | null | undefined): string =>
-    c ? clipName(c.name['en'] ?? c.slug) : '';
+    c ? capForMessage(c.name['en'] ?? c.slug) : '';
   const nameOfId = (id: string | null): string => {
     if (!id) return t('categories.form.parentNone');
     return labelOf((items ?? []).find((x) => x.id === id));
@@ -669,30 +644,13 @@ export function CategoryList() {
                 one of the two wrappers above ever actually has layout at a
                 time (the other is `hidden`), so either would do; this way
                 there's only ever one IntersectionObserver to keep track of. */}
-            {flatList.hasMore && (
-              <div
-                ref={flatList.sentinelRef}
-                className="h-px"
-                aria-hidden
-                data-testid="scroll-sentinel"
-              />
-            )}
-            <div className="mt-3">
-              {flatList.loadingMore && !flatList.loadError && (
-                <p className="text-xs text-muted-foreground">{tCommon('list.loading')}</p>
-              )}
-              {flatList.loadError && (
-                <div className="flex flex-col items-start gap-2">
-                  <p className="text-sm text-destructive">{tCommon('list.loadError')}</p>
-                  <ActionButton variant="outline" size="sm" onClick={flatList.loadMore}>
-                    {tCommon('list.retry')}
-                  </ActionButton>
-                </div>
-              )}
-              {!flatList.hasMore && !flatList.loadError && (
-                <p className="text-xs text-muted-foreground">{tCommon('list.noMore')}</p>
-              )}
-            </div>
+            <ScrollLoadFooter
+              hasMore={flatList.hasMore}
+              loadingMore={flatList.loadingMore}
+              loadError={flatList.loadError}
+              sentinelRef={flatList.sentinelRef}
+              onRetry={flatList.loadMore}
+            />
           </>
         )
       ) : items === null ? (

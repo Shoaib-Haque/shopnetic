@@ -1,5 +1,6 @@
 import type { NextResponse } from 'next/server';
 import { isProd } from '@/config/server-env';
+import { readTokens } from './tokens';
 
 /**
  * The admin app's own copy of the staff refresh token. The identity API scopes
@@ -39,4 +40,13 @@ export function setAccessCookie(res: NextResponse, value: string, expiresInSecon
 
 export function clearAccessCookie(res: NextResponse): void {
   res.cookies.set(ACCESS_COOKIE, '', { ...base, maxAge: 0 });
+}
+
+/** `login`/`refresh`/`totp-confirm` all set both cookies the same way on a
+ * successful response: the new refresh token, plus the access token embedded
+ * in the identity API's response body (when it's there to extract). */
+export function applyAuthCookies(res: NextResponse, refreshToken: string, body: unknown): void {
+  setSessionCookie(res, refreshToken);
+  const tokens = readTokens(body);
+  if (tokens) setAccessCookie(res, tokens.accessToken, tokens.expiresIn);
 }

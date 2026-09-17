@@ -276,6 +276,27 @@ describe('StaffList', () => {
     expect(mockedActivateStaff).toHaveBeenCalledWith('acc-2');
   });
 
+  // jsdom doesn't run real CSS transitions, so this asserts the wiring (the
+  // fade+scale classes are on the dialog content, keyed off Radix's own
+  // `data-state`) rather than the animation actually playing — same
+  // approach `admin-shell.test.tsx`'s chevron-rotation test uses. Regression
+  // guard for CODING-RULES G11's "Modal/ConfirmDialog is still an instant
+  // snap" gap.
+  it('the confirm dialog fades and scales in/out instead of snapping open', async () => {
+    const locked = account({ id: 'acc-2', email: 'locked@example.com', status: 'locked' });
+    mockedListStaff.mockResolvedValueOnce(page([ME, locked]));
+
+    render();
+    await screen.findAllByText(locked.email);
+    openRowMenu(tableRowFor(locked.email));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Unlock' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveClass('transition-all', 'duration-300', 'ease-out');
+    expect(dialog).toHaveClass('data-[state=closed]:scale-95', 'data-[state=open]:scale-100');
+    expect(dialog).toHaveClass('data-[state=closed]:opacity-0', 'data-[state=open]:opacity-100');
+  });
+
   it('reactivates a deprovisioned (disabled) account through the confirm dialog', async () => {
     const disabled = account({ id: 'acc-2', email: 'disabled@example.com', status: 'disabled' });
     mockedListStaff.mockResolvedValueOnce(page([ME, disabled]));

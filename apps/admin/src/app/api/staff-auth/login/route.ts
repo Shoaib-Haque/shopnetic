@@ -1,18 +1,16 @@
 import { NextResponse } from 'next/server';
 import { staffLoginRequestSchema } from '@shopnetic/contracts';
 import { callStaffApi } from '@/features/staff-auth/api-bridge';
-import { setAccessCookie, setSessionCookie } from '@/features/staff-auth/session-cookie';
-import { readTokens } from '@/features/staff-auth/tokens';
+import { applyAuthCookies } from '@/features/staff-auth/session-cookie';
+import { parseJsonBody } from '@/lib/api-route';
 
 export async function POST(req: Request): Promise<NextResponse> {
-  const parsed = staffLoginRequestSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) {
-    return NextResponse.json({ error: { code: 'VALIDATION_ERROR' } }, { status: 422 });
-  }
+  const body = await parseJsonBody(req, staffLoginRequestSchema);
+  if ('error' in body) return body.error;
 
   const result = await callStaffApi('/auth/login', {
     method: 'POST',
-    json: parsed.data,
+    json: body.data,
     forwardHeaders: req.headers,
   });
 
@@ -20,10 +18,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   // MFA_REQUIRED, wrong creds) passes straight through.
   if (result.status === 200 && result.refreshToken) {
     const user = (result.body as { data?: { user?: unknown } } | null)?.data?.user ?? null;
-    const tokens = readTokens(result.body);
     const res = NextResponse.json({ data: { user } }, { status: 200 });
-    setSessionCookie(res, result.refreshToken);
-    if (tokens) setAccessCookie(res, tokens.accessToken, tokens.expiresIn);
+    applyAuthCookies(res, result.refreshToken, result.body);
     return res;
   }
   return NextResponse.json(result.body, { status: result.status });

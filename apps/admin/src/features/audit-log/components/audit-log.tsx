@@ -1,8 +1,8 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useState, type MouseEvent } from 'react';
+import { Fragment, useCallback, useState, type MouseEvent } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import type { AuditEvent } from '@shopnetic/contracts';
@@ -14,7 +14,6 @@ import {
   PopoverTrigger,
   ScrollToTopButton,
   SearchInput,
-  Skeleton,
   Table,
   TableBody,
   TableCell,
@@ -27,8 +26,14 @@ import {
   cn,
 } from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
+import {
+  ScrollLoadError,
+  ScrollLoadFooter,
+  ScrollLoadSkeleton,
+} from '@/components/crud/scroll-load-states';
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
-import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useDebouncedSearch } from '@/hooks/use-debounced-search';
+import { useUrlParamsSync } from '@/hooks/use-url-params-sync';
 import { listAuditEvents, type AuditDomain } from '../api';
 import { diffRecords } from '../diff';
 
@@ -127,8 +132,6 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   // Seeded from the URL once, at mount — a shared/refreshed/back-button'd
@@ -137,7 +140,7 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
   // below is a one-way state → URL sync, not a two-way binding, so typing
   // never fights the browser over who owns the query string.
   const [q, setQ] = useState(() => searchParams.get('q') ?? '');
-  const debouncedQ = useDebouncedValue(q, 250);
+  const debouncedQ = useDebouncedSearch(q);
   const [domain, setDomain] = useState<AuditDomain | 'all'>(() =>
     parseDomain(searchParams.get('domain')),
   );
@@ -147,20 +150,13 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
   const filtersActive =
     q !== '' || domain !== 'all' || targetType !== '' || from !== '' || to !== '';
 
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (debouncedQ) params.set('q', debouncedQ);
-    if (domain !== 'all') params.set('domain', domain);
-    if (targetType) params.set('targetType', targetType);
-    if (from) params.set('from', from);
-    if (to) params.set('to', to);
-    const qs = params.toString();
-    // `replace`, not `push` — refining a filter isn't a new place to visit,
-    // it's adjusting the one you're on; only leaving the page (or arriving
-    // at it) should be a real back-button stop, or every keystroke/date
-    // pick would pile up its own history entry.
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [debouncedQ, domain, targetType, from, to, pathname, router]);
+  useUrlParamsSync({
+    q: debouncedQ,
+    domain: domain !== 'all' ? domain : undefined,
+    targetType,
+    from,
+    to,
+  });
 
   function clearFilters(): void {
     setQ('');
@@ -283,18 +279,9 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
       </div>
 
       {loadError && events.length === 0 ? (
-        <div className="flex flex-col items-start gap-2 text-sm">
-          <p className="text-destructive">{tCommon('list.loadError')}</p>
-          <Button type="button" variant="outline" size="sm" onClick={retry}>
-            {tCommon('list.retry')}
-          </Button>
-        </div>
+        <ScrollLoadError onRetry={retry} />
       ) : loading ? (
-        <div className="flex flex-col gap-2">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-10 w-full" />
-          ))}
-        </div>
+        <ScrollLoadSkeleton />
       ) : events.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
       ) : (
@@ -449,26 +436,13 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
               control — scrolling it into view (or it simply starting out
               visible, when this page didn't fill the viewport) is what
               triggers the next page */}
-          {hasMore && (
-            <div ref={sentinelRef} className="h-px" aria-hidden data-testid="scroll-sentinel" />
-          )}
-
-          <div className="mt-3">
-            {loadingMore && !loadError && (
-              <p className="text-xs text-muted-foreground">{tCommon('list.loading')}</p>
-            )}
-            {loadError && (
-              <div className="flex flex-col items-start gap-2">
-                <p className="text-sm text-destructive">{tCommon('list.loadError')}</p>
-                <Button type="button" variant="outline" size="sm" onClick={loadMore}>
-                  {tCommon('list.retry')}
-                </Button>
-              </div>
-            )}
-            {!hasMore && !loadError && (
-              <p className="text-xs text-muted-foreground">{tCommon('list.noMore')}</p>
-            )}
-          </div>
+          <ScrollLoadFooter
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            loadError={loadError}
+            sentinelRef={sentinelRef}
+            onRetry={loadMore}
+          />
         </>
       )}
 

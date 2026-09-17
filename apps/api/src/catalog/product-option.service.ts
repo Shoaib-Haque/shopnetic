@@ -9,6 +9,7 @@ import type { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
+import { auditRecordFor, type AuditRecordExtra } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
@@ -25,10 +26,34 @@ type ProductOptionRow = Prisma.ProductOptionGetPayload<{ include: typeof withDet
  */
 @Injectable()
 export class ProductOptionService {
+  private readonly recordFor: ReturnType<typeof auditRecordFor>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) {
+    this.recordFor = auditRecordFor(this.audit, 'product_option');
+  }
+
+  /** `action` is always `catalog.product_options_changed` here and the
+   * target is a composite `productId:optionTypeId` id — the one catalog
+   * service whose audit shape doesn't match the plain
+   * `(actor, action, targetId, meta, extra)` the other six share. */
+  private record(
+    actor: Actor,
+    productId: string,
+    optionTypeId: string,
+    meta: RequestMeta,
+    extra: AuditRecordExtra,
+  ): Promise<void> {
+    return this.recordFor(
+      actor,
+      'catalog.product_options_changed',
+      `${productId}:${optionTypeId}`,
+      meta,
+      extra,
+    );
+  }
 
   async list(productId: string): Promise<ProductOption[]> {
     await this.productOrThrow(productId);
@@ -232,26 +257,6 @@ export class ProductOptionService {
     });
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'product option not found' });
     return toView(row);
-  }
-
-  private async record(
-    actor: Actor,
-    productId: string,
-    optionTypeId: string,
-    meta: RequestMeta,
-    extra: { before?: unknown; after?: unknown; reason?: string },
-  ): Promise<void> {
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action: 'catalog.product_options_changed',
-      targetType: 'product_option',
-      targetId: `${productId}:${optionTypeId}`,
-      ...(extra.before !== undefined ? { before: extra.before } : {}),
-      ...(extra.after !== undefined ? { after: extra.after } : {}),
-      ...(extra.reason !== undefined ? { reason: extra.reason } : {}),
-      ...(meta.ip !== undefined ? { ip: meta.ip } : {}),
-      ...(meta.correlationId !== undefined ? { correlationId: meta.correlationId } : {}),
-    });
   }
 }
 

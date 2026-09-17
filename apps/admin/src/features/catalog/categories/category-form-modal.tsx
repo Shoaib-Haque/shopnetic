@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { isReservedSlug, type Category } from '@shopnetic/contracts';
 import { cn, Field, Input } from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
+import { capForMessage } from '@/lib/format';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { createCategory, updateCategory } from './api';
@@ -57,8 +58,10 @@ const FIELD_FOR_CODE: Record<string, Path<FormValues>> = {
 
 const norm = (s: string): string => s.trim().toLowerCase();
 
-/** Cap a `<select>` option label — the open dropdown's width isn't CSS-bounded. */
-const clip = (s: string, max = 64): string => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+/** Cap a `<select>` option label — the open dropdown's width isn't CSS-bounded.
+ * G7's *other* sub-rule (64, not the dialog/toast default of 60) — see
+ * `capForMessage`'s own doc comment. */
+const clip = (s: string, max = 64): string => capForMessage(s, max);
 
 /** lowercase, strip accents, drop apostrophes, other punctuation → single hyphens. */
 function slugify(s: string): string {

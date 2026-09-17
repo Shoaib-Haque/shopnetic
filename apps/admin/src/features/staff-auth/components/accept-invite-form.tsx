@@ -6,13 +6,19 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
+import { z } from 'zod';
 import { staffInviteAcceptRequestSchema } from '@shopnetic/contracts';
 import { Button, Field, PasswordInput, Spinner, TimerBar } from '@shopnetic/ui';
 import { getJson, postJson } from '../submit';
 import { staffErrorKey, extractErrorCode } from '../error-copy';
 import { AuthPageSection } from './auth-page-section';
 
-type FormValues = { password: string };
+const formSchema = staffInviteAcceptRequestSchema
+  .omit({ token: true })
+  .extend({ confirmPassword: z.string() })
+  .refine((v) => v.password === v.confirmPassword, { path: ['confirmPassword'] });
+
+type FormValues = z.infer<typeof formSchema>;
 
 const REDIRECT_DELAY_MS = 3000;
 
@@ -49,7 +55,7 @@ export function AcceptInviteForm({
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(staffInviteAcceptRequestSchema.pick({ password: true })),
+    resolver: zodResolver(formSchema),
     mode: 'onTouched',
   });
 
@@ -181,6 +187,20 @@ export function AcceptInviteForm({
               showLabel={t('fields.showPassword')}
               hideLabel={t('fields.hidePassword')}
               {...register('password')}
+            />
+          </Field>
+          <Field
+            label={t('fields.confirmPassword')}
+            htmlFor="accept-confirm-password"
+            error={errors.confirmPassword ? t('fields.passwordsDontMatch') : undefined}
+          >
+            <PasswordInput
+              id="accept-confirm-password"
+              autoComplete="new-password"
+              invalid={Boolean(errors.confirmPassword)}
+              showLabel={t('fields.showPassword')}
+              hideLabel={t('fields.hidePassword')}
+              {...register('confirmPassword')}
             />
           </Field>
           {formError ? (

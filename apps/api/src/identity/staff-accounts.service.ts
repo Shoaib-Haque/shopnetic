@@ -4,6 +4,7 @@ import type { Account } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
+import { clampLimit, paginate } from '../common/pagination.js';
 import { SessionService } from './session.service.js';
 import type { RequestMeta } from './identity.service.js';
 
@@ -69,7 +70,7 @@ export class StaffAccountsService {
     accounts: StaffAccount[];
     nextCursor?: string;
   }> {
-    const take = Math.min(Math.max(Math.trunc(limit), 1), MAX_LIST_LIMIT);
+    const take = clampLimit(limit, 1, MAX_LIST_LIMIT);
     const tokens = q ? tokenizeForSql(q) : [];
     const accounts = await this.prisma.account.findMany({
       where: {
@@ -87,8 +88,7 @@ export class StaffAccountsService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
 
-    const page = accounts.slice(0, take);
-    const nextCursor = accounts.length > take ? page.at(-1)?.id : undefined;
+    const { page, nextCursor } = paginate(accounts, take);
     return { accounts: page.map(toStaffAccount), ...(nextCursor ? { nextCursor } : {}) };
   }
 

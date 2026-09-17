@@ -19,10 +19,4 @@ export function authErrorKey(code: string | undefined): string {
   return (code && CODE_TO_KEY[code]) || 'errors.generic';
 }
 
-export function extractErrorCode(body: unknown): string | undefined {
-  if (body && typeof body === 'object' && 'error' in body) {
-    const err = (body as { error?: { code?: unknown } }).error;
-    if (err && typeof err.code === 'string') return err.code;
-  }
-  return undefined;
-}
+export { extractErrorCode } from '@shopnetic/http-client';

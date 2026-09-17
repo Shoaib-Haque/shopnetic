@@ -309,6 +309,67 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
       expect(pageOf[root.id]).toBeLessThanOrEqual(pageOf[child.id]!); // ancestor never after descendant
     });
 
+    it('the flat/paginated view orders siblings by drag position, not the random ltree path — the 2026-09-17 fix', async () => {
+      // created in an order whose slugs (and therefore random uuid-derived
+      // `path` labels) don't correlate with the position we're about to
+      // give them — if the fix regressed back to `ORDER BY path`, this
+      // would very likely (not just theoretically) come back in the wrong
+      // order, since three random uuids essentially never happen to already
+      // sort into the exact sequence position assigns them below
+      const zzz = await svc.create({ slug: s('ord-zzz'), name: name('OrdZzz') }, actor, {});
+      const aaa = await svc.create({ slug: s('ord-aaa'), name: name('OrdAaa') }, actor, {});
+      const mmm = await svc.create({ slug: s('ord-mmm'), name: name('OrdMmm') }, actor, {});
+      await svc.reorder({ parentId: null, orderedIds: [aaa.id, mmm.id, zzz.id] }, actor, {});
+
+      const { categories } = await svc.list({ status: 'all', limit: 100 });
+      const ours = categories
+        .filter((c) => [aaa.id, mmm.id, zzz.id].includes(c.id))
+        .map((c) => c.id);
+      expect(ours).toEqual([aaa.id, mmm.id, zzz.id]);
+    });
+
+    it('a parent still sorts immediately before its children, and each level respects its own drag order', async () => {
+      const root = await svc.create({ slug: s('nest-root'), name: name('NestRoot') }, actor, {});
+      const childB = await svc.create(
+        { slug: s('nest-b'), name: name('NestB'), parentId: root.id },
+        actor,
+        {},
+      );
+      const childA = await svc.create(
+        { slug: s('nest-a'), name: name('NestA'), parentId: root.id },
+        actor,
+        {},
+      );
+      // childA created after childB, so reorder to put A first — proves the
+      // flat view follows the reorder, not creation order or path
+      await svc.reorder({ parentId: root.id, orderedIds: [childA.id, childB.id] }, actor, {});
+
+      const { categories } = await svc.list({ status: 'all', limit: 100 });
+      const ours = categories
+        .filter((c) => [root.id, childA.id, childB.id].includes(c.id))
+        .map((c) => c.id);
+      expect(ours).toEqual([root.id, childA.id, childB.id]);
+    });
+
+    it('an archived category whose parent is still active shows up as an effective root in the archived view — matches the tree\'s own "orphan" handling', async () => {
+      const parent = await svc.create(
+        { slug: s('orph-parent'), name: name('OrphParent') },
+        actor,
+        {},
+      );
+      const child = await svc.create(
+        { slug: s('orph-child'), name: name('OrphChild'), parentId: parent.id },
+        actor,
+        {},
+      );
+      await svc.remove(child.id, actor, {}); // archives the child; parent stays active
+
+      const { categories } = await svc.list({ status: 'archived', limit: 100 });
+      const ids = categories.map((c) => c.id);
+      expect(ids).toContain(child.id); // still reachable, not silently dropped
+      expect(ids).not.toContain(parent.id); // the still-active parent correctly excluded
+    });
+
     it('q searches server-side, ranked by matched-token count — OR semantics, same as the client-side matcher it replaces', async () => {
       // every other `it` in this file also creates `itest-<stamp>-*` slugs,
       // so a query token has to be something *only* these rows contain —

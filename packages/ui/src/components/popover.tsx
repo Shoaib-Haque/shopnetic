@@ -2,8 +2,8 @@
 
 import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from 'react';
 import * as RPopover from '@radix-ui/react-popover';
-import { X } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { OverlayCloseButton } from '../lib/overlay-parts';
 
 /**
  * Anchored panel over Radix `Popover` (plan/CODING-RULES.md D1) — non-modal:
@@ -50,12 +50,7 @@ export const PopoverContent = forwardRef<ElementRef<typeof RPopover.Content>, Po
           {...props}
         >
           {children}
-          <RPopover.Close
-            aria-label={closeLabel}
-            className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X className="size-4" aria-hidden />
-          </RPopover.Close>
+          <OverlayCloseButton as={RPopover.Close} position="corner-sm" closeLabel={closeLabel} />
         </RPopover.Content>
       </RPopover.Portal>
     );

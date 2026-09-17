@@ -1,14 +1,14 @@
 'use client';
 
 import {
-  forwardRef,
   type ComponentPropsWithoutRef,
   type ElementRef,
+  forwardRef,
   type HTMLAttributes,
 } from 'react';
 import * as RDialog from '@radix-ui/react-dialog';
-import { X } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { DialogHeader, DialogTitle, OverlayCloseButton } from '../lib/overlay-parts';
 
 /**
  * Slide-in side panel over the same Radix primitive `Modal` uses (focus
@@ -53,32 +53,15 @@ export const DrawerContent = forwardRef<ElementRef<typeof RDialog.Content>, Draw
           {...props}
         >
           {children}
-          <RDialog.Close
-            aria-label={closeLabel}
-            className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X className="size-4" aria-hidden />
-          </RDialog.Close>
+          <OverlayCloseButton as={RDialog.Close} position="corner-lg" closeLabel={closeLabel} />
         </RDialog.Content>
       </RDialog.Portal>
     );
   },
 );
 
-export function DrawerHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className={cn('shrink-0 border-b border-border px-5 py-4 pr-12', className)} {...props} />
-  );
-}
-
-export const DrawerTitle = forwardRef<
-  ElementRef<typeof RDialog.Title>,
-  ComponentPropsWithoutRef<typeof RDialog.Title>
->(function DrawerTitle({ className, ...props }, ref) {
-  return (
-    <RDialog.Title ref={ref} className={cn('text-base font-semibold', className)} {...props} />
-  );
-});
+export const DrawerHeader = DialogHeader;
+export const DrawerTitle = DialogTitle;
 
 export function DrawerBody({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (

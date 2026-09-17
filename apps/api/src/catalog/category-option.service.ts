@@ -10,6 +10,7 @@ import type { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
+import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
@@ -33,10 +34,14 @@ interface Patch {
  */
 @Injectable()
 export class CategoryOptionService {
+  private readonly record: ReturnType<typeof auditRecordFor>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) {
+    this.record = auditRecordFor(this.audit, 'category_option');
+  }
 
   async list(categoryId: string): Promise<CategoryOption[]> {
     await this.assertCategory(categoryId);
@@ -189,26 +194,6 @@ export class CategoryOptionService {
     });
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'category option not found' });
     return toView(row);
-  }
-
-  private async record(
-    actor: Actor,
-    action: string,
-    targetId: string,
-    meta: RequestMeta,
-    extra: { before?: unknown; after?: unknown; reason?: string },
-  ): Promise<void> {
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action,
-      targetType: 'category_option',
-      targetId,
-      ...(extra.before !== undefined ? { before: extra.before } : {}),
-      ...(extra.after !== undefined ? { after: extra.after } : {}),
-      ...(extra.reason !== undefined ? { reason: extra.reason } : {}),
-      ...(meta.ip !== undefined ? { ip: meta.ip } : {}),
-      ...(meta.correlationId !== undefined ? { correlationId: meta.correlationId } : {}),
-    });
   }
 }
 

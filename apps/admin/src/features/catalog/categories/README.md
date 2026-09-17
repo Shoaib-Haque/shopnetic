@@ -62,13 +62,35 @@ B5 bans the `x as unknown as Y` bridge.
 
 ## Behaviour (implementation notes)
 
-- **Ordering.** `GET /admin/v1/categories` returns rows sorted by the ltree
-  `path` (uuid labels), so sibling order is **not** meaningful until the client
-  re-sorts. `buildForest` links `parentId`, then sorts each level by
-  `position` then name. The `/reorder` service re-sorts its own return the same
-  way. A parent missing from the result (archived while a child stays active)
-  makes the child a root; the row is flagged with a **"detached" badge** and
+- **Ordering.** For the active tree's own unpaginated load, `GET
+/admin/v1/categories` returns rows sorted by the ltree `path` (uuid
+  labels), so sibling order is **not** meaningful until the client re-sorts.
+  `buildForest` links `parentId`, then sorts each level by `position` then
+  name. The `/reorder` service re-sorts its own return the same way. A
+  parent missing from the result (archived while a child stays active) makes
+  the child a root; the row is flagged with a **"detached" badge** and
   `buildForest` marks the node (`f29ac7b`).
+
+  The flat, paginated Archived/All view (no `parentId`, no search) doesn't
+  have `buildForest` to fix this client-side — until 2026-09-17 it inherited
+  the same raw `path` order with nothing correcting it, so a category's
+  position among the flat rows was essentially random relative to its actual
+  drag order (reported live: a category dragged to the top of Active showed
+  up at the bottom of All). Fixed server-side in `CategoryService.list` —
+  see `plan/CODING-RULES.md`'s 2026-09-17 dated entry for the full design —
+  with a recursive CTE that walks the real (unfiltered) parent/child
+  structure and ranks every row by `[ancestor position, …, own position]`,
+  the same shape `buildForest` produces, just computed in SQL instead of
+  client-side since this view can't fetch the whole table to sort locally.
+  A row whose immediate parent doesn't satisfy the current status filter is
+  its own effective root here too, matching `buildForest`'s "detached" rule.
+  Trade-off: this view's cursor is offset-based, same as search's own
+  ranked results — a rank isn't a stable keyset the way `path` is, so
+  (rarely) a row could be skipped/repeated if the tree changes mid-scroll.
+  `parentId`-scoped listings (a specific parent's direct children, or
+  `parentId: null` for roots) never had this problem — a single flat sibling
+  level is already directly orderable by `position` — so they're unaffected.
+
 - **Drag zones.** `onDragOver` splits the row: top 30 % = _before_, bottom 30 % =
   _after_, middle = _inside_ (nest). One `POST /admin/v1/categories/reorder`
   `{ parentId, orderedIds }` per drop; ids whose parent changes are reparented
@@ -280,20 +302,23 @@ position` order, unchanged). Search moved **server-side** in the same pass —
 `@/lib/search`'s token/OR/score matcher, so a query now covers the whole
 table instead of whatever page happened to already be loaded, and the two
 kept identical: same normalize, same ≥2-char/≤10-token rules, same OR
-semantics (any token qualifies), same score ordering. Two cursor shapes,
-both opaque to the client: a plain (non-search) page pages on the row's
-`path` (globally unique — it embeds the row's own id — so `path > cursor`
-resumes with no gaps or repeats); a search page pages on a stringified
-offset instead, since ranked results don't have a natural keyset order.
-Known, accepted limitation: the `in A › B` ancestor breadcrumb
+semantics (any token qualifies), same score ordering. Cursor shapes, both
+opaque to the client (**updated 2026-09-17** — see the Ordering note above
+for why): search, and this view's own plain no-`parentId` case (Archived/
+All), both page on a stringified offset, since neither a match-score order
+nor the position-ranked order below has a simple keyset the way raw `path`
+does; a `parentId`-scoped page (unused by this UI today, but supported)
+still pages on the row's `path` — a single flat sibling level, directly
+`position`-orderable, has no need for the offset trade-off the other two
+accept. Known, accepted limitation: the `in A › B` ancestor breadcrumb
 (`useAncestorPath`) can't resolve a category that hasn't been paged in
-yet — for the plain case this never actually happens (a parent's `path` is
-always a strict prefix of its descendants', and pages accumulate rather
-than replace, so every ancestor of a loaded row has necessarily already
-loaded on an earlier page); for a search result whose ancestor doesn't
-itself match the query, the breadcrumb segment is silently dropped, same
-degradation `useAncestorPath` already had pre-pagination for a filtered
-result set. The active tree, and everything that reads its `items` (the
+yet — this never actually happens for the plain no-`parentId` case (its
+rank ordering guarantees a parent always lands on an earlier or equal page
+than its descendants, same as the old `path`-prefix property did before);
+for a search result whose ancestor doesn't itself match the query, the
+breadcrumb segment is silently dropped, same degradation `useAncestorPath`
+already had pre-pagination for a filtered result set. The active tree, and
+everything that reads its `items` (the
 create/edit modal's parent-picker, `parentArchived`/`archivedDescendants`,
 drag/reorder), is completely unchanged — deliberately: those need the
 _complete_ active set regardless of which view is on screen, so the tree's

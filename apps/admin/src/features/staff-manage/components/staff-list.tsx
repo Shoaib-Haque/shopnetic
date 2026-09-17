@@ -1,12 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { StaffAccount, StaffRole } from '@shopnetic/contracts';
 import {
-  Button,
   cn,
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +14,6 @@ import {
   Field,
   ScrollToTopButton,
   SearchInput,
-  Skeleton,
   StatusBadge,
   Table,
   TableBody,
@@ -32,9 +30,17 @@ import {
 import { PageHeader } from '@/components/crud/page-header';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { FormModal } from '@/components/crud/form-modal';
+import {
+  ScrollLoadError,
+  ScrollLoadFooter,
+  ScrollLoadSkeleton,
+} from '@/components/crud/scroll-load-states';
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
-import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useFindById } from '@/hooks/use-find-by-id';
+import { useRowFlash } from '@/hooks/use-row-flash';
+import { useUrlParamsSync } from '@/hooks/use-url-params-sync';
+import { capForMessage } from '@/lib/format';
 import { AdminApiError } from '@/features/admin-api/client';
 import { staffErrorKey } from '@/features/staff-auth/error-copy';
 import {
@@ -54,14 +60,6 @@ const STATUS_TONE: Record<StaffAccount['status'], StatusTone> = {
 };
 const selectCls = 'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm';
 
-/** G7: interpolated into a fixed-width dialog/toast — cap before embedding,
- * not after, so a long address wraps the sentence instead of the sentence
- * growing to fit it. The row's own cell still shows the full value (truncated
- * with a `title=` tooltip), so nothing is actually lost. */
-function capForMessage(value: string, max = 60): string {
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
-}
-
 /** A confirm-style action (activate / reset-totp / deprovision) — same shape,
  * different copy + call, so one piece of state and one dialog covers all
  * three. "activate" covers both unlock (from `locked`) and reactivate (from
@@ -77,8 +75,6 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   // A deep link from Audit Log's Target column — `?highlight=accountId` —
   // read once at mount, same pattern as Category List's own highlight/status
@@ -88,16 +84,8 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
   // own version of this comment gives).
   const [highlightId] = useState(() => searchParams.get('highlight'));
   const [q, setQ] = useState(() => searchParams.get('q') ?? '');
-  const debouncedQ = useDebouncedValue(q, 250);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (debouncedQ) params.set('q', debouncedQ);
-    const qs = params.toString();
-    // `replace`, not `push` — refining a search isn't a new place to visit,
-    // same reasoning as Audit Log / Category List's own filter sync.
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [debouncedQ, pathname, router]);
+  const debouncedQ = useDebouncedSearch(q);
+  useUrlParamsSync({ q: debouncedQ });
 
   // Keeps the mount-time call shape identical to before search existed
   // (`listStaff(cursor)`, one arg) when no search is active, rather than
@@ -126,9 +114,7 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
   // briefly highlight the row a deep link landed on, so it's easy to spot in
   // a long list — same `sn-row-flash` affordance Category List already uses
   // for its own move/restore/deep-link cases.
-  const [flashId, setFlashId] = useState<string | null>(null);
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(flashTimer.current), []);
+  const { flashId, flash } = useRowFlash('data-staff-row', { block: 'center' });
   const highlightedAccount = useFindById(
     highlightId,
     accounts,
@@ -137,17 +123,8 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
     loadMore,
   );
   useEffect(() => {
-    if (!highlightedAccount) return;
-    setFlashId(highlightedAccount.id);
-    clearTimeout(flashTimer.current);
-    flashTimer.current = setTimeout(() => setFlashId(null), 1400);
-  }, [highlightedAccount]);
-  useEffect(() => {
-    if (!flashId) return;
-    document
-      .querySelector(`[data-staff-row="${CSS.escape(flashId)}"]`)
-      ?.scrollIntoView({ block: 'center' });
-  }, [flashId]);
+    if (highlightedAccount) flash(highlightedAccount.id);
+  }, [highlightedAccount, flash]);
 
   function applyUpdate(updated: StaffAccount): void {
     setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
@@ -303,18 +280,9 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
       </div>
 
       {loadError && accounts.length === 0 ? (
-        <div className="flex flex-col items-start gap-2 text-sm">
-          <p className="text-destructive">{tCommon('list.loadError')}</p>
-          <Button type="button" variant="outline" size="sm" onClick={retry}>
-            {tCommon('list.retry')}
-          </Button>
-        </div>
+        <ScrollLoadError onRetry={retry} />
       ) : loading ? (
-        <div className="flex flex-col gap-2">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-10 w-full" />
-          ))}
-        </div>
+        <ScrollLoadSkeleton />
       ) : accounts.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {debouncedQ ? t('manage.noMatch') : t('manage.empty')}
@@ -426,27 +394,13 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
       )}
 
       {!loading && accounts.length > 0 && (
-        <>
-          {hasMore && (
-            <div ref={sentinelRef} className="h-px" aria-hidden data-testid="scroll-sentinel" />
-          )}
-          <div className="mt-3">
-            {loadingMore && !loadError && (
-              <p className="text-xs text-muted-foreground">{tCommon('list.loading')}</p>
-            )}
-            {loadError && (
-              <div className="flex flex-col items-start gap-2">
-                <p className="text-sm text-destructive">{tCommon('list.loadError')}</p>
-                <Button type="button" variant="outline" size="sm" onClick={loadMore}>
-                  {tCommon('list.retry')}
-                </Button>
-              </div>
-            )}
-            {!hasMore && !loadError && (
-              <p className="text-xs text-muted-foreground">{tCommon('list.noMore')}</p>
-            )}
-          </div>
-        </>
+        <ScrollLoadFooter
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loadError={loadError}
+          sentinelRef={sentinelRef}
+          onRetry={loadMore}
+        />
       )}
 
       <FormModal

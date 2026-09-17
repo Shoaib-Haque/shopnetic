@@ -22,6 +22,7 @@ import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { RequirePermission } from '../auth/require-permission.decorator.js';
 import { CurrentActor } from '../auth/current-actor.decorator.js';
+import { requestMeta as meta } from '../common/request-meta.js';
 import { CategoryOptionService } from './category-option.service.js';
 
 const putBody = new ZodBodyPipe(putCategoryOptionRequestSchema);
@@ -68,12 +69,4 @@ export class CategoryOptionController {
   ): Promise<void> {
     await this.categoryOptions.remove(categoryId, optionTypeId, actor, meta(req));
   }
-}
-
-function meta(req: Request): { ip?: string; correlationId?: string } {
-  const cid = req.headers['x-correlation-id'];
-  return {
-    ...(req.ip ? { ip: req.ip } : {}),
-    ...(typeof cid === 'string' ? { correlationId: cid } : {}),
-  };
 }

@@ -10,6 +10,7 @@ import { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
+import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
@@ -23,10 +24,14 @@ type VariantRow = Prisma.VariantGetPayload<{ include: typeof withValues }>;
  */
 @Injectable()
 export class VariantService {
+  private readonly record: ReturnType<typeof auditRecordFor>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-  ) {}
+  ) {
+    this.record = auditRecordFor(this.audit, 'variant');
+  }
 
   async list(productId: string): Promise<Variant[]> {
     await this.productOrThrow(productId);
@@ -236,26 +241,6 @@ export class VariantService {
         detail: `sku "${skuCode}" is used by another variant`,
       });
     }
-  }
-
-  private async record(
-    actor: Actor,
-    action: string,
-    targetId: string,
-    meta: RequestMeta,
-    extra: { before?: unknown; after?: unknown; reason?: string },
-  ): Promise<void> {
-    await this.audit.record({
-      actorAccountId: actor.accountId,
-      action,
-      targetType: 'variant',
-      targetId,
-      ...(extra.before !== undefined ? { before: extra.before } : {}),
-      ...(extra.after !== undefined ? { after: extra.after } : {}),
-      ...(extra.reason !== undefined ? { reason: extra.reason } : {}),
-      ...(meta.ip !== undefined ? { ip: meta.ip } : {}),
-      ...(meta.correlationId !== undefined ? { correlationId: meta.correlationId } : {}),
-    });
   }
 }
 

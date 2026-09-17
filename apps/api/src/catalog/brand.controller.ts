@@ -30,6 +30,7 @@ import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { RequirePermission } from '../auth/require-permission.decorator.js';
 import { CurrentActor } from '../auth/current-actor.decorator.js';
+import { requestMeta as meta } from '../common/request-meta.js';
 import { BrandService } from './brand.service.js';
 
 const createBody = new ZodBodyPipe(createBrandRequestSchema);
@@ -133,12 +134,4 @@ export class BrandController {
   ): Promise<void> {
     await this.brands.remove(id, actor, meta(req));
   }
-}
-
-function meta(req: Request): { ip?: string; correlationId?: string } {
-  const cid = req.headers['x-correlation-id'];
-  return {
-    ...(req.ip ? { ip: req.ip } : {}),
-    ...(typeof cid === 'string' ? { correlationId: cid } : {}),
-  };
 }
