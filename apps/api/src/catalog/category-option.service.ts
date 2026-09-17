@@ -96,9 +96,22 @@ export class CategoryOptionService {
     });
 
     const view = await this.rowView(categoryId, optionTypeId);
+    // Enriched separately from `view`/`toRawView` for the audit snapshot
+    // only — those two build the *public* `CategoryOption` API shape
+    // (`@shopnetic/contracts`), which a category/value-set name has no
+    // business joining onto; `before`/`after` on an audit row is a loose
+    // JSON blob, free to carry extra fields no client type needs to know
+    // about.
+    const categoryName = await this.categoryNameOf(categoryId);
+    const [beforeSetName, afterSetName] = await Promise.all([
+      this.valueSetNameOf(existing?.valueSetId ?? null),
+      this.valueSetNameOf(view.valueSetId),
+    ]);
     await this.record(actor, 'catalog.category_option_set', `${categoryId}:${optionTypeId}`, meta, {
-      before: existing ? toRawView(existing, view.optionTypeCode) : null,
-      after: view,
+      before: existing
+        ? { ...toRawView(existing, view.optionTypeCode), categoryName, valueSetName: beforeSetName }
+        : null,
+      after: { ...view, categoryName, valueSetName: afterSetName },
     });
     return view;
   }
@@ -109,6 +122,12 @@ export class CategoryOptionService {
     actor: Actor,
     meta: RequestMeta,
   ): Promise<void> {
+    // best-effort, for the audit snapshot below — neither name is
+    // otherwise fetched by this method (only existence-checked elsewhere)
+    const [categoryName, optionType] = await Promise.all([
+      this.categoryNameOf(categoryId),
+      this.prisma.optionType.findUnique({ where: { id: optionTypeId }, select: { code: true } }),
+    ]);
     const { count } = await this.prisma.$transaction(async (tx) => {
       const res = await tx.categoryOption.deleteMany({ where: { categoryId, optionTypeId } });
       if (res.count > 0) {
@@ -132,11 +151,33 @@ export class CategoryOptionService {
       'catalog.category_option_removed',
       `${categoryId}:${optionTypeId}`,
       meta,
-      { before: { categoryId, optionTypeId }, reason: 'removed' },
+      {
+        before: {
+          categoryId,
+          categoryName,
+          optionTypeId,
+          optionTypeCode: optionType?.code ?? null,
+        },
+        reason: 'removed',
+      },
     );
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
+
+  private async categoryNameOf(id: string): Promise<string | null> {
+    const row = await this.prisma.category.findUnique({
+      where: { id },
+      select: { nameI18n: true },
+    });
+    return (row?.nameI18n as Record<string, string> | undefined)?.['en'] ?? null;
+  }
+
+  private async valueSetNameOf(id: string | null): Promise<string | null> {
+    if (!id) return null;
+    const row = await this.prisma.valueSet.findUnique({ where: { id }, select: { name: true } });
+    return row?.name ?? null;
+  }
 
   private async assertCategory(id: string): Promise<void> {
     const row = await this.prisma.category.findFirst({

@@ -226,15 +226,24 @@ export class OptionTypeService {
     });
 
     const view = await this.get(id);
+    // `value.code` is the code *before* this update (already in scope from
+    // the `find` above); the new one — which may itself be what changed —
+    // comes from the freshly-refetched `view` instead of re-deriving it
+    // from `data`, so it reflects what actually landed in the DB.
+    const updatedCode = view.values.find((v) => v.id === valueId)?.code ?? null;
     await this.record(actor, 'catalog.option_type_updated', id, meta, {
-      before: { value: value.code },
-      after: { valueId, fields: Object.keys(data) },
+      before: { valueId, value: value.code },
+      after: { valueId, value: updatedCode, fields: Object.keys(data) },
     });
     return view;
   }
 
   async removeValue(id: string, valueId: string, actor: Actor, meta: RequestMeta): Promise<void> {
-    await this.rowOrThrow(id);
+    const type = await this.rowOrThrow(id);
+    // captured before the delete — `before` on a removal is the last
+    // known state, same reasoning `remove()` (the option type itself)
+    // already uses via `toView(current)`.
+    const removedCode = type.values.find((v) => v.id === valueId)?.code ?? null;
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.optionValue.deleteMany({
         where: { id: valueId, optionTypeId: id },
@@ -248,7 +257,7 @@ export class OptionTypeService {
       });
     });
     await this.record(actor, 'catalog.option_type_updated', id, meta, {
-      before: { valueId },
+      before: { valueId, value: removedCode },
       reason: 'value removed',
     });
   }

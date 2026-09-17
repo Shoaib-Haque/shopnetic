@@ -112,6 +112,38 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
         code: 'NOT_FOUND',
       },
     );
+
+    // the audit row snapshots the target's *name*, not just its id (2026-09-17
+    // fix) — both in the structured `after` and in the free-text `reason`
+    const event = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.brand_merged', targetId: source.id },
+    });
+    expect(event.after).toMatchObject({
+      mergedIntoBrandId: target.id,
+      mergedIntoBrandName: s('keeper'),
+    });
+    expect(event.reason).toBe(`merged into ${s('keeper')}`);
+  });
+
+  it("removing an alias's audit row snapshots the alias text, not just its id — the 2026-09-17 fix", async () => {
+    const b = await svc.create(
+      { name: s('alias-host'), slug: s('alias-host'), aliases: [s('ah-alias')] },
+      actor,
+      {},
+    );
+    const aliasId = b.aliases.find((a) => a.alias === s('ah-alias'))?.id ?? '';
+
+    await expect(svc.removeAlias(b.id, crypto.randomUUID(), actor, {})).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+
+    await svc.removeAlias(b.id, aliasId, actor, {});
+    const event = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.brand_updated', targetId: b.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(event.before).toMatchObject({ aliasId, alias: s('ah-alias') });
+    expect((await svc.get(b.id)).aliases).toHaveLength(0);
   });
 
   it('soft-deletes and drops from list', async () => {

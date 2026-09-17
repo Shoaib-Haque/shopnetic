@@ -337,4 +337,142 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     expect(events).toContain('product.options_changed');
     expect(events).toContain('product.deleted');
   });
+
+  it("a product's create/update/delete audit rows snapshot category and brand names — the 2026-09-17 fix", async () => {
+    const p = await products.create(
+      { categoryId: catOptionalId, title: t('Named Tee'), slug: s('named-tee'), brandId },
+      actor,
+      {},
+    );
+    const created = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.product_created', targetId: p.id },
+    });
+    expect(created.after).toMatchObject({ categoryName: s(s('apparel')), brandName: s('Acme') });
+
+    await products.update(p.id, { brandId: null }, actor, {});
+    const updated = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.product_updated', targetId: p.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(updated.before).toMatchObject({ categoryName: s(s('apparel')), brandName: s('Acme') });
+    expect(updated.after).toMatchObject({ categoryName: s(s('apparel')), brandName: null });
+
+    await products.remove(p.id, actor, {});
+    const removed = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.product_deleted', targetId: p.id },
+    });
+    expect(removed.before).toMatchObject({ categoryName: s(s('apparel')), brandName: null });
+  });
+
+  it("a product option's set-values/remove audit rows snapshot the option type's code — the 2026-09-17 fix", async () => {
+    const p = await products.create(
+      { categoryId: catOptionalId, title: t('Opt Codes'), slug: s('opt-codes') },
+      actor,
+      {},
+    );
+    await productOptions.put(p.id, sizeTypeId, {}, actor, {});
+    await productOptions.setValues(
+      p.id,
+      sizeTypeId,
+      { values: [{ optionValueId: sizeValues['s']! }] },
+      actor,
+      {},
+    );
+    const setValuesEvent = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        action: 'catalog.product_options_changed',
+        targetId: `${p.id}:${sizeTypeId}`,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(setValuesEvent.after).toMatchObject({
+      optionTypeId: sizeTypeId,
+      optionTypeCode: s('size'),
+    });
+
+    await productOptions.remove(p.id, sizeTypeId, actor, {});
+    const removeEvent = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        action: 'catalog.product_options_changed',
+        targetId: `${p.id}:${sizeTypeId}`,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(removeEvent.before).toMatchObject({
+      optionTypeId: sizeTypeId,
+      optionTypeCode: s('size'),
+    });
+  });
+
+  it("a variant's create/update/delete audit rows snapshot the product title and readable selection codes — the 2026-09-17 fix", async () => {
+    const p = await products.create(
+      { categoryId: catOptionalId, title: t('Labeled Tee'), slug: s('labeled-tee') },
+      actor,
+      {},
+    );
+    await productOptions.put(p.id, sizeTypeId, {}, actor, {});
+    await productOptions.put(p.id, colorTypeId, {}, actor, {});
+    await productOptions.setValues(
+      p.id,
+      sizeTypeId,
+      { values: [{ optionValueId: sizeValues['m']! }] },
+      actor,
+      {},
+    );
+    await productOptions.setValues(
+      p.id,
+      colorTypeId,
+      { values: [{ optionValueId: colorValues['blue']! }] },
+      actor,
+      {},
+    );
+
+    const v = await variants.create(
+      p.id,
+      {
+        selections: [
+          { optionTypeId: sizeTypeId, optionValueId: sizeValues['m']! },
+          { optionTypeId: colorTypeId, optionValueId: colorValues['blue']! },
+        ],
+      },
+      actor,
+      {},
+    );
+    const created = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.variant_created', targetId: v.id },
+    });
+    expect(created.after).toMatchObject({
+      productTitle: s('Labeled Tee'),
+      selections: expect.arrayContaining([
+        expect.objectContaining({
+          optionTypeId: sizeTypeId,
+          optionTypeCode: s('size'),
+          optionValueId: sizeValues['m'],
+          optionValueCode: s('m'),
+        }),
+        expect.objectContaining({
+          optionTypeId: colorTypeId,
+          optionTypeCode: s('color'),
+          optionValueId: colorValues['blue'],
+          optionValueCode: s('blue'),
+        }),
+      ]),
+    });
+
+    await variants.update(v.id, { status: 'inactive' }, actor, {});
+    const updated = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.variant_updated', targetId: v.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(updated.before).toMatchObject({ productTitle: s('Labeled Tee') });
+    expect(updated.after).toMatchObject({ productTitle: s('Labeled Tee') });
+    expect((updated.after as { selections: unknown[] }).selections).toHaveLength(2);
+
+    await variants.remove(v.id, actor, {});
+    const removed = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.variant_deleted', targetId: v.id },
+    });
+    expect(removed.before).toMatchObject({ productTitle: s('Labeled Tee') });
+    expect((removed.before as { selections: unknown[] }).selections).toHaveLength(2);
+  });
 });

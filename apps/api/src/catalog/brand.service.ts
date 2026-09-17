@@ -152,12 +152,18 @@ export class BrandService {
   }
 
   async removeAlias(id: string, aliasId: string, actor: Actor, meta: RequestMeta): Promise<void> {
-    const { count } = await this.prisma.brandAlias.deleteMany({
+    // fetched first, not just existence-checked by the delete's own count —
+    // the alias *text* itself was never in scope before this, only its id
+    const existing = await this.prisma.brandAlias.findFirst({
       where: { id: aliasId, brandId: id },
+      select: { alias: true },
     });
-    if (count === 0)
+    if (!existing)
       throw new AppError('NOT_FOUND', 404, { detail: 'alias not found on this brand' });
-    await this.record(actor, 'catalog.brand_updated', id, meta, { before: { aliasId } });
+    await this.prisma.brandAlias.delete({ where: { id: aliasId } });
+    await this.record(actor, 'catalog.brand_updated', id, meta, {
+      before: { aliasId, alias: existing.alias },
+    });
   }
 
   async merge(
@@ -209,8 +215,11 @@ export class BrandService {
     const view = await this.get(target.id);
     await this.record(actor, 'catalog.brand_merged', id, meta, {
       before: toView(source),
-      after: { mergedIntoBrandId: target.id },
-      reason: `merged into ${target.id}`,
+      // `target` is already the full row (fetched above) — its `name` is
+      // free, no extra query, unlike category moves/reorders where the
+      // referenced row lives outside what the action itself touched.
+      after: { mergedIntoBrandId: target.id, mergedIntoBrandName: target.name },
+      reason: `merged into ${target.name}`,
     });
     return view;
   }

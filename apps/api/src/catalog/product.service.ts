@@ -90,10 +90,21 @@ export class ProductService {
       return row;
     });
 
+    // `categoryName`/`brandName` are audit-only — added alongside `view`,
+    // not folded into `toView()` itself, since that builds the public
+    // `Product` API shape (`@shopnetic/contracts`) a name field has no
+    // business joining onto. `proposedBySellerId` stays a bare id — no
+    // seller-facing name exists yet (that plane isn't built out), so
+    // there's nothing meaningful to snapshot for it.
+    const view = toView(created);
+    const [categoryName, brandName] = await Promise.all([
+      this.categoryNameOf(view.categoryId),
+      this.brandNameOf(view.brandId),
+    ]);
     await this.record(actor, 'catalog.product_created', created.id, meta, {
-      after: toView(created),
+      after: { ...view, categoryName, brandName },
     });
-    return toView(created);
+    return view;
   }
 
   async update(
@@ -146,9 +157,17 @@ export class ProductService {
     });
 
     const view = await this.get(id);
+    const beforeView = toView(current);
+    const [beforeCategoryName, beforeBrandName, afterCategoryName, afterBrandName] =
+      await Promise.all([
+        this.categoryNameOf(beforeView.categoryId),
+        this.brandNameOf(beforeView.brandId),
+        this.categoryNameOf(view.categoryId),
+        this.brandNameOf(view.brandId),
+      ]);
     await this.record(actor, 'catalog.product_updated', id, meta, {
-      before: toView(current),
-      after: view,
+      before: { ...beforeView, categoryName: beforeCategoryName, brandName: beforeBrandName },
+      after: { ...view, categoryName: afterCategoryName, brandName: afterBrandName },
     });
     return view;
   }
@@ -159,8 +178,13 @@ export class ProductService {
       await tx.product.update({ where: { id }, data: { deletedAt: new Date() } });
       await writeCatalogOutbox(tx, 'product', 'product.deleted', id, { id });
     });
+    const view = toView(current);
+    const [categoryName, brandName] = await Promise.all([
+      this.categoryNameOf(view.categoryId),
+      this.brandNameOf(view.brandId),
+    ]);
     await this.record(actor, 'catalog.product_deleted', id, meta, {
-      before: toView(current),
+      before: { ...view, categoryName, brandName },
       reason: 'soft delete',
     });
   }
@@ -209,6 +233,24 @@ export class ProductService {
         throw new AppError('PRODUCT_BRAND_INVALID', 422, { detail: 'brand not found' });
       }
     }
+  }
+
+  /** Best-effort name lookups for audit-log snapshots — see the comment on
+   * `create()`'s own use of these. No `deleted_at` filter on either: the
+   * referenced row could itself be archived by the time someone reads the
+   * log, and the name at write time is still correct to show. */
+  private async categoryNameOf(id: string): Promise<string | null> {
+    const row = await this.prisma.category.findUnique({
+      where: { id },
+      select: { nameI18n: true },
+    });
+    return (row?.nameI18n as Record<string, string> | undefined)?.['en'] ?? null;
+  }
+
+  private async brandNameOf(id: string | null): Promise<string | null> {
+    if (!id) return null;
+    const row = await this.prisma.brand.findUnique({ where: { id }, select: { name: true } });
+    return row?.name ?? null;
   }
 
   private async assertSlugFree(slug: string, exceptId: string | null): Promise<void> {

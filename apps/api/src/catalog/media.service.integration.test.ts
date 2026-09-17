@@ -169,8 +169,31 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     await media.putTag(a.id, sizeTypeId, sizeSId, actor, {});
     expect((await media.get(a.id)).tags).toHaveLength(2);
 
+    // the tag audit rows snapshot both codes, not just ids (2026-09-17 fix)
+    const tagEvent = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.media_updated', targetId: a.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(tagEvent.after).toMatchObject({
+      tag: {
+        optionTypeId: sizeTypeId,
+        optionTypeCode: s('size'),
+        optionValueId: sizeSId,
+        optionValueCode: s('s'),
+      },
+    });
+
     await media.removeTag(a.id, sizeTypeId, actor, {});
     expect((await media.get(a.id)).tags).toHaveLength(1);
+    const untagEvent = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.media_updated', targetId: a.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(untagEvent.before).toMatchObject({
+      untaggedAxis: sizeTypeId,
+      untaggedAxisCode: s('size'),
+    });
+
     await expect(media.removeTag(a.id, sizeTypeId, actor, {})).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });

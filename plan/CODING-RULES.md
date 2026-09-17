@@ -2506,3 +2506,96 @@ compose file.
   confirm-restore (temporarily re-added the dead link, the new "no longer
   offers a dead-end link" test failed for the exact right reason,
   restored). Full admin suite green (203 tests); typecheck/lint clean.
+- 2026-09-17 — Reported live: an audit row's expanded JSON showed a
+  category's reorder as raw uuids (`orderedIds`, `movedIds`, `parentId`) —
+  unreadable without cross-referencing ids by hand. Root cause: most audit
+  rows record an entity's *own* fields (`name`, `slug`, `role`) which are
+  already human-readable; these three record a *relationship to another
+  row* using its id, because that's what the service had on hand at write
+  time, and nobody resolved it to a name. Fixed by snapshotting the
+  referenced row's name into the payload alongside its id, at write time —
+  matching how every other audit row already works (a snapshot of what
+  something was called *then*, not a live lookup that'd silently drift if
+  the row is later renamed). Three call sites:
+  - `category.service.ts` `move()` — new `parentName` alongside `parentId`
+    in both `before`/`after`. Needed a lookup for both the old and new
+    parent (a new `nameOf(id)` private helper, no `deleted_at` filter since
+    the referenced row could itself be archived later and the name at
+    write time is still correct to show).
+  - `category.service.ts` `reorder()` — new `parentName`/`orderedNames`/
+    `movedNames` alongside their `*Id`/`*Ids` counterparts. Free — the rows
+    for every id in `orderedIds` are already loaded (`byId`, fetched to
+    validate the request), just weren't being read from.
+  - `brand.service.ts` `merge()` — new `mergedIntoBrandName` alongside
+    `mergedIntoBrandId`, and the free-text `reason` field switched from
+    `merged into ${target.id}` to `merged into ${target.name}`. Also free —
+    `target` was already the full loaded row.
+  New/extended integration tests for all three, asserting the actual
+  `audit_event.after`/`before` JSON directly (not just the service's return
+  value) — the first tests in this codebase to inspect an audit row's raw
+  payload shape rather than just that an event fired at all. Verified via
+  revert-confirm-restore on each of the three independently — all failed
+  for the exact right reason, restored. Full API suite green (101
+  integration incl. 3 new, 25 unit); typecheck/lint clean.
+  - **Asked to check for the same pattern elsewhere** — a background audit
+    of every `record()`/`audit.record()` call site across every catalog/
+    identity service found more, not yet fixed, roughly by cost: free
+    (row already in scope, unused) — `option-type.service.ts`'s
+    `updateValue()`/`removeValue()`, `product-option.service.ts`'s
+    `setValues()`; needs one new small lookup —
+    `product-option.service.ts`'s `remove()`, `value-set.service.ts`'s
+    `addItem()`/`removeItem()`, `media.service.ts`'s `putTag()`/
+    `removeTag()`, `brand.service.ts`'s `removeAlias()` (doesn't even fetch
+    the alias before deleting it — the text itself isn't in scope, not
+    just unread), `category-option.service.ts`'s `remove()`; bigger/
+    structural — `category.service.ts`/`product.service.ts`/
+    `variant.service.ts`'s own `toView()` functions embed a raw
+    `parentId`/`categoryId`/`brandId`/etc. with no name, reused by every
+    create/update/delete call site at once, so fixing the shared function
+    (not a call site) is the real fix there — `variant.service.ts`'s case
+    is the worst of these, since a variant's `selections[]` (e.g. "Color:
+    Red, Size: Large") are exactly what someone reading the log would want
+    readable and are currently two raw ids per selection with zero
+    resolution. Checked and confirmed not applicable: every
+    `identity/*.service.ts` payload (sessions have no human label to show;
+    everything else is already a literal readable value or the row's own
+    target id, already resolved via the Target column's deep-link).
+    **Asked to do all of it, including the "bigger" cases — implemented
+    2026-09-17.** The "bigger/structural" ones were *not* done by actually
+    editing `toView()` (that still builds the public API-contract shape;
+    a name field still has no business joining onto it) — instead every
+    create/update/remove/restore call site on `category.service.ts`,
+    `product.service.ts`, and `variant.service.ts` got the same
+    `{ ...view, extraNameField }` spread the first three fixes already
+    used, just repeated at every one of their call sites instead of
+    once inside a shared function. Same outcome (every audit row on these
+    three entities now reads name-enriched), same non-negotiable boundary
+    (public contract types stay untouched) — "fix the shared function"
+    from the earlier note turned out to mean "repeat the established
+    per-call-site pattern more times," not "change what `toView()`
+    returns." All nine remaining call sites landed the same way:
+    `option-type.service.ts` (`updateValue`/`removeValue` → value code
+    before/after), `product-option.service.ts` (`setValues`/`remove` →
+    option-type code), `value-set.service.ts` (`addItem`/`removeItem` →
+    option-value code, via a new `codeOf()` helper), `media.service.ts`
+    (`putTag`/`removeTag` → option-type + option-value code, `putTag`'s
+    was free since its existing-value lookup already carried both once
+    widened past `id: true`), `brand.service.ts` (`removeAlias`, changed
+    from a blind `deleteMany` to fetch-then-delete so the alias text is
+    even in scope), `category-option.service.ts` (`put`/`remove` →
+    category name + value-set name), `category.service.ts`
+    (`create`/`update`/`remove`/`restore` → `parentName`, on top of the
+    `move`/`reorder` ones already fixed), `product.service.ts`
+    (`create`/`update`/`remove` → `categoryName`/`brandName`;
+    `proposedBySellerId` deliberately left a bare id — no seller-facing
+    name concept exists yet, nothing to snapshot), `variant.service.ts`
+    (`create`/`update`/`remove` → `productTitle` + resolved
+    `selections[]` with each `optionTypeCode`/`optionValueCode`, via a
+    new `selectionLabels()` helper — the worst offender, now fixed).
+    New/extended integration tests for all nine files, asserting the raw
+    `audit_event.before`/`after` JSON directly. Verified via
+    revert-confirm-restore on the two highest-value fixes (variant's
+    `selections`/`productTitle`, category's `parentName`) — both failed
+    for the exact right reason with the fix reverted, restored, reconfirmed
+    green. Full API suite green (109 integration incl. 8 new, 25 unit);
+    typecheck/lint clean.

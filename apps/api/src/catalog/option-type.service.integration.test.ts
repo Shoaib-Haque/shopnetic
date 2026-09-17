@@ -131,6 +131,27 @@ describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
     });
   });
 
+  it("a value's update/remove audit rows snapshot its code, not just its id — the 2026-09-17 fix", async () => {
+    const t = await svc.create({ code: s('network'), name: name('Network') }, actor, {});
+    const withV = await svc.addValue(t.id, { code: s('5g'), label: name('5G') }, actor, {});
+    const vid = withV.values.find((v) => v.code === s('5g'))?.id ?? '';
+
+    await svc.updateValue(t.id, vid, { code: s('5g-nsa') }, actor, {});
+    const updated = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.option_type_updated', targetId: t.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(updated.before).toMatchObject({ valueId: vid, value: s('5g') });
+    expect(updated.after).toMatchObject({ valueId: vid, value: s('5g-nsa') });
+
+    await svc.removeValue(t.id, vid, actor, {});
+    const removed = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.option_type_updated', targetId: t.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(removed.before).toMatchObject({ valueId: vid, value: s('5g-nsa') });
+  });
+
   it('soft-deletes a type: gone from get + default list, kept with includeDeleted', async () => {
     const t = await svc.create({ code: s('grade'), name: name('Grade') }, actor, {});
     await svc.remove(t.id, actor, {});

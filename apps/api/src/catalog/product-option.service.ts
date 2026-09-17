@@ -143,8 +143,11 @@ export class ProductOptionService {
     });
 
     const view = await this.rowView(productId, optionTypeId);
+    // `view` (just computed) already carries `optionTypeCode` and each
+    // value's own `code` — free, no reason to fall back to the raw
+    // `optionTypeId`/`wanted` (value ids) the request came in with.
     await this.record(actor, productId, optionTypeId, meta, {
-      after: { optionTypeId, values: wanted },
+      after: { optionTypeId, optionTypeCode: view.optionTypeCode, values: view.values },
     });
     return view;
   }
@@ -164,6 +167,15 @@ export class ProductOptionService {
         detail: 'variants use this option; delete those variants first',
       });
     }
+    // best-effort, for the audit snapshot below — this method never
+    // otherwise needs the option type's own row, so it's not already in
+    // scope the way `setValues`'s is
+    const optionTypeCode = (
+      await this.prisma.optionType.findUnique({
+        where: { id: optionTypeId },
+        select: { code: true },
+      })
+    )?.code;
 
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.productOption.deleteMany({ where: { productId, optionTypeId } });
@@ -177,7 +189,7 @@ export class ProductOptionService {
       });
     });
     await this.record(actor, productId, optionTypeId, meta, {
-      before: { optionTypeId },
+      before: { optionTypeId, optionTypeCode: optionTypeCode ?? null },
       reason: 'removed',
     });
   }

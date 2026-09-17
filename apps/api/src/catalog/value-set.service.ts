@@ -144,7 +144,10 @@ export class ValueSetService {
 
     const view = await this.get(id);
     await this.record(actor, 'catalog.value_set_updated', id, meta, {
-      after: { itemAdded: input.optionValueId },
+      after: {
+        itemAdded: input.optionValueId,
+        itemAddedCode: await this.codeOf(input.optionValueId),
+      },
     });
     return view;
   }
@@ -156,6 +159,9 @@ export class ValueSetService {
     meta: RequestMeta,
   ): Promise<void> {
     await this.rowOrThrow(id);
+    // captured before the delete — same reasoning as `remove()`'s own
+    // `before: toView(current)`
+    const removedCode = await this.codeOf(optionValueId);
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.valueSetItem.deleteMany({
         where: { valueSetId: id, optionValueId },
@@ -167,7 +173,7 @@ export class ValueSetService {
       });
     });
     await this.record(actor, 'catalog.value_set_updated', id, meta, {
-      before: { itemRemoved: optionValueId },
+      before: { itemRemoved: optionValueId, itemRemovedCode: removedCode },
     });
   }
 
@@ -193,6 +199,18 @@ export class ValueSetService {
         detail: `name "${name}" is in use (names are case-insensitive)`,
       });
     }
+  }
+
+  /** Best-effort code lookup for an audit-log snapshot — `addItem`/
+   * `removeItem` only ever existence-check an option value id (`count`),
+   * never fetch its own row, so there's nothing in scope to read a `code`
+   * from without this. */
+  private async codeOf(optionValueId: string): Promise<string | null> {
+    const row = await this.prisma.optionValue.findUnique({
+      where: { id: optionValueId },
+      select: { code: true },
+    });
+    return row?.code ?? null;
   }
 
   private async assertOptionValuesExist(ids: string[]): Promise<void> {

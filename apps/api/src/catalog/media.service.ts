@@ -148,7 +148,7 @@ export class MediaService {
     await this.rowOrThrow(id);
     const value = await this.prisma.optionValue.findFirst({
       where: { id: optionValueId, optionTypeId },
-      select: { id: true },
+      select: { id: true, code: true, optionType: { select: { code: true } } },
     });
     if (!value) {
       throw new AppError('MEDIA_TAG_INVALID', 422, {
@@ -169,8 +169,17 @@ export class MediaService {
     });
 
     const view = await this.get(id);
+    // `value` (the existence check above) already carries both codes once
+    // widened past a bare `id: true` select — free.
     await this.record(actor, 'catalog.media_updated', id, meta, {
-      after: { tag: { optionTypeId, optionValueId } },
+      after: {
+        tag: {
+          optionTypeId,
+          optionTypeCode: value.optionType.code,
+          optionValueId,
+          optionValueCode: value.code,
+        },
+      },
     });
     return view;
   }
@@ -182,6 +191,12 @@ export class MediaService {
     meta: RequestMeta,
   ): Promise<void> {
     await this.rowOrThrow(id);
+    // best-effort, for the audit snapshot below — this method never
+    // otherwise needs the option type's own row
+    const optionType = await this.prisma.optionType.findUnique({
+      where: { id: optionTypeId },
+      select: { code: true },
+    });
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.mediaOptionTag.deleteMany({
         where: { mediaAssetId: id, optionTypeId },
@@ -193,7 +208,7 @@ export class MediaService {
       });
     });
     await this.record(actor, 'catalog.media_updated', id, meta, {
-      before: { untaggedAxis: optionTypeId },
+      before: { untaggedAxis: optionTypeId, untaggedAxisCode: optionType?.code ?? null },
     });
   }
 

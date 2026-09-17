@@ -295,7 +295,12 @@ export class CategoryService {
       })
       .catch(mapUniqueViolation);
 
-    await this.record(actor, 'catalog.category_created', view.id, meta, { after: view });
+    // `parentName` is audit-only — added alongside `view`, not folded into
+    // `toView()` itself, since that builds the public `Category` API shape
+    // (`@shopnetic/contracts`) a name field has no business joining onto.
+    await this.record(actor, 'catalog.category_created', view.id, meta, {
+      after: { ...view, parentName: await this.nameOf(view.parentId) },
+    });
     return view;
   }
 
@@ -360,9 +365,13 @@ export class CategoryService {
       .catch(mapUniqueViolation);
 
     const view = await this.get(id);
+    const [beforeParentName, afterParentName] = await Promise.all([
+      this.nameOf(current.parent_id),
+      this.nameOf(view.parentId),
+    ]);
     await this.record(actor, 'catalog.category_updated', id, meta, {
-      before: toView(current),
-      after: view,
+      before: { ...toView(current), parentName: beforeParentName },
+      after: { ...view, parentName: afterParentName },
     });
     return view;
   }
@@ -386,9 +395,13 @@ export class CategoryService {
     });
 
     const view = await this.get(id);
+    const [fromParentName, toParentName] = await Promise.all([
+      this.nameOf(self.parent_id),
+      this.nameOf(view.parentId),
+    ]);
     await this.record(actor, 'catalog.category_moved', id, meta, {
-      before: { parentId: self.parent_id, path: self.path },
-      after: { parentId: view.parentId, path: view.path },
+      before: { parentId: self.parent_id, parentName: fromParentName, path: self.path },
+      after: { parentId: view.parentId, parentName: toParentName, path: view.path },
     });
     return view;
   }
@@ -447,9 +460,24 @@ export class CategoryService {
       });
     });
 
+    // `rows`/`byId` already hold every reordered category's own fields
+    // (fetched above to validate the request) — free to read names from,
+    // no extra query. The parent itself isn't in that set (it's the
+    // *container*, not one of the reordered rows), so it gets the shared
+    // `nameOf` lookup like `move()` does.
+    const parentName = await this.nameOf(parentId);
+    const orderedNames = input.orderedIds.map((oid) => byId.get(oid)?.name_i18n['en'] ?? null);
+    const movedNames = movedIds.map((mid) => byId.get(mid)?.name_i18n['en'] ?? null);
     await this.record(actor, 'catalog.categories_reordered', parentId ?? 'root', meta, {
       before: null,
-      after: { parentId, orderedIds: input.orderedIds, movedIds },
+      after: {
+        parentId,
+        parentName,
+        orderedIds: input.orderedIds,
+        orderedNames,
+        movedIds,
+        movedNames,
+      },
     });
 
     // `list` orders by the ltree path (uuid labels); re-sort the affected
@@ -473,7 +501,7 @@ export class CategoryService {
     });
 
     await this.record(actor, 'catalog.category_deleted', id, meta, {
-      before: toView(self),
+      before: { ...toView(self), parentName: await this.nameOf(self.parent_id) },
       reason: 'soft delete',
     });
   }
@@ -549,7 +577,7 @@ export class CategoryService {
 
     const view = await this.get(self.id);
     await this.record(actor, 'catalog.category_restored', self.id, meta, {
-      after: view,
+      after: { ...view, parentName: await this.nameOf(view.parentId) },
       reason: `restore (${subtreeIds.length} row${subtreeIds.length === 1 ? '' : 's'})`,
     });
     return view;
@@ -575,6 +603,25 @@ export class CategoryService {
     const row = rows[0];
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'archived category not found' });
     return row;
+  }
+
+  /** Best-effort name lookup for an audit-log snapshot — a category an
+   * action *references* (a new parent, a sibling in a reorder) rather than
+   * acts on directly, so `record()`'s usual `before`/`after` (the acted-on
+   * row's own fields) never carries it. No `deleted_at` filter: the
+   * referenced row could itself be archived by the time someone reads the
+   * log, and the name at write time is still the correct thing to show —
+   * same reasoning every other audit row already snapshots values instead
+   * of re-resolving them live. `null` (no id, or a genuinely missing row —
+   * shouldn't happen, but this is a display nicety, not load-bearing) just
+   * means the id shows with no name alongside it. */
+  private async nameOf(id: string | null): Promise<string | null> {
+    if (!id) return null;
+    const rows = await this.prisma.$queryRawUnsafe<{ name_i18n: Record<string, string> }[]>(
+      `SELECT name_i18n FROM catalog.category WHERE id = $1::uuid`,
+      id,
+    );
+    return rows[0]?.name_i18n['en'] ?? null;
   }
 
   private async parentOrThrow(parentId: string): Promise<{ id: string; path: string }> {

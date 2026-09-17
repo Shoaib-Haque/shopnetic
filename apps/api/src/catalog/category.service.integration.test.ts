@@ -189,6 +189,25 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     expect(movedLeaf.depth).toBe(3);
   });
 
+  it("a move's audit row snapshots both parents' names, not just their ids — the 2026-09-17 fix", async () => {
+    const r1 = await svc.create({ slug: s('mvn-r1'), name: name('MvnR1') }, actor, {});
+    const r2 = await svc.create({ slug: s('mvn-r2'), name: name('MvnR2') }, actor, {});
+    const child = await svc.create(
+      { slug: s('mvn-child'), name: name('MvnChild'), parentId: r1.id },
+      actor,
+      {},
+    );
+
+    await svc.move(child.id, { parentId: r2.id }, actor, {});
+
+    const event = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.category_moved', targetId: child.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(event.before).toMatchObject({ parentId: r1.id, parentName: s('MvnR1') });
+    expect(event.after).toMatchObject({ parentId: r2.id, parentName: s('MvnR2') });
+  });
+
   it('reorder renumbers siblings and can pull a node into a new parent', async () => {
     const p = await svc.create({ slug: s('ro-p'), name: name('RO-P') }, actor, {});
     const q = await svc.create({ slug: s('ro-q'), name: name('RO-Q') }, actor, {});
@@ -214,6 +233,30 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     ).rejects.toMatchObject({ code: 'CATEGORY_CYCLE' });
   });
 
+  it("a reorder's audit row snapshots names for the parent and every reordered/moved id — the 2026-09-17 fix", async () => {
+    const p = await svc.create({ slug: s('ron-p'), name: name('RonP') }, actor, {});
+    const q = await svc.create({ slug: s('ron-q'), name: name('RonQ') }, actor, {});
+    const a = await svc.create({ slug: s('ron-a'), name: name('RonA'), parentId: p.id }, actor, {});
+    const b = await svc.create({ slug: s('ron-b'), name: name('RonB'), parentId: p.id }, actor, {});
+    const c = await svc.create({ slug: s('ron-c'), name: name('RonC'), parentId: q.id }, actor, {});
+
+    // pull c from q into p, at the front — b/a just renumber, c reparents
+    await svc.reorder({ parentId: p.id, orderedIds: [c.id, b.id, a.id] }, actor, {});
+
+    const event = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.categories_reordered', targetId: p.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(event.after).toMatchObject({
+      parentId: p.id,
+      parentName: s('RonP'),
+      orderedIds: [c.id, b.id, a.id],
+      orderedNames: [s('RonC'), s('RonB'), s('RonA')],
+      movedIds: [c.id],
+      movedNames: [s('RonC')],
+    });
+  });
+
   it('soft-deletes a leaf, blocks deleting a parent with children', async () => {
     const p = await svc.create({ slug: s('del-p'), name: name('P') }, actor, {});
     const c = await svc.create({ slug: s('del-c'), name: name('C'), parentId: p.id }, actor, {});
@@ -228,6 +271,41 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     // now the parent has no live children → delete works
     await svc.remove(p.id, actor, {});
     await expect(svc.get(p.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it("create/update/remove/restore audit rows snapshot the parent's name, not just its id — the 2026-09-17 fix", async () => {
+    const p1 = await svc.create({ slug: s('pn-p1'), name: name('PN-P1') }, actor, {});
+    const p2 = await svc.create({ slug: s('pn-p2'), name: name('PN-P2') }, actor, {});
+    const child = await svc.create(
+      { slug: s('pn-child'), name: name('PN-Child'), parentId: p1.id },
+      actor,
+      {},
+    );
+    const created = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.category_created', targetId: child.id },
+    });
+    expect(created.after).toMatchObject({ parentId: p1.id, parentName: s('PN-P1') });
+
+    await svc.update(child.id, { parentId: p2.id }, actor, {});
+    const updated = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.category_updated', targetId: child.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(updated.before).toMatchObject({ parentId: p1.id, parentName: s('PN-P1') });
+    expect(updated.after).toMatchObject({ parentId: p2.id, parentName: s('PN-P2') });
+
+    await svc.remove(child.id, actor, {});
+    const removed = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.category_deleted', targetId: child.id },
+    });
+    expect(removed.before).toMatchObject({ parentId: p2.id, parentName: s('PN-P2') });
+
+    const restored = await svc.restore(child.id, actor, {});
+    expect(restored.parentId).toBe(p2.id);
+    const restoredEvent = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.category_restored', targetId: child.id },
+    });
+    expect(restoredEvent.after).toMatchObject({ parentId: p2.id, parentName: s('PN-P2') });
   });
 
   it('writes a catalog.outbox row per mutation', async () => {

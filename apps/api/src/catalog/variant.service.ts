@@ -105,10 +105,23 @@ export class VariantService {
       return row;
     });
 
+    // `productTitle`/readable `selections` are audit-only — added
+    // alongside `view`, not folded into `toView()` itself, since that
+    // builds the public `Variant` API shape (`@shopnetic/contracts`) these
+    // have no business joining onto. `selections` is the worst offender of
+    // everything found in this pass: a variant's own selections (e.g.
+    // "Color: Red, Size: Large") are exactly what someone reading the log
+    // wants readable, and were two raw ids per selection with zero
+    // resolution.
+    const view = toView(created);
+    const [productTitle, resolvedSelections] = await Promise.all([
+      this.productTitleOf(view.productId),
+      this.selectionLabels(view.selections),
+    ]);
     await this.record(actor, 'catalog.variant_created', created.id, meta, {
-      after: toView(created),
+      after: { ...view, productTitle, selections: resolvedSelections },
     });
-    return toView(created);
+    return view;
   }
 
   async update(
@@ -145,7 +158,17 @@ export class VariantService {
     });
 
     const view = await this.get(id);
-    await this.record(actor, 'catalog.variant_updated', id, meta, { before: current, after: view });
+    // Selections are immutable (never touched by `update`'s own `data`
+    // above), so `current`'s and `view`'s are the same set — resolved once,
+    // not twice.
+    const [productTitle, resolvedSelections] = await Promise.all([
+      this.productTitleOf(view.productId),
+      this.selectionLabels(view.selections),
+    ]);
+    await this.record(actor, 'catalog.variant_updated', id, meta, {
+      before: { ...current, productTitle, selections: resolvedSelections },
+      after: { ...view, productTitle, selections: resolvedSelections },
+    });
     return view;
   }
 
@@ -155,8 +178,12 @@ export class VariantService {
       await tx.variant.update({ where: { id }, data: { deletedAt: new Date() } });
       await writeCatalogOutbox(tx, 'variant', 'variant.deleted', id, { id });
     });
+    const [productTitle, resolvedSelections] = await Promise.all([
+      this.productTitleOf(current.productId),
+      this.selectionLabels(current.selections),
+    ]);
     await this.record(actor, 'catalog.variant_deleted', id, meta, {
-      before: current,
+      before: { ...current, productTitle, selections: resolvedSelections },
       reason: 'soft delete',
     });
   }
@@ -225,6 +252,53 @@ export class VariantService {
       }
     }
     return selections;
+  }
+
+  /** Best-effort readable labels for a variant's selections — see the
+   * comment on `create()`'s own use of this. `selections.length === 0`
+   * never actually happens today (every variant-axis option requires
+   * exactly one selected value, enforced by `validateSelections`), but
+   * this stays a plain batch lookup either way, no special-casing needed
+   * for it. */
+  private async selectionLabels(
+    selections: { optionTypeId: string; optionValueId: string }[],
+  ): Promise<
+    Array<{
+      optionTypeId: string;
+      optionTypeCode: string | null;
+      optionValueId: string;
+      optionValueCode: string | null;
+    }>
+  > {
+    if (selections.length === 0) return [];
+    const typeIds = [...new Set(selections.map((s) => s.optionTypeId))];
+    const valueIds = [...new Set(selections.map((s) => s.optionValueId))];
+    const [types, values] = await Promise.all([
+      this.prisma.optionType.findMany({
+        where: { id: { in: typeIds } },
+        select: { id: true, code: true },
+      }),
+      this.prisma.optionValue.findMany({
+        where: { id: { in: valueIds } },
+        select: { id: true, code: true },
+      }),
+    ]);
+    const typeCode = new Map(types.map((t) => [t.id, t.code]));
+    const valueCode = new Map(values.map((v) => [v.id, v.code]));
+    return selections.map((s) => ({
+      optionTypeId: s.optionTypeId,
+      optionTypeCode: typeCode.get(s.optionTypeId) ?? null,
+      optionValueId: s.optionValueId,
+      optionValueCode: valueCode.get(s.optionValueId) ?? null,
+    }));
+  }
+
+  private async productTitleOf(id: string): Promise<string | null> {
+    const row = await this.prisma.product.findUnique({
+      where: { id },
+      select: { titleI18n: true },
+    });
+    return (row?.titleI18n as Record<string, string> | undefined)?.['en'] ?? null;
   }
 
   private async assertSkuFree(

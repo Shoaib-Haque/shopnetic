@@ -130,6 +130,23 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
     expect((await valueSets.get(vs.id)).items).toHaveLength(0);
   });
 
+  it("a value-set item add/remove audit rows snapshot the option value's code — the 2026-09-17 fix", async () => {
+    const vs = await valueSets.create({ name: s('sizes-4') }, actor, {});
+    await valueSets.addItem(vs.id, { optionValueId: sizeValueIds[0]! }, actor, {});
+    const added = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.value_set_updated', targetId: vs.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(added.after).toMatchObject({ itemAdded: sizeValueIds[0], itemAddedCode: s('s') });
+
+    await valueSets.removeItem(vs.id, sizeValueIds[0]!, actor, {});
+    const removed = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.value_set_updated', targetId: vs.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(removed.before).toMatchObject({ itemRemoved: sizeValueIds[0], itemRemovedCode: s('s') });
+  });
+
   it('put creates with model defaults, then updates in place', async () => {
     const created = await categoryOptions.put(categoryId, sizeTypeId, {}, actor, {});
     expect(created).toMatchObject({
@@ -208,6 +225,45 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
     await expect(categoryOptions.remove(categoryId, sizeTypeId, actor, {})).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
+  });
+
+  it("a category option's put/remove audit rows snapshot the category and value-set names — the 2026-09-17 fix", async () => {
+    const colorSet = await valueSets.create(
+      { name: s('colors-2'), items: [{ optionValueId: colorValueId }] },
+      actor,
+      {},
+    );
+    await categoryOptions.put(
+      categoryId,
+      colorTypeId,
+      { valueSource: 'hybrid', valueSetId: colorSet.id },
+      actor,
+      {},
+    );
+    const putEvent = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.category_option_set', targetId: `${categoryId}:${colorTypeId}` },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(putEvent.after).toMatchObject({
+      categoryName: s('Apparel'),
+      valueSetName: s('colors-2'),
+    });
+
+    await categoryOptions.remove(categoryId, colorTypeId, actor, {});
+    const removeEvent = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        action: 'catalog.category_option_removed',
+        targetId: `${categoryId}:${colorTypeId}`,
+      },
+    });
+    expect(removeEvent.before).toMatchObject({
+      categoryId,
+      categoryName: s('Apparel'),
+      optionTypeId: colorTypeId,
+      optionTypeCode: s('color'),
+    });
+
+    await valueSets.remove(colorSet.id, actor, {});
   });
 
   it('writes catalog.outbox rows for the config changes', async () => {
