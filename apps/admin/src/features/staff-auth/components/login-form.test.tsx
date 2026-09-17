@@ -68,17 +68,23 @@ afterEach(() => {
 });
 
 describe('StaffLoginForm', () => {
-  it('the forgot-password and accept-invite links both have the shared hover state', () => {
+  it('the forgot-password link has the shared hover state', () => {
     render();
-    // "Accept an invite" was a bare `underline` with no hover feedback
-    // before the shared `@shopnetic/ui` `Link` fix (2026-09-17); "Forgot
-    // your password?" already had it, kept here as the working reference
     expect(screen.getByRole('link', { name: 'Forgot your password?' })).toHaveClass(
       'hover:text-foreground',
     );
-    expect(screen.getByRole('link', { name: 'Accept an invite' })).toHaveClass(
-      'hover:text-foreground',
-    );
+  });
+
+  // Removed 2026-09-17: this always linked to a bare `/accept-invite` with
+  // no `?token=`, so clicking it could never do anything but show "This
+  // invite link is invalid." — the opposite of helpful for someone who
+  // actually has a real invite. There's no self-service resend flow either,
+  // so nothing useful to route to at all; the real fix for "I have an
+  // invite" is always "use the link from that email," not a click-through.
+  it('no longer offers a dead-end "Accept an invite" link with no token', () => {
+    render();
+    expect(screen.queryByText('Have an invite link but ended up here?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Accept an invite' })).not.toBeInTheDocument();
   });
 
   it('wrong credentials → shows the invalid-credentials message, stays on the password step', async () => {

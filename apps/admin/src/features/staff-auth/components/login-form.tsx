@@ -304,10 +304,6 @@ export function StaffLoginForm({
       <Button type="submit" loading={busy} loadingText={t('login.submitting')}>
         {t('login.submit')}
       </Button>
-      <p className="text-xs text-muted-foreground">
-        {t('login.inviteHint')}{' '}
-        <Link href={`/${locale}/${basePath}/accept-invite`}>{t('login.inviteLink')}</Link>
-      </p>
     </form>
   );
 }

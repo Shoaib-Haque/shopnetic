@@ -2490,3 +2490,19 @@ compose file.
   and `@shopnetic/storefront` typecheck/lint/test all clean too (storefront
   doesn't consume the new `Link` yet, but shares the package it now lives
   in).
+- 2026-09-17 — Removed Login's "Have an invite link but ended up here?
+  Accept an invite" hint — asked "will `/accept-invite` be functional
+  later" while looking at it, which surfaced that the link itself was
+  dead: `href={`/${locale}/${basePath}/accept-invite`}` with no `?token=`
+  at all, so clicking it could only ever land on `status: 'invalid'`
+  (checked client-side, before even calling the check endpoint) — the
+  opposite of helpful for someone who actually has a real invite. No fix
+  was viable in place: a token is required and there's no self-service
+  "resend my invite" flow (inviting is Super-Admin-only), so there was
+  never anywhere useful this link could route to. Removed the `<p>`, both
+  now-unused `staff.json` keys (`login.inviteHint`/`inviteLink`), and
+  updated the test that had asserted its hover state to instead assert
+  neither the text nor the link render at all. Verified via revert-
+  confirm-restore (temporarily re-added the dead link, the new "no longer
+  offers a dead-end link" test failed for the exact right reason,
+  restored). Full admin suite green (203 tests); typecheck/lint clean.

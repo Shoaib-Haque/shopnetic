@@ -23,9 +23,7 @@
       "title": "Staff sign in",
       "submit": "Sign in",
       "submitting": "Signing in…",
-      "forgotPassword": "Forgot your password?",
-      "inviteHint": "Have an invite link but ended up here?",
-      "inviteLink": "Accept an invite"
+      "forgotPassword": "Forgot your password?"
     },
     "mfa": {
       "intro": "Enter the 6-digit code from your authenticator app.",
