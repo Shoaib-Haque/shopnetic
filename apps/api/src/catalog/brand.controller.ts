@@ -25,6 +25,7 @@ import {
   type UpdateBrandRequest,
 } from '@shopnetic/contracts';
 import { ok } from '../common/envelope.js';
+import { AppError } from '../common/app-error.js';
 import { ZodBodyPipe } from '../common/zod-body.pipe.js';
 import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
@@ -68,6 +69,22 @@ export class BrandController {
       data: base.data,
       meta: { ...base.meta, count: items.length, ...(nextCursor ? { nextCursor } : {}) },
     };
+  }
+
+  // static path, declared ahead of `:id` below on principle (Nest's own
+  // route matching wouldn't actually confuse the two here — different
+  // segment counts — but a static route shadowing a dynamic one is the
+  // easy-to-get-wrong case worth avoiding by convention regardless).
+  @Get('aliases/availability')
+  async aliasAvailability(
+    @Req() req: Request,
+    @Query('alias') alias?: string,
+  ): Promise<Envelope<{ available: boolean }>> {
+    const trimmed = alias?.trim();
+    if (!trimmed) {
+      throw new AppError('VALIDATION_ERROR', 422, { detail: 'alias is required' });
+    }
+    return ok(req, { available: await this.brands.aliasAvailable(trimmed) });
   }
 
   @Get(':id')

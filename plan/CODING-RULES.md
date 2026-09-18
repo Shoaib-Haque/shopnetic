@@ -2770,3 +2770,155 @@ compose file.
     failed for the exact right reason, restored. Full sweep green: admin
     212 tests (was 209), API 114 integration (was 113) + 25 unit;
     typecheck/lint clean on both packages.
+
+- 2026-09-18 — Seven more from the *next* live walkthrough, each discussed
+  with options before any code (D1 — "discuss before a big batch"):
+  1. **Row actions collapse into a "…" menu, always** — new project-wide
+     rule, not a per-page judgment call: any row with 2+ actions uses
+     `DropdownMenu` (mirroring `staff-list.tsx`'s `renderMenu`), never
+     direct icon buttons, regardless of how many actions there end up
+     being. Brand's desktop table AND mobile card list both moved to it
+     (mobile had never had Merge/Delete reachable at all before this —
+     only Edit/Restore — a real gap this closes for free). Supersedes the
+     2026-09-17 entry's action-column width patch entirely: a fixed-width
+     menu trigger can't crowd a border no matter how many actions a row
+     grows.
+  2. Reported "delete has no undo" turned out not to be a bug — `doDelete`
+     already calls `notify.undo` correctly. No code change; confirmed with
+     the user before touching anything.
+  3. **Modal cut off at the top with no way to scroll to it — a shared
+     `packages/ui` bug, not Brand's.** `ModalContent` positioned via
+     `top-[42%]` + `-translate-y-1/2` with a `max-h` cap; for content
+     whose height approaches that cap (Brand's edit form with several
+     aliases got there first, but nothing about the bug is Brand-specific)
+     the math puts the panel's top edge above the viewport, and since it's
+     `fixed`, no page scroll can reach it back — only `ModalBody`'s
+     internal scroll, which doesn't reposition the header. Rebuilt as two
+     nested layers: an outer plain (non-flex) `overflow-y-auto` block, an
+     inner ordinary `flex items-center justify-center` with `min-h-full`.
+     Deliberately not one `flex` container with `overflow-y-auto` — that
+     combination has a known cross-browser quirk where `align-items:
+     center` can clip a scrolled-to child's top instead of reaching it,
+     which is the same *class* of bug this is fixing, just from a
+     different cause. `Drawer` uses `inset-y-0` (always exactly viewport
+     height) and was never affected — confirmed, not just assumed, by
+     reading it. Every modal in the app inherits this fix for free
+     (`ConfirmDialog`, Category's edit form, Staff invite, …); the full
+     213-test admin suite (unchanged in count, all still green) was the
+     practical regression check, since `packages/ui` itself has no test
+     infrastructure to add a dedicated one into — an existing-precedent
+     call, not an oversight.
+  4. **Create-mode alias errors surfaced only at Save, not at Add** — Edit
+     mode's `addAlias` hits a real endpoint immediately, catching a
+     duplicate right away; Create mode had no brand id yet for that
+     round-trip, so a duplicate went unvalidated until the whole form
+     submitted. New `BrandService.aliasAvailable()` (reuses
+     `assertAliasesFree`'s own exact/case-insensitive lookup, returns a
+     boolean instead of throwing) + `GET /admin/v1/brands/aliases/
+     availability?alias=…` + `brandAliasAvailable()` client call — Create
+     mode's "Add" now checks this before ever staging the alias, blocking
+     it at the same point Edit mode effectively does.
+  5. **Two badges (Status + Restricted) in one column read as competing
+     states** — they're not the same kind of thing (`status` is a
+     lifecycle enum; `isRestricted` is an orthogonal flag, same reasoning
+     as the 2026-09-17 entry that added the column). Moved `isRestricted`
+     to a small `ShieldAlert` icon+tooltip next to the brand name — common
+     real-world pattern (a flag sits by the title, not stacked into a
+     status column) — leaving Status as the column's one badge. Dropped
+     the now-unused `brands.restricted` message key (kept
+     `restrictedHint`, still used for the tooltip/aria-label).
+  6. **An undo toast for a deleted row stayed open after the same row was
+     restored a different way** (the Archived tab's own Restore, not the
+     toast's own Undo button) — confirmed shared, not Brand-only: Category
+     has the identical `notify.undo`-on-delete pattern. New
+     `notify.dismissUndo()` on the shared toast module (dismisses
+     whichever undo toast is currently showing, by the module's one fixed
+     toast id — the *caller* is responsible for only invoking it when it
+     knows that toast really was for the same row, never a blanket
+     "any restore clears it"). Each list tracks which row (if any) its own
+     last-shown undo toast was for via a plain ref, and only calls
+     `dismissUndo()` when an independent restore matches that same id —
+     restoring a *different* row leaves an unrelated pending undo toast
+     alone, per the user's own explicit scoping. Applied to both
+     `brand-list.tsx` and `category-list.tsx`; the latter has a *second*
+     `notify.undo` call (drag-reorder's own undo, sharing the same fixed
+     toast id) that resets the tracking ref to `null` wherever it fires,
+     since it always overwrites whatever undo toast — delete's or its
+     own — was showing.
+  7. **Alias add/remove firing immediately instead of batching until
+     Save** — discussed, kept as-is. Real-world tag/label editors (GitHub
+     topics, Linear labels, Gmail labels) generally commit each add/remove
+     immediately since each is independently a complete, reversible
+     action; Edit mode already matches that. The asymmetry wasn't "Edit
+     mode is wrong," it was "Create mode can't do the same thing (no id to
+     save against) and silently downgrades to stage-and-hope" — that gap
+     is #4 above, not a reason to make Edit mode weaker to match.
+  - New/extended tests: 2 in `brand-list.test.tsx` (create-mode alias
+    blocking with an exact draft-aliases-body assertion; undo-toast
+    dismissal on a matching archived-tab restore, using `waitFor` since
+    `sonner` removes a dismissed toast's DOM node after its own exit
+    animation, not synchronously) + 1 restyled existing assertion (the
+    restricted-badge check now asserts the icon's `aria-label` instead of
+    badge text). 1 new integration test (`aliasAvailable`'s exact-match +
+    case-insensitivity + freed-after-remove behavior). Revert-confirm-
+    restore on the two with dedicated regression tests (create-mode alias
+    blocking, undo-toast dismissal) — both failed for the exact right
+    reason, restored. Full sweep green: admin 214 tests (was 212), API 115
+    integration (was 114) + 25 unit; typecheck/lint clean on
+    `@shopnetic/ui`, `@shopnetic/api`, and `@shopnetic/admin`.
+
+- 2026-09-18 — Two small follow-ups from the same walkthrough, both quick
+  confirm-then-fix (not big-batch discussions):
+  - **Restricted icon moved from before the name to after it** (still
+    before `/slug`) — a leading icon staggered every restricted row's name
+    start out of line with plain rows'. Placed as a `shrink-0` flex
+    sibling *after* the name+slug `<p>` (which itself gets `min-w-0
+    flex-1 truncate`) instead of both sharing one un-structured truncating
+    line — ordinary flexbox then does the "name yields room to the badge"
+    behavior on its own: a restricted row's name/slug truncates further to
+    keep the icon fully visible, so the row's total width is identical
+    whether or not the icon is present, with no bespoke truncation logic
+    needed. Applied to both the desktop table and mobile card list.
+  - **An Undo toast could end up visually buried behind a later,
+    unrelated success toast** — `sonner`'s default stacking collapses
+    older toasts behind the newest one. Since an Undo toast's only job is
+    staying reachable for its whole window, that default was actively
+    wrong here. Fixed with `expand` on the shared `<Toaster>` (a real
+    sonner prop for exactly this — not a "can't be helped" limitation),
+    keeping every toast in the stack fully shown at once.
+  - No new tests (layout/library-config changes, not new logic branches —
+    covered by the existing restricted-badge assertion, which still
+    passes at the new DOM position, and the full existing suite). Full
+    admin suite green: 214 tests, unchanged count; typecheck/lint clean on
+    `@shopnetic/admin` and `@shopnetic/ui`.
+  - **Immediate follow-up, same session**: the icon reposition above
+    still put it after `/slug` — one flex sibling after one truncating
+    `name + /slug` text block, not literally between the two. Caught by
+    the user, who also flagged a real distinction worth recording: today
+    (before any of this), a long name *already* crowds `/slug` out —
+    that's existing behavior, not something to newly "fix." The only
+    actual guarantee being added is the badge's; `/slug` keeps the exact
+    same "can shrink away under pressure" property it always had. Split
+    name and `/slug` into two independent flex children (each its own
+    `min-w-0 truncate`) with the badge as a `shrink-0` sibling between
+    them — name gets `flex-1` (first claim on space, so it's what yields
+    for the badge), `/slug` gets plain `shrink` (still just as droppable
+    as before, only now independently rather than as literally the tail
+    of one text run). Net user-visible behavior for `/slug` is unchanged;
+    the only new guarantee is the badge's, which was the actual ask.
+    Verified against the full admin suite again (214, still green) —
+    no dedicated new test (same reasoning as above: layout-only).
+  - **Second immediate follow-up, same session**: `flex-1` on the name
+    span was wrong in a different way than either earlier attempt —
+    `flex-1` is `flex: 1 1 0%`, which *grows* into unused space, not just
+    shrinks under pressure. A short name still expanded to fill the whole
+    row, shoving the badge and `/slug` off to the far right edge of the
+    column — visually worse than not having a badge at all. What's
+    actually wanted is shrink-only: take up only as much room as the name
+    needs, but still yield (truncate) if the row is genuinely tight.
+    That's `flex-initial` (`flex: 0 1 auto`), not `flex-1` — swapped, on
+    both the desktop table and mobile card list. Full admin suite green
+    again (214, unchanged) — still no dedicated test; three rounds on a
+    layout-only column in one session is itself a signal this class of
+    "does the row look right at every width" change is better caught by
+    a screenshot/live check than by a jsdom assertion, so none was added.

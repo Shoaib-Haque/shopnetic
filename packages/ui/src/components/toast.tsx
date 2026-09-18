@@ -36,6 +36,13 @@ export function Toaster({ topOffset = 72 }: { topOffset?: number }) {
       offset={topOffset}
       gap={8}
       duration={DEFAULT_MS}
+      // sonner's default collapses a stack so only the newest toast is
+      // fully shown, older ones receding behind it — wrong here since an
+      // Undo toast's only job is staying reachable for its whole window;
+      // an unrelated success toast landing on top of it (the 2026-09-18
+      // fix) must not visually bury it. `expand` keeps every toast in the
+      // stack fully shown at all times.
+      expand
       toastOptions={{
         style: {
           background: 'hsl(var(--background))',
@@ -187,11 +194,23 @@ function showUndo(message: string, opts: UndoOptions): void {
   );
 }
 
+/** Dismiss whatever undo toast is currently showing, if any — for when the
+ * action it offers to undo happens through a *different* path (e.g. an
+ * archived-tab Restore for the same row a delete's undo toast is still
+ * offering). Since `showUndo`'s toast always uses the one fixed `UNDO_ID`,
+ * this can't distinguish *which* row's undo it's dismissing — the caller
+ * is responsible for only calling this when it knows the live toast (if
+ * any) really was for the same row, not a different one. */
+function dismissUndo(): void {
+  toast.dismiss(UNDO_ID);
+}
+
 export const notify = {
   saved: showSaved,
   error: showError,
   info: showInfo,
   undo: showUndo,
+  dismissUndo,
 };
 
 export { toast };

@@ -48,6 +48,15 @@ export function updateBrand(id: string, body: UpdateBrandRequest): Promise<Brand
   return adminApi<Brand>(`/brands/${id}`, { method: 'PATCH', body });
 }
 
+/** Checked before staging a draft alias on the *create* form — there's no
+ * brand id yet for `addBrandAlias`'s own round-trip to catch a duplicate
+ * the way editing an existing brand already does (the 2026-09-18 fix). */
+export function brandAliasAvailable(alias: string): Promise<boolean> {
+  return adminApi<{ available: boolean }>(
+    `/brands/aliases/availability?alias=${encodeURIComponent(alias)}`,
+  ).then((r) => r.available);
+}
+
 export function addBrandAlias(id: string, body: AddBrandAliasRequest): Promise<Brand> {
   return adminApi<Brand>(`/brands/${id}/aliases`, { method: 'POST', body });
 }

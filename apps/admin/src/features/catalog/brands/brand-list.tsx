@@ -1,12 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArchiveRestore, Merge as MergeIcon, Pencil, Plus, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Plus, ShieldAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Brand, BrandStatus } from '@shopnetic/contracts';
 import {
   cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   notify,
   ScrollToTopButton,
   SearchInput,
@@ -17,6 +21,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   type StatusTone,
 } from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
@@ -152,17 +159,26 @@ export function BrandList() {
   const err = (e: unknown): void =>
     notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
 
+  // which row (if any) the currently-showing undo toast is for — a plain
+  // ref, not state, since nothing here needs to re-render off it. Lets
+  // `confirmRestore` dismiss a *stale* undo toast when the archived-tab
+  // Restore button reaches the same row another way, without touching an
+  // unrelated row's still-live undo toast (the 2026-09-18 fix).
+  const pendingUndoId = useRef<string | null>(null);
+
   // ── delete: soft (archive) + a one-click undo, no confirm dialog — same
   // idiom Category List uses for its own soft-delete. ─────────────────────
   async function doDelete(b: Brand): Promise<void> {
     try {
       await deleteBrand(b.id);
+      pendingUndoId.current = b.id;
       notify.undo(t('brands.toast.deleted', { name: labelOf(b) }), {
         undoLabel: t('brands.undo'),
         undoneMessage: t('brands.toast.restored', { name: labelOf(b) }),
         onUndo: async () => {
           try {
             await restoreBrand(b.id);
+            if (pendingUndoId.current === b.id) pendingUndoId.current = null;
             resync();
           } catch (e) {
             err(e);
@@ -182,6 +198,10 @@ export function BrandList() {
     setRestoring(true);
     try {
       await restoreBrand(restoreTarget.id);
+      if (pendingUndoId.current === restoreTarget.id) {
+        notify.dismissUndo();
+        pendingUndoId.current = null;
+      }
       notify.saved(t('brands.toast.restored', { name: labelOf(restoreTarget) }));
       setRestoreTarget(null);
       resync();
@@ -211,53 +231,72 @@ export function BrandList() {
         : t('brands.empty')
       : null;
 
-  const rowActions = (b: Brand) => {
-    if (tab === 'archived') {
-      return (
-        <ActionButton
-          icon={ArchiveRestore}
-          variant="ghost"
-          size="sm"
-          collapseLabel="lg"
-          onClick={() => setRestoreTarget(b)}
-        >
-          {t('brands.restore')}
-        </ActionButton>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1">
-        <ActionButton
-          icon={Pencil}
-          variant="ghost"
-          size="sm"
-          collapseLabel="lg"
-          onClick={() => setModal({ mode: 'edit', brand: b })}
-        >
-          {t('brands.edit')}
-        </ActionButton>
-        <ActionButton
-          icon={MergeIcon}
-          variant="ghost"
-          size="sm"
-          collapseLabel="lg"
-          onClick={() => setMergeSource(b)}
-        >
-          {t('brands.merge')}
-        </ActionButton>
-        <ActionButton
-          icon={Trash2}
-          variant="ghost"
-          size="sm"
-          collapseLabel="lg"
-          className="text-muted-foreground hover:text-destructive"
-          onClick={() => void doDelete(b)}
-        >
-          {t('brands.delete')}
-        </ActionButton>
-      </span>
-    );
-  };
+  // `isRestricted` is orthogonal to `status` (a restricted brand is often
+  // still `active`) — a second colored badge stacked next to the status
+  // one read as two competing states at a glance (the 2026-09-18 fix).
+  // A small icon by the name, matching how a "flagged"/"verified" marker
+  // usually sits next to a title rather than in a status column, keeps
+  // Status down to the one badge it's actually about. Sits *after* the
+  // name (not before — a follow-up fix): a leading icon staggered every
+  // restricted row's name start out of line with the rest; trailing +
+  // `shrink-0` in a flex row instead means the name/slug text is what
+  // truncates to make room, so a restricted row costs exactly the same
+  // total width as a plain one, never more.
+  const restrictedIcon = (b: Brand): ReactNode =>
+    b.isRestricted ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ShieldAlert
+            className="inline-block size-3.5 shrink-0 align-text-bottom text-warning"
+            aria-label={t('brands.restrictedHint')}
+          />
+        </TooltipTrigger>
+        <TooltipContent>{t('brands.restrictedHint')}</TooltipContent>
+      </Tooltip>
+    ) : null;
+
+  // Always the "…" menu, never direct buttons — one rule for every row,
+  // no per-page judgment call on how many actions is "too many" (matching
+  // Staff List's own `renderMenu`, the 2026-09-18 fix; it also permanently
+  // rules out the row-actions-crowd-the-border bug a fixed-width icon
+  // column had before, regardless of how many actions a row ends up with).
+  const rowMenu = (b: Brand): ReactNode => (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger
+            aria-label={tCommon('actions.more')}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <MoreHorizontal className="size-4" aria-hidden />
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{tCommon('actions.more')}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent>
+        {tab === 'archived' ? (
+          <DropdownMenuItem onSelect={() => setRestoreTarget(b)}>
+            {t('brands.restore')}
+          </DropdownMenuItem>
+        ) : (
+          <>
+            <DropdownMenuItem onSelect={() => setModal({ mode: 'edit', brand: b })}>
+              {t('brands.edit')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setMergeSource(b)}>
+              {t('brands.merge')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => void doDelete(b)}
+              className="text-destructive focus:text-destructive"
+            >
+              {t('brands.delete')}
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   return (
     <section>
@@ -338,7 +377,7 @@ export function BrandList() {
                   <TableHead className="hidden w-32 lg:table-cell">
                     {t('brands.cols.aliases')}
                   </TableHead>
-                  <TableHead className="w-36 lg:w-72" />
+                  <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -349,29 +388,35 @@ export function BrandList() {
                     className={cn('scroll-my-24', b.id === flashId && 'sn-row-flash')}
                   >
                     <TableCell className="pl-2">
-                      <p className="truncate font-medium" title={`${b.name} /${b.slug}`}>
-                        {b.name}
-                        <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      {/* name (`flex-initial` — shrinks under real
+                       * pressure, but never *grows* into unused space the
+                       * way `flex-1` did; a short name now sits right next
+                       * to the badge instead of stretching the badge/slug
+                       * off to the far right), badge (shrink-0, always
+                       * visible), /slug (still its own truncate — free to
+                       * shrink away under real pressure exactly like
+                       * before, no new guarantee added for it, only for
+                       * the badge). */}
+                      <div
+                        className="flex min-w-0 items-center gap-1"
+                        title={`${b.name} /${b.slug}`}
+                      >
+                        <span className="min-w-0 flex-initial truncate font-medium">{b.name}</span>
+                        {restrictedIcon(b)}
+                        <span className="min-w-0 shrink truncate text-xs text-muted-foreground">
                           /{b.slug}
                         </span>
-                      </p>
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <span className="inline-flex flex-wrap items-center gap-1">
-                        <StatusBadge tone={STATUS_TONE[b.status]}>
-                          {t(`brands.status.${b.status}`)}
-                        </StatusBadge>
-                        {b.isRestricted && (
-                          <span title={t('brands.restrictedHint')}>
-                            <StatusBadge tone="warning">{t('brands.restricted')}</StatusBadge>
-                          </span>
-                        )}
-                      </span>
+                      <StatusBadge tone={STATUS_TONE[b.status]}>
+                        {t(`brands.status.${b.status}`)}
+                      </StatusBadge>
                     </TableCell>
                     <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
                       {b.aliases.length}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-right">{rowActions(b)}</TableCell>
+                    <TableCell>{rowMenu(b)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -383,42 +428,24 @@ export function BrandList() {
             {list.items.map((b) => (
               <li key={b.id} data-brand-row={b.id} className="flex items-start gap-3 px-3 py-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium" title={`${b.name} /${b.slug}`}>
-                    {b.name}
-                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  <div className="flex min-w-0 items-center gap-1" title={`${b.name} /${b.slug}`}>
+                    <span className="min-w-0 flex-initial truncate font-medium">{b.name}</span>
+                    {restrictedIcon(b)}
+                    <span className="min-w-0 shrink truncate text-xs text-muted-foreground">
                       /{b.slug}
                     </span>
-                  </p>
+                  </div>
                   <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                     <StatusBadge tone={STATUS_TONE[b.status]}>
                       {t(`brands.status.${b.status}`)}
                     </StatusBadge>
-                    {b.isRestricted && (
-                      <StatusBadge tone="warning">{t('brands.restricted')}</StatusBadge>
-                    )}
                   </p>
                 </div>
-                <div className="shrink-0">
-                  {tab === 'archived' ? (
-                    <ActionButton
-                      icon={ArchiveRestore}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRestoreTarget(b)}
-                    >
-                      {t('brands.restore')}
-                    </ActionButton>
-                  ) : (
-                    <ActionButton
-                      icon={Pencil}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setModal({ mode: 'edit', brand: b })}
-                    >
-                      {t('brands.edit')}
-                    </ActionButton>
-                  )}
-                </div>
+                {/* the same menu as the desktop table — Merge/Delete had no
+                 * way to be reached on mobile before this (the 2026-09-18
+                 * fix); a single "…" costs no more room than the one direct
+                 * button that used to sit here. */}
+                <div className="shrink-0">{rowMenu(b)}</div>
               </li>
             ))}
           </ul>

@@ -96,7 +96,6 @@
         "rejected": "Rejected"
       },
       "status": { "pending": "Pending", "active": "Active", "rejected": "Rejected" },
-      "restricted": "Restricted",
       "restrictedHint": "Counterfeit-prone — new listings under this brand need extra verification.",
       "edit": "Edit",
       "delete": "Delete",

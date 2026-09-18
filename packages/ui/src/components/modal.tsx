@@ -50,32 +50,46 @@ export const ModalContent = forwardRef<ElementRef<typeof RDialog.Content>, Modal
             'data-[state=closed]:opacity-0 data-[state=open]:opacity-100',
           )}
         />
-        <RDialog.Content
-          ref={ref}
-          className={cn(
-            // sits a little above true vertical center (readers' eyes land
-            // there first, and it keeps the modal clear of a spot the
-            // on-screen keyboard usually covers) — `-translate-y-1/2` still
-            // centers *the modal itself* around that point, so tall content
-            // grows evenly and short content doesn't look off-balance.
-            'fixed left-1/2 top-[42%] z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2',
-            '-translate-y-1/2 flex-col rounded-lg border border-border bg-background shadow-xl',
-            // panel-scale (G11): a centered dialog fades + scales in/out,
-            // not the slide Drawer uses from an edge — `transition-all`
-            // (not per-property) since opacity and scale change together.
-            'transition-all duration-300 ease-out focus:outline-none',
-            'data-[state=closed]:scale-95 data-[state=open]:scale-100',
-            'data-[state=closed]:opacity-0 data-[state=open]:opacity-100',
-            SIZES[size],
-            className,
-          )}
-          {...props}
-        >
-          {children}
-          {!hideClose && (
-            <OverlayCloseButton as={RDialog.Close} position="corner-lg" closeLabel={closeLabel} />
-          )}
-        </RDialog.Content>
+        {/* Two nested layers, not one `fixed` + percentage-positioned panel
+         * (the 2026-09-18 fix — that math put a tall panel's top edge above
+         * the viewport with no way back, since a `fixed` element ignores
+         * page scroll). Outer: a plain scrollable block — never `flex`
+         * itself, which sidesteps a real cross-browser quirk where a flex
+         * container's `align-items: center` combined with `overflow: auto`
+         * can clip a child's top instead of scrolling to it. Inner: an
+         * ordinary flex-center: `min-h-full` keeps it exactly viewport-tall
+         * for short content (so it centers normally), and lets it grow
+         * taller than that for a genuinely tall panel — which the *outer*
+         * layer's own scroll then reaches every part of. */}
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <RDialog.Content
+              ref={ref}
+              className={cn(
+                'relative flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col rounded-lg',
+                'border border-border bg-background shadow-xl',
+                // panel-scale (G11): a centered dialog fades + scales in/out,
+                // not the slide Drawer uses from an edge — `transition-all`
+                // (not per-property) since opacity and scale change together.
+                'transition-all duration-300 ease-out focus:outline-none',
+                'data-[state=closed]:scale-95 data-[state=open]:scale-100',
+                'data-[state=closed]:opacity-0 data-[state=open]:opacity-100',
+                SIZES[size],
+                className,
+              )}
+              {...props}
+            >
+              {children}
+              {!hideClose && (
+                <OverlayCloseButton
+                  as={RDialog.Close}
+                  position="corner-lg"
+                  closeLabel={closeLabel}
+                />
+              )}
+            </RDialog.Content>
+          </div>
+        </div>
       </RDialog.Portal>
     );
   },

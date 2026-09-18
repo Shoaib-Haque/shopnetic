@@ -170,6 +170,20 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     expect((await svc.get(b.id)).aliases).toHaveLength(0);
   });
 
+  it("aliasAvailable checks the exact alias, case-insensitively, against every brand's aliases", async () => {
+    const b = await svc.create(
+      { name: s('avail-host'), slug: s('avail-host'), aliases: [s('avail-alias')] },
+      actor,
+      {},
+    );
+    expect(await svc.aliasAvailable(s('unused-alias'))).toBe(true);
+    expect(await svc.aliasAvailable(s('avail-alias'))).toBe(false);
+    expect(await svc.aliasAvailable(s('avail-alias').toUpperCase())).toBe(false);
+
+    await svc.removeAlias(b.id, b.aliases[0]!.id, actor, {});
+    expect(await svc.aliasAvailable(s('avail-alias'))).toBe(true);
+  });
+
   it('soft-deletes and drops from list', async () => {
     // a single unhyphenated marker, not `s('gone')` — since the 2026-09-17
     // search-tokenization fix, `s(...)`'s shared `itest-brand-<stamp>-`

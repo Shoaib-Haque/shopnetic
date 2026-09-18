@@ -301,6 +301,21 @@ export class BrandService {
     return view;
   }
 
+  /** Exact (case-insensitive) alias availability, for the admin UI to
+   * check *before* staging a draft alias on the create form — where
+   * there's no brand id yet for `addAlias`'s own round-trip to validate
+   * against, so without this a duplicate wasn't caught until the whole
+   * form was submitted (the 2026-09-18 fix). Reuses the same lookup
+   * `assertAliasesFree` does, just returning a boolean instead of
+   * throwing. */
+  async aliasAvailable(alias: string): Promise<boolean> {
+    const clash = await this.prisma.brandAlias.findFirst({
+      where: { alias },
+      select: { id: true },
+    });
+    return !clash;
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
   private async rowOrThrow(id: string): Promise<BrandWithAliases> {

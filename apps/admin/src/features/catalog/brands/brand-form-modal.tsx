@@ -11,7 +11,13 @@ import { FormModal } from '@/components/crud/form-modal';
 import { slugify, slugifyLive } from '@/lib/slugify';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
-import { addBrandAlias, createBrand, removeBrandAlias, updateBrand } from './api';
+import {
+  addBrandAlias,
+  brandAliasAvailable,
+  createBrand,
+  removeBrandAlias,
+  updateBrand,
+} from './api';
 
 /** zod messages are translation keys under the `catalog` namespace, resolved at render. */
 const formSchema = z.object({
@@ -181,10 +187,28 @@ export function BrandFormModal({
     const alias = newAlias.trim();
     if (!alias) return;
     if (mode === 'create') {
-      if (!draftAliases.some((a) => a.toLowerCase() === alias.toLowerCase())) {
-        setDraftAliases((prev) => [...prev, alias]);
+      if (draftAliases.some((a) => a.toLowerCase() === alias.toLowerCase())) {
+        setNewAlias('');
+        return;
       }
-      setNewAlias('');
+      // no brand id yet for `addBrandAlias`'s own round-trip to validate
+      // against — check availability directly instead, so a duplicate is
+      // blocked right here rather than only surfacing when the whole form
+      // is submitted (the 2026-09-18 fix).
+      setAddingAlias(true);
+      setAliasError(null);
+      try {
+        if (!(await brandAliasAvailable(alias))) {
+          setAliasError(t(catalogErrorKey('BRAND_ALIAS_TAKEN')));
+          return;
+        }
+        setDraftAliases((prev) => [...prev, alias]);
+        setNewAlias('');
+      } catch (e) {
+        setAliasError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+      } finally {
+        setAddingAlias(false);
+      }
       return;
     }
     if (!brand) return;

@@ -120,6 +120,15 @@ export function CategoryList() {
   const reordering = useRef(false);
   const pendingMove = useRef<CategoryMove | null>(null);
 
+  // which row (if any) the currently-showing undo toast is for restoring —
+  // only meaningful right after `doDelete`'s own `notify.undo`; the reorder
+  // undo below shares the same fixed toast id and always overwrites it, so
+  // it resets this to null wherever it fires. Lets `confirmRestore` dismiss
+  // a *stale* delete-undo toast when the archived-tab Restore button
+  // reaches the same row another way, without touching an unrelated row's
+  // still-live undo toast (the 2026-09-18 fix).
+  const pendingUndoId = useRef<string | null>(null);
+
   // "/" jumps to search (unless the user is already typing somewhere)
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -331,12 +340,14 @@ export function CategoryList() {
   async function doDelete(c: Category): Promise<void> {
     try {
       await deleteCategory(c.id);
+      pendingUndoId.current = c.id;
       notify.undo(t('categories.toast.deleted', { name: labelOf(c) }), {
         undoLabel: t('categories.undo'),
         undoneMessage: t('categories.toast.restored', { name: labelOf(c) }),
         onUndo: async () => {
           try {
             await restoreCategory(c.id);
+            if (pendingUndoId.current === c.id) pendingUndoId.current = null;
             resync();
           } catch (e) {
             err(e); // surface the real reason (name now taken, parent archived…)
@@ -356,6 +367,10 @@ export function CategoryList() {
     setRestoring(true);
     try {
       await restoreCategory(restoreTarget.id);
+      if (pendingUndoId.current === restoreTarget.id) {
+        notify.dismissUndo();
+        pendingUndoId.current = null;
+      }
       notify.saved(t('categories.toast.restored', { name: labelOf(restoreTarget) }));
       setRestoreTarget(null);
       resync();
@@ -394,6 +409,9 @@ export function CategoryList() {
     let ok = true;
     try {
       await reorderCategories({ parentId: m.parentId, orderedIds: m.orderedIds });
+      // this undo toast replaces whatever was showing (fixed toast id) —
+      // any pending delete-undo it just overwrote is no longer live
+      pendingUndoId.current = null;
       notify.undo(
         m.reparents
           ? t('categories.toast.moved', {
