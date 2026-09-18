@@ -22,6 +22,28 @@ type BrandWithAliases = BrandRow & { aliases: BrandAliasRow[] };
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 
+/** Mirrors `CategoryService`'s own `tokenizeForSql` (same normalize +
+ * rules) — duplicated rather than shared, following those files' own
+ * precedent of not extracting this into a cross-package util. Splits on
+ * whitespace/punctuation runs into individual search words, each matched
+ * with its own `OR` clause below — a query of "pla lev" matches a brand
+ * containing *either* word, not the literal two-word phrase (the
+ * 2026-09-17 fix — `list()` previously did one `contains` on the whole
+ * query string). */
+function tokenizeForSql(query: string): string[] {
+  const normalized = query
+    .toLowerCase()
+    .replace(/['’"`]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const tokens = new Set<string>();
+  for (const tok of normalized.split(' ')) {
+    if (tok.length >= 2) tokens.add(tok);
+    if (tokens.size >= 10) break;
+  }
+  return [...tokens];
+}
+
 @Injectable()
 export class BrandService {
   private readonly record: ReturnType<typeof auditRecordFor>;
@@ -48,12 +70,13 @@ export class BrandService {
       ? { deletedAt: { not: null } }
       : { deletedAt: null };
     if (opts.status) where.status = opts.status;
-    if (opts.q) {
-      where.OR = [
-        { name: { contains: opts.q, mode: 'insensitive' } },
-        { slug: { contains: opts.q.toLowerCase() } },
-        { aliases: { some: { alias: { contains: opts.q } } } },
-      ];
+    const tokens = opts.q ? tokenizeForSql(opts.q) : [];
+    if (tokens.length > 0) {
+      where.OR = tokens.flatMap((tok) => [
+        { name: { contains: tok, mode: 'insensitive' as const } },
+        { slug: { contains: tok } },
+        { aliases: { some: { alias: { contains: tok } } } },
+      ]);
     }
 
     const rows = await this.prisma.brand.findMany({

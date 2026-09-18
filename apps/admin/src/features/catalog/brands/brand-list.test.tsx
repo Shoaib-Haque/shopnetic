@@ -149,4 +149,67 @@ describe('BrandList', () => {
     expect(await screen.findByText('Couldn’t load the list.')).toBeInTheDocument();
     expect(screen.queryByText('No brands yet.')).not.toBeInTheDocument();
   });
+
+  it('a status filter picked on Live is not silently carried into the Archived query — the 2026-09-17 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount (live)
+      .mockResolvedValueOnce(page([brand('a', 'Acme', { status: 'pending' })])) // #2 live, status=pending
+      .mockResolvedValueOnce(page([])); // #3 switch to archived
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'pending' } });
+    await screen.findAllByText('Acme');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await screen.findByText('No brands yet.');
+
+    const archivedCall = mockedAdminApi.mock.calls[2]?.[0] as string;
+    expect(archivedCall).toContain('archived=true');
+    expect(archivedCall).not.toContain('status=');
+  });
+
+  it('adding an alias updates the row in place — no extra list reload — the 2026-09-17 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount
+      .mockResolvedValueOnce(
+        brand('a', 'Acme', {
+          aliases: [{ id: 'al1', alias: 'ACM', createdAt: '2026-01-01T00:00:00.000Z' }],
+        }),
+      ); // #2 POST /brands/a/aliases
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    await screen.findByText('Edit brand');
+
+    fireEvent.change(screen.getByPlaceholderText('Add an alias…'), { target: { value: 'ACM' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    expect(await screen.findByText('Alias “ACM” added.')).toBeInTheDocument();
+    // exactly the mount + the add-alias call — no third (resync) call
+    expect(mockedAdminApi).toHaveBeenCalledTimes(2);
+  });
+
+  it('a duplicate-alias error renders inline under the field, not as a toast — the 2026-09-17 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount
+      .mockRejectedValueOnce(new AdminApiError('BRAND_ALIAS_TAKEN', 409)); // #2 POST /aliases fails
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    await screen.findByText('Edit brand');
+
+    const aliasInput = screen.getByPlaceholderText('Add an alias…');
+    fireEvent.change(aliasInput, { target: { value: 'dup' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    const err = await screen.findByText('That alias already maps to a brand.');
+    expect(err.tagName).toBe('P');
+    expect(aliasInput).toHaveAttribute('aria-invalid', 'true');
+  });
 });

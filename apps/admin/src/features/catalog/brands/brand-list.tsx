@@ -108,7 +108,11 @@ export function BrandList() {
     (cursor: string | undefined) =>
       listBrandsPage({
         archived: tab === 'archived',
-        ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+        // The status dropdown only renders on the Live tab (below), but its
+        // last-picked value stayed in state — gated here too so a filter
+        // chosen before switching to Archived doesn't silently keep
+        // applying to a query the UI no longer shows it for.
+        ...(tab === 'live' && statusFilter !== 'all' ? { status: statusFilter } : {}),
         ...(debouncedQ ? { q: debouncedQ } : {}),
         ...(cursor ? { cursor } : {}),
         limit: 30,
@@ -132,10 +136,16 @@ export function BrandList() {
     if (highlighted) flash(highlighted.id);
   }, [highlighted, flash]);
 
+  // `refresh`, not `retry` — this list has no separate unpaginated data
+  // source with its own background-safe loader (Category's tree does; this
+  // is always the flat/paginated view), so a post-mutation resync needs the
+  // in-place, no-flash refetch or every action blanks the whole list before
+  // showing it again.
+  const listRefresh = list.refresh;
   const resync = useCallback(() => {
     if (!mounted.current) return;
-    list.retry();
-  }, [list]);
+    listRefresh();
+  }, [listRefresh]);
 
   const labelOf = (b: Brand | null | undefined): string => (b ? capForMessage(b.name) : '');
 
@@ -328,7 +338,7 @@ export function BrandList() {
                   <TableHead className="hidden w-32 lg:table-cell">
                     {t('brands.cols.aliases')}
                   </TableHead>
-                  <TableHead className="w-28 lg:w-64" />
+                  <TableHead className="w-36 lg:w-72" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -361,7 +371,7 @@ export function BrandList() {
                     <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
                       {b.aliases.length}
                     </TableCell>
-                    <TableCell className="text-right">{rowActions(b)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right">{rowActions(b)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -436,6 +446,9 @@ export function BrandList() {
             setModal(null);
             void doDelete(b);
           }}
+          onAliasesChanged={(b) =>
+            list.setItems((prev) => prev.map((x) => (x.id === b.id ? b : x)))
+          }
         />
       )}
 

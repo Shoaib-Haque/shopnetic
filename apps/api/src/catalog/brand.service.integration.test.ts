@@ -171,10 +171,16 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
   });
 
   it('soft-deletes and drops from list', async () => {
-    const b = await svc.create({ name: s('gone'), slug: s('gone') }, actor, {});
+    // a single unhyphenated marker, not `s('gone')` — since the 2026-09-17
+    // search-tokenization fix, `s(...)`'s shared `itest-brand-<stamp>-`
+    // prefix would (correctly, per OR semantics — same tradeoff documented
+    // on `category.service.ts`'s own search test) match every other brand
+    // this file creates too, not just this one
+    const marker = `gonemk${stamp}`;
+    const b = await svc.create({ name: marker, slug: s('gone') }, actor, {});
     await svc.remove(b.id, actor, {});
     await expect(svc.get(b.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    const { items } = await svc.list({ q: s('gone') });
+    const { items } = await svc.list({ q: marker });
     expect(items).toHaveLength(0);
   });
 
@@ -192,6 +198,19 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     // flipping status doesn't touch isRestricted, and vice versa
     const reflagged = await svc.update(b.id, { isRestricted: true, status: 'active' }, actor, {});
     expect(reflagged).toMatchObject({ status: 'active', isRestricted: true });
+  });
+
+  it('q splits on whitespace and OR-matches each word, not the literal phrase — the 2026-09-17 fix', async () => {
+    await svc.create({ name: s('findme1-electronics'), slug: s('findme1-electronics') }, actor, {});
+    await svc.create({ name: s('findme2-tools'), slug: s('findme2-tools') }, actor, {});
+
+    // the old behavior (one `contains` on the whole query string) would
+    // match neither row here, since "findme1 findme2" never appears as a
+    // literal substring in either name
+    const { items } = await svc.list({ q: 'findme1 findme2' });
+    const names = items.map((b) => b.name);
+    expect(names).toContain(s('findme1-electronics'));
+    expect(names).toContain(s('findme2-tools'));
   });
 
   it('remove() relinks any live products to no brand rather than leaving them dangling — the 2026-09-17 fix', async () => {

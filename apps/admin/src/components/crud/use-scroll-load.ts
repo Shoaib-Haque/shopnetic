@@ -30,6 +30,14 @@ export interface UseScrollLoadResult<T> {
   /** Re-run from scratch — for a "Try again" button after `loadError` with
    * no items loaded yet. */
   retry: () => void;
+  /** Re-fetch the first page in the background and swap it in on success —
+   * for a post-mutation resync on a list that's *always* the flat/paginated
+   * view (no separate unpaginated data source with its own background-safe
+   * loader to fall back on, the way a tree view has). Unlike `retry`, never
+   * clears `items` or flips `loading`/`loadError` — a background refresh
+   * failing shouldn't blank rows the user can already see; the mutation
+   * that triggered it already surfaced its own success/error. */
+  refresh: () => void;
   /** Explicitly (re)request the next page — for a "Try again" affordance
    * after `loadError` when items are already loaded (a failed *later*
    * page): the sentinel's `IntersectionObserver` only fires on a real
@@ -156,6 +164,20 @@ export function useScrollLoad<T>(
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
+  const refresh = useCallback(() => {
+    fetchPageRef
+      .current(undefined)
+      .then((page) => {
+        setItems(page.items);
+        cursorRef.current = page.nextCursor;
+        hasMoreRef.current = page.nextCursor !== undefined;
+        setHasMore(hasMoreRef.current);
+      })
+      .catch(() => {
+        // best-effort — see the doc comment on `refresh` above
+      });
+  }, []);
+
   return {
     items,
     setItems,
@@ -165,6 +187,7 @@ export function useScrollLoad<T>(
     hasMore,
     sentinelRef,
     retry,
+    refresh,
     loadMore,
   };
 }

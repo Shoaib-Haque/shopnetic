@@ -2703,3 +2703,70 @@ compose file.
     404) but nothing beyond that has been clicked through; next step is
     the user's own UI walkthrough, same as every other feature this
     project.
+
+- 2026-09-17 — Six issues reported from that first live UI walkthrough of
+  the Brands page, all discussed and root-caused before touching code:
+  1. **Row actions touching the table's right border** — the icon-only
+     column (`md`–`lg` viewports, before labels reappear) was sized
+     `w-28` (112px), too narrow for 3 icon buttons + gaps + cell padding
+     (needs ~150px+). Widened to `w-36 lg:w-72` + `whitespace-nowrap` on
+     the cell.
+  2. **Couldn't restore a deleted brand.** Root cause: the status
+     dropdown only *renders* on the Live tab, but its last-picked value
+     stayed in component state and kept being sent on the Archived
+     query underneath — so any status filter touched before switching
+     tabs silently hid the row you were trying to restore. Fixed by
+     gating `status` on `tab === 'live'` in the fetch, not just the
+     dropdown's visibility.
+  3. **Full list blanks then reloads after every action.** Root cause,
+     not Brand-specific: `useScrollLoad`'s `retry()` synchronously clears
+     `items` and sets `loading: true` before refetching — fine for a
+     "Try again after total failure" button, wrong for a post-mutation
+     resync. Category mostly never hits this because its *primary* view
+     is an unpaginated tree with its own separate `load({background:
+     true})` loader; Brand has no tree, so it's always on the flat path.
+     Added a real `refresh()` to the shared hook (refetch page 1, swap
+     `items` in on success, never clear/error synchronously) — fixes
+     this for Brand now and for every future flat-only entity (option
+     types, value sets, …) for free.
+  4. **Alias count in the list stale until a full reload.** The form
+     modal's add/remove-alias calls only updated its own local state,
+     never told the list. Added `onAliasesChanged` — the list now
+     patches that one row via `setItems`, no extra fetch.
+  5. **Duplicate-alias error showed as a toast**, inconsistent with the
+     same form's name/slug fields (inline, under the field) — the alias
+     input lives outside react-hook-form (its own endpoints, not part of
+     the PATCH body) so its error path never got the same treatment.
+     Given its own local error state + inline message, matching the
+     established pattern instead of the toast shortcut.
+  6. **`q` didn't split on whitespace** — `list()` did one `contains` on
+     the whole query string, so "pla lev" only matched a literal
+     "pla lev" substring, not a row containing "pla" and a different row
+     containing "lev". Category already solved exactly this
+     (`tokenizeForSql`, OR-semantics per-word matching) — **initially
+     proposed extracting it to a shared module** (a would-be 4th
+     same-package copy), but `identity/staff-accounts.service.ts`'s and
+     `identity/audit.controller.ts`'s own copies each carry a doc
+     comment explicitly recording that decision as already made twice:
+     "duplicated rather than shared, following [that file]'s own
+     precedent of not extracting this into a cross-package util."
+     Course-corrected mid-implementation to follow that explicit,
+     repeated precedent instead of the initial proposal — brand.service.ts
+     got its own 4th copy, not a shared one.
+  - Surfaced a second real bug while fixing #6: the existing `'soft-deletes
+    and drops from list'` test queried `s('gone')` (the file's full
+    `itest-brand-<stamp>-gone` stamp prefix) expecting a narrow match —
+    under OR-semantics tokenization that string's shared "itest"/"brand"/
+    stamp tokens now (correctly) match every fixture in the file, not just
+    this one. Same documented tradeoff `category.service.ts`'s own search
+    test already calls out ("`stamp` alone would... match the whole file's
+    fixtures via their shared slug prefix"). Fixed the test to use an
+    unscoped single-word marker, not the code.
+  - New/extended tests for all six: 3 in `brand-list.test.tsx` (statusFilter
+    gating, alias live-update with an exact call-count assertion, inline
+    vs. toast error), 1 in `brand.service.integration.test.ts` (token OR
+    matching). Revert-confirm-restore on the two with the clearest
+    regression signal (search tokenization, statusFilter leak) — both
+    failed for the exact right reason, restored. Full sweep green: admin
+    212 tests (was 209), API 114 integration (was 113) + 25 unit;
+    typecheck/lint clean on both packages.

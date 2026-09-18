@@ -54,6 +54,7 @@ export function BrandFormModal({
   brand,
   onSaved,
   onDelete,
+  onAliasesChanged,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,9 +63,14 @@ export function BrandFormModal({
   onSaved: (action: 'created' | 'updated', b: Brand) => void;
   /** Edit mode only — close the modal, then run the list's delete flow. */
   onDelete?: (b: Brand) => void;
+  /** Edit mode only — an alias was added/removed outside the main Save
+   * flow (its own endpoints, see the note on `aliases` state below), so the
+   * list's row (alias count) needs its own way to hear about it. */
+  onAliasesChanged?: (b: Brand) => void;
 }) {
   const t = useTranslations('catalog');
   const [formError, setFormError] = useState<string | null>(null);
+  const [aliasError, setAliasError] = useState<string | null>(null);
   /** false while the slug still mirrors the name (create form only). */
   const [slugTouched, setSlugTouched] = useState(false);
 
@@ -103,6 +109,7 @@ export function BrandFormModal({
   useEffect(() => {
     if (!open) return;
     setFormError(null);
+    setAliasError(null);
     setSlugTouched(mode === 'edit');
     setNewAlias('');
     setDraftAliases([]);
@@ -182,13 +189,17 @@ export function BrandFormModal({
     }
     if (!brand) return;
     setAddingAlias(true);
+    setAliasError(null);
     try {
       const b = await addBrandAlias(brand.id, { alias });
       setAliases(b.aliases);
       setNewAlias('');
       notify.saved(t('brands.toast.aliasAdded', { alias }));
+      onAliasesChanged?.(b);
     } catch (e) {
-      notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+      // a duplicate alias is the user's typo, not a background failure —
+      // inline under the field, same as name/slug above, not a toast
+      setAliasError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
     } finally {
       setAddingAlias(false);
     }
@@ -200,8 +211,10 @@ export function BrandFormModal({
     setRemovingAliasId(aliasId);
     try {
       await removeBrandAlias(brand.id, aliasId);
-      setAliases((prev) => prev.filter((a) => a.id !== aliasId));
+      const nextAliases = aliases.filter((a) => a.id !== aliasId);
+      setAliases(nextAliases);
       notify.saved(t('brands.toast.aliasRemoved', { alias: aliasText }));
+      onAliasesChanged?.({ ...brand, aliases: nextAliases });
     } catch (e) {
       notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
     } finally {
@@ -361,7 +374,10 @@ export function BrandFormModal({
         <div className="mt-1.5 flex gap-2">
           <Input
             value={newAlias}
-            onChange={(e) => setNewAlias(e.target.value)}
+            onChange={(e) => {
+              setNewAlias(e.target.value);
+              setAliasError(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -370,6 +386,7 @@ export function BrandFormModal({
             }}
             placeholder={t('brands.form.addAliasPlaceholder')}
             disabled={addingAlias}
+            invalid={aliasError !== null}
             className="flex-1"
           />
           <button
@@ -381,6 +398,7 @@ export function BrandFormModal({
             {addingAlias ? <Spinner className="size-4" /> : t('brands.form.add')}
           </button>
         </div>
+        {aliasError !== null && <p className="mt-1 text-xs text-destructive">{aliasError}</p>}
       </Field>
 
       {formError !== null && <p className="text-sm text-destructive">{formError}</p>}
