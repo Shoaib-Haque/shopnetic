@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { Brand } from '@shopnetic/contracts';
 import {
@@ -14,6 +14,8 @@ import {
   SearchInput,
   Spinner,
 } from '@shopnetic/ui';
+import { ScrollLoadFooter } from '@/components/crud/scroll-load-states';
+import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
@@ -39,8 +41,6 @@ export function BrandMergeDialog({
   const t = useTranslations('catalog');
   const [q, setQ] = useState('');
   const debouncedQ = useDebouncedSearch(q);
-  const [results, setResults] = useState<Brand[]>([]);
-  const [searching, setSearching] = useState(false);
   const [target, setTarget] = useState<Brand | null>(null);
   const [merging, setMerging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,19 +48,29 @@ export function BrandMergeDialog({
   useEffect(() => {
     if (!open) return;
     setQ('');
-    setResults([]);
     setTarget(null);
     setError(null);
   }, [open, source]);
 
-  useEffect(() => {
-    if (!open) return;
-    setSearching(true);
-    listBrandsPage({ ...(debouncedQ ? { q: debouncedQ } : {}), limit: 10 })
-      .then((p) => setResults(p.brands.filter((b) => b.id !== source.id)))
-      .catch(() => setResults([]))
-      .finally(() => setSearching(false));
-  }, [open, debouncedQ, source.id]);
+  // paginated, not a hard-capped one-shot fetch (the 2026-09-18 fix) — same
+  // `useScrollLoad` idiom Brand List's own table uses, just inside a short
+  // scrollable picker instead of the page. `source` is filtered out of each
+  // page's results rather than excluded server-side, so a page can come back
+  // with fewer than `limit` rows on the rare page that contains it — no
+  // different from before, when the single fetch did the same filter.
+  const fetchPage = useCallback(
+    (cursor: string | undefined) =>
+      listBrandsPage({
+        ...(debouncedQ ? { q: debouncedQ } : {}),
+        ...(cursor ? { cursor } : {}),
+        limit: 10,
+      }).then((p) => ({
+        items: p.brands.filter((b) => b.id !== source.id),
+        nextCursor: p.nextCursor,
+      })),
+    [debouncedQ, source.id],
+  );
+  const list = useScrollLoad<Brand>(fetchPage, [debouncedQ, source.id], open);
 
   async function onConfirm(): Promise<void> {
     if (!target) return;
@@ -96,17 +106,17 @@ export function BrandMergeDialog({
           />
 
           <div className="max-h-56 overflow-y-auto rounded-md border border-border">
-            {searching ? (
+            {list.loading ? (
               <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                 <Spinner />
               </div>
-            ) : results.length === 0 ? (
+            ) : list.items.length === 0 ? (
               <p className="px-3 py-4 text-center text-sm text-muted-foreground">
                 {t('brands.mergeDialog.noResults')}
               </p>
             ) : (
               <ul className="divide-y divide-border">
-                {results.map((b) => (
+                {list.items.map((b) => (
                   <li key={b.id}>
                     <button
                       type="button"
@@ -122,6 +132,15 @@ export function BrandMergeDialog({
                     </button>
                   </li>
                 ))}
+                <li className="px-3 py-2">
+                  <ScrollLoadFooter
+                    hasMore={list.hasMore}
+                    loadingMore={list.loadingMore}
+                    loadError={list.loadError}
+                    sentinelRef={list.sentinelRef}
+                    onRetry={list.loadMore}
+                  />
+                </li>
               </ul>
             )}
           </div>

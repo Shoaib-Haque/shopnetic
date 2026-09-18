@@ -73,7 +73,20 @@ export function FormModal({
               fields go unreported and focus lands wherever the browser picked.
               RHF's zodResolver is the only source of validation UI here. */}
           <form onSubmit={onSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
-            <ModalBody className="flex flex-col gap-4">{children}</ModalBody>
+            <ModalBody className="flex flex-col gap-4">
+              {/* `display: contents` — disables every field for the
+               * duration of the request (a native `<fieldset disabled>`
+               * cascades to descendant form controls, including a Radix
+               * `Switch`'s underlying `<button>`) without adding a box of
+               * its own, so nothing about the layout changes. Otherwise an
+               * edit made to a field after clicking Save, while the
+               * request is still in flight, was silently dropped — it
+               * never reached the values `handleSubmit` had already
+               * captured (the 2026-09-18 fix). */}
+              <fieldset disabled={submitting} className="contents">
+                {children}
+              </fieldset>
+            </ModalBody>
             <ModalFooter className={secondaryAction ? 'justify-between' : undefined}>
               {secondaryAction ?? null}
               <div className="flex items-center gap-2">

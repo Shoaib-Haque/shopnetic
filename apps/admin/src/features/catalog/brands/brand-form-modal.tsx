@@ -199,6 +199,12 @@ export function BrandFormModal({
   async function onAddAlias(): Promise<void> {
     const alias = newAlias.trim();
     if (!alias) return;
+    // the Add button already has an explicit `disabled={addingAlias || …}`
+    // guard against a second click while one is in flight — the input's
+    // Enter-key handler only had the DOM's own `disabled` attribute to lean
+    // on for the same thing, which depends on the re-render having already
+    // landed. An explicit check here doesn't (the 2026-09-18 fix).
+    if (addingAlias) return;
     if (mode === 'create') {
       if (draftAliases.some((a) => a.toLowerCase() === alias.toLowerCase())) {
         setNewAlias('');
@@ -376,6 +382,7 @@ export function BrandFormModal({
               onCheckedChange={field.onChange}
               onBlur={field.onBlur}
               className="mt-0.5"
+              wrappedInLabel
             />
           )}
         />

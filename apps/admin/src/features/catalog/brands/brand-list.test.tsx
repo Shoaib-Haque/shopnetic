@@ -3,6 +3,7 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { Brand } from '@shopnetic/contracts';
 import { adminApi, AdminApiError } from '@/features/admin-api/client';
 import { renderAdmin } from '@/test/render';
+import { triggerIntersection } from '@/test/intersection-observer';
 import { BrandList } from './brand-list';
 
 vi.mock('@/features/admin-api/client', async () => {
@@ -351,6 +352,24 @@ describe('BrandList', () => {
       '/brands/a/merge',
       expect.objectContaining({ method: 'POST', body: { intoBrandId: 'b' } }),
     );
+  });
+
+  it('the merge target picker loads more results past the first page instead of hard-capping at it — the 2026-09-18 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount
+      .mockResolvedValueOnce(page([brand('b', 'Bravo')], 'c1')) // #2 merge dialog's first page
+      .mockResolvedValueOnce(page([brand('c', 'Charlie')])); // #3 merge dialog's second page
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Merge' }));
+    await screen.findByText('Bravo');
+    expect(screen.queryByText('Charlie')).not.toBeInTheDocument();
+
+    triggerIntersection(await screen.findByTestId('scroll-sentinel'));
+    expect(await screen.findByText('Charlie')).toBeInTheDocument();
   });
 
   it('an AdminApiError on the first load shows the error line, not the empty state', async () => {

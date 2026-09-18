@@ -3227,3 +3227,62 @@ compose file.
   confirming the new hook-level tests independently catch the same
   regression on their own. Full admin suite green: 237/238 (the one
   pre-existing flake, still unrelated and untouched); typecheck/lint clean.
+
+- 2026-09-18 — Four more from the same self-audit, agreed-priority order
+  (small UX fixes, then minor polish):
+  - Staff's role-change modal had no no-op guard — Category's/Brand's form
+    modals already skip a no-op save via react-hook-form's `dirtyFields`
+    (see the entries above); this modal is plain `useState`, not RHF, so
+    the equivalent is a direct comparison:
+    `if (roleTarget.roles[0] === roleChoice) { setRoleTarget(null); return; }`
+    before the request, matching the same "close silently, no API call, no
+    audit event" behavior. New test asserts `changeStaffRole` is never
+    called and no toast appears; revert-confirm-restore.
+  - `FormModal` (`components/crud/`, shared by Category/Brand/Staff) never
+    disabled its own fields while `submitting` — only the Cancel/Save
+    buttons were. An edit made to a field *after* clicking Save, while the
+    request was still in flight, was silently dropped: it never reached
+    the values `handleSubmit` had already captured. Fixed by wrapping
+    `children` in `<fieldset disabled={submitting} className="contents">`
+    — `display: contents` so the fieldset adds no box of its own (no
+    layout change), and a native `fieldset[disabled]` cascades to every
+    descendant form control, including a Radix `Switch`'s underlying
+    `<button>`, for free. New `form-modal.test.tsx` (first dedicated test
+    for this shared component); revert-confirm-restore. Benefits all three
+    forms from the one shared-component change.
+  - Brand's merge-target picker hard-capped at 10 results with no way to
+    see more. Replaced the one-shot `listBrandsPage({limit:10})` fetch with
+    `useScrollLoad` + `ScrollLoadFooter` inside the picker's scrollable box
+    — same idiom Brand List's own table already uses; `source` is still
+    filtered out of each page client-side (same as before), so the one
+    page containing it can come back with fewer than `limit` rows, no
+    different from the prior single-fetch behavior. New test: two mocked
+    pages, `triggerIntersection` on the sentinel loads the second;
+    revert-confirm-restore.
+  - `Switch` (`@shopnetic/ui`) had no way to guarantee an accessible name —
+    fine for both current usages (always wrapped in a real `<label>`), but
+    nothing would have caught a future bare/icon-only one. Rather than a
+    runtime check (would need a new ref-merging helper with no precedent
+    in this package), made it a compile-time contract: `SwitchProps` is now
+    a union requiring `aria-label`, `aria-labelledby`, or a new
+    `wrappedInLabel: true` escape hatch (caller-facing only, stripped
+    before the props reach the DOM) on every usage. Both existing call
+    sites (`category-form-modal.tsx`, `brand-form-modal.tsx`) updated to
+    add `wrappedInLabel`; verified the constraint is real by temporarily
+    dropping it from one call site and confirming `tsc` fails, matching
+    revert-confirm-restore's spirit for a type-level guarantee instead of a
+    runtime one.
+  - Brand's alias-input Enter-key handler relied solely on the input's DOM
+    `disabled` attribute to block a second submission while one was in
+    flight — the Add button already had an explicit
+    `disabled={addingAlias || …}` guard for the same thing, but `onAddAlias`
+    itself didn't, so a second Enter press landing before the disabled
+    attribute's re-render caught up could fire a second request. Added
+    `if (addingAlias) return;` at the top of `onAddAlias`, matching the
+    button's own explicit guard. New minimal `brand-form-modal.test.tsx`
+    (first for this file — a full dedicated suite is a separate, larger
+    item, not done here): a held-open `brandAliasAvailable` promise, two
+    Enter presses, asserts one call. Revert-confirm-restore on all four
+    fixes. Full admin suite green: 242/243 (the one pre-existing flake,
+    still unrelated and untouched); typecheck/lint clean on `@shopnetic/ui`
+    and `@shopnetic/admin`.

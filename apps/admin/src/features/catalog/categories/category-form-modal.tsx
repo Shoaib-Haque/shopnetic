@@ -420,6 +420,7 @@ export function CategoryFormModal({
               onCheckedChange={field.onChange}
               onBlur={field.onBlur}
               disabled={readOnly}
+              wrappedInLabel
             />
           )}
         />

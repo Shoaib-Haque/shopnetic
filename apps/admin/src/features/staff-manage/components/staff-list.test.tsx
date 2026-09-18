@@ -280,6 +280,24 @@ describe('StaffList', () => {
     expect(within(row).getByText('Super Admin')).toBeInTheDocument();
   });
 
+  it('submitting the role modal with the same role picked is a silent no-op — no request, no toast, no audit event — the 2026-09-18 fix', async () => {
+    const target = account({ id: 'acc-2', email: 'target@example.com', roles: ['ADMIN'] });
+    mockedListStaff.mockResolvedValueOnce(page([ME, target]));
+
+    render();
+    await screen.findAllByText(target.email);
+    openRowMenu(tableRowFor(target.email));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Change role' }));
+
+    // the modal opens pre-selected to the account's current role — leave it
+    // as-is and save
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mockedChangeStaffRole).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Role updated/)).not.toBeInTheDocument();
+  });
+
   it('unlocks a locked account through the confirm dialog', async () => {
     const locked = account({ id: 'acc-2', email: 'locked@example.com', status: 'locked' });
     mockedListStaff.mockResolvedValueOnce(page([ME, locked]));

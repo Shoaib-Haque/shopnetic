@@ -137,6 +137,14 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
 
   async function submitRoleChange(): Promise<void> {
     if (!roleTarget) return;
+    // no-op save must not write an audit event or show a "saved" toast for
+    // nothing changed — same guard Category's/Brand's form modals already
+    // have via react-hook-form's `dirtyFields`; this modal is plain state,
+    // so the equivalent check is a direct comparison (the 2026-09-18 fix).
+    if (roleTarget.roles[0] === roleChoice) {
+      setRoleTarget(null);
+      return;
+    }
     setBusy(true);
     try {
       const updated = await changeStaffRole(roleTarget.id, roleChoice);
