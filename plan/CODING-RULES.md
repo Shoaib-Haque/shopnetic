@@ -3202,3 +3202,28 @@ compose file.
     created with the alias already attached) and assert both actions;
     revert-confirm-restore (reverting the service change correctly failed
     it) — full `test:integration` green (116/116).
+
+- 2026-09-18 — DRY: extracted the near-verbatim `doDelete`/`confirmRestore`/
+  `pendingUndoId` block (three separate same-day bug-fix entries above
+  landed by hand in both `category-list.tsx` and `brand-list.tsx`) into
+  `useSoftDeleteWithUndo` (`components/crud/`, README updated). Takes
+  `deleteItem`/`restoreItem`/`resync`/`labelOf`/`messages`/`onError`;
+  returns `doDelete`, `restoreTarget`/`setRestoreTarget`, `restoring`,
+  `confirmRestore`, and `clearPendingUndo` — the last one because
+  Category's drag-reorder undo shares the same fixed toast id and needs to
+  clear the hook's own pending-undo bookkeeping when it overwrites it
+  (`applyMove` now calls it instead of reaching into a ref directly).
+  Deliberately does *not* own `resync` itself: Category's tree-vs-flat view
+  and Brand's always-flat view refresh differently, and that stays a
+  caller concern, only ever invoked here. New dedicated
+  `use-soft-delete-with-undo.test.ts` (12 cases: both entities' calm-path
+  behavior generically, the undo-toast's `onUndo` success/failure split,
+  `clearPendingUndo`, `restoring`'s in-flight flip) alongside the two
+  existing feature-level suites, which still cover the wiring end to end.
+  Revert-confirm-restore done *twice* — once breaking the
+  `confirmRestore`-error-path resync (the actual 2026-09-18 bug now living
+  in shared code) and confirming both `category-list.test.tsx` and
+  `brand-list.test.tsx` still caught it through the extraction, and again
+  confirming the new hook-level tests independently catch the same
+  regression on their own. Full admin suite green: 237/238 (the one
+  pre-existing flake, still unrelated and untouched); typecheck/lint clean.

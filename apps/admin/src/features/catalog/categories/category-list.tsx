@@ -19,6 +19,7 @@ import { tokenize } from '@/lib/search';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
+import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
 import { CategoryCards, CategoryFlatTable, CategoryTree } from './category-tree';
 import { CategoryFormModal } from './category-form-modal';
 import { applyMoveLocally, type CategoryMove } from './reorder';
@@ -98,8 +99,6 @@ export function CategoryList() {
   const [q, setQ] = useState(() => searchParams.get('q') ?? '');
   const debouncedQ = useDebouncedSearch(q);
   const [modal, setModal] = useState<ModalState>(null);
-  const [restoreTarget, setRestoreTarget] = useState<Category | null>(null);
-  const [restoring, setRestoring] = useState(false);
 
   useUrlParamsSync({ status: status !== 'active' ? status : undefined, q: debouncedQ });
 
@@ -119,15 +118,6 @@ export function CategoryList() {
   // once the in-flight one settles, so it isn't silently swallowed.
   const reordering = useRef(false);
   const pendingMove = useRef<CategoryMove | null>(null);
-
-  // which row (if any) the currently-showing undo toast is for restoring —
-  // only meaningful right after `doDelete`'s own `notify.undo`; the reorder
-  // undo below shares the same fixed toast id and always overwrites it, so
-  // it resets this to null wherever it fires. Lets `confirmRestore` dismiss
-  // a *stale* delete-undo toast when the archived-tab Restore button
-  // reaches the same row another way, without touching an unrelated row's
-  // still-live undo toast (the 2026-09-18 fix).
-  const pendingUndoId = useRef<string | null>(null);
 
   // "/" jumps to search (unless the user is already typing somewhere)
   const searchRef = useRef<HTMLInputElement>(null);
@@ -379,69 +369,21 @@ export function CategoryList() {
     }
   };
 
-  // ── delete: soft (archive) + a one-click undo, no confirm dialog ───────────
-  async function doDelete(c: Category): Promise<void> {
-    try {
-      await deleteCategory(c.id);
-      pendingUndoId.current = c.id;
-      notify.undo(t('categories.toast.deleted', { name: labelOf(c) }), {
+  const { doDelete, restoreTarget, setRestoreTarget, restoring, confirmRestore, clearPendingUndo } =
+    useSoftDeleteWithUndo<Category>({
+      deleteItem: deleteCategory,
+      restoreItem: restoreCategory,
+      resync,
+      labelOf,
+      onError: err,
+      messages: {
+        deleted: (name) => t('categories.toast.deleted', { name }),
+        restored: (name) => t('categories.toast.restored', { name }),
+        alreadyDeleted: (name) => t('categories.alreadyDeleted', { name }),
+        alreadyRestored: (name) => t('categories.alreadyRestored', { name }),
         undoLabel: t('categories.undo'),
-        undoneMessage: t('categories.toast.restored', { name: labelOf(c) }),
-        onUndo: async () => {
-          try {
-            await restoreCategory(c.id);
-            if (pendingUndoId.current === c.id) pendingUndoId.current = null;
-            resync();
-          } catch (e) {
-            err(e); // surface the real reason (name now taken, parent archived…)
-            throw e; // and skip the "restored" confirmation toast
-          }
-        },
-      });
-    } catch (e) {
-      // already gone (deleted by someone else, another tab) — the outcome
-      // this action wanted is already true; an error toast would be
-      // actively misleading here (the 2026-09-18 fix).
-      if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
-        notify.info(t('categories.alreadyDeleted', { name: labelOf(c) }));
-      } else {
-        err(e);
-      }
-    } finally {
-      resync();
-    }
-  }
-
-  async function confirmRestore(): Promise<void> {
-    if (!restoreTarget) return;
-    setRestoring(true);
-    try {
-      await restoreCategory(restoreTarget.id);
-      if (pendingUndoId.current === restoreTarget.id) {
-        notify.dismissUndo();
-        pendingUndoId.current = null;
-      }
-      notify.saved(t('categories.toast.restored', { name: labelOf(restoreTarget) }));
-      setRestoreTarget(null);
-    } catch (e) {
-      // already restored elsewhere — same reasoning as doDelete's own
-      // NOT_FOUND case above (the 2026-09-18 fix).
-      if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
-        notify.info(t('categories.alreadyRestored', { name: labelOf(restoreTarget) }));
-      } else {
-        err(e);
-      }
-      setRestoreTarget(null);
-    } finally {
-      // was only in the success branch before — an error (including the
-      // calm "already restored" case above) left the stale row on screen
-      // with nothing to refresh it (the 2026-09-18 fix, found live).
-      // `doDelete` already gets this right via its own `finally`; this
-      // just matches it.
-      resync();
-      setRestoring(false);
-    }
-  }
+      },
+    });
 
   function onSaved(action: 'created' | 'updated', c: Category): void {
     notify.saved(t(`categories.toast.${action}`, { name: labelOf(c) }));
@@ -472,7 +414,7 @@ export function CategoryList() {
       await reorderCategories({ parentId: m.parentId, orderedIds: m.orderedIds });
       // this undo toast replaces whatever was showing (fixed toast id) —
       // any pending delete-undo it just overwrote is no longer live
-      pendingUndoId.current = null;
+      clearPendingUndo();
       notify.undo(
         m.reparents
           ? t('categories.toast.moved', {

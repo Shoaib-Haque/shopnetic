@@ -31,6 +31,7 @@ import { ActionButton } from '@/components/crud/action-button';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { ScrollLoadFooter, ScrollLoadSkeleton } from '@/components/crud/scroll-load-states';
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
+import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useFindById } from '@/hooks/use-find-by-id';
 import { useRowFlash } from '@/hooks/use-row-flash';
@@ -85,8 +86,6 @@ export function BrandList() {
 
   const [modal, setModal] = useState<ModalState>(null);
   const [mergeSource, setMergeSource] = useState<Brand | null>(null);
-  const [restoreTarget, setRestoreTarget] = useState<Brand | null>(null);
-  const [restoring, setRestoring] = useState(false);
 
   // still mounted? an undo toast outlives this page (same reasoning as
   // Category List's own guard).
@@ -159,77 +158,21 @@ export function BrandList() {
   const err = (e: unknown): void =>
     notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
 
-  // which row (if any) the currently-showing undo toast is for — a plain
-  // ref, not state, since nothing here needs to re-render off it. Lets
-  // `confirmRestore` dismiss a *stale* undo toast when the archived-tab
-  // Restore button reaches the same row another way, without touching an
-  // unrelated row's still-live undo toast (the 2026-09-18 fix).
-  const pendingUndoId = useRef<string | null>(null);
-
-  // ── delete: soft (archive) + a one-click undo, no confirm dialog — same
-  // idiom Category List uses for its own soft-delete. ─────────────────────
-  async function doDelete(b: Brand): Promise<void> {
-    try {
-      await deleteBrand(b.id);
-      pendingUndoId.current = b.id;
-      notify.undo(t('brands.toast.deleted', { name: labelOf(b) }), {
+  const { doDelete, restoreTarget, setRestoreTarget, restoring, confirmRestore } =
+    useSoftDeleteWithUndo<Brand>({
+      deleteItem: deleteBrand,
+      restoreItem: restoreBrand,
+      resync,
+      labelOf,
+      onError: err,
+      messages: {
+        deleted: (name) => t('brands.toast.deleted', { name }),
+        restored: (name) => t('brands.toast.restored', { name }),
+        alreadyDeleted: (name) => t('brands.alreadyDeleted', { name }),
+        alreadyRestored: (name) => t('brands.alreadyRestored', { name }),
         undoLabel: t('brands.undo'),
-        undoneMessage: t('brands.toast.restored', { name: labelOf(b) }),
-        onUndo: async () => {
-          try {
-            await restoreBrand(b.id);
-            if (pendingUndoId.current === b.id) pendingUndoId.current = null;
-            resync();
-          } catch (e) {
-            err(e);
-            throw e;
-          }
-        },
-      });
-    } catch (e) {
-      // already gone (deleted by someone else, another tab) — the outcome
-      // this action wanted is already true; an error toast would be
-      // actively misleading here (the 2026-09-18 fix).
-      if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
-        notify.info(t('brands.alreadyDeleted', { name: labelOf(b) }));
-      } else {
-        err(e);
-      }
-    } finally {
-      resync();
-    }
-  }
-
-  async function confirmRestore(): Promise<void> {
-    if (!restoreTarget) return;
-    setRestoring(true);
-    try {
-      await restoreBrand(restoreTarget.id);
-      if (pendingUndoId.current === restoreTarget.id) {
-        notify.dismissUndo();
-        pendingUndoId.current = null;
-      }
-      notify.saved(t('brands.toast.restored', { name: labelOf(restoreTarget) }));
-      setRestoreTarget(null);
-    } catch (e) {
-      // already restored elsewhere — same reasoning as doDelete's own
-      // NOT_FOUND case above (the 2026-09-18 fix).
-      if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
-        notify.info(t('brands.alreadyRestored', { name: labelOf(restoreTarget) }));
-      } else {
-        err(e);
-      }
-      setRestoreTarget(null);
-    } finally {
-      // was only in the success branch before — an error (including the
-      // calm "already restored" case above) left the stale row on screen
-      // with nothing to refresh it (the 2026-09-18 fix, found live).
-      // `doDelete` already gets this right via its own `finally`; this
-      // just matches it.
-      resync();
-      setRestoring(false);
-    }
-  }
+      },
+    });
 
   function onSaved(action: 'created' | 'updated', b: Brand): void {
     notify.saved(t(`brands.toast.${action}`, { name: labelOf(b) }));
