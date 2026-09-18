@@ -48,6 +48,21 @@ export async function seedFixtureIdentity(
     roles: [Role.ADMIN, Role.SERVICE_ADMIN],
   });
 
+  // ── volume: many staff accounts (UI-test data — Staff List pagination,
+  // ~70 staff accounts total across demo + fixtures), mixed roles/statuses
+  // so the list isn't uniformly "all active ADMIN". ────────────────────────
+  const VOLUME_ROLES = [Role.ADMIN, Role.SERVICE_ADMIN] as const;
+  const VOLUME_STATUSES = ['active', 'active', 'active', 'locked', 'disabled'] as const;
+  for (let i = 1; i <= 63; i++) {
+    await upsertAccount(prisma, ctx, {
+      email: `fx-staff-${i}@shopnetic.test`,
+      plane: 'staff',
+      password: 'fixture-pw-000000',
+      status: VOLUME_STATUSES[i % VOLUME_STATUSES.length]!,
+      roles: [VOLUME_ROLES[i % VOLUME_ROLES.length]!],
+    });
+  }
+
   // a pending (unaccepted) staff invite — inviter is the demo admin
   const inviter = ctx.account.get('admin@shopnetic.test');
   if (inviter) {

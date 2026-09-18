@@ -13,6 +13,15 @@ export async function seedDemoIdentity(
   ctx: SeedCtx,
   log: SeedLog,
 ): Promise<void> {
+  // the project owner's own login — always seeded as SUPER_ADMIN so a
+  // `db:reset` never leaves it locked out. Dev-only password, easy to
+  // remember on purpose.
+  await upsertAccount(prisma, ctx, {
+    email: 'shoaibhaque7@gmail.com',
+    plane: 'staff',
+    password: '12345678',
+    roles: [Role.SUPER_ADMIN],
+  });
   await upsertAccount(prisma, ctx, {
     email: 'admin@shopnetic.test',
     plane: 'staff',

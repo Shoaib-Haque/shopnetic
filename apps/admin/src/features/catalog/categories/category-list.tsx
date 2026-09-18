@@ -328,6 +328,58 @@ export function CategoryList() {
     };
   }, [modal, status]);
 
+  // Ancestor breadcrumbs ("Fashion › Men's Clothing") on the flat/paginated
+  // views (Archived/All/search) need the *whole* table to resolve names
+  // outside whatever 30-row page is currently loaded — `flatList.items`
+  // alone silently produced a truncated or blank breadcrumb for any category
+  // whose ancestor wasn't on the same page (the 2026-09-18 fix). Fetched
+  // once on entering flat mode, not on every resync — breadcrumbs are
+  // already documented as best-effort (`useAncestorPath`'s own doc comment:
+  // "a partial chain is fine"), so staying briefly stale after an in-view
+  // rename/move is an acceptable tradeoff against re-fetching the entire
+  // table on every mutation.
+  const [breadcrumbPool, setBreadcrumbPool] = useState<Category[] | null>(null);
+  useEffect(() => {
+    if (!isFlatMode) return;
+    let cancelled = false;
+    listCategories({ status: 'all' })
+      .then((rows) => {
+        if (!cancelled) setBreadcrumbPool(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setBreadcrumbPool(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isFlatMode]);
+
+  // The modal's parent *picker* deliberately only offers live categories
+  // (above) — you shouldn't be able to nest new/edited content under an
+  // archived one. But viewing an *already-archived* row (read-only; its
+  // parent can't be changed from here regardless) still needs to show what
+  // its real current parent actually is, even when that parent is itself
+  // archived — otherwise the picker's active-only options list has no entry
+  // matching the row's real `parentId`, and an unmatched `<select>` value
+  // falls back to showing its first option ("— none (root) —"), silently
+  // claiming a parented row is a root (found live: "shouldn't this show its
+  // parent?"). Injects just that one archived ancestor from `breadcrumbPool`
+  // (already fetched whenever this is reachable, since archived rows are
+  // only ever opened from Archived/All) rather than opening the whole
+  // picker up to every archived category.
+  const modalParentOptions = useMemo(() => {
+    const base = ((status === 'active' ? items : modalActiveCategories) ?? []).filter(
+      (c) => c.archivedAt == null,
+    );
+    if (modal?.mode !== 'edit' || modal.category.archivedAt == null || !modal.category.parentId) {
+      return base;
+    }
+    const parentId = modal.category.parentId;
+    if (base.some((c) => c.id === parentId)) return base;
+    const archivedParent = (breadcrumbPool ?? []).find((c) => c.id === parentId);
+    return archivedParent ? [...base, archivedParent] : base;
+  }, [status, items, modalActiveCategories, breadcrumbPool, modal]);
+
   // Toasts and confirm-dialog copy interpolate this name into a sentence —
   // an unbounded name (FX's fixtures go past 200 chars) wraps a *fixed-width*
   // dialog into a wall of text (tmp/Restore.png). The full name is always one
@@ -653,13 +705,18 @@ export function CategoryList() {
             <div className="hidden rounded-md border border-border md:block">
               <CategoryFlatTable
                 items={flatList.items}
+                {...(breadcrumbPool ? { allCategories: breadcrumbPool } : {})}
                 renderActions={rowActions}
                 flashId={flashId}
               />
             </div>
             {/* mobile: always a flat card list, parent-then-children order */}
             <div className="rounded-md border border-border md:hidden">
-              <CategoryCards items={flat} renderAction={cardAction} />
+              <CategoryCards
+                items={flat}
+                {...(breadcrumbPool ? { allCategories: breadcrumbPool } : {})}
+                renderAction={cardAction}
+              />
             </div>
             {/* one sentinel, not duplicated per breakpoint — jsdom aside, only
                 one of the two wrappers above ever actually has layout at a
@@ -710,9 +767,7 @@ export function CategoryList() {
           {...(modal.mode === 'create' && modal.parentId
             ? { initialParentId: modal.parentId }
             : {})}
-          allCategories={((status === 'active' ? items : modalActiveCategories) ?? []).filter(
-            (c) => c.archivedAt == null,
-          )}
+          allCategories={modalParentOptions}
           restoreBlocked={modal.mode === 'edit' && parentArchived(modal.category)}
           onSaved={onSaved}
           onDelete={(c) => void doDelete(c)}

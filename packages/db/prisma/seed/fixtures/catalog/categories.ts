@@ -53,4 +53,35 @@ export async function seedFixtureCategories(prisma: PrismaClient, ctx: SeedCtx):
   await c(null, 'fx-inactive', 'FX Hidden but live (inactive)', { isActive: false });
   await c(null, 'fx-archived-root', 'FX Archived root', { archived: true });
   await c('fx-archived-root', 'fx-archived-child', 'FX Archived child', { archived: true });
+
+  // ── volume: a wide live group (UI-test data — pagination on the Live/All
+  // tabs, ~70 live categories total across demo + fixtures) ────────────────
+  await c(null, 'fx-live-group', 'FX Live Volume Group');
+  for (let i = 1; i <= 28; i++) {
+    await c('fx-live-group', `fx-live-item-${i}`, `FX Live Item ${i}`, { position: i });
+  }
+
+  // ── volume: a second deep archived branch, 6 levels, every level archived
+  // — exercises the breadcrumb-pool fix (an archived row's ancestors, also
+  // archived, resolved from the full-table pool, not just the current
+  // Archived-tab page) ──────────────────────────────────────────────────────
+  await c(null, 'fx-arch-tech', 'FX Archived Tech', { archived: true });
+  await c('fx-arch-tech', 'fx-arch-computers', 'FX Archived Computers', { archived: true });
+  await c('fx-arch-computers', 'fx-arch-laptops', 'FX Archived Laptops', { archived: true });
+  await c('fx-arch-laptops', 'fx-arch-gaming', 'FX Archived Gaming Laptops', { archived: true });
+  await c('fx-arch-gaming', 'fx-arch-17-inch', 'FX Archived 17-inch', { archived: true });
+  await c('fx-arch-17-inch', 'fx-arch-rtx', 'FX Archived RTX Series', { archived: true });
+
+  // ── volume: a wide archived group (~70 archived categories total across
+  // fixtures) — forces multiple Archived-tab pages, and puts most of its
+  // rows' single-level ancestor (`fx-arch-group` itself) off the first page
+  // once there are enough of them, so its name must come from the
+  // breadcrumb pool rather than the current page. ──────────────────────────
+  await c(null, 'fx-arch-group', 'FX Archived Volume Group', { archived: true });
+  for (let i = 1; i <= 61; i++) {
+    await c('fx-arch-group', `fx-arch-item-${i}`, `FX Archived Item ${i}`, {
+      archived: true,
+      position: i,
+    });
+  }
 }

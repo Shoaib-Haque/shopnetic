@@ -622,13 +622,18 @@ export function CategoryFlatTable({
  */
 export function CategoryCards({
   items,
+  allCategories,
   renderAction,
 }: {
   items: Category[];
+  /** name-resolution pool for the "in A › B" line — pass the full list when
+   *  `items` is a filtered subset (search/Archived/All), so ancestors still
+   *  resolve. Same idea as `CategoryFlatTable`'s own prop of the same name. */
+  allCategories?: Category[];
   renderAction: (c: Category) => ReactNode;
 }) {
   const t = useTranslations('catalog');
-  const contextOf = useAncestorPath(items);
+  const contextOf = useAncestorPath(allCategories ?? items);
 
   return (
     <ul className="divide-y divide-border">

@@ -159,4 +159,83 @@ describe('useScrollLoad', () => {
     await waitFor(() => expect(result.current.items).toEqual([1, 2]));
     expect(fetchPage).toHaveBeenCalledTimes(1);
   });
+
+  describe('refresh()', () => {
+    it('re-fetches page 1 and swaps items in, without ever blanking them or flipping loading/loadError', async () => {
+      const fetchPage = vi
+        .fn()
+        .mockResolvedValueOnce(page([1, 2], 'c1'))
+        .mockResolvedValueOnce(page([9], undefined));
+
+      const { result } = renderHook(() => useScrollLoad<number>(fetchPage));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      act(() => result.current.refresh());
+      // never blanks — unlike retry(), no intermediate empty/loading state to observe
+      await waitFor(() => expect(result.current.items).toEqual([9]));
+      expect(result.current.loading).toBe(false);
+      expect(result.current.loadError).toBe(false);
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('a failed refresh() is silent (best-effort) — the rows already on screen stay, no loadError flips on', async () => {
+      const fetchPage = vi
+        .fn()
+        .mockResolvedValueOnce(page([1, 2], undefined))
+        .mockRejectedValueOnce(new Error('offline'));
+
+      const { result } = renderHook(() => useScrollLoad<number>(fetchPage));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => result.current.refresh());
+      expect(result.current.items).toEqual([1, 2]);
+      expect(result.current.loadError).toBe(false);
+    });
+
+    it("an older refresh() response landing after a newer resetKeys-triggered reload doesn't clobber it — the 2026-09-18 fix", async () => {
+      let resolveStaleRefresh!: (p: ScrollLoadPage<number>) => void;
+      const fetchPage = vi
+        .fn()
+        .mockResolvedValueOnce(page([1, 2], undefined)) // #1 mount, query "a"
+        .mockReturnValueOnce(new Promise((resolve) => (resolveStaleRefresh = resolve))) // #2 refresh(), still query "a" (stale)
+        .mockResolvedValueOnce(page([9], undefined)); // #3 the resetKeys-triggered reload, query "" (fresh/correct)
+
+      let key = 'a';
+      const { result, rerender } = renderHook(() => useScrollLoad<number>(fetchPage, [key]));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // simulates clicking "clear" on a search box: refresh() fires
+      // synchronously on the *old* query, before the debounced resetKey
+      // has caught up to the clear.
+      act(() => result.current.refresh());
+      // the debounce settles; resetKeys changing fires its own, correct load
+      key = '';
+      rerender();
+      await waitFor(() => expect(result.current.items).toEqual([9]));
+
+      // only now does the stale refresh() response arrive — it must not
+      // overwrite the already-correct, already-newer list
+      await act(async () => resolveStaleRefresh(page([1, 2], undefined)));
+      expect(result.current.items).toEqual([9]);
+    });
+
+    it('a second refresh() call supersedes the first, even if the first resolves later', async () => {
+      let resolveFirst!: (p: ScrollLoadPage<number>) => void;
+      const fetchPage = vi
+        .fn()
+        .mockResolvedValueOnce(page([1], undefined)) // mount
+        .mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve))) // 1st refresh()
+        .mockResolvedValueOnce(page([3], undefined)); // 2nd refresh()
+
+      const { result } = renderHook(() => useScrollLoad<number>(fetchPage));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      act(() => result.current.refresh());
+      act(() => result.current.refresh());
+      await waitFor(() => expect(result.current.items).toEqual([3]));
+
+      await act(async () => resolveFirst(page([2], undefined)));
+      expect(result.current.items).toEqual([3]);
+    });
+  });
 });

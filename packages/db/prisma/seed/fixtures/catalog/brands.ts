@@ -44,4 +44,28 @@ export async function seedFixtureBrands(prisma: PrismaClient, ctx: SeedCtx): Pro
     name: 'ACME Corp',
     displayName: 'ACME — Everything Store',
   });
+
+  // ── a brand with a large alias set (UI-test data — 30 aliases, beyond the
+  // 6 `fx-many-aliases` already has) ────────────────────────────────────────
+  await upsertBrand(prisma, ctx, {
+    slug: 'fx-huge-aliases',
+    name: 'Megaphone Industries',
+    aliases: Array.from({ length: 30 }, (_, i) => `megaphone-alias-${i + 1}`),
+  });
+
+  // ── volume: many live brands (UI-test data — pagination + the merge-target
+  // picker, ~70 live brands total across demo + fixtures) ──────────────────
+  for (let i = 1; i <= 56; i++) {
+    await upsertBrand(prisma, ctx, { slug: `fx-live-brand-${i}`, name: `FX Live Brand ${i}` });
+  }
+
+  // ── volume: many archived brands (UI-test data — ~70 archived brands
+  // total across fixtures) ──────────────────────────────────────────────────
+  for (let i = 1; i <= 69; i++) {
+    await upsertBrand(prisma, ctx, {
+      slug: `fx-arch-brand-${i}`,
+      name: `FX Archived Brand ${i}`,
+      archived: true,
+    });
+  }
 }

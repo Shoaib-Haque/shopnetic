@@ -184,13 +184,14 @@ describe('CategoryList error states', () => {
         data: [{ ...cat('z', 'Zulu'), archivedAt: '2026-01-01T00:00:00.000Z' }],
         meta: {},
       }) // #3 Archived tab flat page
-      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)) // #4 POST restore — already restored elsewhere
-      // #5/#6: resync() always fires now (moved to `finally`, the
+      .mockResolvedValueOnce([]) // #4 breadcrumb-pool GET (status=all) — the 2026-09-18 fix
+      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)) // #5 POST restore — already restored elsewhere
+      // #6/#7: resync() always fires now (moved to `finally`, the
       // 2026-09-18 fix found live) — it refreshes *both* the tree
       // (`load`) and, since we're on the Archived/flat tab, the flat
       // page (`flatRefresh`) too, in that order.
-      .mockResolvedValueOnce([]) // #5 resync's tree reload
-      .mockResolvedValueOnce({ data: [], meta: {} }); // #6 resync's flat refresh (archived, now empty)
+      .mockResolvedValueOnce([]) // #6 resync's tree reload
+      .mockResolvedValueOnce({ data: [], meta: {} }); // #7 resync's flat refresh (archived, now empty)
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
@@ -229,9 +230,10 @@ describe('CategoryList error states', () => {
         ],
         meta: {},
       }) // #3 Archived tab flat page
-      .mockResolvedValueOnce({ ...cat('z', 'Zulu'), archivedAt: null }) // #4 POST restore — succeeds
-      .mockResolvedValueOnce([]) // #5 resync's tree reload
-      .mockImplementationOnce(() => flatRefreshPromise); // #6 resync's flat refresh — held open on purpose
+      .mockResolvedValueOnce([]) // #4 breadcrumb-pool GET (status=all) — the 2026-09-18 fix
+      .mockResolvedValueOnce({ ...cat('z', 'Zulu'), archivedAt: null }) // #5 POST restore — succeeds
+      .mockResolvedValueOnce([]) // #6 resync's tree reload
+      .mockImplementationOnce(() => flatRefreshPromise); // #7 resync's flat refresh — held open on purpose
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
@@ -267,7 +269,8 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
       // switching tabs also re-triggers the tree's own (unpaginated, unrelated
       // to what's shown) reload — pre-existing behavior, unchanged by this feature
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // Archived tab GET — flat, raw envelope
+      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }) // Archived tab GET — flat, raw envelope
+      .mockResolvedValueOnce([]); // breadcrumb-pool GET (status=all) — the 2026-09-18 fix
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
@@ -286,7 +289,8 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
       .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
       .mockResolvedValueOnce([]) // #2 the tree's own reload for the tab switch
       .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }) // #3 Archived tab GET — flat
-      .mockResolvedValueOnce([cat('a', 'Alpha')]); // #4 modal-open GET — the live active list
+      .mockResolvedValueOnce([]) // #4 breadcrumb-pool GET (status=all) — the 2026-09-18 fix
+      .mockResolvedValueOnce([cat('a', 'Alpha')]); // #5 modal-open GET — the live active list
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
@@ -301,10 +305,76 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     expect(await dialog.findByRole('option', { name: 'Alpha' })).toBeInTheDocument();
   });
 
+  it('the flat view resolves an ancestor breadcrumb even when the ancestor is not on the current page — the 2026-09-18 fix', async () => {
+    // "Grandchild" is the only row on this page; "Root" and "Child" (its
+    // ancestors) only exist in the separate, full-table breadcrumb-pool
+    // fetch — before the fix, the breadcrumb pool fell back to the current
+    // page's own rows, so an ancestor outside it silently dropped out of
+    // the "in A › B" line instead of resolving.
+    const root = { ...cat('root', 'Root'), path: 'root', depth: 1 };
+    const child = { ...cat('child', 'Child'), path: 'root.child', depth: 2, parentId: 'root' };
+    const grandchild = {
+      ...cat('grandchild', 'Grandchild'),
+      path: 'root.child.grandchild',
+      depth: 3,
+      parentId: 'child',
+      archivedAt: '2026-01-01T00:00:00.000Z',
+    };
+    mockSearchParams = new URLSearchParams({ status: 'archived' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
+      .mockResolvedValueOnce({ data: [grandchild], meta: {} }) // #2 Archived flat page — the leaf only
+      .mockResolvedValueOnce([root, child, grandchild]); // #3 breadcrumb-pool GET (status=all) — has the ancestors
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Grandchild');
+
+    expect(await screen.findByText('in Root › Child')).toBeInTheDocument();
+  });
+
+  it('viewing an archived row whose parent is also archived still shows that parent selected, not silently "— none (root) —" — found live', async () => {
+    // "ArchChild" is the only row on this page; "ArchParent" (its parent,
+    // also archived) only exists in the breadcrumb-pool fetch — before the
+    // fix, the parent <select>'s active-only options never included an
+    // archived parent, so its real (unmatched) value fell back to showing
+    // the first option ("— none (root) —") as if selected.
+    const archParent = {
+      ...cat('arch-parent', 'ArchParent'),
+      archivedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const archChild = {
+      ...cat('arch-child', 'ArchChild'),
+      path: 'arch-parent.arch-child',
+      depth: 2,
+      parentId: 'arch-parent',
+      archivedAt: '2026-01-01T00:00:00.000Z',
+    };
+    mockSearchParams = new URLSearchParams({ status: 'archived' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
+      .mockResolvedValueOnce({ data: [archChild], meta: {} }) // #2 Archived flat page — the child only
+      .mockResolvedValueOnce([archParent, archChild]); // #3 breadcrumb-pool GET (status=all) — has the parent
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('ArchChild');
+
+    // opening the modal on a non-active tab also fetches the live-only
+    // parent-picker list (the Phase 1 fix) — empty here since this test is
+    // only exercising the *display* of the current (archived) parent.
+    mockedAdminApi.mockResolvedValueOnce([]); // #4 modal-open GET — the live active list
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'View' })[0]!);
+    await screen.findByText('Category (archived)');
+
+    expect(screen.getByLabelText('Parent')).toHaveValue('arch-parent');
+    expect(screen.getByRole('option', { name: 'ArchParent' })).toBeInTheDocument();
+  });
+
   it('a search query is answered server-side, not filtered client-side over the tree’s rows', async () => {
     mockedAdminApi
       .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
-      .mockResolvedValueOnce({ data: [cat('b', 'Bravo')], meta: {} }); // #2 search GET — whatever the server says, trusted as-is
+      .mockResolvedValueOnce({ data: [cat('b', 'Bravo')], meta: {} }) // #2 search GET — whatever the server says, trusted as-is
+      .mockResolvedValueOnce([]); // #3 breadcrumb-pool GET (status=all) — the 2026-09-18 fix
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
@@ -323,7 +393,8 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     mockSearchParams = new URLSearchParams({ status: 'archived' });
     mockedAdminApi
       .mockResolvedValueOnce([]) // #1 mount GET — the tree's own load, unconditional
-      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // #2 Archived flat GET
+      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }) // #2 Archived flat GET
+      .mockResolvedValueOnce([]); // #3 breadcrumb-pool GET (status=all) — the 2026-09-18 fix
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Zulu');
@@ -345,7 +416,8 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     mockedAdminApi
       .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
       .mockResolvedValueOnce([]) // #2 the tree's own reload for the tab switch
-      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // #3 Archived flat GET
+      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }) // #3 Archived flat GET
+      .mockResolvedValueOnce([]); // #4 breadcrumb-pool GET (status=all) — the 2026-09-18 fix
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
@@ -362,7 +434,8 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
   it('typing a search query replaces the URL once the debounce settles', async () => {
     mockedAdminApi
       .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
-      .mockResolvedValueOnce({ data: [cat('b', 'Bravo')], meta: {} }); // #2 search GET
+      .mockResolvedValueOnce({ data: [cat('b', 'Bravo')], meta: {} }) // #2 search GET
+      .mockResolvedValueOnce([]); // #3 breadcrumb-pool GET (status=all) — the 2026-09-18 fix
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
@@ -381,6 +454,7 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
       .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
       .mockResolvedValueOnce([]) // the tree's own reload for the tab switch (see test above)
       .mockResolvedValueOnce({ data: [cat('z1', 'Zulu1')], meta: { nextCursor: 'c1' } }) // Archived page 1
+      .mockResolvedValueOnce([]) // breadcrumb-pool GET (status=all) — the 2026-09-18 fix
       .mockResolvedValueOnce({ data: [cat('z2', 'Zulu2')], meta: {} }); // Archived page 2
 
     renderAdmin(<CategoryList />);
@@ -509,6 +583,7 @@ describe('CategoryList — deep link from Audit Log (?status=all&highlight=categ
     mockedAdminApi
       .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
       .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: { nextCursor: 'c1' } }) // flat page 1
+      .mockResolvedValueOnce([]) // breadcrumb-pool GET (status=all) — the 2026-09-18 fix
       .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // flat page 2 — has the target
 
     renderAdmin(<CategoryList />);
@@ -521,7 +596,8 @@ describe('CategoryList — deep link from Audit Log (?status=all&highlight=categ
     mockSearchParams = new URLSearchParams({ status: 'all' });
     mockedAdminApi
       .mockResolvedValueOnce([]) // tree's own unconditional load
-      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }); // flat page
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }) // flat page
+      .mockResolvedValueOnce([]); // breadcrumb-pool GET (status=all) — the 2026-09-18 fix
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');

@@ -89,20 +89,38 @@ export function useScrollLoad<T>(
   const fetchPageRef = useRef(fetchPage);
   fetchPageRef.current = fetchPage;
 
+  // A monotonic id shared by the reset effect below, `refresh()`, and
+  // `loadMore()` — bumped every time any of them starts a request that
+  // replaces or appends to `items`. Each request's own callback checks it's
+  // still the *latest* one before touching state, so an older response
+  // landing after a newer one already did can't clobber it — e.g. `refresh()`
+  // firing on a stale (pre-clear) search query, then the debounce settling
+  // and the reset effect firing its own, correct request: whichever actually
+  // *finishes* first no longer wins just by finishing first (the 2026-09-18
+  // fix). Subsumes the old per-effect-run `cancelled` flag below, which only
+  // protected against the reset effect racing *itself* (a resetKey changing
+  // again, or StrictMode's double-invoke) — not against `refresh()`/
+  // `loadMore()` racing it too.
+  const seqRef = useRef(0);
+
   const loadMore = useCallback(() => {
     if (loadingMoreRef.current || !hasMoreRef.current) return;
+    const seq = ++seqRef.current;
     loadingMoreRef.current = true;
     setLoadingMore(true);
     setLoadError(false);
     fetchPageRef
       .current(cursorRef.current)
       .then((page) => {
+        if (seq !== seqRef.current) return;
         setItems((prev) => [...prev, ...page.items]);
         cursorRef.current = page.nextCursor;
         hasMoreRef.current = page.nextCursor !== undefined;
         setHasMore(hasMoreRef.current);
       })
-      .catch(() => setLoadError(true))
+      .catch(() => {
+        if (seq === seqRef.current) setLoadError(true);
+      })
       .finally(() => {
         loadingMoreRef.current = false;
         setLoadingMore(false);
@@ -115,7 +133,7 @@ export function useScrollLoad<T>(
       setLoading(false);
       return;
     }
-    let cancelled = false;
+    const seq = ++seqRef.current;
     cursorRef.current = undefined;
     hasMoreRef.current = true;
     setItems([]);
@@ -125,21 +143,18 @@ export function useScrollLoad<T>(
     fetchPageRef
       .current(undefined)
       .then((page) => {
-        if (cancelled) return;
+        if (seq !== seqRef.current) return;
         setItems(page.items);
         cursorRef.current = page.nextCursor;
         hasMoreRef.current = page.nextCursor !== undefined;
         setHasMore(hasMoreRef.current);
       })
       .catch(() => {
-        if (!cancelled) setLoadError(true);
+        if (seq === seqRef.current) setLoadError(true);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (seq === seqRef.current) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
   }, [attempt, enabled, ...resetKeys]);
 
   // A callback ref (not a plain useRef) — the sentinel div only exists once
@@ -165,9 +180,11 @@ export function useScrollLoad<T>(
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
   const refresh = useCallback(() => {
+    const seq = ++seqRef.current;
     fetchPageRef
       .current(undefined)
       .then((page) => {
+        if (seq !== seqRef.current) return;
         setItems(page.items);
         cursorRef.current = page.nextCursor;
         hasMoreRef.current = page.nextCursor !== undefined;

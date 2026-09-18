@@ -7,6 +7,28 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
 
+/** Walks pages of `list({status:'all', limit:100})` (the whole-catalog,
+ * position-ranked flat view — see `CategoryService.list()`'s `rankedFlat`)
+ * until every id in `ids` has turned up, returning them in the order
+ * encountered. No `q` — a search query switches `list()` to relevance-ranked
+ * order instead of the drag-position order these ordering tests verify. A
+ * single page isn't guaranteed to contain everything once enough other
+ * categories exist in the table (seed fixtures, other tests' rows), so this
+ * mirrors the existing cursor-walk pattern the pagination test above uses. */
+async function findOrderedAmong(svc: CategoryService, ids: string[]): Promise<string[]> {
+  const target = new Set(ids);
+  const found: string[] = [];
+  let cursor: string | undefined;
+  let pageNum = 0;
+  do {
+    const res = await svc.list({ status: 'all', limit: 100, ...(cursor ? { cursor } : {}) });
+    for (const c of res.categories) if (target.has(c.id)) found.push(c.id);
+    cursor = res.nextCursor;
+    pageNum += 1;
+  } while (cursor && found.length < target.size && pageNum < 20);
+  return found;
+}
+
 describe.skipIf(!hasDb)('CategoryService (integration)', () => {
   let prisma: PrismaClient;
   let svc: CategoryService;
@@ -399,10 +421,13 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
       const mmm = await svc.create({ slug: s('ord-mmm'), name: name('OrdMmm') }, actor, {});
       await svc.reorder({ parentId: null, orderedIds: [aaa.id, mmm.id, zzz.id] }, actor, {});
 
-      const { categories } = await svc.list({ status: 'all', limit: 100 });
-      const ours = categories
-        .filter((c) => [aaa.id, mmm.id, zzz.id].includes(c.id))
-        .map((c) => c.id);
+      // walks pages of the whole-catalog ranked-flat view (no `q` — that
+      // would switch `list()` to relevance-ranked search order instead of
+      // the drag-position order this test exists to verify) until all three
+      // turn up — with enough other seeded categories in the table, a single
+      // `limit: 100` page is no longer guaranteed to contain them (found
+      // live once the dev seed grew past ~140 rows).
+      const ours = await findOrderedAmong(svc, [aaa.id, mmm.id, zzz.id]);
       expect(ours).toEqual([aaa.id, mmm.id, zzz.id]);
     });
 
@@ -422,10 +447,8 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
       // flat view follows the reorder, not creation order or path
       await svc.reorder({ parentId: root.id, orderedIds: [childA.id, childB.id] }, actor, {});
 
-      const { categories } = await svc.list({ status: 'all', limit: 100 });
-      const ours = categories
-        .filter((c) => [root.id, childA.id, childB.id].includes(c.id))
-        .map((c) => c.id);
+      // see the page-walking note on the test above
+      const ours = await findOrderedAmong(svc, [root.id, childA.id, childB.id]);
       expect(ours).toEqual([root.id, childA.id, childB.id]);
     });
 

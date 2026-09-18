@@ -3341,3 +3341,128 @@ compose file.
     guard. All five correctly failed when reverted. Full admin suite
     green: 264/265 (the one pre-existing flake, still unrelated and
     untouched); typecheck/lint clean.
+
+- 2026-09-18 — The two remaining "likely, not yet spot-checked" findings
+  from the same self-audit — actually verified this time (one had been
+  waiting on this precisely so it wouldn't be fixed on a guess):
+  - **`useScrollLoad`'s `refresh()` had no response-ordering guard**,
+    unlike `load()`'s own `loadSeq`. Traced from a suspected "search-clear
+    race" in Category's flat view: clicking a search box's × clear button
+    calls `resync()` *synchronously*, before the 250ms debounce has caught
+    up, so `resync()`'s `flatRefresh()` fires on the *stale* (pre-clear)
+    query; ~250ms later the debounce settles and `useScrollLoad`'s own
+    reset effect fires a second, correct (empty-query) fetch. Whichever of
+    the two responses actually *landed* last won, unconditionally — the
+    real bug was general (any two overlapping calls to `refresh()`/the
+    reset effect could race), not specific to search-clear. Fixed with a
+    single `seqRef` shared by the reset effect, `refresh()`, and
+    `loadMore()` (all three touch `items`/`cursorRef`/`hasMore`) — each
+    captures its own sequence number before starting and checks it's still
+    current before applying its response, subsuming the old per-effect-run
+    `cancelled` flag (which only guarded the reset effect against racing
+    *itself*, not against `refresh()`/`loadMore()` racing it too). New
+    `describe('refresh()', …)` block in `use-scroll-load.test.ts` (4
+    cases): basic swap-in behavior, a failed refresh staying silent,
+    the actual race (a stale `refresh()` response landing after a newer
+    resetKeys-triggered reload must not clobber it), and two overlapping
+    `refresh()` calls (the second must win even if the first resolves
+    later). Revert-confirm-restore: both new race tests correctly caught
+    the regression when the guard was removed from `refresh()`.
+  - **Confirmed real**: `CategoryFlatTable`/`CategoryCards` on Archived/
+    All/search rendered without their optional `allCategories` prop, so
+    `useAncestorPath` fell back to the current 30-row page alone —
+    breadcrumbs silently truncated or vanished for any category whose
+    ancestor wasn't on that page. Discussed the fix's real cost (a
+    full-table fetch) with the user before implementing; approved. Added
+    `breadcrumbPool` — `listCategories({status:'all'})`, fetched once on
+    entering flat mode (not re-fetched on every resync; breadcrumbs are
+    already documented as best-effort, so staying briefly stale after an
+    in-view rename/move is an accepted tradeoff against re-fetching the
+    whole table per mutation) — passed as `allCategories` to both
+    components. `CategoryCards` gained the prop for the first time
+    (mirroring `CategoryFlatTable`'s existing one); the Active-tab tree's
+    own `CategoryCards` call is untouched, since `items` there already
+    *is* the full pool. New test: a page holding only a leaf row, whose
+    ancestors exist solely in the separate breadcrumb-pool fetch, still
+    renders the full "in Root › Child" line. Revert-confirm-restore
+    (removing the prop pass correctly failed it). This surfaced a large,
+    expected ripple: the new unconditional fetch shifted every existing
+    mock-call sequence in `category-list.test.tsx` that enters flat mode
+    (11 tests) — each updated with the extra mocked call in its correct
+    position, verified by running each individually before the full file.
+  - Full admin suite green: 269/270 (the one pre-existing flake, still
+    unrelated and untouched — unaffected by either fix); typecheck/lint
+    clean. This closes out the Phase 3 audit items.
+
+- 2026-09-18 — Dev seed data grown to actually support manual UI testing at
+  realistic volume, at the user's request (was too thin to see pagination,
+  breadcrumb-pool resolution, or the merge picker's load-more in the
+  browser). `packages/db/prisma/seed/`:
+  - `fixtures/catalog/categories.ts`: added a 28-child live volume group and
+    a 61-child archived volume group (plus a second, fully-archived 6-level
+    branch) — ~74 live / ~70 archived categories total (up from ~42 live /
+    2 archived).
+  - `fixtures/catalog/brands.ts`: added 56 live + 69 archived volume brands,
+    and a `fx-huge-aliases` brand with 30 aliases (`fx-many-aliases` still
+    has its original 6 — kept as the "a few" case, `fx-huge-aliases` is the
+    "a lot" case).
+  - `fixtures/identity.ts`: added 63 more staff accounts, roles/statuses
+    round-robin'd across them, for Staff List pagination.
+  - `demo/identity.ts`: the project owner's own account
+    (`shoaibhaque7@gmail.com`) is now seeded directly as `SUPER_ADMIN` with
+    a fixed dev password, so a `db:reset` never locks them out — chosen
+    over a one-off post-reset script specifically so it survives every
+    future reset automatically, at the cost of a personal email living in
+    a committed (dev/CI-only, never-runs-in-production) fixture file.
+  - Validated by running `db:seed:dev` **against the live dev DB before any
+    reset** — the factories are upsert-based (by slug/email), so this was a
+    safe, non-destructive dry run that caught a TypeScript error
+    (`exactOptionalPropertyTypes` on a tuple-indexed status value) before
+    the real, destructive `prisma migrate reset` ever ran. Counts confirmed
+    post-reset via direct `psql` queries (categories/brands live+archived,
+    staff account count, alias count, the owner account's role+credential).
+  - **Fallout, then fixed**: two `category.service.integration.test.ts`
+    tests (`the flat/paginated view orders siblings by drag position…` and
+    `a parent still sorts immediately before its children…`) broke against
+    the new volume — both called `list({status:'all', limit:100})` with no
+    further scoping, an implicit "the whole table fits in one 100-row page"
+    assumption that ~144 seeded categories now violates. First attempt
+    (`q: stamp`) was wrong: adding `q` flips `list()` from its
+    position-ordered `rankedFlat` path to relevance-ranked search order —
+    exactly the ordering these tests exist to verify, so it silently
+    stopped testing what it claimed to. Fixed properly with a new
+    `findOrderedAmong()` helper that walks pages of the *same* `rankedFlat`
+    query (still no `q`) until the target ids turn up, mirroring the
+    file's own existing cursor-walk pattern (`paginates with a path
+    cursor…`, above). Full `test:integration` green (116/116), run twice
+    for stability; typecheck/lint clean.
+
+- 2026-09-18 — Found live, checking the breadcrumb-pool fix in the browser
+  with the newly-seeded volume data: opening an *archived* category whose
+  own parent is *also archived* (`fx-arch-group`'s children, or the
+  `fx-archived-child`/`fx-archived-root` pair) showed its Parent field as
+  "— none (root) —", as if it were a root — the user asked "shouldn't this
+  show its parent?" The Parent `<select>`'s options (`parentOptions` in
+  `category-form-modal.tsx`) only ever came from the active-only picker
+  pool (`modalActiveCategories`, the Phase 1 fix) — correct for *choosing a
+  new* parent (nesting under an archived category shouldn't be offered),
+  but wrong for *displaying* an archived row's real *existing* parent when
+  that parent is itself archived: the `<select>`'s bound value had no
+  matching `<option>`, and an unmatched `<select>` value silently falls
+  back to showing whichever option is first in the list.
+  Fixed in `category-list.tsx`, not the modal itself (which just renders
+  whatever `allCategories` it's given): a new `modalParentOptions` memo
+  starts from the same active-only base, then — only when editing an
+  archived row whose real parent isn't already in that base — looks the
+  parent up in `breadcrumbPool` (already fetched, since archived rows are
+  only ever opened from Archived/All) and appends just that one entry. The
+  picker offered for *choosing* a parent is unaffected; only the one
+  category actually already set as this row's parent can appear extra, and
+  only when viewing (the field is `disabled` regardless, being an archived
+  row). New test: an archived child whose archived parent is *not* on the
+  currently-loaded page, opening its (read-only) view and asserting the
+  Parent `<select>` shows the parent selected, with a matching `<option>`.
+  Revert-confirm-restore (reverting the injection correctly failed it —
+  falls back to `undefined`, an even more clearly broken value than the
+  live "— none (root) —" case). Full admin suite green: 270/271 (the one
+  pre-existing flake, still unrelated and untouched); typecheck/lint clean.
