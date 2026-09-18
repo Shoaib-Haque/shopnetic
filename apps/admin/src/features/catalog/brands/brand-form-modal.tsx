@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useForm, type Path, type Resolver } from 'react-hook-form';
+import { Controller, useForm, type Path, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { isReservedSlug, type Brand } from '@shopnetic/contracts';
-import { cn, Field, Input, notify, Spinner } from '@shopnetic/ui';
+import { cn, Field, Input, notify, Spinner, Switch } from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
 import { slugify, slugifyLive } from '@/lib/slugify';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -106,6 +106,7 @@ export function BrandFormModal({
     setError,
     clearErrors,
     watch,
+    control,
     formState: { errors, isDirty, dirtyFields, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema) as Resolver<FormValues>,
@@ -366,7 +367,18 @@ export function BrandFormModal({
       </Field>
 
       <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-0.5" {...register('isRestricted')} />
+        <Controller
+          name="isRestricted"
+          control={control}
+          render={({ field }) => (
+            <Switch
+              checked={field.value}
+              onCheckedChange={field.onChange}
+              onBlur={field.onBlur}
+              className="mt-0.5"
+            />
+          )}
+        />
         <span>
           {t('brands.form.isRestricted')}
           <span className="block text-xs font-normal text-muted-foreground">

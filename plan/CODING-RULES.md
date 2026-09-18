@@ -3114,3 +3114,49 @@ compose file.
     correctly failed with `.retry` restored, confirming the test itself
     (not just the fix) is sound. Full admin suite green: 222/223 (the
     one pre-existing flake, still unrelated and untouched).
+
+- 2026-09-18 — Asked for on/off toggle switches (Brand's Restricted,
+  Category's Active) in place of plain checkboxes, discussed first:
+  confirmed clicking the *label* text still toggles it (both fields
+  already wrap the checkbox in a real `<label>`, and a `<label>` forwards
+  a click to any "labelable" descendant per the HTML spec — `<button>`
+  included, which is what Radix's `Switch` renders under the hood, so the
+  existing wrapping needs zero new wiring for that part) — and that
+  color + thumb position + `aria-checked` is enough for state clarity
+  without extra "On/Off" text, same convention as "Airplane Mode" in iOS
+  Settings or "Public repository" on GitHub: the label names *what the
+  flag is*, the switch shows *its value*.
+  - New `Switch` in `@shopnetic/ui` (`@radix-ui/react-switch`, new
+    dependency, version-pinned to match every other Radix dep in that
+    package — no caret) — thin wrapper matching D1, same shape as the
+    existing `Checkbox`. Swapped into both `category-form-modal.tsx`
+    (`isActive`) and `brand-form-modal.tsx` (`isRestricted`), each via
+    `react-hook-form`'s `Controller` (first use of `Controller` in this
+    codebase — a Radix `Switch` isn't a native input, so the usual
+    `register()` spread doesn't apply the way it does for a real
+    checkbox).
+  - Separately noted, not acted on: `@shopnetic/ui` already had an
+    unused `Checkbox` (also Radix-based) that neither of these two forms
+    had adopted — same "D1 names it, nobody built/adopted it" gap as the
+    `Link` wrapper found on 2026-09-17.
+  - **Found and fixed a second real jsdom gap while writing the tests**:
+    Radix `Switch` measures its thumb via `ResizeObserver`
+    (`@radix-ui/react-use-size`), which jsdom doesn't implement — every
+    test that rendered a `Switch` at all threw `ResizeObserver is not
+    defined`, including several pre-existing Brand tests that only
+    happened to render the form incidentally. Same category of gap as
+    the existing `matchMedia`/`scrollIntoView`/pointer-capture stubs
+    already in `vitest.setup.ts` — added a no-op `ResizeObserver` stub
+    there alongside them.
+  - New tests (one per entity) proving the label-click path specifically
+    — not just that the switch renders — clicking the label text (found
+    via `getAllByText`/`.closest('label')` to sidestep ambiguity from a
+    nested hint span on Brand's field, and dialog-scoped `within(...)`
+    on Category's since "Active" is also a status-badge word elsewhere
+    on the same page) flips `aria-checked` and the toggled value reaches
+    the PATCH/POST body. Revert-confirm-restore on Brand's wiring
+    (breaking `onCheckedChange` correctly failed the test) — Category's
+    wasn't independently re-verified, same reasoning as prior entries:
+    structurally identical, already-proven pattern. Full admin suite
+    green: 224/225 (the one pre-existing flake, still untouched);
+    typecheck/lint clean on `@shopnetic/ui` and `@shopnetic/admin`.

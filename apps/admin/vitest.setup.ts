@@ -58,3 +58,15 @@ if (!Element.prototype.releasePointerCapture) {
 if (!Element.prototype.scrollTo) {
   Element.prototype.scrollTo = () => {};
 }
+
+// jsdom doesn't implement ResizeObserver — Radix's `Switch` uses it
+// internally (`@radix-ui/react-use-size`, to size the thumb) via a layout
+// effect that runs on every mount, so any test rendering a `Switch` throws
+// `ResizeObserver is not defined` without this.
+if (!window.ResizeObserver) {
+  window.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  };
+}

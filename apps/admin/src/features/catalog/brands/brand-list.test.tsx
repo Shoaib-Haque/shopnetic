@@ -118,6 +118,43 @@ describe('BrandList', () => {
     );
   });
 
+  it('the Restricted switch toggles by clicking its label text, not just the switch itself — the 2026-09-18 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([])) // #1 mount
+      .mockResolvedValueOnce(brand('new-1', 'Fresh Co', { isRestricted: true })) // #2 POST /brands
+      .mockResolvedValueOnce(page([brand('new-1', 'Fresh Co', { isRestricted: true })])); // #3 resync
+
+    renderAdmin(<BrandList />);
+    await screen.findByText('No brands yet.');
+
+    fireEvent.click(screen.getByRole('button', { name: /New brand/i }));
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Fresh Co' } });
+
+    const restrictedSwitch = screen.getByRole('switch');
+    expect(restrictedSwitch).toHaveAttribute('aria-checked', 'false');
+
+    // click the *label*, not the switch control itself — a real `<label>`
+    // wrapping a real `<button role="switch">` forwards the click natively,
+    // same as it already did for the plain checkbox this replaced. Found
+    // via the label text (which sits alongside a nested hint span, so
+    // `getAllByText` + `.closest('label')` sidesteps any ambiguity over
+    // which of the two elements' text technically matches).
+    const restrictedLabel = screen
+      .getAllByText(/Restricted \(counterfeit-prone\)/)[0]!
+      .closest('label')!;
+    fireEvent.click(restrictedLabel);
+    expect(restrictedSwitch).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Brand “Fresh Co” created.')).toBeInTheDocument();
+    expect(mockedAdminApi).toHaveBeenNthCalledWith(
+      2,
+      '/brands',
+      expect.objectContaining({ body: expect.objectContaining({ isRestricted: true }) }),
+    );
+  });
+
   it('create mode blocks a taken alias at Add time, not at Save — the 2026-09-18 fix', async () => {
     mockedAdminApi
       .mockResolvedValueOnce(page([])) // #1 mount

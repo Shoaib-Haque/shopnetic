@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { Category } from '@shopnetic/contracts';
 import { adminApi, AdminApiError } from '@/features/admin-api/client';
 import { renderAdmin } from '@/test/render';
@@ -121,6 +121,40 @@ describe('CategoryList error states', () => {
     expect(await screen.findByText(OFFLINE_ERROR)).toBeInTheDocument();
     expect(screen.getAllByText('Alpha').length).toBeGreaterThan(0);
     expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
+  });
+
+  it('the Active switch toggles by clicking its label text, not just the switch itself — the 2026-09-18 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount
+      .mockResolvedValueOnce({ ...cat('a', 'Alpha'), isActive: false }) // #2 PATCH
+      .mockResolvedValueOnce([{ ...cat('a', 'Alpha'), isActive: false }]); // #3 resync
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    const dialog = within(await screen.findByRole('dialog'));
+    await dialog.findByText('Edit category');
+
+    const activeSwitch = dialog.getByRole('switch');
+    expect(activeSwitch).toHaveAttribute('aria-checked', 'true');
+
+    // click the *label*, not the switch control itself — a real `<label>`
+    // wrapping a real `<button role="switch">` forwards the click
+    // natively, same as it already did for the plain checkbox this
+    // replaced. Scoped to the dialog — "Active" is also a status badge
+    // elsewhere in the list.
+    fireEvent.click(dialog.getByText('Active').closest('label')!);
+    expect(activeSwitch).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(dialog.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Category “Alpha” saved.')).toBeInTheDocument();
+    expect(mockedAdminApi).toHaveBeenNthCalledWith(
+      2,
+      '/categories/a',
+      expect.objectContaining({ body: expect.objectContaining({ isActive: false }) }),
+    );
   });
 
   it('deleting an already-deleted row shows a calm "already deleted" toast, not the generic error — the 2026-09-18 fix', async () => {

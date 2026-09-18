@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useForm, type Path, type Resolver } from 'react-hook-form';
+import { Controller, useForm, type Path, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { isReservedSlug, type Category } from '@shopnetic/contracts';
-import { cn, Field, Input } from '@shopnetic/ui';
+import { cn, Field, Input, Switch } from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
 import { capForMessage } from '@/lib/format';
 import { slugify, slugifyLive } from '@/lib/slugify';
@@ -146,6 +146,7 @@ export function CategoryFormModal({
     setError,
     clearErrors,
     watch,
+    control,
     formState: { errors, isDirty, dirtyFields, isSubmitting },
   } = useForm<FormValues>({ resolver, defaultValues: EMPTY });
 
@@ -410,7 +411,18 @@ export function CategoryFormModal({
       </Field>
 
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" disabled={readOnly} {...register('isActive')} />
+        <Controller
+          name="isActive"
+          control={control}
+          render={({ field }) => (
+            <Switch
+              checked={field.value}
+              onCheckedChange={field.onChange}
+              onBlur={field.onBlur}
+              disabled={readOnly}
+            />
+          )}
+        />
         {t('categories.form.isActive')}
       </label>
 
