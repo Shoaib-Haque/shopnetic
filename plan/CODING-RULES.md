@@ -3160,3 +3160,45 @@ compose file.
     structurally identical, already-proven pattern. Full admin suite
     green: 224/225 (the one pre-existing flake, still untouched);
     typecheck/lint clean on `@shopnetic/ui` and `@shopnetic/admin`.
+
+- 2026-09-18 — Two bugs from a self-audit requested after the Switch work
+  (corner cases, test coverage, DRY, "anything else" — the fixes below are
+  the first, agreed-priority slice of that list, not the whole thing):
+  - `BrandService.removeAlias()` never wrote a `catalog.outbox` row — every
+    other brand mutation (`create`/`update`/`addAlias`/`merge`/`remove`/
+    `restore`) does, so search and any other outbox consumer silently
+    never learned an alias had been removed. Fixed by wrapping the delete
+    in a `$transaction` + `writeCatalogOutbox('brand.updated', {
+    aliasRemoved })`, matching `addAlias`'s own shape. New integration
+    assertion on the existing alias-removal test (`catalogOutbox`
+    row exists, payload has the removed alias); revert-confirm-restore
+    (reverting the service change correctly failed it) — full
+    `test:integration` suite green (116/116).
+  - Category's New/Edit modal's parent picker went permanently empty when
+    opened from the Archived or All tab: it was built from
+    `(items ?? []).filter(c => c.archivedAt == null)`, but `items` is
+    whatever the *current tab's* `status` loaded — on Archived that's an
+    all-archived list, so the filter always yielded nothing. Fixed by
+    reusing `items` for free on the Active tab (unchanged, still the
+    correct list there) and fetching `listCategories({status:'active'})`
+    separately, only while the modal is open, on the other tabs. New test:
+    switch to Archived, open New Category, assert the live "Alpha" row
+    appears as a parent `<option>`. Revert-confirm-restore (reverting the
+    component change correctly failed it) — full admin suite green: one
+    file has a single pre-existing, unrelated flake (a row-flash CSS-class
+    assertion, reproduced identically on a clean `git stash`, untouched).
+  - Follow-up, caught live from an Audit Log screenshot: `addAlias`/
+    `removeAlias` both recorded the generic `catalog.brand_updated` action
+    (same as a plain name/slug/status/logo edit), so the Action column
+    alone couldn't tell an admin an alias had changed — only expanding the
+    row and reading Before/After could. Gave each its own action —
+    `catalog.brand_alias_added` / `catalog.brand_alias_removed` — mirroring
+    the existing `category_moved` vs `category_updated` split (a
+    semantically distinct operation gets its own action name, not a bucket
+    under the generic one). Audit actions are ad hoc strings per
+    `this.record(...)` call, not a central enum, so this is a two-call
+    change with no other registry to update. Extended the alias
+    integration test to call `addAlias` for real (previously the brand was
+    created with the alias already attached) and assert both actions;
+    revert-confirm-restore (reverting the service change correctly failed
+    it) — full `test:integration` green (116/116).

@@ -149,25 +149,37 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     expect(event.reason).toBe(`merged into ${s('keeper')}`);
   });
 
-  it("removing an alias's audit row snapshots the alias text, not just its id — the 2026-09-17 fix", async () => {
-    const b = await svc.create(
-      { name: s('alias-host'), slug: s('alias-host'), aliases: [s('ah-alias')] },
-      actor,
-      {},
-    );
-    const aliasId = b.aliases.find((a) => a.alias === s('ah-alias'))?.id ?? '';
+  it('adding/removing an alias each get their own audit action (not the generic brand_updated) and outbox row — the 2026-09-18 fix', async () => {
+    const b = await svc.create({ name: s('alias-host'), slug: s('alias-host') }, actor, {});
+
+    await svc.addAlias(b.id, { alias: s('ah-alias') }, actor, {});
+    const addedEvent = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.brand_alias_added', targetId: b.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(addedEvent.after).toMatchObject({ alias: s('ah-alias') });
+
+    const aliasId = (await svc.get(b.id)).aliases.find((a) => a.alias === s('ah-alias'))?.id ?? '';
 
     await expect(svc.removeAlias(b.id, crypto.randomUUID(), actor, {})).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
 
     await svc.removeAlias(b.id, aliasId, actor, {});
-    const event = await prisma.auditEvent.findFirstOrThrow({
-      where: { action: 'catalog.brand_updated', targetId: b.id },
+    const removedEvent = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.brand_alias_removed', targetId: b.id },
       orderBy: { createdAt: 'desc' },
     });
-    expect(event.before).toMatchObject({ aliasId, alias: s('ah-alias') });
+    expect(removedEvent.before).toMatchObject({ aliasId, alias: s('ah-alias') });
     expect((await svc.get(b.id)).aliases).toHaveLength(0);
+
+    // the 2026-09-18 fix: removeAlias skipped the outbox write every other
+    // brand mutation makes, so search/downstream consumers never saw it.
+    const outboxRow = await prisma.catalogOutbox.findFirstOrThrow({
+      where: { aggregateType: 'brand', aggregateId: b.id, eventType: 'brand.updated' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(outboxRow.payload).toMatchObject({ id: b.id, aliasRemoved: s('ah-alias') });
   });
 
   it("aliasAvailable checks the exact alias, case-insensitively, against every brand's aliases", async () => {

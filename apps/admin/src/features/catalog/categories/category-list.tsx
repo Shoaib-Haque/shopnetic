@@ -315,6 +315,29 @@ export function CategoryList() {
     if (isFlatMode) flatRefresh();
   }, [load, isFlatMode, flatRefresh]);
 
+  // The form modal's parent picker needs the live *active* tree regardless
+  // of which tab is open — `items` is whatever the current tab's `status`
+  // loaded, so on Archived/All it holds only non-active rows, and filtering
+  // those down to `archivedAt == null` silently produced an empty picker
+  // (the 2026-09-18 fix). `items` is reused for free on the Active tab,
+  // where it's already the right list; fetched separately, only while the
+  // modal is open, on the other tabs.
+  const [modalActiveCategories, setModalActiveCategories] = useState<Category[] | null>(null);
+  useEffect(() => {
+    if (modal === null || status === 'active') return;
+    let cancelled = false;
+    listCategories({ status: 'active' })
+      .then((rows) => {
+        if (!cancelled) setModalActiveCategories(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setModalActiveCategories([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modal, status]);
+
   // Toasts and confirm-dialog copy interpolate this name into a sentence —
   // an unbounded name (FX's fixtures go past 200 chars) wraps a *fixed-width*
   // dialog into a wall of text (tmp/Restore.png). The full name is always one
@@ -745,7 +768,9 @@ export function CategoryList() {
           {...(modal.mode === 'create' && modal.parentId
             ? { initialParentId: modal.parentId }
             : {})}
-          allCategories={(items ?? []).filter((c) => c.archivedAt == null)}
+          allCategories={((status === 'active' ? items : modalActiveCategories) ?? []).filter(
+            (c) => c.archivedAt == null,
+          )}
           restoreBlocked={modal.mode === 'edit' && parentArchived(modal.category)}
           onSaved={onSaved}
           onDelete={(c) => void doDelete(c)}

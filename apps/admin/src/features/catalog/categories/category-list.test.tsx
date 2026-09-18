@@ -277,6 +277,30 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
   });
 
+  it('New Category from the Archived tab still offers live categories as a parent — the 2026-09-18 fix', async () => {
+    // On Archived, `items` (the tab's own data) holds only archived rows —
+    // filtering those down to non-archived ones used to leave the parent
+    // picker permanently empty. The fix fetches the active list separately
+    // whenever the modal opens on a non-Active tab.
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree
+      .mockResolvedValueOnce([]) // #2 the tree's own reload for the tab switch
+      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }) // #3 Archived tab GET — flat
+      .mockResolvedValueOnce([cat('a', 'Alpha')]); // #4 modal-open GET — the live active list
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await screen.findAllByText('Zulu');
+
+    fireEvent.click(screen.getByRole('button', { name: 'New category' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    await dialog.findByText('New category');
+
+    expect(await dialog.findByRole('option', { name: 'Alpha' })).toBeInTheDocument();
+  });
+
   it('a search query is answered server-side, not filtered client-side over the tree’s rows', async () => {
     mockedAdminApi
       .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount GET — the active tree

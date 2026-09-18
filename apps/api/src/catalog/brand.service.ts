@@ -189,7 +189,13 @@ export class BrandService {
     });
 
     const view = await this.get(id);
-    await this.record(actor, 'catalog.brand_updated', id, meta, { after: { alias } });
+    // its own action, not the generic `brand_updated` — mirrors
+    // `category_moved` vs `category_updated`: a semantically distinct
+    // operation gets a name the Audit Log's Action column can show as-is,
+    // rather than making an admin expand the row and read Before/After to
+    // tell an alias change apart from a plain field edit (the 2026-09-18
+    // fix, found via a live screenshot question).
+    await this.record(actor, 'catalog.brand_alias_added', id, meta, { after: { alias } });
     return view;
   }
 
@@ -202,8 +208,17 @@ export class BrandService {
     });
     if (!existing)
       throw new AppError('NOT_FOUND', 404, { detail: 'alias not found on this brand' });
-    await this.prisma.brandAlias.delete({ where: { id: aliasId } });
-    await this.record(actor, 'catalog.brand_updated', id, meta, {
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.brandAlias.delete({ where: { id: aliasId } });
+      await writeCatalogOutbox(tx, 'brand', 'brand.updated', id, {
+        id,
+        aliasRemoved: existing.alias,
+      });
+    });
+
+    // its own action, not the generic `brand_updated` — see addAlias above.
+    await this.record(actor, 'catalog.brand_alias_removed', id, meta, {
       before: { aliasId, alias: existing.alias },
     });
   }
