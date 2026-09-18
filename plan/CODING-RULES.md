@@ -3286,3 +3286,58 @@ compose file.
     fixes. Full admin suite green: 242/243 (the one pre-existing flake,
     still unrelated and untouched); typecheck/lint clean on `@shopnetic/ui`
     and `@shopnetic/admin`.
+
+- 2026-09-18 — Closed the remaining two test-coverage gaps from the same
+  self-audit: `brand-merge-dialog.tsx` and neither form modal had a
+  dedicated test file, only whatever happened to be reachable through
+  `brand-list.test.tsx`/`category-list.test.tsx`. `category-form-modal.tsx`
+  in particular had almost none — only its Switch and its Archived-tab
+  parent-picker fix were covered at all, nothing for create/edit
+  submission, the no-op guard, duplicate-name/slug detection, or server
+  field-error mapping.
+  - New `category-form-modal.test.tsx` (9 cases): slug auto-derivation
+    from the name until touched, a create submit with the picked parent,
+    the client-side duplicate-name/slug check (against `allCategories`,
+    before any request), a server `CATEGORY_SLUG_TAKEN` mapped onto the
+    slug field specifically, the no-op-save guard (first *direct*
+    coverage — previously only exercised incidentally, if at all),
+    partial-dirty submission (only changed fields + `expectedUpdatedAt`),
+    `CONFLICT` → `onConflict`, and the archived/read-only view (fields
+    disabled, Restore swaps in for Delete, `restoreBlocked`'s disabled
+    Restore + tooltip).
+  - **Debugging note**: every edit-mode test initially failed with the
+    submit handler never firing at all (0 calls, no thrown error visible)
+    — traced to the test fixtures themselves, not the component: `cat('c',
+    …)` and `cat('p', …)` used single-letter ids as both the id *and* the
+    default slug, and `'c'`/`'p'`/`'b'` are in `RESERVED_SLUGS`
+    (`packages/contracts/src/catalog.ts`) alongside `'admin'`/`'api'`/etc
+    — the same reserved-slug refine every real form already enforces
+    silently rejected the fixture's own slug, and the form's own error
+    text was still visible on screen, just not what any assertion was
+    looking for yet. Fixed by using non-reserved fixture ids (`cat1`,
+    `parent1`) instead. Worth remembering for any future fixture using a
+    bare single-letter id as a slug.
+  - Extended `brand-form-modal.test.tsx` (from Enter-guard-only to 7
+    cases): the same slug-auto-derivation, a server `BRAND_NAME_TAKEN`
+    mapped onto the name field, the no-op-save guard, partial-dirty
+    submission, `CONFLICT` → `onConflict`, and — genuinely new coverage,
+    no prior test exercised the *success* path at all (only the
+    already-removed `NOT_FOUND` case existed) — a successful alias
+    removal updating local state and calling `onAliasesChanged`.
+  - New `brand-merge-dialog.test.tsx` (7 cases), rendering the dialog
+    directly rather than through `BrandList`: excludes the source brand,
+    empty-results message, debounced server-side search, selecting a
+    target (highlight + enables Merge) through a successful merge, a
+    failed merge (inline error, dialog stays open), Cancel disabled while
+    a merge is in flight, and the same load-more-past-first-page case
+    `brand-list.test.tsx` already has (kept there too — different level,
+    proves the wiring through the real list still works).
+  - Revert-confirm-restore on the highest-value new cases specifically
+    (not everything — the mechanical wiring tests follow established,
+    already-proven patterns): both no-op-save guards (Category's *and*
+    Brand's — Brand's had never been independently verified before, only
+    assumed to mirror Category's), the alias-removal success path, the
+    merge dialog's source-exclusion filter, and its Cancel-while-merging
+    guard. All five correctly failed when reverted. Full admin suite
+    green: 264/265 (the one pre-existing flake, still unrelated and
+    untouched); typecheck/lint clean.
