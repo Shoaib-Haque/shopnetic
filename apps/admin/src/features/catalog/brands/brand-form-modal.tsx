@@ -61,6 +61,7 @@ export function BrandFormModal({
   onSaved,
   onDelete,
   onAliasesChanged,
+  onConflict,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -73,6 +74,10 @@ export function BrandFormModal({
    * flow (its own endpoints, see the note on `aliases` state below), so the
    * list's row (alias count) needs its own way to hear about it. */
   onAliasesChanged?: (b: Brand) => void;
+  /** Edit mode only — the save hit `CONFLICT` (the row changed since this
+   * form opened, per `expectedUpdatedAt`). List owner closes this modal,
+   * refetches, and notifies — mirrors Category's own `onConflict`. */
+  onConflict?: () => void;
 }) {
   const t = useTranslations('catalog');
   const [formError, setFormError] = useState<string | null>(null);
@@ -167,6 +172,9 @@ export function BrandFormModal({
             ...(d.status ? { status: v.status } : {}),
             ...(d.isRestricted ? { isRestricted: v.isRestricted } : {}),
             ...(d.logoKey ? { logoKey: v.logoKey || null } : {}),
+            // guard against clobbering another admin's edit made since this
+            // form opened — mirrors Category's own field
+            expectedUpdatedAt: brand.updatedAt,
           });
           onSaved('updated', b);
         }
@@ -174,6 +182,10 @@ export function BrandFormModal({
       onOpenChange(false);
     } catch (e) {
       const code = e instanceof AdminApiError ? e.code : undefined;
+      if (code === 'CONFLICT' && onConflict) {
+        onConflict(); // list owner closes this modal, refetches, and notifies
+        return;
+      }
       const field = code ? FIELD_FOR_CODE[code] : undefined;
       if (field) {
         setError(field, { type: 'server', message: catalogErrorKey(code) }, { shouldFocus: true });

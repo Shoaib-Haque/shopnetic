@@ -198,6 +198,32 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     expect(items).toHaveLength(0);
   });
 
+  it('update rejects a stale expectedUpdatedAt (optimistic concurrency) — mirrors CategoryService', async () => {
+    const b = await svc.create({ name: s('cc'), slug: s('cc') }, actor, {});
+
+    // matching token → succeeds, and bumps updatedAt
+    const ok = await svc.update(
+      b.id,
+      { name: s('cc2'), expectedUpdatedAt: b.updatedAt },
+      actor,
+      {},
+    );
+    expect(ok.updatedAt).not.toBe(b.updatedAt);
+
+    // the original token is now stale → 409
+    await expect(
+      svc.update(b.id, { name: s('cc3'), expectedUpdatedAt: b.updatedAt }, actor, {}),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // the fresh token works again; omitting it skips the check
+    await expect(
+      svc.update(b.id, { name: s('cc4'), expectedUpdatedAt: ok.updatedAt }, actor, {}),
+    ).resolves.toMatchObject({ name: s('cc4') });
+    await expect(svc.update(b.id, { status: 'pending' }, actor, {})).resolves.toMatchObject({
+      status: 'pending',
+    });
+  });
+
   it('isRestricted is orthogonal to status — settable on create and update, independently of it', async () => {
     const b = await svc.create(
       { name: s('flagged'), slug: s('flagged'), isRestricted: true },

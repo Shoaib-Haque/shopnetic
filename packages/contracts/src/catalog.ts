@@ -202,7 +202,17 @@ export const updateBrandRequestSchema = z
     status: brandStatusSchema,
     isRestricted: z.boolean(),
   })
-  .partial();
+  .partial()
+  .extend({
+    /**
+     * Optimistic-concurrency guard: the `updatedAt` the client last read for
+     * this row. If it no longer matches the stored value the update is rejected
+     * with `409 CONFLICT`, so a stale edit form can't silently overwrite a
+     * newer change. Omit to skip the check. Mirrors `updateCategoryRequestSchema`'s
+     * own field — same risk (concurrent edits by multiple staff), same guard.
+     */
+    expectedUpdatedAt: z.string().optional(),
+  });
 export type UpdateBrandRequest = z.infer<typeof updateBrandRequestSchema>;
 
 export const addBrandAliasRequestSchema = z.object({ alias: brandNameSchema });

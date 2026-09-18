@@ -134,6 +134,17 @@ export class BrandService {
     meta: RequestMeta,
   ): Promise<Brand> {
     const current = await this.rowOrThrow(id);
+
+    // optimistic concurrency: reject a save built on a stale view of the
+    // row — mirrors `CategoryService.update()`'s own guard, same risk
+    // (concurrent edits by multiple staff), same fix.
+    if (
+      input.expectedUpdatedAt !== undefined &&
+      input.expectedUpdatedAt !== current.updatedAt.toISOString()
+    ) {
+      throw new AppError('CONFLICT', 409, { detail: 'brand changed since it was loaded' });
+    }
+
     if (input.slug && input.slug !== current.slug) await this.assertSlugFree(input.slug, id);
     if (input.name !== undefined && input.name.toLowerCase() !== current.name.toLowerCase()) {
       await this.assertNameFree(input.name, id);

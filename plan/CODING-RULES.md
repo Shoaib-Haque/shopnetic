@@ -2922,3 +2922,28 @@ compose file.
     layout-only column in one session is itself a signal this class of
     "does the row look right at every width" change is better caught by
     a screenshot/live check than by a jsdom assertion, so none was added.
+
+- 2026-09-18 — Brand had no optimistic-concurrency guard on `update()` at
+  all — Category's own `expectedUpdatedAt` → `409 CONFLICT` → close
+  modal + refetch + notify pattern was never ported over when Brand's
+  form was built, so two staff editing the same brand at once would
+  silently last-write-wins with no warning. Asked directly (uniform
+  behavior for the same shape of risk across similar entities, unless
+  something concretely distinguishes them) rather than assumed — nothing
+  about Brand makes concurrent multi-staff edits less likely or less
+  costly than Category, so no distinction applies. Ported the identical
+  pattern: `UpdateBrandRequest` gained the same `expectedUpdatedAt`
+  field (contracts), `BrandService.update()` the same staleness check
+  (service), `brand-form-modal.tsx` sends it and handles `CONFLICT` via
+  a new `onConflict` prop exactly like Category's own, `brand-list.tsx`
+  wires it the same way (close modal, `notify.error`, resync), and
+  `brands.editConflict` mirrors `categories.editConflict`'s wording.
+  New integration test mirroring `CategoryService`'s own stale-token
+  test line-for-line; new component test for the UI flow (modal closes,
+  refetches, notifies) — Category itself has no UI-level test for this
+  path, so this is coverage Brand now has that Category doesn't, not
+  parity-for-parity's-sake. Revert-confirm-restore on both the backend
+  check and the frontend wiring — both failed for the exact right
+  reason, restored. Full sweep green: admin 215 tests (was 214), API 116
+  integration (was 115) + 25 unit; typecheck/lint clean on
+  `@shopnetic/contracts`, `@shopnetic/api`, and `@shopnetic/admin`.

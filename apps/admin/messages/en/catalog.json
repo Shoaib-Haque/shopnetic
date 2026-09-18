@@ -105,6 +105,7 @@
       "cancel": "Cancel",
       "restoreTitle": "Restore brand?",
       "restoreMessage": "“{name}” will be moved back to the live list.",
+      "editConflict": "This brand was changed elsewhere — the list has been refreshed. Reopen it to try again.",
       "toast": {
         "created": "Brand “{name}” created.",
         "updated": "Brand “{name}” saved.",

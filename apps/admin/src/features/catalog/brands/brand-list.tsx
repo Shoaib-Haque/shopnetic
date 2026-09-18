@@ -476,6 +476,11 @@ export function BrandList() {
           onAliasesChanged={(b) =>
             list.setItems((prev) => prev.map((x) => (x.id === b.id ? b : x)))
           }
+          onConflict={() => {
+            setModal(null);
+            notify.error(t('brands.editConflict'), 5000);
+            resync();
+          }}
         />
       )}
 

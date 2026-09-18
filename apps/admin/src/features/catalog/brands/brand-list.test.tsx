@@ -167,6 +167,31 @@ describe('BrandList', () => {
     expect(await screen.findByText('Brand “Acme” deleted.')).toBeInTheDocument();
   });
 
+  it("a stale edit conflict closes the modal, refetches, and notifies — mirrors Category's own guard", async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount
+      .mockRejectedValueOnce(new AdminApiError('CONFLICT', 409)) // #2 PATCH /brands/a
+      .mockResolvedValueOnce(page([brand('a', 'Acme Renamed')])); // #3 resync
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    await screen.findByText('Edit brand');
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Acme Renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText(
+        'This brand was changed elsewhere — the list has been refreshed. Reopen it to try again.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Edit brand')).not.toBeInTheDocument();
+    await screen.findAllByText('Acme Renamed');
+  });
+
   it('restoring the same row from the Archived tab dismisses its still-open undo toast — the 2026-09-18 fix', async () => {
     mockedAdminApi
       .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount (live)
