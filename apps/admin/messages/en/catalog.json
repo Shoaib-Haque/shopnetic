@@ -9,6 +9,8 @@
       "noMatch": "No categories match your search.",
       "reloadedAfterChange": "The category list changed — reloaded.",
       "editConflict": "This category was changed elsewhere — the list has been refreshed. Reopen it to try again.",
+      "alreadyDeleted": "“{name}” was already deleted.",
+      "alreadyRestored": "“{name}” was already restored.",
       "searchPlaceholder": "Search categories…",
       "cols": { "name": "Name", "brand": "Brand", "status": "Status" },
       "tree": {
@@ -106,6 +108,10 @@
       "restoreTitle": "Restore brand?",
       "restoreMessage": "“{name}” will be moved back to the live list.",
       "editConflict": "This brand was changed elsewhere — the list has been refreshed. Reopen it to try again.",
+      "alreadyDeleted": "“{name}” was already deleted.",
+      "alreadyRestored": "“{name}” was already restored.",
+      "aliasAlreadyRemoved": "Alias “{alias}” was already removed.",
+      "alreadyMerged": "“{name}” was already merged into “{target}”.",
       "toast": {
         "created": "Brand “{name}” created.",
         "updated": "Brand “{name}” saved.",

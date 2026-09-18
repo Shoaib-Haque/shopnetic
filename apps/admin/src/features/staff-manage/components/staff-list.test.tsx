@@ -295,6 +295,25 @@ describe('StaffList', () => {
     expect(mockedActivateStaff).toHaveBeenCalledWith('acc-2');
   });
 
+  it('unlocking an already-active account shows a calm "already active" toast, not a validation error — the 2026-09-18 fix', async () => {
+    const locked = account({ id: 'acc-2', email: 'locked@example.com', status: 'locked' });
+    mockedListStaff.mockResolvedValueOnce(page([ME, locked]));
+    mockedActivateStaff.mockRejectedValueOnce(new AdminApiError('VALIDATION_ERROR', 422));
+
+    render();
+    await screen.findAllByText(locked.email);
+    openRowMenu(tableRowFor(locked.email));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Unlock' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Unlock' }));
+
+    expect(await screen.findByText('“locked@example.com” is already active.')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Please check the highlighted fields and try again.'),
+    ).not.toBeInTheDocument();
+    // the row's own status badge reflects reality now, not the stale "Locked"
+    expect(within(tableRowFor(locked.email)).getByText('Active')).toBeInTheDocument();
+  });
+
   // jsdom doesn't run real CSS transitions, so this asserts the wiring (the
   // fade+scale classes are on the dialog content, keyed off Radix's own
   // `data-state`) rather than the animation actually playing — same
@@ -367,19 +386,21 @@ describe('StaffList', () => {
   });
 
   it('a failed action shows the mapped error copy, not a generic one', async () => {
-    const target = account({ id: 'acc-2', email: 'target@example.com', status: 'locked' });
+    // deprovision + FORBIDDEN, not activate + VALIDATION_ERROR — the latter
+    // combination is now specifically intercepted by the "already active"
+    // handling (the 2026-09-18 fix below), so it no longer exercises the
+    // generic mapped-error-copy path this test is actually about.
+    const target = account({ id: 'acc-2', email: 'target@example.com' });
     mockedListStaff.mockResolvedValueOnce(page([ME, target]));
-    mockedActivateStaff.mockRejectedValueOnce(new AdminApiError('VALIDATION_ERROR', 422));
+    mockedDeprovisionStaff.mockRejectedValueOnce(new AdminApiError('FORBIDDEN', 403));
 
     render();
     await screen.findAllByText(target.email);
     openRowMenu(tableRowFor(target.email));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Unlock' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Unlock' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Deprovision' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Deprovision' }));
 
-    expect(
-      await screen.findByText('Please check the highlighted fields and try again.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Only a Super Admin can do that.')).toBeInTheDocument();
   });
 
   it("the Role column is hidden between md and lg — Email doesn't have room to share the row with it in that band", async () => {

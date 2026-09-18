@@ -119,6 +119,7 @@
       "totpEnrolled": "Set up",
       "totpNotEnrolled": "Not set up",
       "you": "You",
+      "alreadyActive": "“{email}” is already active.",
       "actions": {
         "changeRole": "Change role",
         "unlock": "Unlock",

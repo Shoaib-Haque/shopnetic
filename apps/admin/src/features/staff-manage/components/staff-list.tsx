@@ -172,7 +172,18 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
       notify.saved(t(`manage.toast.${toastKey}`, { email: capForMessage(account.email) }));
       setPendingConfirm(null);
     } catch (err) {
-      reportError(err);
+      // already active (unlocked/reactivated elsewhere, another tab) — the
+      // outcome this action wanted is already true; an error toast would
+      // be actively misleading here (the 2026-09-18 fix). `deprovision`/
+      // `resetTotp` have no such guard — they no-op harmlessly if repeated,
+      // so this only ever fires for `activate`.
+      if (kind === 'activate' && err instanceof AdminApiError && err.code === 'VALIDATION_ERROR') {
+        notify.info(t('manage.alreadyActive', { email: capForMessage(account.email) }));
+        applyUpdate({ ...account, status: 'active' });
+        setPendingConfirm(null);
+      } else {
+        reportError(err);
+      }
     } finally {
       setBusy(false);
     }

@@ -1,7 +1,23 @@
+import { afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+import { toast } from '@shopnetic/ui';
 import { installIntersectionObserverMock } from './src/test/intersection-observer';
 
 installIntersectionObserverMock();
+
+// `notify.*`/`toast.*` push into sonner's own module-level store, which
+// outlives any one test's React tree — `renderAdmin` mounts a fresh
+// `<Toaster/>` per test, but a toast triggered in test N is still queued
+// there and renders again the moment test N+1 mounts its own `<Toaster/>`,
+// with no relation to that test's own assertions (found via a real,
+// reproducible failure: two toast-triggering tests back to back in the
+// same file, the second one's `not.toBeInTheDocument()` check on a generic
+// error caught the *first* test's still-lingering toast). Global, not a
+// per-file `afterEach`, since any test file that renders `<Toaster/>` more
+// than once could hit this the same way.
+afterEach(() => {
+  toast.dismiss();
+});
 
 // jsdom doesn't implement matchMedia. category-list.tsx calls it directly
 // (the `pointer: fine` drag-capability check) — without this every render

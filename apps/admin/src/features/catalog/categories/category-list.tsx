@@ -271,7 +271,14 @@ export function CategoryList() {
     [status, debouncedQ, searching],
     isFlatMode,
   );
-  const flatRetry = flatList.retry;
+  // `.refresh`, not `.retry` — this is the post-mutation resync path
+  // (below), which must swap the page in without blanking first, same
+  // reasoning as `useScrollLoad`'s own doc comment on the two. `.retry`
+  // (the real "Try again" button, further down) is deliberately kept as
+  // the blank-and-reload version — that one's a response to a total
+  // failure, not a quiet refresh after a successful (or already-handled)
+  // action.
+  const flatRefresh = flatList.refresh;
 
   // Deep link landed on a specific category — keep loading pages of the
   // flat/all view until it turns up, then reuse the exact same flash/scroll
@@ -294,12 +301,19 @@ export function CategoryList() {
   // skeleton or the error line. Refreshes whichever data source is actually
   // driving the current view — the tree's own `items`, and/or the flat
   // paginated view when that's what's showing (a mutation reachable from a
-  // flat row — restore, delete — only ever happens while it is).
+  // flat row — restore, delete — only ever happens while it is). The flat
+  // side used `.retry` here until the 2026-09-18 fix — despite what this
+  // very comment already claimed, `.retry` clears `items` and blanks to the
+  // skeleton before refetching, so every Archived/All-tab action was doing
+  // exactly the full-reload flash Brand's list had (and got fixed for,
+  // 2026-09-17) — Category's flat view just never got the same fix, since
+  // its primary, most-tested surface is the tree, which was already correct
+  // via its own separate `load({background:true})`.
   const resync = useCallback(() => {
     if (!mounted.current) return;
     load({ background: true });
-    if (isFlatMode) flatRetry();
-  }, [load, isFlatMode, flatRetry]);
+    if (isFlatMode) flatRefresh();
+  }, [load, isFlatMode, flatRefresh]);
 
   // Toasts and confirm-dialog copy interpolate this name into a sentence —
   // an unbounded name (FX's fixtures go past 200 chars) wraps a *fixed-width*
@@ -327,9 +341,15 @@ export function CategoryList() {
     notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
 
   // a reorder we sent no longer fits the tree (a sibling vanished, the old
-  // parent got archived…). Not a field error — just say the list refreshed.
+  // parent got archived, or the dragged row itself is gone — the 2026-09-18
+  // fix added NOT_FOUND alongside VALIDATION_ERROR here). Not a field error
+  // — just say the list refreshed. A *different* tab's later move winning
+  // over an earlier one (both rows still exist, just disagree) is
+  // deliberately left alone — last-write-wins, same as Trello/Notion/Drive
+  // treat any drag-and-drop race, since a move is cheap and reversible and
+  // nothing is destroyed by it.
   const reorderErrorToast = (e: unknown): void => {
-    if (e instanceof AdminApiError && e.code === 'VALIDATION_ERROR') {
+    if (e instanceof AdminApiError && (e.code === 'VALIDATION_ERROR' || e.code === 'NOT_FOUND')) {
       notify.info(t('categories.reloadedAfterChange'));
     } else {
       err(e);
@@ -356,7 +376,14 @@ export function CategoryList() {
         },
       });
     } catch (e) {
-      err(e);
+      // already gone (deleted by someone else, another tab) — the outcome
+      // this action wanted is already true; an error toast would be
+      // actively misleading here (the 2026-09-18 fix).
+      if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
+        notify.info(t('categories.alreadyDeleted', { name: labelOf(c) }));
+      } else {
+        err(e);
+      }
     } finally {
       resync();
     }
@@ -373,11 +400,22 @@ export function CategoryList() {
       }
       notify.saved(t('categories.toast.restored', { name: labelOf(restoreTarget) }));
       setRestoreTarget(null);
-      resync();
     } catch (e) {
-      err(e);
+      // already restored elsewhere — same reasoning as doDelete's own
+      // NOT_FOUND case above (the 2026-09-18 fix).
+      if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
+        notify.info(t('categories.alreadyRestored', { name: labelOf(restoreTarget) }));
+      } else {
+        err(e);
+      }
       setRestoreTarget(null);
     } finally {
+      // was only in the success branch before — an error (including the
+      // calm "already restored" case above) left the stale row on screen
+      // with nothing to refresh it (the 2026-09-18 fix, found live).
+      // `doDelete` already gets this right via its own `finally`; this
+      // just matches it.
+      resync();
       setRestoring(false);
     }
   }

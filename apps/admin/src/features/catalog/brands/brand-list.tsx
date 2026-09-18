@@ -187,7 +187,14 @@ export function BrandList() {
         },
       });
     } catch (e) {
-      err(e);
+      // already gone (deleted by someone else, another tab) — the outcome
+      // this action wanted is already true; an error toast would be
+      // actively misleading here (the 2026-09-18 fix).
+      if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
+        notify.info(t('brands.alreadyDeleted', { name: labelOf(b) }));
+      } else {
+        err(e);
+      }
     } finally {
       resync();
     }
@@ -204,11 +211,22 @@ export function BrandList() {
       }
       notify.saved(t('brands.toast.restored', { name: labelOf(restoreTarget) }));
       setRestoreTarget(null);
-      resync();
     } catch (e) {
-      err(e);
+      // already restored elsewhere — same reasoning as doDelete's own
+      // NOT_FOUND case above (the 2026-09-18 fix).
+      if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
+        notify.info(t('brands.alreadyRestored', { name: labelOf(restoreTarget) }));
+      } else {
+        err(e);
+      }
       setRestoreTarget(null);
     } finally {
+      // was only in the success branch before — an error (including the
+      // calm "already restored" case above) left the stale row on screen
+      // with nothing to refresh it (the 2026-09-18 fix, found live).
+      // `doDelete` already gets this right via its own `finally`; this
+      // just matches it.
+      resync();
       setRestoring(false);
     }
   }

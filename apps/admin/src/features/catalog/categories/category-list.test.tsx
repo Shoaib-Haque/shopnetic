@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { Category } from '@shopnetic/contracts';
 import { adminApi, AdminApiError } from '@/features/admin-api/client';
 import { renderAdmin } from '@/test/render';
@@ -121,6 +121,108 @@ describe('CategoryList error states', () => {
     expect(await screen.findByText(OFFLINE_ERROR)).toBeInTheDocument();
     expect(screen.getAllByText('Alpha').length).toBeGreaterThan(0);
     expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
+  });
+
+  it('deleting an already-deleted row shows a calm "already deleted" toast, not the generic error — the 2026-09-18 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount
+      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)) // #2 DELETE — someone else beat this tab to it
+      .mockResolvedValueOnce([]); // #3 resync
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(await screen.findByText('“Alpha” was already deleted.')).toBeInTheDocument();
+    expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
+    // the stale row itself must also disappear from this tab, not just
+    // the toast appear — `doDelete`'s `finally` already resyncs regardless
+    // of outcome, so this is a regression guard, not a fix in itself.
+    await waitFor(() => expect(screen.queryByText('Alpha')).not.toBeInTheDocument());
+  });
+
+  it('restoring an already-restored row shows a calm "already restored" toast, not the generic error — the 2026-09-18 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount (live tree)
+      .mockResolvedValueOnce([]) // #2 tab-switch tree reload (pre-existing, unrelated)
+      .mockResolvedValueOnce({
+        data: [{ ...cat('z', 'Zulu'), archivedAt: '2026-01-01T00:00:00.000Z' }],
+        meta: {},
+      }) // #3 Archived tab flat page
+      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)) // #4 POST restore — already restored elsewhere
+      // #5/#6: resync() always fires now (moved to `finally`, the
+      // 2026-09-18 fix found live) — it refreshes *both* the tree
+      // (`load`) and, since we're on the Archived/flat tab, the flat
+      // page (`flatRefresh`) too, in that order.
+      .mockResolvedValueOnce([]) // #5 resync's tree reload
+      .mockResolvedValueOnce({ data: [], meta: {} }); // #6 resync's flat refresh (archived, now empty)
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await screen.findAllByText('Zulu');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]!);
+
+    expect(await screen.findByText('“Zulu” was already restored.')).toBeInTheDocument();
+    expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Zulu')).not.toBeInTheDocument());
+  });
+
+  it('restoring from the Archived tab does not blank the rest of the list while it resyncs — the 2026-09-18 fix', async () => {
+    // before this fix, `resync()`'s flat side used `flatList.retry` (clears
+    // `items` + shows the skeleton before refetching) instead of
+    // `flatList.refresh` (swaps the page in, never blanks) — every
+    // Archived/All-tab action had exactly the flash-then-reload Brand's
+    // list was fixed for on 2026-09-17; Category's flat view just never
+    // got the same fix, since its primary surface (the tree) was already
+    // correct via a separate mechanism.
+    let resolveFlatRefresh: (v: unknown) => void = () => {};
+    const flatRefreshPromise = new Promise((resolve) => {
+      resolveFlatRefresh = resolve;
+    });
+
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount (live tree)
+      .mockResolvedValueOnce([]) // #2 tab-switch tree reload
+      .mockResolvedValueOnce({
+        data: [
+          { ...cat('z', 'Zulu'), archivedAt: '2026-01-01T00:00:00.000Z' },
+          { ...cat('y', 'Yankee'), archivedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+        meta: {},
+      }) // #3 Archived tab flat page
+      .mockResolvedValueOnce({ ...cat('z', 'Zulu'), archivedAt: null }) // #4 POST restore — succeeds
+      .mockResolvedValueOnce([]) // #5 resync's tree reload
+      .mockImplementationOnce(() => flatRefreshPromise); // #6 resync's flat refresh — held open on purpose
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await screen.findAllByText('Zulu');
+    await screen.findAllByText('Yankee');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]!);
+
+    // the restore itself has resolved (toast shown) and resync()'s flat
+    // call is in flight but deliberately unresolved — `.retry` blanks
+    // `items` synchronously the moment it's called, well before its own
+    // fetch settles, so this is exactly the window that would catch it;
+    // `.refresh` must leave Yankee on screen here.
+    await screen.findByText('Category “Zulu” restored.');
+    expect(screen.getAllByText('Yankee').length).toBeGreaterThan(0);
+
+    resolveFlatRefresh({
+      data: [{ ...cat('y', 'Yankee'), archivedAt: '2026-01-01T00:00:00.000Z' }],
+      meta: {},
+    });
+    await waitFor(() => expect(screen.queryByText('Zulu')).not.toBeInTheDocument());
+    expect(screen.getAllByText('Yankee').length).toBeGreaterThan(0);
   });
 });
 
@@ -319,6 +421,27 @@ describe('CategoryList drag-reorder rollback', () => {
     expect(document.querySelector('[data-cat-row="a"]')?.getAttribute('aria-level')).toBe(
       originalLevel,
     );
+  });
+
+  it('a drag-reorder whose target vanished shows the reloaded-list toast, not an error — the 2026-09-18 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha'), cat('b', 'Bravo')])
+      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404))
+      .mockResolvedValue([cat('a', 'Alpha'), cat('b', 'Bravo')]);
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+    const rowA = document.querySelector('[data-cat-row="a"]');
+    const rowB = document.querySelector('[data-cat-row="b"]');
+    if (!rowA || !rowB) throw new Error('expected both rows to render');
+
+    const dataTransfer = fakeDataTransfer();
+    fireEvent.dragStart(rowA, { dataTransfer });
+    fireEvent.dragOver(rowB, { dataTransfer });
+    fireEvent.drop(rowB, { dataTransfer });
+
+    expect(await screen.findByText('The category list changed — reloaded.')).toBeInTheDocument();
+    expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
   });
 });
 

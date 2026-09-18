@@ -2947,3 +2947,170 @@ compose file.
   reason, restored. Full sweep green: admin 215 tests (was 214), API 116
   integration (was 115) + 25 unit; typecheck/lint clean on
   `@shopnetic/contracts`, `@shopnetic/api`, and `@shopnetic/admin`.
+
+- 2026-09-18 — Asked whether Brand's `NOT_FOUND` toast ("Something went
+  wrong. Please try again.") on a second-tab delete was expected — it
+  isn't, and it's the same systemic gap in both Category and Brand, so
+  this became a **project-wide rule**, deep-discussed before any code
+  (D1). Every by-id action falls into one of two classes:
+  - **Idempotent-outcome actions** (delete, restore, remove-alias): if
+    tab B's action fails because tab A already got there, the outcome
+    tab B *wanted* is already true. Nothing lost, nothing conflicts — a
+    scary error toast actively misleads. These get a calm `notify.info`,
+    **per-action wording** (not one generic string), and the list
+    already resyncs regardless of success/failure.
+  - **Choice-carrying actions** (merge, update — update already fixed
+    2026-09-17/18): the outcome genuinely diverges from what the user
+    asked for (merged into a *different* target than intended, edited
+    over someone else's change) — these block and state plainly what
+    happened, same tier as Update's `CONFLICT` handling.
+  - **Everything else is deliberately unguarded**: a *different* tab's
+    later write winning over an earlier one for `move`/`reorder`
+    (Category) and `changeRole` (Staff) is left as last-write-wins, no
+    conflict dialog — matching how Trello/Notion/Linear/Google Drive all
+    treat a drag-and-drop or settings race: cheap, reversible, nothing
+    destroyed, interrupting the user would be worse UX than just letting
+    the later action win. `deprovision`/`resetTotp` (Staff) already
+    no-op harmlessly if repeated — no guard needed there either.
+  - Inventoried and fixed across all three admin lists:
+    - **Category**: `doDelete`/`confirmRestore` catch `NOT_FOUND` →
+      `alreadyDeleted`/`alreadyRestored` (new keys). `reorderErrorToast`
+      (previously only caught `VALIDATION_ERROR` for "a sibling
+      vanished, the parent got archived") now also catches `NOT_FOUND`
+      (the dragged row or target parent itself vanished) — same existing
+      `reloadedAfterChange` info toast, no new mechanism needed.
+    - **Brand**: same `doDelete`/`confirmRestore` pattern. `removeAlias`
+      (in `brand-form-modal.tsx`) catches `NOT_FOUND` → drops the stale
+      chip locally too (it's already gone server-side) + `notify.info`,
+      instead of leaving a chip for something that no longer exists.
+    - **Staff**: different shape entirely — staff accounts are never
+      deleted, only status-flipped, so there's no vanished-target case
+      for `deprovision`/`resetTotp`/`changeRole`. `activate()`
+      (Unlock/Reactivate) *does* have the idempotent-outcome problem,
+      just via `VALIDATION_ERROR` instead of `NOT_FOUND` (the service
+      throws it when the account's already active) — `runConfirm`'s
+      catch special-cases `kind === 'activate'` + `VALIDATION_ERROR` →
+      `manage.alreadyActive`, and patches the row to `status: 'active'`
+      locally (we know for certain that's the real state — it's *why*
+      the action was rejected) rather than needing a fresh refetch.
+    - **Brand.merge stays open** — pending a real decision (surfacing
+      the actual merge target's name means extending the shared error
+      envelope, `AppError`/`AllExceptionsFilter`/`ApiError`, with a
+      generic small metadata channel; `detail` is explicitly dev-facing
+      only per F2, and the only existing structured field, `fields`, is
+      typed for form-validation issues, not general metadata). Not
+      implemented yet.
+  - **Found and fixed a real test-infrastructure gap while writing the
+    reorder test**: `notify.*`/`toast.*` push into `sonner`'s own
+    module-level store, which outlives any one test's React tree —
+    `renderAdmin` mounts a fresh `<Toaster/>` per test, but a toast
+    triggered in test N is still queued in that shared store and renders
+    again the moment test N+1 mounts its own `<Toaster/>`, unrelated to
+    that test's own assertions. Caught via a real, reproducible failure
+    (two toast-triggering tests back to back in the same file; the
+    second one's `not.toBeInTheDocument()` check on a generic error
+    caught the *first* test's still-lingering toast). Fixed with a
+    global `afterEach(() => toast.dismiss())` in `vitest.setup.ts`, not
+    a per-file one — any test file that renders `<Toaster/>` more than
+    once could hit this the same way.
+  - **Also debugged, unrelated to the actual fix**: the new reorder test
+    initially failed with zero API calls ever firing — traced to drag
+    being gated behind `matchMedia('(pointer: fine)')`, which is stubbed
+    `false` globally and only overridden to `true` in the existing
+    `'CategoryList drag-reorder rollback'` describe block's own
+    `beforeEach`. Moved the new test into that block rather than its
+    original one; a `data-cat-row` id-lookup returning exactly one
+    element gave a false sense that placement couldn't be the issue —
+    it's only set on the desktop tree's rows, not duplicated on mobile,
+    so that particular ambiguity was correctly ruled out, just not the
+    actual cause.
+  - **Found and left alone, out of scope**: `'flashes the target row
+    once the flat/all view has it...'` fails consistently in isolation
+    and intermittently in the full suite — confirmed via `git stash`
+    that it already failed on the clean pre-session baseline, so it's
+    pre-existing, timing/order-dependent flakiness unrelated to any of
+    today's changes, not something introduced or silently patched over.
+  - New/extended tests: 3 in `category-list.test.tsx`
+    (`alreadyDeleted`/`alreadyRestored`/reorder-`NOT_FOUND`), 3 in
+    `brand-list.test.tsx` (same three, plus the alias case), 1 in
+    `staff-list.test.tsx` (`alreadyActive`) + 1 existing Staff test
+    (`'a failed action shows the mapped error copy'`) updated, since its
+    `activate`+`VALIDATION_ERROR` fixture is now specifically
+    intercepted by this fix and no longer exercises the generic-mapping
+    path it was actually testing — switched to `deprovision`+`FORBIDDEN`.
+    Revert-confirm-restore on one representative fix per distinct
+    mechanism (Category's delete-`NOT_FOUND`, the reorder-`NOT_FOUND`
+    path, Staff's activate-`VALIDATION_ERROR`) — Brand's own copies
+    weren't independently re-verified, since they're structurally
+    identical to Category's already-proven pattern. All three failed for
+    the exact right reason, restored. Full admin suite: 221 passing (was
+    214 + this round's 8 new = 222 expected; the 1 pre-existing flake
+    above accounts for the difference) — no backend changes this round,
+    API suite untouched.
+
+- 2026-09-18 — Asked directly whether the "already deleted/restored"
+  toast should also update the *other* tab's own stale list, not just
+  show the calm message. It should, and mostly already did — `doDelete`
+  in both Category and Brand calls `resync()` from a `finally`, so it
+  refreshes regardless of outcome. Verified this live rather than
+  assuming: extended each "already X" test with a follow-up
+  `waitFor(() => expect(screen.queryByText(name)).not.toBeInTheDocument())`
+  and ran them. Category's and Brand's delete cases already passed with
+  no code change. **`confirmRestore()` (both Category and Brand) did
+  not** — it only called `resync()` from the `try` block's *success*
+  path, never from `catch` or `finally`, so any restore failure
+  (including the new calm "already restored" case, but really any
+  failure at all — a real, pre-existing gap this fix happened to
+  surface, not something introduced by it) left the stale archived row
+  sitting in the list with nothing to refresh it. Fixed by moving
+  `resync()` into `finally` in both files, matching `doDelete`'s
+  already-correct pattern — one `resync()` call covers both branches
+  instead of duplicating it per-branch.
+  - Category's own `resync()` fires *two* API calls (the tree's
+    `load({background:true})` plus, when on the Archived/flat tab, its
+    own `flatRetry()`) — the restore test's mock queue only accounted
+    for one, so fixing the code first surfaced a second, unrelated
+    failure (`TypeError: (items ?? []).map is not a function`) purely
+    from an under-mocked test, not a real bug. Added the missing second
+    mock rather than chasing a nonexistent code issue.
+  - Reorder/move, Brand's `removeAlias`, and Staff's `activate` were
+    already confirmed correct in the same pass: `applyMove`'s `finally`
+    already resyncs both branches; `removeAlias` and `activate` patch
+    local state directly (no resync needed) and both already had
+    assertions proving the row updates in place.
+  - Revert-confirm-restore on both `confirmRestore` fixes (Category,
+    Brand) — both failed for the exact right reason when the `finally`
+    move was undone, restored. Full admin suite green: 221/222
+    (unchanged — the one pre-existing flake from the prior entry, still
+    untouched).
+
+- 2026-09-18 — Follow-up from the same "does the list actually update"
+  check: reported that Category's Live tab delete removes the row
+  silently, but Archived/All-tab restore/delete visibly reloads the
+  *whole* list. Live's tree already used a background, no-blank
+  reload (`load({background:true})`, built earlier for exactly this);
+  the flat/paginated side (Archived, All, search) used `flatList.retry`
+  in `resync()` — the blank-then-reload version, meant for a real "Try
+  again after total failure" button, not a quiet post-mutation refresh.
+  This is the identical bug Brand's own list had and was fixed for on
+  2026-09-17 (`useScrollLoad` gained a real `refresh()` for exactly
+  this) — Category's flat view was simply never switched over, since
+  its primary, most-tested surface (the tree) was already correct via
+  a wholly separate mechanism, so the flat side's flash went unnoticed
+  until an Archived-tab action was actually exercised. One-line fix:
+  `flatList.retry` → `flatList.refresh` in `resync()`'s flat branch.
+  The dedicated "Try again" button elsewhere in the file correctly
+  keeps `flatList.retry` — that one's a response to a genuine total
+  failure and should blank + reload.
+  - New regression test needed real care to actually catch the bug: an
+    immediate synchronous check after firing the restore click passed
+    even with the old `.retry` in place, since the async handler hadn't
+    reached `resync()` yet at that point — a false pass, caught before
+    trusting it. Redesigned using a manually-held-open promise for the
+    flat refresh's own response, so the assertion runs in the exact
+    window where `.retry` has already synchronously cleared `items` but
+    `.refresh` hasn't (a second, unrelated row must still be visible
+    there). Revert-confirm-restore against *this* redesigned test then
+    correctly failed with `.retry` restored, confirming the test itself
+    (not just the fix) is sound. Full admin suite green: 222/223 (the
+    one pre-existing flake, still unrelated and untouched).

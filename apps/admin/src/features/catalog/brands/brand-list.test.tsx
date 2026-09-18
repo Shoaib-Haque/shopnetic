@@ -225,6 +225,68 @@ describe('BrandList', () => {
     );
   });
 
+  it('deleting an already-deleted brand shows a calm "already deleted" toast, not an error — the 2026-09-18 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount
+      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)) // #2 DELETE — someone else beat this tab to it
+      .mockResolvedValueOnce(page([])); // #3 resync
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+
+    expect(await screen.findByText('“Acme” was already deleted.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Acme')).not.toBeInTheDocument());
+  });
+
+  it('restoring an already-restored brand shows a calm "already restored" toast, not an error — the 2026-09-18 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount (live)
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #2 switch to archived
+      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)) // #3 POST restore — already restored elsewhere
+      .mockResolvedValueOnce(page([])); // #4 resync (archived, now empty)
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await screen.findAllByText('Acme');
+
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Restore' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+
+    expect(await screen.findByText('“Acme” was already restored.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Acme')).not.toBeInTheDocument());
+  });
+
+  it('removing an already-removed alias shows a calm "already removed" toast and drops the stale chip — the 2026-09-18 fix', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(
+        page([
+          brand('a', 'Acme', {
+            aliases: [{ id: 'al1', alias: 'ACM', createdAt: '2026-01-01T00:00:00.000Z' }],
+          }),
+        ]),
+      ) // #1 mount
+      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)); // #2 DELETE /brands/a/aliases/al1
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    await screen.findByText('Edit brand');
+    await screen.findByText('ACM');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    expect(await screen.findByText('Alias “ACM” was already removed.')).toBeInTheDocument();
+    expect(screen.queryByText('ACM')).not.toBeInTheDocument();
+  });
+
   it('merging searches for a target, then posts the merge and shows the merged toast', async () => {
     mockedAdminApi
       .mockResolvedValueOnce(page([brand('a', 'Acme'), brand('b', 'Zenith')])) // #1 mount

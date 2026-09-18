@@ -252,7 +252,17 @@ export function BrandFormModal({
       notify.saved(t('brands.toast.aliasRemoved', { alias: aliasText }));
       onAliasesChanged?.({ ...brand, aliases: nextAliases });
     } catch (e) {
-      notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+      // already removed elsewhere — the outcome this action wanted is
+      // already true; drop the stale chip locally too instead of leaving
+      // it showing (the 2026-09-18 fix).
+      if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
+        const nextAliases = aliases.filter((a) => a.id !== aliasId);
+        setAliases(nextAliases);
+        notify.info(t('brands.aliasAlreadyRemoved', { alias: aliasText }));
+        onAliasesChanged?.({ ...brand, aliases: nextAliases });
+      } else {
+        notify.error(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+      }
     } finally {
       setRemovingAliasId(null);
     }
