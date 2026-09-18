@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { StaffAccount, StaffRole } from '@shopnetic/contracts';
+import type { StaffAccount, StaffRole, StaffSession } from '@shopnetic/contracts';
 import type { Account } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
@@ -186,6 +186,62 @@ export class StaffAccountsService {
       ...pick(meta),
     });
     return this.view(accountId);
+  }
+
+  /** Another staff member's sessions — Super Admin only (the controller's
+   * `@RequirePermission`). Viewing is unrestricted for self vs. others (no
+   * `assertNotSelf`) — it's just redundant with `/me/sessions`, not risky
+   * the way a revoke action pointed at yourself would be. */
+  async listSessions(
+    accountId: string,
+    opts: { cursor?: string; limit?: number } = {},
+  ): Promise<{ sessions: StaffSession[]; nextCursor?: string }> {
+    await this.requireStaffAccount(accountId);
+    return this.sessions.listForAccount(accountId, opts);
+  }
+
+  async revokeSession(
+    accountId: string,
+    sessionId: string,
+    actorAccountId: string,
+    meta: RequestMeta = {},
+  ): Promise<void> {
+    this.assertNotSelf(
+      accountId,
+      actorAccountId,
+      'manage your own sessions — use the self-service view',
+    );
+    await this.requireStaffAccount(accountId);
+    await this.sessions.revokeById(sessionId, accountId, 'admin');
+    await this.audit.record({
+      actorAccountId,
+      action: 'identity.staff_session_revoked',
+      targetType: 'account',
+      targetId: accountId,
+      after: { sessionId },
+      ...pick(meta),
+    });
+  }
+
+  async revokeAllSessions(
+    accountId: string,
+    actorAccountId: string,
+    meta: RequestMeta = {},
+  ): Promise<void> {
+    this.assertNotSelf(
+      accountId,
+      actorAccountId,
+      'manage your own sessions — use the self-service view',
+    );
+    await this.requireStaffAccount(accountId);
+    await this.sessions.revokeAllForAccount(accountId, 'admin');
+    await this.audit.record({
+      actorAccountId,
+      action: 'identity.staff_sessions_revoked_all',
+      targetType: 'account',
+      targetId: accountId,
+      ...pick(meta),
+    });
   }
 
   private assertNotSelf(accountId: string, actorAccountId: string, detail: string): void {

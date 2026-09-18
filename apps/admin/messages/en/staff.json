@@ -160,6 +160,53 @@
         "deprovisioned": "{email} deprovisioned."
       }
     },
+    "sessions": {
+      "title": "Sessions",
+      "intro": "Devices currently signed in to your account.",
+      "allTitle": "Staff sessions",
+      "allIntro": "Every device currently signed in, across every staff account.",
+      "empty": "No active sessions.",
+      "allEmpty": "No active staff sessions.",
+      "cols": {
+        "device": "Device",
+        "ip": "IP address",
+        "lastActive": "Last active",
+        "since": "Signed in since"
+      },
+      "current": "This device",
+      "revoke": "Log out",
+      "revokeOthers": "Log out other devices",
+      "revokeAllFor": "Log out everywhere",
+      "tabs": { "all": "All", "byPerson": "By person" },
+      "expand": "View sessions",
+      "collapse": "Hide sessions",
+      "confirmRevoke": {
+        "title": "Log out this device?",
+        "message": "This device will be signed out immediately.",
+        "confirm": "Log out"
+      },
+      "confirmRevokeOthers": {
+        "title": "Log out other devices?",
+        "message": "Every session except this one will be signed out immediately.",
+        "confirm": "Log out others"
+      },
+      "confirmRevokeAccount": {
+        "title": "Log out this device?",
+        "message": "{email} will be signed out of this device immediately.",
+        "confirm": "Log out"
+      },
+      "confirmRevokeAllForAccount": {
+        "title": "Log out {email} everywhere?",
+        "message": "Every device {email} is signed in on will be signed out immediately.",
+        "confirm": "Log out everywhere"
+      },
+      "toast": {
+        "revoked": "Device signed out.",
+        "revokedOthers": "Other devices signed out.",
+        "revokedAccount": "{email} signed out of that device.",
+        "revokedAllForAccount": "{email} signed out everywhere."
+      }
+    },
     "errors": {
       "generic": "Something went wrong. Please try again.",
       "network": "We couldn't reach the server. Check your connection and try again.",

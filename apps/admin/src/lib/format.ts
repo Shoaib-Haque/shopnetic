@@ -8,3 +8,13 @@
 export function capForMessage(value: string, max = 60): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
+
+/** Postgres/Node's dual-stack sockets report a plain IPv4 client as an
+ * IPv4-mapped IPv6 address (`::ffff:203.0.113.5`) — technically correct, but
+ * reads as a confusing/broken-looking IPv6 address to an admin skimming a
+ * list. Strips the `::ffff:` prefix back down to the plain IPv4 form; a real
+ * (non-mapped) IPv6 address, or `null`, passes through unchanged. */
+export function formatIp(ip: string | null): string {
+  if (!ip) return '—';
+  return ip.startsWith('::ffff:') ? ip.slice('::ffff:'.length) : ip;
+}

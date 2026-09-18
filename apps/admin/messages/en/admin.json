@@ -11,6 +11,7 @@
       "notifications": "Notifications",
       "account": "Account menu",
       "changePassword": "Change password",
+      "mySessions": "Sessions",
       "signOut": "Sign out",
       "signingOut": "Signing out…",
       "signOutFailed": "Couldn’t sign you out. Check your connection and try again.",
@@ -32,6 +33,7 @@
       "staff": "Staff",
       "staffList": "List",
       "staffInvite": "Invite",
+      "staffSessions": "Sessions",
       "auditLog": "Audit log"
     },
     "footer": {

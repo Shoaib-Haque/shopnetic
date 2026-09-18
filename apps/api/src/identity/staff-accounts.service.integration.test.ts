@@ -187,6 +187,76 @@ describe.skipIf(!hasDb)('StaffAccountsService (integration)', () => {
     expect(updated.status).toBe('active');
   });
 
+  it("lists another staff member's sessions, and revokes one by id", async () => {
+    const a = await sessions.create(targetId, { userAgent: 'itest-ua-list-a' });
+    const b = await sessions.create(targetId, { userAgent: 'itest-ua-list-b' });
+
+    const { sessions: list } = await accounts.listSessions(targetId);
+    const ids = list.map((s) => s.id);
+    expect(ids).toContain(a.sessionId);
+    expect(ids).toContain(b.sessionId);
+    // an admin viewing someone else's sessions never sees one marked current
+    expect(list.every((s) => !s.isCurrent)).toBe(true);
+
+    await accounts.revokeSession(targetId, a.sessionId, superAdminId);
+    const row = await prisma.session.findUniqueOrThrow({ where: { id: a.sessionId } });
+    expect(row.revokedAt).not.toBeNull();
+    expect(row.revokedReason).toBe('admin');
+
+    const event = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'identity.staff_session_revoked', targetId, actorAccountId: superAdminId },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(event.after).toMatchObject({ sessionId: a.sessionId });
+  });
+
+  it("revokes every one of another staff member's sessions at once", async () => {
+    const a = await sessions.create(targetId, {});
+    const b = await sessions.create(targetId, {});
+
+    await accounts.revokeAllSessions(targetId, superAdminId);
+
+    const rows = await prisma.session.findMany({
+      where: { id: { in: [a.sessionId, b.sessionId] } },
+    });
+    expect(rows.every((r) => r.revokedAt !== null)).toBe(true);
+    expect(rows.every((r) => r.revokedReason === 'admin')).toBe(true);
+
+    const event = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        action: 'identity.staff_sessions_revoked_all',
+        targetId,
+        actorAccountId: superAdminId,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(event).toBeDefined();
+  });
+
+  it('refuses to let an actor revoke their own session(s) via the admin (other-account) path', async () => {
+    const own = await sessions.create(superAdminId, {});
+    await expect(
+      accounts.revokeSession(superAdminId, own.sessionId, superAdminId),
+    ).rejects.toMatchObject({ code: 'CANNOT_MODIFY_SELF' });
+    await expect(accounts.revokeAllSessions(superAdminId, superAdminId)).rejects.toMatchObject({
+      code: 'CANNOT_MODIFY_SELF',
+    });
+  });
+
+  it('404s listing/revoking sessions for a non-staff (marketplace) accountId', async () => {
+    const marketplace = await prisma.account.create({
+      data: {
+        email: `itest-sessions-marketplace-${stamp}@shopnetic.test`,
+        plane: 'marketplace',
+        status: 'active',
+      },
+    });
+    await expect(accounts.listSessions(marketplace.id)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    await prisma.account.delete({ where: { id: marketplace.id } });
+  });
+
   it('404s on an accountId that is not a staff account', async () => {
     const marketplace = await prisma.account.create({
       data: {

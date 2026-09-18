@@ -3466,3 +3466,130 @@ compose file.
   falls back to `undefined`, an even more clearly broken value than the
   live "— none (root) —" case). Full admin suite green: 270/271 (the one
   pre-existing flake, still unrelated and untouched); typecheck/lint clean.
+
+- 2026-09-18 — New feature: staff login-session management (view active
+  devices, force-logout), discussed end-to-end with the user before any
+  code — data model, permission split, and UI shape all confirmed up front.
+  - **Backend was mostly already there**: `identity.session` already
+    tracked `ip`/`userAgent`/`issuedAt`/`lastUsedAt`/`expiresAt`/
+    `revokedAt` per login (two-token design — stateless 15-min access JWT +
+    DB-backed opaque refresh token), and bulk revocation
+    (`revokeAllForAccount`) already existed (`deprovision` already called
+    it). Missing: any listing endpoint, and single-device revoke (the
+    existing `revokeByToken` needs the raw refresh token; an admin only
+    ever has the opaque session id a list handed back).
+  - `session.service.ts` gained `revokeById(sessionId, scopeAccountId,
+    reason)` — **always** scoped to an account id (revert-confirmed: a
+    session id belonging to a different account than the caller is
+    authorized for is a safe no-op, not a cross-account revoke), plus
+    `listForAccount`/`listAll` (paginated, `orderBy: id desc` — same
+    UUIDv7-as-stable-cursor reasoning `StaffAccountsService.list()` already
+    established) and self-service audit-logged wrappers
+    (`revokeOwnSession`, `revokeOwnOtherSessions`). `revokeAllForAccount`
+    gained an optional `exceptSessionId` — self "log out everywhere else"
+    must not revoke the very session making that request; there's no
+    equivalent exception when an admin bulk-revokes *someone else's*
+    sessions.
+  - `StaffAccountsService` gained `listSessions`/`revokeSession`/
+    `revokeAllSessions` for admin-on-another-account, through the exact
+    same `assertNotSelf` guard every other staff-lifecycle action already
+    uses (revert-confirmed — without it, an admin could accidentally
+    revoke their own sessions via the *other-account* path, unable to
+    except their current one the way the self-service path can).
+  - 7 new `StaffController` routes: self (`StaffAuthGuard` only — no
+    `STAFF_MANAGE`, since securing your own account never needs the
+    "manage other staff" permission) — `GET/DELETE /me/sessions[...]`,
+    `POST /me/sessions/revoke-others`; admin (`STAFF_MANAGE`) — `GET
+    /sessions` (flat, every staff account), `GET/DELETE/POST
+    /:accountId/sessions[...]`. `me/sessions` and the bare `sessions` route
+    are declared *before* the `:accountId/...` routes — Nest/Express match
+    same-shaped routes in declaration order, so a literal segment must
+    come first or it's captured as the wildcard param.
+  - Session id wasn't previously read out of the access token even though
+    `signAccessToken`/`verifyAccessToken` already carried it (`sid` claim)
+    — `StaffAuthGuard` now also calls `setSessionId(req, sessionId)`
+    (mirrors the existing `setActor`/`getActor` pattern in
+    `actor-request.ts`, kept off the shared cross-plane `Actor` type since
+    it's staff-only today), and a new `@CurrentSessionId()` decorator
+    mirrors `@CurrentActor()`.
+  - `ua-parser-js` added — **server-side only**: the API returns a
+    pre-formatted `deviceLabel` ("Chrome on macOS"), so the admin frontend
+    needs no UA-parsing dependency of its own.
+  - New contracts: `staffSessionSchema`/`staffSessionListResponseSchema`.
+  - Admin-side BFF proxy gap found while wiring the client: `/api/staff-
+    auth/staff/[[...path]]/route.ts` only forwarded `GET`/`POST`/`PATCH` —
+    no controller under this prefix had ever used `DELETE` before. Added
+    it (matching the `/api/admin/[...path]` proxy, which already forwards
+    `DELETE`/`PUT` too) rather than reshaping the new endpoints around the
+    gap.
+  - Frontend: `features/staff-sessions/` — a generic `SessionList`
+    (desktop table + mobile cards, `useScrollLoad`-backed, one shared
+    component for all three surfaces below) plus:
+    - Self-service — reachable from the topbar's account menu
+      (`account/sessions`, alongside the existing Change password), every
+      staff role. A row's revoke button is `disabled` when `isCurrent` —
+      revoking your own current session through this table would be
+      confusing/self-destructive UX; ordinary sign-out already exists as
+      its own separate action.
+    - Super Admin's `staff/sessions` (new `nav.staff` child, alongside
+      List/Invite) — two tabs: **All** (flat, every staff member's
+      sessions, `showAccountEmail`) and **By person** (the staff directory
+      list, click a row to expand a fixed-height (`max-h-96 overflow-y-
+      auto`) scrollable `SessionList` for just that person, own
+      load-more — same nested-scrollable-sentinel pattern already proven
+      by Brand's merge-target picker).
+  - Revert-confirm-restore on: the cross-account `revokeById` scope
+    (integration), the admin-path self-lockout guard (integration), the
+    current-session disabled-revoke-button (unit), and the by-person
+    expand/collapse toggle (unit) — all four correctly failed when
+    reverted.
+  - Full suite green: API 129/129 integration (18 new) + 25/25 unit; admin
+    278/279 (the one pre-existing, unrelated flake); typecheck/lint clean
+    across `@shopnetic/api`, `@shopnetic/contracts`, `@shopnetic/admin`.
+  - Three fixes from the first live walkthrough:
+    - The action column's `<TableHead className="w-10" />` (copied from
+      Brand List's own row-menu column, which only ever holds a single "…"
+      icon) was too narrow for a real "Log out" text button, clipping it.
+      Widened to `w-28` and gave the button a `LogOut` icon — every other
+      `ActionButton` in this codebase pairs an icon with its collapsible
+      label; this one didn't, so there was nothing left to show once space
+      actually got tight either.
+    - IP addresses rendered as `::ffff:203.0.113.5` — Node/Postgres's
+      dual-stack sockets report a plain IPv4 client as an IPv4-mapped IPv6
+      address, technically correct but reads as broken to an admin
+      skimming the list. New `formatIp()` in `@/lib/format.ts` (alongside
+      `capForMessage`) strips the `::ffff:` prefix back to plain IPv4; a
+      real IPv6 address passes through unchanged. Scoped to the session
+      list for now — Audit Log's own IP display (`audit-log.tsx`) has the
+      identical raw-string issue but wasn't part of this ask, so left
+      alone; `formatIp` living in the shared `lib/format.ts` (not inside
+      `staff-sessions/`) means it's a one-line change to reuse there later.
+    - The bulk "log out everywhere" button had no way to know it had
+      nothing to do — asked for specifically: disable it when the target
+      has no sessions to revoke. One condition covers both bulk contexts:
+      `list.items.every((s) => s.isCurrent)` — for the admin "by person"
+      view no row is ever `isCurrent`, so this is `true` only when the
+      list is genuinely empty (vacuous truth on `[]`); for self-service
+      "log out other devices" it's also `true` when the only row left is
+      the caller's own current session, i.e. there's nothing "other" to
+      revoke either.
+  - New tests: `formatIp` strips the mapped prefix / passes a real IPv6
+    address through; the bulk button is disabled for an empty list *and*
+    for a self-view with only the current session, enabled once a
+    non-current session exists. Revert-confirm-restore on both the IP
+    stripping and the disabled condition — both correctly failed when
+    reverted. Full admin suite green: 282/283 (the one pre-existing flake,
+    still unrelated and untouched); typecheck/lint clean.
+  - Follow-up, same walkthrough: the "Last active" date/time was wrapping
+    onto two lines — `w-40` (10rem) wasn't wide enough for a full
+    locale-formatted timestamp. Since the table is `table-fixed`, a
+    column's width comes only from its header cell's explicit class, never
+    its content, so simply adding `whitespace-nowrap` alone would have
+    just clipped it instead of wrapping. Widened `Last active` to `w-52`
+    and added `whitespace-nowrap` to it and the IP column (belt-and-
+    suspenders against a future locale format running longer), leaving
+    Device with no fixed width at all — it already had `min-w-0`/`truncate`
+    (per the user's own suggestion: let the device name ellipsis first,
+    not the timestamp/IP wrap). Full admin suite green: 282/283 (the one
+    pre-existing flake, still unrelated and untouched); typecheck/lint
+    clean.

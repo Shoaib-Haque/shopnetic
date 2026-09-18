@@ -100,6 +100,9 @@ export function Topbar({
           <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
+            <Link href={`${root}/account/sessions`}>{t('shell.mySessions')}</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
             <Link href={`${root}/account/change-password`}>{t('shell.changePassword')}</Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />

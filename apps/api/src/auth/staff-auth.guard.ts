@@ -4,7 +4,7 @@ import { AppError } from '../common/app-error.js';
 import { JwksService } from '../crypto/jwks.service.js';
 import { ActorService } from '../identity/actor.service.js';
 import { STAFF_AUDIENCE } from '../identity/access-token.service.js';
-import { setActor } from './actor-request.js';
+import { setActor, setSessionId } from './actor-request.js';
 
 /**
  * Like `AuthGuard` but for the staff plane: the token must carry `aud=admin`
@@ -25,8 +25,9 @@ export class StaffAuthGuard implements CanActivate {
     if (!token) throw AppError.unauthenticated('UNAUTHENTICATED', 'missing bearer token');
 
     let accountId: string;
+    let sessionId: string;
     try {
-      ({ accountId } = await this.jwks.verifyAccessToken(token, STAFF_AUDIENCE));
+      ({ accountId, sessionId } = await this.jwks.verifyAccessToken(token, STAFF_AUDIENCE));
     } catch {
       throw AppError.unauthenticated('UNAUTHENTICATED', 'invalid or expired admin token');
     }
@@ -38,6 +39,7 @@ export class StaffAuthGuard implements CanActivate {
     }
 
     setActor(req, actor);
+    setSessionId(req, sessionId);
     return true;
   }
 }

@@ -4,9 +4,9 @@ import { proxyWithBearer } from '@/features/admin-api/proxy-with-bearer';
 
 /**
  * BFF proxy for the `staff:manage` staff-directory endpoints (list, role
- * change, unlock, reset-totp, deprovision) — `identity/v1/staff/*`, not the
- * `admin/v1/*` API surface `/api/admin/*` targets. Same Bearer-attach and
- * refresh-on-401 dance via `proxyWithBearer`.
+ * change, unlock, reset-totp, deprovision, session management) —
+ * `identity/v1/staff/*`, not the `admin/v1/*` API surface `/api/admin/*`
+ * targets. Same Bearer-attach and refresh-on-401 dance via `proxyWithBearer`.
  *
  * `[[...path]]` (optional catch-all), not `[...path]`: the list endpoint is
  * `identity/v1/staff` itself, zero extra segments — a required catch-all
@@ -35,4 +35,4 @@ async function handle(
   );
 }
 
-export { handle as GET, handle as POST, handle as PATCH };
+export { handle as GET, handle as POST, handle as PATCH, handle as DELETE };

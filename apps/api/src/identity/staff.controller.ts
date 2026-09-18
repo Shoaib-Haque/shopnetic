@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Inject,
@@ -31,6 +32,7 @@ import {
   type StaffLoginRequest,
   type StaffResetPasswordRequest,
   type StaffRoleChangeRequest,
+  type StaffSession,
   type StaffSessionResponse,
   type StaffTotpConfirmRequest,
   type TotpConfirmResponse,
@@ -47,10 +49,12 @@ import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { RequirePermission } from '../auth/require-permission.decorator.js';
 import { CurrentActor } from '../auth/current-actor.decorator.js';
+import { CurrentSessionId } from '../auth/current-session-id.decorator.js';
 import { requestMeta as ctxOf } from '../common/request-meta.js';
 import { StaffAuthService } from './staff-auth.service.js';
 import { StaffInviteService } from './staff-invite.service.js';
 import { StaffAccountsService } from './staff-accounts.service.js';
+import { SessionService } from './session.service.js';
 import {
   STAFF_REFRESH_COOKIE,
   clearStaffRefreshCookie,
@@ -73,6 +77,7 @@ export class StaffController {
     private readonly staffAuth: StaffAuthService,
     private readonly invites: StaffInviteService,
     private readonly accounts: StaffAccountsService,
+    private readonly sessions: SessionService,
   ) {}
 
   private get isProd(): boolean {
@@ -161,6 +166,57 @@ export class StaffController {
       body.newPassword,
       ctxOf(req),
     );
+  }
+
+  /** Self-service — every staff role, no `STAFF_MANAGE` needed: securing
+   * your own account never requires the "manage other staff" permission.
+   * Declared here, ahead of the `:accountId/sessions` routes further down —
+   * NestJS/Express match same-shaped routes in declaration order, so `me`
+   * must come first or it would be captured as an `:accountId` value. */
+  @Get('me/sessions')
+  @HttpCode(200)
+  @UseGuards(StaffAuthGuard)
+  async mySessions(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @CurrentSessionId() sessionId: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limitRaw?: string,
+  ): Promise<{
+    data: { sessions: StaffSession[]; nextCursor?: string };
+    meta: { requestId: string };
+  }> {
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const page = await this.sessions.listForAccount(actor.accountId, {
+      ...(cursor ? { cursor } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+      currentSessionId: sessionId,
+    });
+    return ok(req, page);
+  }
+
+  @Delete('me/sessions/:sessionId')
+  @HttpCode(204)
+  @UseGuards(StaffAuthGuard)
+  async revokeMySession(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('sessionId') sessionId: string,
+  ): Promise<void> {
+    await this.sessions.revokeOwnSession(actor.accountId, sessionId, ctxOf(req));
+  }
+
+  /** "Log out everywhere else" — every session but the one making this
+   * request, so the caller can't lock themselves out mid-action. */
+  @Post('me/sessions/revoke-others')
+  @HttpCode(204)
+  @UseGuards(StaffAuthGuard)
+  async revokeMyOtherSessions(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @CurrentSessionId() sessionId: string,
+  ): Promise<void> {
+    await this.sessions.revokeOwnOtherSessions(actor.accountId, sessionId, ctxOf(req));
   }
 
   @Post('auth/forgot-password')
@@ -323,6 +379,77 @@ export class StaffController {
   ): Promise<{ data: StaffAccount; meta: { requestId: string } }> {
     const account = await this.accounts.deprovision(accountId, actor.accountId, ctxOf(req));
     return ok(req, account);
+  }
+
+  /** Super Admin's "All sessions" tab — every staff account's sessions,
+   * flattened. A bare literal segment (`sessions`), so it never collides
+   * with the `:accountId/...` routes below regardless of declaration order
+   * (different segment count). */
+  @Get('sessions')
+  @HttpCode(200)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async allSessions(
+    @Req() req: Request,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limitRaw?: string,
+  ): Promise<{
+    data: { sessions: StaffSession[]; nextCursor?: string };
+    meta: { requestId: string };
+  }> {
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const page = await this.sessions.listAll({
+      ...(cursor ? { cursor } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    return ok(req, page);
+  }
+
+  /** Super Admin's "by person" tab, expanded — one staff member's sessions. */
+  @Get(':accountId/sessions')
+  @HttpCode(200)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async accountSessions(
+    @Req() req: Request,
+    @Param('accountId') accountId: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limitRaw?: string,
+  ): Promise<{
+    data: { sessions: StaffSession[]; nextCursor?: string };
+    meta: { requestId: string };
+  }> {
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const page = await this.accounts.listSessions(accountId, {
+      ...(cursor ? { cursor } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    return ok(req, page);
+  }
+
+  @Delete(':accountId/sessions/:sessionId')
+  @HttpCode(204)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async revokeAccountSession(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('accountId') accountId: string,
+    @Param('sessionId') sessionId: string,
+  ): Promise<void> {
+    await this.accounts.revokeSession(accountId, sessionId, actor.accountId, ctxOf(req));
+  }
+
+  @Post(':accountId/sessions/revoke-all')
+  @HttpCode(204)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async revokeAllAccountSessions(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('accountId') accountId: string,
+  ): Promise<void> {
+    await this.accounts.revokeAllSessions(accountId, actor.accountId, ctxOf(req));
   }
 }
 

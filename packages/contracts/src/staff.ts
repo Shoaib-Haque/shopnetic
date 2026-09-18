@@ -110,3 +110,36 @@ export const staffRoleChangeRequestSchema = z.object({
   role: staffRoleSchema,
 });
 export type StaffRoleChangeRequest = z.infer<typeof staffRoleChangeRequestSchema>;
+
+/**
+ * A login session (`identity.session` — refresh-token rotation chain, one
+ * row per issued/rotated token). `accountEmail` is always present, even in
+ * the self-service view where it's just the viewer's own — one shared shape
+ * for both "my sessions" and "this other staff member's sessions" avoids two
+ * near-duplicate schemas. `browser`/`os`/`deviceLabel` are parsed
+ * server-side from the raw `userAgent` (never stored — parsed at read time)
+ * so the admin UI needs no UA-parsing dependency of its own.
+ */
+export const staffSessionSchema = z.object({
+  id: z.string(),
+  accountId: z.string(),
+  accountEmail: z.string(),
+  ip: z.string().nullable(),
+  browser: z.string().nullable(),
+  os: z.string().nullable(),
+  deviceLabel: z.string(),
+  issuedAt: z.string(),
+  lastUsedAt: z.string().nullable(),
+  expiresAt: z.string(),
+  /** The session backing the request that fetched this list — only ever
+   * `true` in the self-service view (an admin viewing someone else's
+   * sessions can never be looking at their own current one). */
+  isCurrent: z.boolean(),
+});
+export type StaffSession = z.infer<typeof staffSessionSchema>;
+
+export const staffSessionListResponseSchema = z.object({
+  sessions: z.array(staffSessionSchema),
+  nextCursor: z.string().optional(),
+});
+export type StaffSessionListResponse = z.infer<typeof staffSessionListResponseSchema>;

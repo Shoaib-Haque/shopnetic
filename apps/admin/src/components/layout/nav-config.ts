@@ -69,6 +69,7 @@ export const NAV_SECTIONS: NavSection[] = [
         children: [
           { key: 'staffList', path: '/staff' },
           { key: 'staffInvite', path: '/staff/invite' },
+          { key: 'staffSessions', path: '/staff/sessions' },
         ],
       },
       // not superAdminOnly: Service Admin and Admin both hold `auditlog:read`
