@@ -25,25 +25,25 @@ export async function seedDemoIdentity(
   await upsertAccount(prisma, ctx, {
     email: 'admin@shopnetic.test',
     plane: 'staff',
-    password: 'demo-admin-pw-123',
+    password: '12345678',
     roles: [Role.ADMIN],
   });
   await upsertAccount(prisma, ctx, {
     email: 'service@shopnetic.test',
     plane: 'staff',
-    password: 'demo-service-pw-123',
+    password: '12345678',
     roles: [Role.SERVICE_ADMIN],
   });
   await upsertAccount(prisma, ctx, {
     email: 'buyer@shopnetic.test',
     plane: 'marketplace',
-    password: 'demo-buyer-pw-123',
+    password: '12345678',
     roles: [Role.BUYER],
   });
   await upsertAccount(prisma, ctx, {
     email: 'seller@shopnetic.test',
     plane: 'marketplace',
-    password: 'demo-seller-pw-123',
+    password: '12345678',
     roles: [Role.SELLER],
   });
 

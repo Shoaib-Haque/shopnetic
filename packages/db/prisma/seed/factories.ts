@@ -26,24 +26,33 @@ export async function upsertAccount(
     roles?: Role[];
   },
 ): Promise<string> {
+  // Re-running seed against an existing DB (no reset) must still be able to
+  // change a seeded account's password — a plain `update: { status }` left
+  // an already-created account's credential untouched forever, so changing
+  // a seed password here silently did nothing until the next `db:reset`.
+  const passwordHash = spec.password ? await hashPassword(spec.password) : undefined;
   const account = await prisma.account.upsert({
     where: { email: spec.email },
-    update: { status: spec.status ?? 'active' },
+    update: {
+      status: spec.status ?? 'active',
+      ...(passwordHash
+        ? {
+            credential: {
+              upsert: {
+                create: { passwordHash, hashAlgo: 'argon2id', params: ARGON2_PARAMS },
+                update: { passwordHash, hashAlgo: 'argon2id', params: ARGON2_PARAMS },
+              },
+            },
+          }
+        : {}),
+    },
     create: {
       email: spec.email,
       plane: spec.plane,
       status: spec.status ?? 'active',
       emailVerifiedAt: spec.emailVerified === false ? null : new Date(),
-      ...(spec.password
-        ? {
-            credential: {
-              create: {
-                passwordHash: await hashPassword(spec.password),
-                hashAlgo: 'argon2id',
-                params: ARGON2_PARAMS,
-              },
-            },
-          }
+      ...(passwordHash
+        ? { credential: { create: { passwordHash, hashAlgo: 'argon2id', params: ARGON2_PARAMS } } }
         : {}),
     },
   });

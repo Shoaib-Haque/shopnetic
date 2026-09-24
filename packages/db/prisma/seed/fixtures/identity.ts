@@ -16,21 +16,21 @@ export async function seedFixtureIdentity(
   await upsertAccount(prisma, ctx, {
     email: 'locked-staff@shopnetic.test',
     plane: 'staff',
-    password: 'fixture-pw-000000',
+    password: '12345678',
     status: 'locked',
     roles: [Role.ADMIN],
   });
   await upsertAccount(prisma, ctx, {
     email: 'disabled-staff@shopnetic.test',
     plane: 'staff',
-    password: 'fixture-pw-000000',
+    password: '12345678',
     status: 'disabled',
     roles: [Role.SERVICE_ADMIN],
   });
   await upsertAccount(prisma, ctx, {
     email: 'unverified-buyer@shopnetic.test',
     plane: 'marketplace',
-    password: 'fixture-pw-000000',
+    password: '12345678',
     emailVerified: false,
     roles: [Role.BUYER],
   });
@@ -38,13 +38,13 @@ export async function seedFixtureIdentity(
     email:
       'a-very-long-email-address-for-column-truncation-testing@really-long-domain.example.test',
     plane: 'marketplace',
-    password: 'fixture-pw-000000',
+    password: '12345678',
     roles: [Role.BUYER],
   });
   await upsertAccount(prisma, ctx, {
     email: 'multi-role-staff@shopnetic.test',
     plane: 'staff',
-    password: 'fixture-pw-000000',
+    password: '12345678',
     roles: [Role.ADMIN, Role.SERVICE_ADMIN],
   });
 
@@ -57,7 +57,7 @@ export async function seedFixtureIdentity(
     await upsertAccount(prisma, ctx, {
       email: `fx-staff-${i}@shopnetic.test`,
       plane: 'staff',
-      password: 'fixture-pw-000000',
+      password: '12345678',
       status: VOLUME_STATUSES[i % VOLUME_STATUSES.length]!,
       roles: [VOLUME_ROLES[i % VOLUME_ROLES.length]!],
     });
