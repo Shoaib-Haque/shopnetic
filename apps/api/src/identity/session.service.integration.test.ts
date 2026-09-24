@@ -150,6 +150,18 @@ describe.skipIf(!hasDb)('SessionService (integration)', () => {
     expect(ids).toContain(other.sessionId);
   });
 
+  it("listAll marks the caller's own row isCurrent when currentSessionId is passed — it spans every account, including the viewer's own", async () => {
+    const mine = await sessions.create(accountId, {});
+    const other = await sessions.create(otherAccountId, {});
+
+    const { sessions: list } = await sessions.listAll({
+      limit: 100,
+      currentSessionId: mine.sessionId,
+    });
+    expect(list.find((s) => s.id === mine.sessionId)?.isCurrent).toBe(true);
+    expect(list.find((s) => s.id === other.sessionId)?.isCurrent).toBe(false);
+  });
+
   it('listForAccount paginates with a cursor, never repeating a row', async () => {
     const created = [
       await sessions.create(accountId, {}),

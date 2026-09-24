@@ -3593,3 +3593,90 @@ compose file.
     not the timestamp/IP wrap). Full admin suite green: 282/283 (the one
     pre-existing flake, still unrelated and untouched); typecheck/lint
     clean.
+  - Last follow-up, same walkthrough: the mobile card had IP and Last
+    active joined on one line (`{formatIp} · {formatTime}`) — asked to put
+    the date/time on its own line after the IP instead. Split into two
+    separate `<p>` elements. Self-caught (asked directly "added unit
+    tests?"): this one shipped without a test — added one asserting the two
+    values render as distinct elements, not one joined string;
+    revert-confirmed (temporarily rejoined the line, test failed with the
+    joined text, restored). Full admin suite green: 283/284 (the one
+    pre-existing flake, still unrelated); typecheck/lint clean.
+
+- 2026-09-24 — Resumed to do the manual UI verification this feature never
+  got (the dev servers had stopped over the days-long gap — restarted
+  both). Found and fixed a real bug while checking the **By person** tab's
+  own-row case, not raised by the user this time — the viewer's own
+  account is naturally in the staff directory list too, so expanding it
+  and clicking "Log out" always failed with `CANNOT_MODIFY_SELF`: that
+  view is wired to the admin-on-*another*-account endpoints
+  (`revokeAccountSession`/`revokeAllAccountSessions`), which
+  `StaffAccountsService.assertNotSelf` correctly refuses for your own
+  account, same as `changeRole`/`deprovision` always have. Confirmed live
+  (clicked through to the actual error toast) before fixing.
+  - Fix: `staff-sessions.tsx` now threads `currentAccountId` down from the
+    page (`getCurrentStaff()`, same pattern `staff/page.tsx` already uses
+    for `StaffList`'s `currentEmail`) to `ByPersonTab` to
+    `PersonSessionList`, which picks `isSelf = accountId ===
+    currentAccountId` and swaps in the **self-service** session API
+    (`listMySessions`/`revokeMySession`/`revokeMyOtherSessions` — same ones
+    `MySessions` already uses) instead of the admin ones for that one row.
+    Makes the row actually work rather than merely disabling it.
+  - Revert-confirmed: a new test expands the viewer's own row and asserts
+    it calls `listMySessions`, not `listAccountSessions` — temporarily
+    forced the admin path anyway, watched it fail
+    (`Cannot read properties of undefined`), restored. Full admin suite
+    green: 284/285 (the one pre-existing flake, still unrelated);
+    typecheck clean.
+  - Also confirmed live, no further bugs found: the All tab, the
+    self-service `account/sessions` page (reached via the topbar dropdown,
+    never opened before this pass), and the non-super-admin view — Staff
+    nav group fully hidden for a plain `ADMIN` account, `staff/sessions`
+    hits the same page shell but the API 403s (no server-side page gate,
+    matching this codebase's established convention — see
+    `nav-config.ts`), and that account's own `account/sessions` still
+    works, correctly scoped to just their own device.
+  - Still not exercised: the mobile card layout at a real narrow viewport
+    (only checked via unit tests and a desktop-width browser so far), a
+    full successful revoke (every account reachable during this pass had
+    only its own current, non-revocable session — needs a second live
+    session on some account to test through to the toast/row-removal), and
+    the by-person bulk button against an account with zero sessions.
+  - The "no further bugs found" claim above about the **All** tab was
+    wrong — the user hit it immediately after: clicking "Log out" on their
+    own row there also failed with `CANNOT_MODIFY_SELF`. Same bug class as
+    the By-person fix, in a second place: `AllSessionsTab` unconditionally
+    called the admin-on-other-account `revokeAccountSession` for every row,
+    with no `isSelf` branch at all. Worse than By-person's version, though
+    — `SessionService.listAll()` never accepted or used a
+    `currentSessionId`, so the viewer's own live session sitting in that
+    flat list was never marked `isCurrent` either, meaning the existing
+    `disabled={s.isCurrent}` guard on the revoke button didn't protect it:
+    nothing stopped a click from reaching the request. `listAll` spans
+    every staff account, including the viewer's own — the API-level
+    comment claiming otherwise (from the original build) was itself the
+    bug.
+    - Fixed both ends: `SessionService.listAll` now takes an optional
+      `currentSessionId` and passes it to `toStaffSession` (same as
+      `listForAccount` already did); the `GET /sessions` controller route
+      now injects `@CurrentSessionId()` and forwards it. `AllSessionsTab`
+      now branches `onRevokeOne` on `s.accountId === currentAccountId`,
+      calling `revokeMySession` instead of `revokeAccountSession` for the
+      viewer's own rows — no `isSelf`-per-list needed here the way
+      `PersonSessionList` needed it, since each row already carries its
+      own `accountId`.
+    - Revert-confirmed both layers: the admin integration test (temporarily
+      dropped `opts.currentSessionId` back to `undefined` in `listAll`,
+      watched `isCurrent` come back `false`, restored) and the admin unit
+      test (temporarily short-circuited the `isSelf` branch to `false`,
+      watched it call the wrong function, restored).
+    - Live-verified the fix and, with it, the "full successful revoke"
+      gap from the entry above: this account happened to have two live
+      sessions by this point (one from an earlier verification pass, one
+      current) — the All tab showed both, only the true current one
+      tagged **This device**, and revoking the other one went through
+      cleanly: confirm dialog, no error, row gone, current session
+      untouched.
+    - Full suite green: API 130/130 integration (1 new) + 25/25 unit;
+      admin 285/286 (the one pre-existing flake, still unrelated);
+      typecheck clean across `@shopnetic/api` and `@shopnetic/admin`.

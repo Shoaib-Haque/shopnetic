@@ -14,13 +14,16 @@ import { SessionList } from './session-list';
 import {
   listAccountSessions,
   listAllSessions,
+  listMySessions,
   revokeAccountSession,
   revokeAllAccountSessions,
+  revokeMyOtherSessions,
+  revokeMySession,
 } from '../api';
 
 type Tab = 'all' | 'byPerson';
 
-export function StaffSessions() {
+export function StaffSessions({ currentAccountId }: { currentAccountId: string }) {
   const t = useTranslations('staff');
   const [tab, setTab] = useState<Tab>('all');
 
@@ -42,12 +45,16 @@ export function StaffSessions() {
           </button>
         ))}
       </div>
-      {tab === 'all' ? <AllSessionsTab /> : <ByPersonTab />}
+      {tab === 'all' ? (
+        <AllSessionsTab currentAccountId={currentAccountId} />
+      ) : (
+        <ByPersonTab currentAccountId={currentAccountId} />
+      )}
     </section>
   );
 }
 
-function AllSessionsTab() {
+function AllSessionsTab({ currentAccountId }: { currentAccountId: string }) {
   const t = useTranslations('staff');
   const fetchPage = useCallback(
     (cursor: string | undefined) =>
@@ -58,13 +65,21 @@ function AllSessionsTab() {
     <SessionList
       fetchPage={fetchPage}
       showAccountEmail
-      onRevokeOne={(s) => revokeAccountSession(s.accountId, s.id)}
+      // This flat list spans every staff account, including the viewer's
+      // own — found live: their own row always failed with
+      // `CANNOT_MODIFY_SELF` through the admin-only endpoint, same bug
+      // class as `PersonSessionList`'s own-row case above.
+      onRevokeOne={(s) =>
+        s.accountId === currentAccountId
+          ? revokeMySession(s.id)
+          : revokeAccountSession(s.accountId, s.id)
+      }
       emptyMessage={t('sessions.allEmpty')}
     />
   );
 }
 
-function ByPersonTab() {
+function ByPersonTab({ currentAccountId }: { currentAccountId: string }) {
   const t = useTranslations('staff');
   const tCommon = useTranslations('admin');
   const [q, setQ] = useState('');
@@ -119,7 +134,11 @@ function ByPersonTab() {
                   </button>
                   {isOpen && (
                     <div className="max-h-96 overflow-y-auto border-t border-border px-3 py-3">
-                      <PersonSessionList accountId={account.id} accountEmail={account.email} />
+                      <PersonSessionList
+                        accountId={account.id}
+                        accountEmail={account.email}
+                        isSelf={account.id === currentAccountId}
+                      />
                     </div>
                   )}
                 </li>
@@ -142,19 +161,46 @@ function ByPersonTab() {
 function PersonSessionList({
   accountId,
   accountEmail,
+  isSelf,
 }: {
   accountId: string;
   accountEmail: string;
+  // The admin-on-other-account endpoints (`revokeAccountSession` /
+  // `revokeAllAccountSessions`) reject a caller acting on their own account
+  // (`CANNOT_MODIFY_SELF` — see `StaffAccountsService.assertNotSelf`), and
+  // that account still shows up here since the staff directory lists every
+  // account, including the viewer's own. Found live: expanding your own row
+  // rendered a working-looking "Log out" button that always failed. Routing
+  // this one row through the self-service endpoints instead (same as
+  // `MySessions`) makes it actually work rather than merely disabling it.
+  isSelf: boolean;
 }) {
   const t = useTranslations('staff');
   const fetchPage = useCallback(
     (cursor: string | undefined) =>
-      listAccountSessions(accountId, cursor, 20).then((p) => ({
-        items: p.sessions,
-        nextCursor: p.nextCursor,
-      })),
-    [accountId],
+      (isSelf ? listMySessions(cursor, 20) : listAccountSessions(accountId, cursor, 20)).then(
+        (p) => ({ items: p.sessions, nextCursor: p.nextCursor }),
+      ),
+    [accountId, isSelf],
   );
+  if (isSelf) {
+    return (
+      <SessionList
+        fetchPage={fetchPage}
+        resetKeys={[accountId]}
+        onRevokeOne={(s) => revokeMySession(s.id)}
+        bulkAction={{
+          label: t('sessions.revokeOthers'),
+          confirmTitle: t('sessions.confirmRevokeOthers.title'),
+          confirmMessage: t('sessions.confirmRevokeOthers.message'),
+          confirmLabel: t('sessions.confirmRevokeOthers.confirm'),
+          run: () => revokeMyOtherSessions(),
+          successMessage: t('sessions.toast.revokedOthers'),
+        }}
+        emptyMessage={t('sessions.empty')}
+      />
+    );
+  }
   return (
     <SessionList
       fetchPage={fetchPage}

@@ -249,11 +249,13 @@ export class SessionService {
   }
 
   /** Every staff account's still-valid sessions, flattened — the Super
-   * Admin-only "All sessions" tab. No `currentSessionId`: the viewer's own
-   * current session is never *someone else's* row, so nothing here can ever
-   * be "current" the way `listForAccount` above means it. */
+   * Admin-only "All sessions" tab. Spans every staff account, including the
+   * viewer's own, so `currentSessionId` matters here just as much as in
+   * `listForAccount` — found live: the viewer's own current session showed
+   * up unmarked and revocable through this list, same bug class as the
+   * missing `isCurrent` would cause anywhere else. */
   async listAll(
-    opts: { cursor?: string; limit?: number } = {},
+    opts: { cursor?: string; limit?: number; currentSessionId?: string } = {},
   ): Promise<{ sessions: StaffSession[]; nextCursor?: string }> {
     const take = clampLimit(opts.limit ?? DEFAULT_LIST_LIMIT, 1, MAX_LIST_LIMIT);
     const rows = await this.prisma.session.findMany({
@@ -264,7 +266,10 @@ export class SessionService {
       ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
     });
     const { page, nextCursor } = paginate(rows, take);
-    return { sessions: page.map((r) => toStaffSession(r)), ...(nextCursor ? { nextCursor } : {}) };
+    return {
+      sessions: page.map((r) => toStaffSession(r, opts.currentSessionId)),
+      ...(nextCursor ? { nextCursor } : {}),
+    };
   }
 
   /** Self-service: log out exactly one of the caller's own devices. Every

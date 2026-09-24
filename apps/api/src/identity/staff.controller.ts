@@ -391,6 +391,7 @@ export class StaffController {
   @RequirePermission(Permission.STAFF_MANAGE)
   async allSessions(
     @Req() req: Request,
+    @CurrentSessionId() sessionId: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limitRaw?: string,
   ): Promise<{
@@ -399,6 +400,7 @@ export class StaffController {
   }> {
     const limit = limitRaw ? Number(limitRaw) : undefined;
     const page = await this.sessions.listAll({
+      currentSessionId: sessionId,
       ...(cursor ? { cursor } : {}),
       ...(limit !== undefined ? { limit } : {}),
     });
