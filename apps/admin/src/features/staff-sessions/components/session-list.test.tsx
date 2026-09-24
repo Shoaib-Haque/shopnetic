@@ -131,12 +131,10 @@ describe('SessionList', () => {
   });
 
   it('strips the IPv4-mapped-IPv6 "::ffff:" prefix so the IP column reads as plain IPv4 — found live', async () => {
-    const fetchPage = vi
-      .fn()
-      .mockResolvedValue({
-        items: [session('a', { ip: '::ffff:203.0.113.5' })],
-        nextCursor: undefined,
-      });
+    const fetchPage = vi.fn().mockResolvedValue({
+      items: [session('a', { ip: '::ffff:203.0.113.5' })],
+      nextCursor: undefined,
+    });
     renderAdmin(
       <SessionList fetchPage={fetchPage} onRevokeOne={vi.fn()} emptyMessage="No sessions" />,
     );
@@ -172,7 +170,39 @@ describe('SessionList', () => {
     expect(ipEl.textContent).toBe('203.0.113.5');
   });
 
-  it('the bulk action button is disabled when there is nothing to revoke — found live', async () => {
+  it('the bulk action button is hidden while the first page is still loading — found live: it flashed in on expand, then vanished once the empty state resolved', async () => {
+    let resolveFetch!: (page: { items: StaffSession[]; nextCursor: undefined }) => void;
+    const fetchPage = vi.fn(
+      () =>
+        new Promise<{ items: StaffSession[]; nextCursor: undefined }>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    renderAdmin(
+      <SessionList
+        fetchPage={fetchPage}
+        onRevokeOne={vi.fn()}
+        emptyMessage="No sessions"
+        bulkAction={{
+          label: 'Log out everywhere',
+          confirmTitle: 'x',
+          confirmMessage: 'x',
+          confirmLabel: 'x',
+          run: vi.fn(),
+          successMessage: 'x',
+        }}
+      />,
+    );
+
+    // still loading — the fetch hasn't resolved yet
+    expect(screen.queryByRole('button', { name: 'Log out everywhere' })).not.toBeInTheDocument();
+
+    resolveFetch({ items: [], nextCursor: undefined });
+    await screen.findByText('No sessions');
+    expect(screen.queryByRole('button', { name: 'Log out everywhere' })).not.toBeInTheDocument();
+  });
+
+  it('the bulk action button is hidden when the list is empty, disabled when only the current session is left — found live', async () => {
     const bulkAction = {
       label: 'Log out everywhere',
       confirmTitle: 'x',
@@ -182,7 +212,9 @@ describe('SessionList', () => {
       successMessage: 'x',
     };
 
-    // case 1: the list is genuinely empty
+    // case 1: the list is genuinely empty — the button isn't shown at all,
+    // not merely disabled (the empty message already says there's nothing
+    // here; found live: a disabled button next to it was redundant)
     const fetchPageEmpty = vi.fn().mockResolvedValue({ items: [], nextCursor: undefined });
     const { unmount } = renderAdmin(
       <SessionList
@@ -192,7 +224,8 @@ describe('SessionList', () => {
         bulkAction={bulkAction}
       />,
     );
-    expect(await screen.findByRole('button', { name: 'Log out everywhere' })).toBeDisabled();
+    await screen.findByText('No sessions');
+    expect(screen.queryByRole('button', { name: 'Log out everywhere' })).not.toBeInTheDocument();
     unmount();
 
     // case 2: self-service — the only row left is the current session itself

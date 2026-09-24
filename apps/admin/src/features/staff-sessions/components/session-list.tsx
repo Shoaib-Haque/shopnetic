@@ -132,10 +132,18 @@ export function SessionList({
   // itself. `[].every(...)` is vacuously true, so this also covers the
   // plain-empty case for free — one condition for both contexts.
   const nothingToRevoke = list.items.every((s) => s.isCurrent);
+  // Shown only once we actually know there's something to act on — while
+  // loading/erroring, `items` is `[]` too, and showing the button then
+  // hiding it a moment later (found live: it flashed in on expand, then
+  // disappeared once the empty state resolved) is worse than never showing
+  // it until the data says so. The self-service "only my current session"
+  // case still shows it once loaded, disabled — that one row *is*
+  // meaningful context, unlike a genuinely empty list.
+  const showBulk = bulkAction && !list.loading && !list.loadError && list.items.length > 0;
 
   return (
     <div className="flex flex-col gap-3">
-      {bulkAction && (
+      {showBulk && (
         <div>
           <Button
             type="button"
