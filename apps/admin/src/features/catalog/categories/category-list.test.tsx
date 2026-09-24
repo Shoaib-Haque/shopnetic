@@ -589,7 +589,9 @@ describe('CategoryList — deep link from Audit Log (?status=all&highlight=categ
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Zulu');
 
-    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('sn-row-flash');
+    await waitFor(() =>
+      expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('sn-row-flash'),
+    );
   });
 
   it('without a highlight param, nothing flashes', async () => {
