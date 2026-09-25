@@ -5,6 +5,12 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { clampLimit, paginate } from '../common/pagination.js';
+import {
+  tokenizeForSql,
+  buildTokenSearch,
+  rankedOffsetFromCursor,
+  rankedNextCursor,
+} from '../common/text-search.js';
 import { SessionService } from './session.service.js';
 import type { RequestMeta } from './identity.service.js';
 
@@ -15,28 +21,6 @@ type AccountWithGrantsAndTotp = Account & {
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
-
-/** Mirrors `CategoryService`'s and `AuditController`'s own `tokenizeForSql`
- * (same normalize + rules) — duplicated rather than shared, following those
- * files' own precedent of not extracting this into a cross-package util.
- * Splits on whitespace/punctuation runs (so extra/leading/trailing spaces
- * are handled for free, not via a separate `.trim()`) into individual
- * search words, each matched with its own `OR` clause below — a query of
- * "shoaib shopnetic" matches an email containing *either* word, not the
- * literal two-word phrase. */
-function tokenizeForSql(query: string): string[] {
-  const normalized = query
-    .toLowerCase()
-    .replace(/['’"`]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-  const tokens = new Set<string>();
-  for (const tok of normalized.split(' ')) {
-    if (tok.length >= 2) tokens.add(tok);
-    if (tokens.size >= 10) break;
-  }
-  return [...tokens];
-}
 
 /**
  * The staff directory: list + the account-lifecycle actions a Super Admin
@@ -54,14 +38,20 @@ export class StaffAccountsService {
 
   /** Ordered by `id`, not `createdAt` — a v7 UUID sorts by creation time the
    * same way `createdAt` would, but is the stable, unique field keyset
-   * pagination actually needs (matches `AuditController`'s same choice).
-   * `q` is tokenized the same way Category List's/Audit Log's own search is
-   * — case-insensitive, whitespace/punctuation-trimmed, matched against
-   * `email` (the only free-text field a staff account has) with `OR` across
-   * tokens, not one literal-phrase `contains` — and, like `AuditController`'s
-   * simpler flat-list search (not `CategoryService.list`'s scored tree
-   * search), never re-ranks the result, so `cursor` stays the same plain
-   * `id` bound whether or not a search is active. */
+   * pagination actually needs. `q` is tokenized and scored the same way
+   * Category List's search is (`buildTokenSearch`, shared) — matched
+   * against `email` (the only free-text field a staff account has), a row
+   * matching more tokens ranks first instead of landing wherever its `id`
+   * happens to fall. A search re-ranks the result, so its `cursor` is an
+   * offset instead of the normal `id` keyset bound for that one case
+   * (`rankedOffsetFromCursor`/`rankedNextCursor`) — the non-search path is
+   * unchanged.
+   *
+   * The ranking/pagination pass runs as raw SQL over just `id` (Prisma has
+   * no way to `ORDER BY` a computed score), then the page's rows are
+   * hydrated via a normal `findMany({ id: { in } })` for the `grants`/
+   * `totpSecret` relations `toStaffAccount` needs — re-sorted back into the
+   * SQL query's own order, since `id IN (...)` doesn't preserve it. */
   async list(
     cursor?: string,
     limit = DEFAULT_LIST_LIMIT,
@@ -72,24 +62,48 @@ export class StaffAccountsService {
   }> {
     const take = clampLimit(limit, 1, MAX_LIST_LIMIT);
     const tokens = q ? tokenizeForSql(q) : [];
-    const accounts = await this.prisma.account.findMany({
-      where: {
-        plane: 'staff',
-        deletedAt: null,
-        ...(tokens.length > 0
-          ? {
-              OR: tokens.map((tok) => ({ email: { contains: tok, mode: 'insensitive' as const } })),
-            }
-          : {}),
-      },
-      include: { grants: { include: { role: true } }, totpSecret: true },
-      orderBy: { id: 'asc' },
-      take: take + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    const isSearch = tokens.length > 0;
+
+    const params: unknown[] = [];
+    const where = [`plane = 'staff'`, 'deleted_at IS NULL'];
+    let scoreExpr = '0';
+    if (isSearch) {
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, 'lower(email::text)', params);
+      where.push(whereSql);
+      scoreExpr = scoreSql;
+    }
+    if (cursor && !isSearch) {
+      params.push(cursor);
+      where.push(`id > $${params.length}::uuid`);
+    }
+
+    const offset = isSearch ? rankedOffsetFromCursor(cursor) : 0;
+    const idRows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id
+         FROM identity.account
+        WHERE ${where.join(' AND ')}
+        ORDER BY ${isSearch ? `${scoreExpr} DESC, ` : ''}id ASC
+        LIMIT ${take + 1}${isSearch ? ` OFFSET ${offset}` : ''}`,
+      ...params,
+    );
+
+    const { page: idPage, nextCursor: keysetCursor } = paginate(idRows, take);
+    const nextCursor = isSearch ? rankedNextCursor(idRows.length, take, offset) : keysetCursor;
+
+    const orderedIds = idPage.map((r) => r.id);
+    const accounts = orderedIds.length
+      ? await this.prisma.account.findMany({
+          where: { id: { in: orderedIds } },
+          include: { grants: { include: { role: true } }, totpSecret: true },
+        })
+      : [];
+    const byId = new Map(accounts.map((a) => [a.id, a]));
+    const ordered = orderedIds.flatMap((id) => {
+      const account = byId.get(id);
+      return account ? [account] : [];
     });
 
-    const { page, nextCursor } = paginate(accounts, take);
-    return { accounts: page.map(toStaffAccount), ...(nextCursor ? { nextCursor } : {}) };
+    return { accounts: ordered.map(toStaffAccount), ...(nextCursor ? { nextCursor } : {}) };
   }
 
   async changeRole(

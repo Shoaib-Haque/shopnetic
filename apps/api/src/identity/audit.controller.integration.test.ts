@@ -307,6 +307,32 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
       await prisma.account.delete({ where: { id: searchActor.id } });
     });
 
+    it('q ranks by matched-token count — "FX 47" style query puts the fuller match first', async () => {
+      const marker = `rank${stamp}`;
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'itest.audit_rank_full',
+        reason: `${marker} forty-seven 47`,
+      });
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'itest.audit_rank_partial',
+        reason: `${marker} something else`,
+      });
+
+      const res = await controller.list(req, superAdmin, undefined, '50', `${marker} 47`);
+      const actions = res.data.map((e) => e.action);
+      // matches marker + 47 (2 tokens) — ranks ahead of `..._partial`, which
+      // only matches marker (1 token, OR semantics still includes it)
+      expect(actions.indexOf('itest.audit_rank_full')).toBeLessThan(
+        actions.indexOf('itest.audit_rank_partial'),
+      );
+
+      await prisma.auditEvent.deleteMany({
+        where: { action: { in: ['itest.audit_rank_full', 'itest.audit_rank_partial'] } },
+      });
+    });
+
     it('free text also reaches the registration email inside `after` JSON', async () => {
       await audit.record({
         actorAccountId: null,

@@ -265,6 +265,37 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     expect(names).toContain(s('findme2-tools'));
   });
 
+  it('q ranks by matched-token count, name/slug/alias all count — "FX 47" style query puts the fullest match first', async () => {
+    const marker = `rank${stamp}`;
+    const full = await svc.create(
+      { name: `${marker} Live Brand 47`, slug: s('rank-full') },
+      actor,
+      {},
+    );
+    const partial = await svc.create(
+      { name: `${marker} Live Brand 12`, slug: s('rank-partial') },
+      actor,
+      {},
+    );
+    const aliasOnly = await svc.create(
+      { name: s('rank-unrelated-name'), slug: s('rank-alias') },
+      actor,
+      {},
+    );
+    await svc.addAlias(aliasOnly.id, { alias: `${marker} 47` }, actor, {});
+    const noMatch = await svc.create({ name: s('rank-no-match'), slug: s('rank-nm') }, actor, {});
+
+    const { items } = await svc.list({ q: `${marker} 47` });
+    const ids = items.map((b) => b.id);
+    // `full` (both tokens in `name`) and `aliasOnly` (both tokens, via the
+    // alias table) tie at 2 matched tokens — which of the two sorts first
+    // isn't the property under test, only that both outrank `partial`
+    // (1 token: marker only), OR semantics still including it
+    expect(ids.indexOf(full.id)).toBeLessThan(ids.indexOf(partial.id));
+    expect(ids.indexOf(aliasOnly.id)).toBeLessThan(ids.indexOf(partial.id));
+    expect(ids).not.toContain(noMatch.id);
+  });
+
   it('remove() relinks any live products to no brand rather than leaving them dangling — the 2026-09-17 fix', async () => {
     const b = await svc.create({ name: s('relink-host'), slug: s('relink-host') }, actor, {});
     const p1 = await products.create(

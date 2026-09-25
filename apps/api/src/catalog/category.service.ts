@@ -14,6 +14,7 @@ import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import { clampLimit } from '../common/pagination.js';
+import { tokenizeForSql, buildTokenSearch } from '../common/text-search.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 
@@ -43,27 +44,6 @@ const COLUMNS_C = `c.id, c.parent_id, c.slug, c.name_i18n, c.path::text AS path,
 const label = (id: string): string => id.replace(/-/g, '');
 
 const LIST_MAX_LIMIT = 100;
-
-/** Mirrors `apps/admin/src/lib/search.ts`'s `tokenize()` — same normalize
- * (lower-case, apostrophes dropped, everything else non-alphanumeric
- * collapsed to a space) and the same ≥2-char / ≤10-token rules — so a query
- * matches the same rows server-side that it would have matched client-side.
- * Search moved server-side specifically so pagination and search results
- * stay consistent (a query now searches the whole table, not just whatever
- * page happened to be loaded already). */
-function tokenizeForSql(query: string): string[] {
-  const normalized = query
-    .toLowerCase()
-    .replace(/['’"`]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-  const tokens = new Set<string>();
-  for (const tok of normalized.split(' ')) {
-    if (tok.length >= 2) tokens.add(tok);
-    if (tokens.size >= 10) break;
-  }
-  return [...tokens];
-}
 
 @Injectable()
 export class CategoryService {
@@ -126,12 +106,9 @@ export class CategoryService {
     let scoreExpr = '0';
     if (isSearch) {
       const haystack = `regexp_replace(lower(coalesce(name_i18n->>'en', '') || ' ' || slug), '[^a-z0-9]+', ' ', 'g')`;
-      const matchExprs = tokens.map((tok) => {
-        params.push(`%${tok}%`);
-        return `(${haystack} LIKE $${params.length})`;
-      });
-      where.push(`(${matchExprs.join(' OR ')})`);
-      scoreExpr = matchExprs.map((e) => `${e}::int`).join(' + ');
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params);
+      where.push(whereSql);
+      scoreExpr = scoreSql;
     }
 
     const paginated = opts.limit !== undefined;

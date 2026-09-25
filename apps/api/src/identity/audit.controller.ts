@@ -4,6 +4,12 @@ import { can, Permission, type Actor } from '@shopnetic/auth';
 import type { AuditEvent } from '@shopnetic/contracts';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { clampLimit, paginate } from '../common/pagination.js';
+import {
+  tokenizeForSql,
+  buildTokenSearch,
+  rankedOffsetFromCursor,
+  rankedNextCursor,
+} from '../common/text-search.js';
 import { ok } from '../common/envelope.js';
 import { StaffAuthGuard } from '../auth/staff-auth.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
@@ -54,10 +60,11 @@ interface RawAuditEvent {
 export class AuditController {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Newest-first, cursor-paginated, with optional filters. `id` is a v7
-   * UUID so it sorts by time — filtering never changes that order (unlike
-   * `CategoryService.list`'s search mode, which re-ranks by score), so
-   * `cursor` stays a plain `id <` bound in every case. */
+  /** Newest-first, cursor-paginated, with optional filters — except a `q`
+   * search, which re-ranks by how many tokens matched (`buildTokenSearch`,
+   * shared with Category/Brand/Staff), so `id` is no longer the sort order
+   * and `cursor` becomes an offset instead of an `id <` bound for that one
+   * case (`rankedOffsetFromCursor`/`rankedNextCursor`). */
   @Get('audit-events')
   @RequirePermission(Permission.AUDITLOG_READ)
   async list(
@@ -79,10 +86,13 @@ export class AuditController {
       ? (domainRaw as Domain)
       : undefined;
 
+    const tokens = q ? tokenizeForSql(q) : [];
+    const isSearch = tokens.length > 0;
+
     const params: unknown[] = [];
     const where: string[] = [];
 
-    if (cursor) {
+    if (cursor && !isSearch) {
       params.push(cursor);
       where.push(`ae.id < $${params.length}::uuid`);
     }
@@ -112,8 +122,8 @@ export class AuditController {
       params.push(new Date(new Date(to).getTime() + 24 * 3600 * 1000));
       where.push(`ae.created_at < $${params.length}`);
     }
-    const tokens = q ? tokenizeForSql(q) : [];
-    if (tokens.length > 0) {
+    let scoreExpr = '0';
+    if (isSearch) {
       // Only predictable, known-shape columns/keys — not a general JSON
       // search (plan/16-security.md section 8 leaves deep investigation to
       // the SIEM). `after`/`before ->> 'email'` is the one JSON key worth
@@ -122,13 +132,12 @@ export class AuditController {
       const haystack = `lower(coalesce(acc.email, '') || ' ' || coalesce(ae.target_id, '') || ' ' ||
         ae.action || ' ' || coalesce(ae.reason, '') || ' ' ||
         coalesce(ae.after->>'email', '') || ' ' || coalesce(ae.before->>'email', ''))`;
-      const matchExprs = tokens.map((tok) => {
-        params.push(`%${tok}%`);
-        return `(${haystack} LIKE $${params.length})`;
-      });
-      where.push(`(${matchExprs.join(' OR ')})`);
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params);
+      where.push(whereSql);
+      scoreExpr = scoreSql;
     }
 
+    const offset = isSearch ? rankedOffsetFromCursor(cursor) : 0;
     const rows = await this.prisma.$queryRawUnsafe<RawAuditEvent[]>(
       `SELECT ae.id, ae.actor_account_id, acc.email AS actor_email, ae.action,
               ae.target_type, ae.target_id, ae.before, ae.after, ae.reason,
@@ -136,35 +145,18 @@ export class AuditController {
          FROM identity.audit_event ae
          LEFT JOIN identity.account acc ON acc.id = ae.actor_account_id
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-        ORDER BY ae.id DESC
-        LIMIT ${limit + 1}`,
+        ORDER BY ${isSearch ? `${scoreExpr} DESC, ` : ''}ae.id DESC
+        LIMIT ${limit + 1}${isSearch ? ` OFFSET ${offset}` : ''}`,
       ...params,
     );
 
-    const { page, nextCursor } = paginate(rows, limit);
+    const { page, nextCursor: keysetCursor } = paginate(rows, limit);
+    const nextCursor = isSearch ? rankedNextCursor(rows.length, limit, offset) : keysetCursor;
     return ok(req, page.map(toAuditView), {
       count: page.length,
       ...(nextCursor ? { nextCursor } : {}),
     });
   }
-}
-
-/** Mirrors `CategoryService`'s own `tokenizeForSql` (same normalize + rules,
- * matching `@/lib/search.ts`'s client-side `tokenize()`) — duplicated
- * rather than shared, following that file's own precedent of not
- * extracting this into a cross-package util. */
-function tokenizeForSql(query: string): string[] {
-  const normalized = query
-    .toLowerCase()
-    .replace(/['’"`]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-  const tokens = new Set<string>();
-  for (const tok of normalized.split(' ')) {
-    if (tok.length >= 2) tokens.add(tok);
-    if (tokens.size >= 10) break;
-  }
-  return [...tokens];
 }
 
 function toAuditView(row: RawAuditEvent): AuditEvent {

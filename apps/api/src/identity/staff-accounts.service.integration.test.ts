@@ -95,6 +95,25 @@ describe.skipIf(!hasDb)('StaffAccountsService (integration)', () => {
     expect(matched.some((a) => a.id === superAdminId)).toBe(true);
   });
 
+  it('q ranks by matched-token count — "FX 47" style query puts the fuller match first', async () => {
+    const marker = `rank${stamp}`;
+    const full = await prisma.account.create({
+      data: { email: `${marker}-47@shopnetic.test`, plane: 'staff', status: 'active' },
+    });
+    const partial = await prisma.account.create({
+      data: { email: `${marker}-99@shopnetic.test`, plane: 'staff', status: 'active' },
+    });
+    try {
+      const { accounts: matched } = await accounts.list(undefined, 100, `${marker} 47`);
+      const ids = matched.map((a) => a.id);
+      // matches marker + 47 (2 tokens) — ranks ahead of `partial`, which
+      // only matches marker (1 token, OR semantics still includes it)
+      expect(ids.indexOf(full.id)).toBeLessThan(ids.indexOf(partial.id));
+    } finally {
+      await prisma.account.deleteMany({ where: { id: { in: [full.id, partial.id] } } });
+    }
+  });
+
   it('paginates with a cursor, oldest first — the second page never repeats the first', async () => {
     const first = await accounts.list(undefined, 1);
     expect(first.accounts).toHaveLength(1);

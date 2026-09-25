@@ -3819,3 +3819,60 @@ compose file.
     limitation (native `<select>` option lists can't be reliably restyled)
     still stands, two different approaches tried and reverted, both
     documented above for whoever picks this up next.
+
+- 2026-09-25 — Asked directly: searching Brands for "FX 47" against "FX Live
+  Brand 47" and "FX Live Brand 12" — shouldn't the fuller match rank first?
+  Checked before answering: `CategoryService.list` already scores/ranks
+  (per-token `LIKE` match count, `ORDER BY score DESC`); Brand, Staff, and
+  Audit Log's own `q` search all matched on "any token" (OR semantics) but
+  ordered by `id`, so a fuller match could land anywhere among every other
+  partial match instead of at the top. Four near-identical
+  `tokenizeForSql` copies already existed too, each with its own "mirrors
+  CategoryService's own tokenizeForSql" comment. Asked to fix it so every
+  current and future searchable list gets the same behavior, not decided
+  per-service again — Products/Media included once they exist.
+  - New `apps/api/src/common/text-search.ts` — the one shared copy of
+    `tokenizeForSql` (moved from Category, the original), plus
+    `buildTokenSearch(tokens, haystackSql, params)` (generalizes Category's
+    own inline per-token `LIKE`/score-sum expression into a reusable
+    function) and `rankedOffsetFromCursor`/`rankedNextCursor` (a ranked
+    query's cursor can't be the usual keyset `id` bound — score isn't
+    monotonic with `id` — so it's a stringified offset instead, the same
+    trade-off Category's own search mode already made, now named and
+    shared rather than re-derived per service).
+  - `CategoryService.list` now calls the shared functions instead of its
+    own inline copies — no behavior change, confirmed by its own existing
+    ranking test passing unmodified.
+  - `BrandService.list`, `StaffAccountsService.list`, and
+    `AuditController.list` all moved from Prisma `findMany`/`OR` (Staff,
+    Brand) or an already-raw-SQL-but-unranked query (Audit Log) to raw SQL
+    with the shared scoring, each keeping its own keyset cursor for the
+    non-search path and switching to the shared offset cursor only when
+    `q` is present. Brand's alias matching (one-to-many —
+    `catalog.brand_alias`) doesn't fit `buildTokenSearch`'s
+    single-haystack-expression contract directly, so its haystack folds
+    every alias into one string per row via a correlated `string_agg`
+    subquery first. All three now hydrate relations (`grants`/`totpSecret`
+    for Staff, `aliases` for Brand — Audit Log's query already selected
+    everything it needed directly) via a second `findMany({ id: { in } })`
+    after the ranked/paginated `id` list, re-sorted back into that SQL
+    query's own order since `id IN (...)` doesn't preserve it.
+  - New integration tests, one per service (Brand, Staff, Audit Log — the
+    "FX 47"-style scenario): a row matching every token ranks ahead of one
+    matching only some. Brand's version also covers the alias-subquery
+    path specifically (a brand matching both tokens only via an alias
+    still outranks a name-only single-token match) — and had to be
+    rewritten once already: the first version asserted a specific *winner*
+    between two rows that both genuinely score 2 tokens, which just
+    exercises the `id DESC` tiebreak, not ranking — fixed to assert both
+    outrank the 1-token row instead, without claiming an order between
+    equally-scored ones.
+  - Revert-confirmed at the shared-function level, not once per service:
+    temporarily hardcoded `buildTokenSearch`'s `scoreSql` to `'0'`, ran all
+    three new tests together — every one failed, and not quietly: `ORDER
+    BY 0 DESC` isn't valid SQL, so Postgres itself rejected the query in
+    each of the three services independently, confirming the shared
+    function is genuinely wired into all three, not just the one it was
+    developed against. Restored, all three pass again.
+  - Full suite green: 133/133 integration (3 new) + 25/25 unit; typecheck
+    and lint clean.

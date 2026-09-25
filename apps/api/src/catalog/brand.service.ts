@@ -14,6 +14,12 @@ import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import { clampLimit, paginate } from '../common/pagination.js';
+import {
+  tokenizeForSql,
+  buildTokenSearch,
+  rankedOffsetFromCursor,
+  rankedNextCursor,
+} from '../common/text-search.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
@@ -21,28 +27,6 @@ type BrandWithAliases = BrandRow & { aliases: BrandAliasRow[] };
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
-
-/** Mirrors `CategoryService`'s own `tokenizeForSql` (same normalize +
- * rules) — duplicated rather than shared, following those files' own
- * precedent of not extracting this into a cross-package util. Splits on
- * whitespace/punctuation runs into individual search words, each matched
- * with its own `OR` clause below — a query of "pla lev" matches a brand
- * containing *either* word, not the literal two-word phrase (the
- * 2026-09-17 fix — `list()` previously did one `contains` on the whole
- * query string). */
-function tokenizeForSql(query: string): string[] {
-  const normalized = query
-    .toLowerCase()
-    .replace(/['’"`]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-  const tokens = new Set<string>();
-  for (const tok of normalized.split(' ')) {
-    if (tok.length >= 2) tokens.add(tok);
-    if (tokens.size >= 10) break;
-  }
-  return [...tokens];
-}
 
 @Injectable()
 export class BrandService {
@@ -55,6 +39,20 @@ export class BrandService {
     this.record = auditRecordFor(this.audit, 'brand');
   }
 
+  /** `q` is tokenized and scored the same way Category List's search is
+   * (`buildTokenSearch`, shared) — matched against name/slug/every alias, a
+   * brand matching more tokens ranks first instead of landing wherever its
+   * `id` happens to fall. Same trade-off Category's own search mode already
+   * made: a search re-ranks the result, so its `cursor` is an offset
+   * instead of the normal `id` keyset bound for that one case.
+   *
+   * The ranking/pagination pass runs as raw SQL over just `id` (Prisma has
+   * no way to `ORDER BY` a computed score, and alias matching needs a
+   * correlated subquery `where.OR` can't express against a one-to-many
+   * relation), then the page's rows are hydrated via a normal
+   * `findMany({ id: { in } })` for the `aliases` relation `toView` needs —
+   * re-sorted back into the SQL query's own order, since `id IN (...)`
+   * doesn't preserve it. */
   async list(opts: {
     status?: Brand['status'];
     /** List archived (soft-deleted) rows instead of live ones — the only
@@ -66,28 +64,60 @@ export class BrandService {
     limit?: number;
   }): Promise<{ items: Brand[]; nextCursor?: string }> {
     const limit = clampLimit(opts.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
-    const where: Prisma.BrandWhereInput = opts.archived
-      ? { deletedAt: { not: null } }
-      : { deletedAt: null };
-    if (opts.status) where.status = opts.status;
     const tokens = opts.q ? tokenizeForSql(opts.q) : [];
-    if (tokens.length > 0) {
-      where.OR = tokens.flatMap((tok) => [
-        { name: { contains: tok, mode: 'insensitive' as const } },
-        { slug: { contains: tok } },
-        { aliases: { some: { alias: { contains: tok } } } },
-      ]);
+    const isSearch = tokens.length > 0;
+
+    const params: unknown[] = [];
+    const where = [opts.archived ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL'];
+    if (opts.status) {
+      params.push(opts.status);
+      where.push(`status::text = $${params.length}`);
+    }
+    let scoreExpr = '0';
+    if (isSearch) {
+      // A brand's aliases are one-to-many (`catalog.brand_alias`) — folded
+      // into one haystack per row via a correlated subquery, since
+      // `buildTokenSearch` needs a single searchable-text expression, not a
+      // join.
+      const haystack = `lower(name || ' ' || slug || ' ' || coalesce((
+        SELECT string_agg(ba.alias::text, ' ') FROM catalog.brand_alias ba WHERE ba.brand_id = brand.id
+      ), ''))`;
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params);
+      where.push(whereSql);
+      scoreExpr = scoreSql;
+    }
+    if (opts.cursor && !isSearch) {
+      params.push(opts.cursor);
+      where.push(`id < $${params.length}::uuid`);
     }
 
-    const rows = await this.prisma.brand.findMany({
-      where,
-      include: { aliases: true },
-      orderBy: { id: 'desc' },
-      take: limit + 1,
-      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+    const offset = isSearch ? rankedOffsetFromCursor(opts.cursor) : 0;
+    const idRows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id
+         FROM catalog.brand
+        WHERE ${where.join(' AND ')}
+        ORDER BY ${isSearch ? `${scoreExpr} DESC, ` : ''}id DESC
+        LIMIT ${limit + 1}${isSearch ? ` OFFSET ${offset}` : ''}`,
+      ...params,
+    );
+
+    const { page: idPage, nextCursor: keysetCursor } = paginate(idRows, limit);
+    const nextCursor = isSearch ? rankedNextCursor(idRows.length, limit, offset) : keysetCursor;
+
+    const orderedIds = idPage.map((r) => r.id);
+    const rows = orderedIds.length
+      ? await this.prisma.brand.findMany({
+          where: { id: { in: orderedIds } },
+          include: { aliases: true },
+        })
+      : [];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ordered = orderedIds.flatMap((id) => {
+      const row = byId.get(id);
+      return row ? [row] : [];
     });
-    const { page, nextCursor } = paginate(rows, limit);
-    return { items: page.map(toView), ...(nextCursor ? { nextCursor } : {}) };
+
+    return { items: ordered.map(toView), ...(nextCursor ? { nextCursor } : {}) };
   }
 
   async get(id: string): Promise<Brand> {
