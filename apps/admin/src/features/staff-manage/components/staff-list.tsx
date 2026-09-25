@@ -58,7 +58,8 @@ const STATUS_TONE: Record<StaffAccount['status'], StatusTone> = {
   disabled: 'danger',
   anonymized: 'neutral',
 };
-const selectCls = 'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm';
+const selectCls =
+  'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
 
 /** A confirm-style action (activate / reset-totp / deprovision) — same shape,
  * different copy + call, so one piece of state and one dialog covers all

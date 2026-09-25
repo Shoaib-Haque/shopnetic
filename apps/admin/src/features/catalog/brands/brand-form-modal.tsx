@@ -276,7 +276,7 @@ export function BrandFormModal({
   }
 
   const selectCls =
-    'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm';
+    'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
 
   const nameField = register('name');
   const slugField = register('slug');

@@ -14,7 +14,8 @@ import { postJson } from '@/features/staff-auth/submit';
 import { staffErrorKey, extractErrorCode } from '@/features/staff-auth/error-copy';
 
 const ROLES: StaffInviteCreateRequest['role'][] = ['SERVICE_ADMIN', 'ADMIN', 'SUPER_ADMIN'];
-const selectCls = 'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm';
+const selectCls =
+  'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
 
 export function InviteStaffForm() {
   const t = useTranslations('staff');

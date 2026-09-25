@@ -305,7 +305,7 @@ export function BrandList() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as BrandStatus | 'all')}
-            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]"
           >
             {STATUS_FILTERS.map((s) => (
               <option key={s} value={s}>

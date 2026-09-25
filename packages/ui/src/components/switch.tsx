@@ -43,7 +43,7 @@ export const Switch = forwardRef<ElementRef<typeof RSwitch.Root>, SwitchProps>(
         ref={ref}
         className={cn(
           'peer inline-flex h-5 w-9 shrink-0 items-center rounded-full border border-transparent',
-          'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'data-[state=unchecked]:bg-muted data-[state=checked]:bg-primary',
           className,

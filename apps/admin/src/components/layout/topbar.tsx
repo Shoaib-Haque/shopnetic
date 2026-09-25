@@ -84,7 +84,7 @@ export function Topbar({
           aria-label={t('shell.account')}
           className={cn(
             'group flex items-center gap-2 rounded-md px-1.5 py-1 outline-none',
-            'hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring',
+            'hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]',
           )}
         >
           <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-medium text-primary-foreground">

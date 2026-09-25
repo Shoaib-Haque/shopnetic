@@ -22,7 +22,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       aria-invalid={invalid ?? undefined}
       className={cn(
         'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm',
-        'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]',
         'disabled:cursor-not-allowed disabled:opacity-50',
         invalid && 'border-destructive focus-visible:ring-destructive',
         className,

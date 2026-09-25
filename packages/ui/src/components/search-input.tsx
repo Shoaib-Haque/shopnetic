@@ -55,7 +55,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
           onClick={clear}
           aria-label={clearLabel}
           title={clearLabel}
-          className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]"
         >
           <X className="size-4" aria-hidden />
         </button>

@@ -138,7 +138,7 @@ export function OtpInput({
           }}
           className={cn(
             'h-11 w-10 rounded-md border border-input bg-background text-center text-lg font-medium tabular-nums',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]',
             'disabled:cursor-not-allowed',
             invalid && 'border-destructive focus-visible:ring-destructive',
           )}

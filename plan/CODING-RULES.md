@@ -3680,3 +3680,142 @@ compose file.
     - Full suite green: API 130/130 integration (1 new) + 25/25 unit;
       admin 285/286 (the one pre-existing flake, still unrelated);
       typecheck clean across `@shopnetic/api` and `@shopnetic/admin`.
+
+- 2026-09-24 — Admin's own accent color (`#36A9AE` base / `#2A8387` focus),
+  requested directly, not tied to any one feature.
+  - `packages/ui/src/tokens.css` is shared across storefront/seller/admin
+    (its own header comment says so) — changing `--primary`/`--ring` there
+    would have reskinned every app, not just this one. Scoped it to admin
+    alone instead: `apps/admin/src/styles/globals.css` redefines both under
+    its own `:root`, loaded *after* `tokens.css` (see `layout.tsx`'s import
+    order) so plain CSS source order wins with no specificity tricks needed.
+    Converted both hexes to the HSL-triplet format every other token here
+    uses (`183 53% 45%` / `183 53% 35%`) — same hue/saturation, only
+    lightness differs, so this comes out as one accent with a darker focus
+    shade, not two unrelated colors.
+  - Follow-up, same request: "1px solid ... with a little shadow" for focus
+    states. Every shared focusable component (`Button`, `Input`, `Checkbox`,
+    `Switch`, `OtpInput`, `PasswordInput`, `SearchInput`'s clear button, the
+    shared overlay-menu-item style, Topbar's account trigger, Audit Log's
+    filter selects) had the same bare `focus-visible:ring-2
+    focus-visible:ring-ring` — widened to a two-layer treatment: `ring-1`
+    (the crisp line) plus `shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]` (the
+    soft glow), both still driven by `--ring` so admin's color override
+    reaches every one of them for free. Structural (width/shadow), not
+    color, so this is shared across all three apps — only the color differs
+    per app already.
+  - Asked directly: "what about select dropdown". A native `<select>`'s
+    *open* option list is OS/browser chrome, not page content — no CSS
+    (ours or anyone's) reaches the hovered/selected row's highlight color
+    there in any mainstream browser, confirmed before spending effort on
+    it, not after. The only real fix is not using a native `<select>` at
+    all. Agreed to build one rather than leave it.
+  - New `packages/ui/src/components/select.tsx` — `@radix-ui/react-select`
+    (new dependency), themed the same way `dropdown-menu.tsx` already wraps
+    Radix: `Select`/`SelectTrigger`/`SelectValue`/`SelectContent`/
+    `SelectItem` (+ scroll buttons for a long list). Hovered/keyboard-
+    focused and selected options both got a light tint at first
+    (`bg-primary/10-15`); reported live as reading too faint against the
+    bold accent this session had just picked, changed to a solid fill —
+    `bg-primary text-primary-foreground` on both `data-[highlighted]` and
+    `data-[state=checked]`, `#fff` already being `--primary-foreground`.
+  - Migrated all 8 native `<select>` call sites across 6 files (`staff-
+    list.tsx`, `invite-staff-form.tsx`, `brand-list.tsx`,
+    `brand-form-modal.tsx`, `category-form-modal.tsx` ×2, `audit-log.tsx`
+    ×2). A field already wired through `register()` moved to `Controller`
+    (`value`/`onValueChange`, not a native `onChange`) — same pattern
+    `isActive`/`isRestricted` `Switch` fields already used here, nothing
+    new. Two fields had an empty-string "none/all" option — Radix
+    `Select.Item` can't take `value=""` (its own internal sentinel), so
+    each got a local sentinel (`PARENT_NONE`, `TARGET_TYPE_ALL`) translated
+    back to `''` right at the `Select`'s `value`/`onValueChange` boundary,
+    keeping the rest of each file's own empty-string-means-root/all
+    convention untouched.
+  - Every test that drove one of these selects via `fireEvent.change` /
+    asserted `toHaveValue()` — both native-`<select>`-only APIs — needed
+    rewriting to Radix's actual shape: open the trigger (`fireEvent.click`),
+    click the option by its rendered text (`findByRole('option', { name })`
+    — no `value` attribute exists to target), and read the current value
+    back via `within(trigger).getByText(...)` instead of `toHaveValue()`.
+    Caught two sharp edges live while doing this: Select's popup portals
+    outside whatever `within(dialog)` scope the trigger was found in, so
+    the option itself has to be queried via `screen`, not that same
+    `within`; and Radix doesn't keep unopened option content in the DOM at
+    all, so a test asserting an option merely *exists* (not clicking it)
+    still has to open the trigger first.
+  - Found live, right after all of the above: opening the Parent/Brand-
+    requirement `Select` from inside a `Modal` and picking an option closed
+    the *whole modal*, not just the dropdown. Root cause: `Select`'s
+    popper-positioned content portals to `document.body`, outside
+    `Dialog.Content`'s own DOM subtree; Radix's outside-click detection is
+    plain DOM containment, so clicking the option registered as a pointer-
+    down *outside* the dialog. Fixed on the `Modal` side (`modal.tsx`), not
+    by dropping `Select`'s portal (which would reintroduce clipping inside
+    `ModalBody`'s `overflow-y-auto` for a long option list): `ModalContent`
+    now passes its own `onPointerDownOutside`, checking
+    `event.target.closest('[data-radix-popper-content-wrapper]')` (a real
+    attribute Radix's own popper package writes — confirmed by reading the
+    installed package source, not assumed) and calling `preventDefault()`
+    when it matches, before falling through to any caller-supplied handler.
+    An initial attempt defaulting `Select`'s own `modal` prop to `false`
+    doesn't compile at all — this installed version
+    (`@radix-ui/react-select@2.3.7`) has no such prop on `Root`, confirmed
+    from its own `.d.mts`, not assumed from Radix's other primitives that
+    do have one (`Dialog`, `DropdownMenu`).
+  - **Not test-covered, deliberately**: `fireEvent.click` in every one of
+    the rewritten tests above never actually exercised this bug — jsdom
+    doesn't simulate the real `pointerdown` hit-testing Radix's
+    `DismissableLayer` listens for, so the entire existing suite passed
+    both before and after this fix. Verified live in the browser only
+    (`shoaibhaque7@gmail.com`, New category → Parent/Brand requirement,
+    both now leave the modal open). Writing a jsdom test for this would
+    need to fake the exact mechanism it can't simulate — noted here instead
+    of adding a test that can't actually catch a regression.
+  - Full admin suite green: 287/287; typecheck clean across `@shopnetic/ui`
+    and `@shopnetic/admin`.
+  - **Reverted, same day.** After the `onPointerDownOutside` fix above, the
+    user still reported a glitch — not the modal closing anymore, but "a
+    shadow kinda border comes around the modal then goes" right as a select
+    opens. Thrown a fair amount of live-browser instrumentation at finding
+    it (a `MutationObserver` over the whole dialog subtree, a `focusin`/
+    `focusout` listener, per-`requestAnimationFrame` sampling of the
+    trigger's `:focus-visible`/`box-shadow` state, an artificial CSS
+    slow-motion override) — none of it found an actual box-shadow/border
+    property changing on the trigger or the dialog content; the dialog's
+    `shadow-xl` stayed constant throughout every capture. Given a
+    non-trivial, still-unidentified visual bug and no way to pin it down
+    remotely, the user asked to drop the whole `Select` build rather than
+    keep chasing it. Reverted in full: `select.tsx` deleted,
+    `@radix-ui/react-select` removed, `modal.tsx`'s
+    `onPointerDownOutside` exception removed, all 8 call sites back to a
+    native `<select>`, all 6 test files back to `fireEvent.change`/
+    `toHaveValue`. Every native `<select>` keeps the *closed-state* focus
+    ring (`ring-1` + soft shadow) from earlier the same day — that part
+    never had a reported problem; only the open-state Radix popup
+    replacement is gone. Confirmed clean via `git status`: every reverted
+    file matches its last-committed state exactly, nothing half-reverted.
+  - **Tried once more, same day, then reverted again.** Asked directly
+    whether a plain `select option:checked`/`select option:hover` CSS rule
+    (pasted from a generic example) would be simpler than the reverted
+    `Select` rebuild — yes, far simpler to write, so it was worth an honest
+    try rather than dismissing it from memory. Added both rules to admin's
+    `globals.css` (`hsl(var(--primary))`/`hsl(var(--ring))`, not the raw
+    hex, so it inherits the theme tokens automatically). Chrome's own
+    screenshot tooling can't capture a native select's open popup at all —
+    it's OS chrome, outside anything CDP renders — so this could only be
+    verified by the user directly, not by me. Their screenshots
+    (`tmp/issue/selected_before_hover.png`,
+    `tmp/issue/selected_after_hover_once.png`) showed it doesn't actually
+    work: `option:hover` is ignored outright (Chrome's native blue stays on
+    the hovered row regardless of the CSS), and `option:checked` has a
+    stale-paint bug — the selected row shows native blue on first open and
+    only picks up the CSS color after some *other* row in the list gets
+    hovered, triggering a repaint. A worse, more confusing state than
+    plain native styling (a box that's sometimes blue, sometimes teal, for
+    reasons a user can't see), not a real fix. Reverted the two rules;
+    `globals.css` is back to just the `:root` accent-color override.
+    Confirmed: 287/287, typecheck clean.
+  - Net result of the whole day's select-styling effort: the underlying
+    limitation (native `<select>` option lists can't be reliably restyled)
+    still stands, two different approaches tried and reverted, both
+    documented above for whoever picks this up next.
