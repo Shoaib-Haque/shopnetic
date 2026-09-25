@@ -53,7 +53,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: 'categories', path: '/catalog/categories', icon: FolderTree },
       { key: 'brands', path: '/catalog/brands', icon: Tags },
-      { key: 'optionTypes', icon: SlidersHorizontal, soon: true },
+      { key: 'optionTypes', path: '/catalog/option-types', icon: SlidersHorizontal },
       { key: 'valueSets', icon: ListChecks, soon: true },
       { key: 'products', icon: Boxes, soon: true },
       { key: 'media', icon: Image, soon: true },

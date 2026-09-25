@@ -50,6 +50,35 @@ Key separation: **Options/Variants are on the Product (shared). Price/Stock are 
 the Offer (per seller).** Media can attach to either, and can be tagged to Option
 Values (section 5).
 
+### 1.1 Governance: seller-proposed entities, admin moderation
+
+**Decided:** a seller may *propose* an addition to any of four shared catalog
+entities — **Brand**, **Product** (a new base product), **Option Value** (on an
+`open`/`hybrid` axis), and **Option Type** (a whole new axis) — and every one of
+them goes through the same shape: **seller proposes → admin reviews → approve**
+(merges into the canonical/shared table, visible to everyone) **or reject**
+(with a reason; seller notified). Nothing a seller proposes reaches the shared
+catalog un-reviewed.
+
+- **Already designed pre-existing:** Product (`product.proposed_by_seller_id`,
+  Q14, `22`) and Brand (`brand_request` table + moderation queue, section 6) —
+  Brand's queue is designed but not yet built (see this doc's "Build progress"
+  note at the top).
+- **Newly decided (2026-09-25):** Option Value and Option Type now follow the
+  identical shape — this resolves Q26 and Q34 (`22`) as far as the *policy*
+  question goes ("can a seller propose one, and is admin the gate" — yes, for
+  both). Neither has any endpoint, table, or seller UI built yet.
+- **Deliberately excluded: Category.** Sellers never propose categories, full
+  stop — the tree stays 100% admin-only (`06` Catalog governance). The taxonomy
+  is too structural (drives nav, facets, and every `category_option` config) to
+  open up the way a brand or option value can be.
+- **Still open (implementation, not policy):** whether one generalized
+  `catalog_request` table (an entity-type discriminator + payload column) backs
+  all four proposal types, or each gets its own typed table the way
+  `brand_request` already does. Left to whoever builds the Option
+  Value/Option Type moderation queues — doesn't change the seller/admin-facing
+  behavior either way.
+
 ---
 
 ## 2. How options get configured — three levels
@@ -77,6 +106,16 @@ Admin curates, per category, the catalog of Option Types and how they behave:
 - Changing category option config is **additive-only** in practice (`25` section 1.1):
   you can add an optional Option Type, or add values to an `open`/`hybrid` set;
   you cannot remove one that existing products/variants use — deprecate instead.
+- **Built today vs. decided:** `value_source: open`/`hybrid` only changes whether
+  a product's chosen values must also fall inside the category's curated
+  `value_set` (`predefined` requires it; `open`/`hybrid` skip that filter). Every
+  value, on every `value_source`, must still already exist as an admin-managed
+  `option_value` row — `assertValuesAllowed` in
+  `apps/api/src/catalog/product-option.service.ts` enforces this with no
+  exception. The seller-proposes-a-value half of `open`/`hybrid` (and, for a
+  whole new axis, Option Type itself) is now a **decided** design — see
+  section 1.1 — but **not built**: no endpoint, no moderation queue, no seller
+  UI (there's no seller UI at all yet).
 
 ### 2.2 Seller — product level (`product_option`)
 
@@ -362,6 +401,11 @@ section 4. `yes` = can do it; `—` = cannot / not applicable; a parenthetical
 | Filter search by option facets (color, size, storage…)                                   | —                     | —                          | yes (see `11` section 5) |
 +------------------------------------------------------------------------------------------+-----------------------+----------------------------+--------------------------+
 
+Rows marked `yes (→ …)` for Seller on value/media proposals are **decided
+design, not yet built** (section 1.1). There is no seller UI at all yet
+(`apps/seller` is an empty scaffold), so nothing in this row is reachable in
+practice today.
+
 ---
 
 ## 8. Corner cases checklist (design each before build)
@@ -379,8 +423,9 @@ section 4. `yes` = can do it; `—` = cannot / not applicable; a parenthetical
   combinations just creates fewer offers. A seller who needs a combination that
   has **no variant yet** → "request new variant" → moderation creates the
   `variant` (values already exist) → seller adds the offer. A seller cannot
-  invent a *new option type* for a shared product; they can propose it to admin
-  for the category.
+  invent a *new option type* for a shared product directly — they **propose it,
+  admin approves** (section 1.1), same shape as a new Brand or Product. Not
+  built yet: no request table, no endpoint, no seller UI.
 - **Two products that look similar but differ in options** (Shirt A with
   Color+Size, Shirt B with none): they are **different `product` rows** with
   different `product_option` config. They may share a category and brand. Do not
@@ -416,9 +461,14 @@ section 4. `yes` = can do it; `—` = cannot / not applicable; a parenthetical
   this doc assumes **per-variant** with display dedupe.
 - Grid-editor hard cap on variant count per product (proposed: warn 100, block
   500 — tune).
-- `open` color values: free text + normalization dictionary vs a curated
-  master palette sellers map onto (leaning: curated master palette + alias, so
-  facets stay clean).
+- **Decided** (section 1.1, 2026-09-25): sellers can propose new Option Values
+  and new Option Types, gated by admin approval — same shape as Brand/Product.
+  Still open, mechanism only: `open` color values as free text + normalization
+  dictionary vs. a curated master palette sellers map onto (leaning: curated
+  master palette + alias, so facets stay clean) (Q26); whether Option
+  Value/Type proposals get their own typed request tables (mirroring
+  `brand_request`) or one generalized `catalog_request` table (Q34) — a
+  schema/implementation detail, not a product-policy question anymore.
 - Whether sellers can ever create a brand directly once "trusted" (fast-track),
   or always via request (leaning: always request, faster SLA for trusted).
 

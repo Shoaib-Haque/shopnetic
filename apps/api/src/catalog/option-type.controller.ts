@@ -38,7 +38,7 @@ const updateBody = new ZodBodyPipe(updateOptionTypeRequestSchema);
 const addValueBody = new ZodBodyPipe(addOptionValueRequestSchema);
 const updateValueBody = new ZodBodyPipe(updateOptionValueRequestSchema);
 
-type Envelope<T> = { data: T; meta: { requestId: string; count?: number } };
+type Envelope<T> = { data: T; meta: { requestId: string; nextCursor?: string; count?: number } };
 
 @Controller('admin/v1/option-types')
 @UseGuards(StaffAuthGuard, PermissionGuard)
@@ -50,18 +50,24 @@ export class OptionTypeController {
   async list(
     @Req() req: Request,
     @Query('status') status?: string,
+    @Query('archived') archived?: string,
     @Query('q') q?: string,
-    @Query('includeDeleted') includeDeleted?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
   ): Promise<Envelope<OptionType[]>> {
-    const opts: Parameters<OptionTypeService['list']>[0] = {
-      includeDeleted: includeDeleted === 'true',
-    };
+    const opts: Parameters<OptionTypeService['list']>[0] = {};
     if (status === 'active' || status === 'deprecated') opts.status = status;
+    if (archived === 'true') opts.archived = true;
     if (q) opts.q = q;
+    if (cursor) opts.cursor = cursor;
+    if (limit) opts.limit = Number(limit);
 
-    const items = await this.optionTypes.list(opts);
+    const { items, nextCursor } = await this.optionTypes.list(opts);
     const base = ok(req, items);
-    return { data: base.data, meta: { ...base.meta, count: items.length } };
+    return {
+      data: base.data,
+      meta: { ...base.meta, count: items.length, ...(nextCursor ? { nextCursor } : {}) },
+    };
   }
 
   @Get(':id')
@@ -97,6 +103,15 @@ export class OptionTypeController {
     @Param('id') id: string,
   ): Promise<void> {
     await this.optionTypes.remove(id, actor, meta(req));
+  }
+
+  @Post(':id/restore')
+  async restore(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+  ): Promise<Envelope<OptionType>> {
+    return ok(req, await this.optionTypes.restore(id, actor, meta(req)));
   }
 
   @Post(':id/values')

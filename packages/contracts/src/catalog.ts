@@ -297,7 +297,14 @@ export const updateOptionTypeRequestSchema = z
     hasSwatch: z.boolean(),
     status: optionStatusSchema,
   })
-  .partial();
+  .partial()
+  .extend({
+    /** Optimistic-concurrency guard, same shape as `updateBrandRequestSchema`'s
+     * own field — the `updatedAt` the client last read for this row. If it no
+     * longer matches the stored value the update is rejected with `409
+     * CONFLICT`. Omit to skip the check. */
+    expectedUpdatedAt: z.string().optional(),
+  });
 export type UpdateOptionTypeRequest = z.infer<typeof updateOptionTypeRequestSchema>;
 
 export const addOptionValueRequestSchema = optionValueInputSchema;

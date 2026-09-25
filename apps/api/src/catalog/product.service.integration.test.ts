@@ -16,6 +16,7 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
   let products: ProductService;
   let productOptions: ProductOptionService;
   let variants: VariantService;
+  let optionTypes: OptionTypeService;
   let actor: Actor;
   const stamp = Date.now();
   const s = (x: string): string => `itest-pr-${stamp}-${x}`;
@@ -34,7 +35,7 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     prisma = getPrismaClient();
     const pr = prisma as PrismaService;
     const audit = new AuditService(pr);
-    const optionTypes = new OptionTypeService(pr, audit);
+    optionTypes = new OptionTypeService(pr, audit);
     const categoryOptions = new CategoryOptionService(pr, audit);
     products = new ProductService(pr, audit);
     productOptions = new ProductOptionService(pr, audit);
@@ -219,6 +220,30 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     const list = await productOptions.list(p.id);
     expect(list.map((o) => o.optionTypeId).sort()).toEqual([sizeTypeId, colorTypeId].sort());
     expect(list.find((o) => o.optionTypeId === sizeTypeId)?.values).toHaveLength(2);
+  });
+
+  it('removing an option value a product actually offers is blocked with OPTION_VALUE_IN_USE, not a raw DB error', async () => {
+    const p = await products.create(
+      { categoryId: catOptionalId, title: t('Tee In Use'), slug: s('tee-in-use') },
+      actor,
+      {},
+    );
+    await productOptions.put(p.id, colorTypeId, {}, actor, {});
+    await productOptions.setValues(
+      p.id,
+      colorTypeId,
+      { values: [{ optionValueId: colorValues['blue']! }] },
+      actor,
+      {},
+    );
+
+    await expect(
+      optionTypes.removeValue(colorTypeId, colorValues['blue']!, actor, {}),
+    ).rejects.toMatchObject({ code: 'OPTION_VALUE_IN_USE', status: 409 });
+
+    // unaffected by the blocked attempt — still there, still usable
+    const type = await optionTypes.get(colorTypeId);
+    expect(type.values.map((v) => v.id)).toContain(colorValues['blue']);
   });
 
   it('creates variants from valid selections and blocks dups / bad combos', async () => {

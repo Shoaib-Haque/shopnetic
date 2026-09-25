@@ -3876,3 +3876,235 @@ compose file.
     developed against. Restored, all three pass again.
   - Full suite green: 133/133 integration (3 new) + 25/25 unit; typecheck
     and lint clean.
+- 2026-09-25 (follow-up, same day) — Asked directly whether Option Types
+  search should get the same "break word, any match, best match first"
+  mechanism as the other lists above. It didn't: `OptionTypeService.list`'s
+  `q` was a single `code`-only `contains` — no `name` matching, no
+  multi-token OR, no ranking, predating the shared module above (noted at
+  the time as "a possible future application," not yet acted on).
+  - `OptionTypeService.list` converted from Prisma `findMany` to raw SQL
+    with the shared `tokenizeForSql`/`buildTokenSearch`
+    (`../common/text-search.js`), haystack
+    `lower(coalesce(name_i18n->>'en', '') || ' ' || code)` — matches
+    Category's own `name_i18n->>'en'` pattern for a localized-JSON name
+    column. No pagination on this endpoint (small, bounded set, unlike
+    Category/Brand), so no cursor logic needed — just ranked-then-`code`
+    ordering over the full matching set, hydrated via a second
+    `findMany({ id: { in } })` for the `values` relation, re-sorted back
+    into the ranked order (same hydration pattern as Staff/Brand above).
+  - New integration test: `code`-only and `name`-only matches on the same
+    two tokens both outrank a one-token partial match.
+  - Fixed a pre-existing test broken by the switch to OR-token search, not
+    a new bug: `soft-deletes a type: ... kept with includeDeleted` asserted
+    `list({ q: s('grade') })` returned exactly zero rows post-delete — true
+    under old single-substring matching, false now that `s('grade')`
+    tokenizes to include the `itest-opt-<stamp>` prefix every fixture in
+    the file shares, so other live rows legitimately also match under OR
+    semantics. Rewritten to `.not.toContain(deletedId)`, mirroring
+    `brand.service.integration.test.ts`'s own analogous soft-delete
+    visibility test, which already used the weaker-but-correct assertion
+    for the exact same reason.
+  - Revert-confirmed: forced `isSearch = false` in `list()`, the new
+    ranking test failed (fuller match no longer ranked first); restored.
+  - Admin's search placeholder ("Search by code…") no longer matched
+    behavior once `name` counted too — updated to "Search option types…"
+    (`catalog.json`), matching Brand's own generic (not field-specific)
+    placeholder copy.
+  - Full suite green: 134/134 API integration (1 new) + 25/25 unit + 304/304
+    admin (1 updated for the copy change); typecheck and lint clean on both
+    apps.
+- 2026-09-25 (follow-up, same day) — Asked directly whether Option Value
+  delete is hard, confirmed yes (`option_value` has no `deletedAt` column),
+  then asked what real marketplaces do about deleting an in-use attribute
+  value (neither Amazon nor eBay expose delete on one — only deprecate; the
+  UI itself never offers the destructive action once something references
+  it). `removeValue()` had no reference check at all: a hard delete on an
+  in-use value would hit the raw Postgres FK violation
+  (`product_option_value`/`variant_option_value`/`media_option_tag`/
+  `product_option.required_value_id` — all four FK the value with
+  `onDelete: Restrict`) with no `AppError` translation, surfacing as a
+  generic 500.
+  - Found `ValueSetService.remove()` already does the right thing for this
+    exact shape (count references first, throw a clean `AppError` before
+    attempting the delete, not catch the FK violation after the fact) —
+    reused that pattern instead of writing a new P2003-catching one.
+  - New `ErrorCode.OPTION_VALUE_IN_USE` (`packages/contracts`); admin
+    `error-copy.ts` + `catalog.json` wired to it (no UI code changes needed
+    — `onRemoveValue`'s existing catch already routes any `AdminApiError`
+    code through `catalogErrorKey`).
+  - New integration test in `product.service.integration.test.ts` (promoted
+    its local `optionTypes` from a `beforeAll`-scoped `const` to an
+    outer-scope `let` so a new `it()` could call `removeValue` on it):
+    creates a product that actually offers a color value via
+    `productOptions.setValues`, then asserts removing that value rejects
+    with `OPTION_VALUE_IN_USE`/409, not a thrown Prisma error, and that the
+    value is still present afterward (the blocked attempt didn't partially
+    apply).
+  - Revert-confirmed: zeroed out the reference-count sum, the new test
+    failed with the exact raw `PrismaClientKnownRequestError` (`P2003`,
+    `product_option_value_option_value_id_fkey`) this fix exists to
+    prevent; restored.
+  - Deliberately not done yet, noted as a follow-up rather than expanded
+    scope here: (1) the UI proactively hiding/disabling Remove on an
+    in-use value instead of letting the click fail (matches real-world
+    platforms more closely, but nothing in the current admin UI can create
+    a reference yet — Products aren't built there); (2) the same
+    reference-check gap on `OptionTypeService.remove()` itself, which
+    still soft-deletes a type with no check on whether its values are
+    referenced.
+  - Full suite green: 135/135 API integration (1 new) + 25/25 unit + 304/304
+    admin; typecheck and lint clean on api/admin/contracts.
+- 2026-09-25 (follow-up, same day) — Asked "what's left with Option Types"
+  after all the fixes above; audited it against its more mature siblings
+  (Brand, Category) and found three real gaps, then asked to do all three:
+  - **Audit Log deep-link.** `option_type` was in `TARGET_TYPES` but
+    `targetHref()` (`audit-log.tsx`) fell through to `null` for it — a
+    named test even pinned this ("a targetType with no admin page yet
+    (e.g. option_type) stays plain text"). Added the `option_type` branch;
+    swapped that test's example to `product` (still genuinely un-linked)
+    and added a new test asserting `option_type` now links. On the list
+    side, added the `highlightId`/`useFindById`/`useRowFlash` trio
+    `option-type-list.tsx` never had — simpler than Brand's version since
+    there's no pagination: `hasMore: false` + a no-op `loadMore` makes
+    `useFindById` degenerate to "look in what's already loaded," which is
+    exactly right for a list that loads everything in one shot.
+  - **Value reordering.** `option_value.position` was already real and
+    already accepted by `updateOptionValue`/`addOptionValue` — the UI just
+    never sent it, so the only way to change PDP display order was
+    delete-and-re-add (churning the value's `id`). Added Move-up/Move-down
+    buttons per value row in the form modal: create mode is a plain local
+    array swap (position is derived from array order at submit time, no
+    API involved); edit mode does two sequential `updateOptionValue` calls
+    swapping the two affected values' `position`, applying only the
+    *second* call's response to state (the first response mid-swap would
+    show a half-swapped order for a frame otherwise).
+  - **No optimistic-concurrency check on Option Type update.** Brand and
+    Category both reject a stale `expectedUpdatedAt` with `CONFLICT`;
+    Option Type's schema didn't even have the field, so two admins editing
+    the same one simultaneously silently last-write-won — even though the
+    form already had `onConflict` wired and tested (it just could never
+    fire). Added `expectedUpdatedAt` to `updateOptionTypeRequestSchema`
+    (mirrors `updateBrandRequestSchema` exactly: `.partial().extend({...})`,
+    outside the partial so it's never accidentally omitted from the type),
+    the same compare-and-throw in `OptionTypeService.update()`, and threaded
+    `expectedUpdatedAt: optionType.updatedAt` from the form.
+  - Each fix revert-confirmed independently: disabled the `option_type`
+    branch in `targetHref()` → the new link-assertion test failed with a
+    non-`<a>`-element error; forced the CONFLICT check to `false &&` → the
+    integration test's "stale token should 409" assertion failed (silent
+    success instead); reorder buttons weren't touched (no separate flag to
+    flip — their own new tests are the only coverage, already passing).
+  - New tests: 2 audit-log (link exists + list flashes on `?highlight=`,
+    2 more added directly to `option-type-list.test.tsx`), 2 reorder (one
+    per mode) in `option-type-form-modal.test.tsx`, 1 CONFLICT + 1 position
+    integration test in `option-type.service.integration.test.ts`.
+  - Full suite green: 137/137 API integration (2 new) + 25/25 unit +
+    309/309 admin (4 new, 2 updated for the now-always-sent
+    `expectedUpdatedAt`); typecheck and lint clean on api/admin/contracts.
+- 2026-09-25 (follow-up, same day) — Seeded 77 real Option Types (`color`
+  expanded to 38 values) to visually check the admin UI, then asked
+  directly: "it loads on scroll right?" It didn't — `list()` had always
+  returned a plain unpaginated array (option types were expected to stay a
+  small, bounded set; this session's own seeding just proved that wrong).
+  Asked to switch it to match every other list page's behavior.
+  - `OptionTypeService.list()` converted to cursor pagination, same shape
+    as Brand (`{ items, nextCursor }`, `clampLimit`/`DEFAULT_LIMIT=25`/
+    `MAX_LIMIT=100`). One deliberate difference from Brand: the keyset
+    cursor is `code`, not `id` — `code` is already the list's display
+    order (`ORDER BY code ASC`) and is DB-unique, so it's a safe boundary
+    on its own without needing to fall back to `id`. The search path is
+    unchanged (already used the shared ranked-offset cursor from the
+    2026-09-25 search-ranking work).
+  - `option-type.controller.ts` gained `cursor`/`limit` query params and
+    `nextCursor` in the response envelope, mirroring `brand.controller.ts`.
+  - Admin: `listOptionTypes` → `listOptionTypesPage` (now fetches with
+    `raw: true` to read `meta.nextCursor`, matching `listBrandsPage`).
+    `option-type-list.tsx` rewritten to use `useScrollLoad` instead of the
+    hand-rolled `items`/`loading`/`reload`/`resync` state — removes that
+    whole custom implementation (and its now-obsolete comments explaining
+    why it *didn't* need pagination) in favor of the same hook Brand/
+    Category/Staff already share. The Audit-Log deep-link wiring
+    (`useFindById`/`useRowFlash`) needed no changes beyond swapping in
+    `list.hasMore`/`list.loading || list.loadingMore`/`list.loadMore` —
+    it was already written against that interface, just fed placeholder
+    values (`hasMore: false`, a no-op `loadMore`) before there was real
+    pagination to hook up.
+  - Fixed two `exactOptionalPropertyTypes` friction points while adding
+    the new pagination integration test: `svc.list({ cursor:
+    first.nextCursor, ... })` doesn't typecheck when `nextCursor` is
+    `string | undefined` and the target property is `cursor?: string` (not
+    `cursor?: string | undefined`) — fixed with the same
+    `...(x ? { cursor: x } : {})` conditional-spread idiom already used at
+    every real call site in this codebase, not a new pattern. A `while`
+    loop's own re-narrowing of a reassigned `cursor` variable turned out
+    to typecheck fine on its own — no workaround needed there, confirmed
+    by removing an unnecessary local-const-capture that was added
+    speculatively before actually re-running `tsc`.
+  - Rewrote `option-type-list.test.tsx` around the `{data, meta}` raw
+    envelope every other paginated list's tests use (a `page(items,
+    nextCursor?)` helper, matching Brand's own), and added real pagination
+    coverage that didn't exist before: a scroll-sentinel test
+    (`triggerIntersection`, mirrors Staff List's own) and a "keeps loading
+    pages until the deep-link target turns up" test (mirrors Category
+    List's own) — the "already loaded" highlight test existed before but
+    could never actually exercise cross-page loading since nothing was
+    ever paginated.
+  - Revert-confirmed the new keyset-cursor `WHERE code > $N` clause:
+    disabled it, the new pagination integration test failed with page 2
+    returning the exact same row as page 1; restored.
+  - Full suite green: 138/138 API integration (1 new) + 25/25 unit +
+    311/311 admin (test file substantially rewritten, 2 new pagination
+    tests); typecheck and lint clean on api/admin/contracts.
+- 2026-09-25 (follow-up, same day) — Asked directly: should delete have an
+  undo toast like Category/Brand, for the Option Type itself and for
+  Option Values? Discussed both before writing anything (per the standing
+  "discuss big batches first" rule — four points came in at once):
+  recommended yes for the Option Type itself (it already soft-deletes,
+  only the restore endpoint was missing — a gap already flagged this
+  session) and no for Values (they're removed from *inside* the parent's
+  edit modal, the same shape as Brand's alias chips, which are already
+  immediate/no-undo; adding undo there would mean a real schema change —
+  `option_value` has no `deletedAt` column at all — for a mistake that
+  costs a 5-second re-add, and in-use values are already blocked from
+  deletion by the 2026-09-25 `OPTION_VALUE_IN_USE` guard). Told to do the
+  Option Type half.
+  - `OptionTypeService`: new `restore()` + `archivedRowOrThrow()`, mirrors
+    `BrandService.restore()`/`CategoryService.restore()` exactly — blocks
+    if the freed code/name was picked up by a live row in the meantime.
+    `list()`'s `includeDeleted: boolean` (showed live+deleted mixed
+    together) replaced with `archived: boolean` (an exclusive toggle,
+    matching Brand's own field) — needed for a real Archived tab, not just
+    "include deleted in the same query."
+  - `option-type.controller.ts`: new `POST /option-types/:id/restore`,
+    `archived` query param on `list()` replacing `includeDeleted`.
+  - Admin: `option-type-list.tsx` gained the Live/Archived tab pair Brand
+    has (status filter dropdown now only renders on Live, same "don't
+    silently carry a Live-only filter into the Archived query" guard Brand
+    already has). Delete switched from `ConfirmDialog` + `deleteOptionType`
+    to `useSoftDeleteWithUndo` — the confirm dialog is gone entirely for
+    delete (undo replaces it, matching Brand: only *restore* from the
+    Archived tab still gets a confirm dialog, delete doesn't need one
+    anymore since undo is the safety net). New `restoreOptionType` in
+    `api.ts`.
+  - `catalog.json`: dropped `deleteTitle`/`deleteMessage` (no confirm
+    dialog left to show them), added `filter.live/archived`, `restore`,
+    `undo`, `restoreTitle`, `restoreMessage`, `alreadyDeleted`,
+    `alreadyRestored`, `toast.restored` — all copied from Brand's own
+    wording, not reworded.
+  - Found and fixed a real bug in the first draft of the "restore blocked"
+    integration test while writing it: tried to test a *code* collision
+    (two rows sharing a code, one soft-deleted) and hit a genuine DB
+    unique-constraint violation on `create()` — `option_type.code` is a
+    plain `@unique` column, unconditional regardless of `deleted_at`, so a
+    squatter can never actually pick up a freed code in the first place
+    (same structural fact `brand.service.integration.test.ts`'s own
+    equivalent test already documents for `brand.slug`). Rewrote to test
+    only the reachable case: a name collision.
+  - Revert-confirmed the new `assertNameFree` call inside `restore()`:
+    disabled it, the "restore is blocked" test failed (resolved instead of
+    rejecting); restored.
+  - Full suite green: 139/139 API integration (2 new: soft-delete/restore/
+    reachability, and the name-collision-blocks-restore case) + 25/25 unit
+    + 314/314 admin (3 new: undo-restores-the-row, Archived-tab-restore-
+    via-confirm-dialog, status-filter-not-carried-into-Archived); typecheck
+    and lint clean on api/admin.

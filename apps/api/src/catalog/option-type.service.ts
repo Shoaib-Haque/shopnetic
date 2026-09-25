@@ -13,10 +13,20 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
+import {
+  tokenizeForSql,
+  buildTokenSearch,
+  rankedOffsetFromCursor,
+  rankedNextCursor,
+} from '../common/text-search.js';
+import { clampLimit } from '../common/pagination.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
 type OptionTypeWithValues = OptionTypeRow & { values: OptionValueRow[] };
+
+const DEFAULT_LIMIT = 25;
+const MAX_LIMIT = 100;
 
 /**
  * Global option-type catalog (plan/26 section 3). Option types + their allowed values,
@@ -36,20 +46,78 @@ export class OptionTypeService {
 
   async list(opts: {
     status?: OptionType['status'];
+    /** List archived (soft-deleted) rows instead of live ones — the only
+     * way back to a row once its delete's undo-toast window has passed
+     * (mirrors `BrandService.list()`'s own field). */
+    archived?: boolean;
     q?: string;
-    includeDeleted?: boolean;
-  }): Promise<OptionType[]> {
-    const where: Prisma.OptionTypeWhereInput = {};
-    if (!opts.includeDeleted) where.deletedAt = null;
-    if (opts.status) where.status = opts.status;
-    if (opts.q) where.code = { contains: opts.q.toLowerCase() };
+    cursor?: string;
+    limit?: number;
+  }): Promise<{ items: OptionType[]; nextCursor?: string }> {
+    // Cursor-paginated, same shape as Brand/Staff/Audit Log — was a
+    // plain unpaginated array (option types were expected to stay a small,
+    // bounded set; 70+ real ones later proved otherwise). `code` is the
+    // keyset cursor, not `id`: it's already the list's display order
+    // (`ORDER BY code ASC`) and is DB-unique, so it's a safe boundary on
+    // its own — no need to fall back to `id` the way a non-unique sort
+    // column would.
+    const limit = clampLimit(opts.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
 
-    const rows = await this.prisma.optionType.findMany({
-      where,
-      include: { values: true },
-      orderBy: { code: 'asc' },
+    // Same shared multi-token, relevance-ranked search as Category/Brand/
+    // Staff/Audit Log (`../common/text-search.js`) — was previously
+    // `code`-only, unranked, so "FX 47"-style multi-word queries never
+    // ranked the fuller match first and never matched on name at all.
+    const tokens = opts.q ? tokenizeForSql(opts.q) : [];
+    const isSearch = tokens.length > 0;
+
+    const params: unknown[] = [];
+    const where = [opts.archived ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL'];
+    let scoreExpr = '0';
+    if (opts.status) {
+      params.push(opts.status);
+      where.push(`status::text = $${params.length}`);
+    }
+    if (isSearch) {
+      const { whereSql, scoreSql } = buildTokenSearch(
+        tokens,
+        `lower(coalesce(name_i18n->>'en', '') || ' ' || code)`,
+        params,
+      );
+      where.push(whereSql);
+      scoreExpr = scoreSql;
+    }
+    if (opts.cursor && !isSearch) {
+      params.push(opts.cursor);
+      where.push(`code > $${params.length}`);
+    }
+
+    const offset = isSearch ? rankedOffsetFromCursor(opts.cursor) : 0;
+    const idRows = await this.prisma.$queryRawUnsafe<{ id: string; code: string }[]>(
+      `SELECT id, code
+         FROM catalog.option_type
+        WHERE ${where.join(' AND ')}
+        ORDER BY ${isSearch ? `${scoreExpr} DESC, ` : ''}code ASC
+        LIMIT ${limit + 1}${isSearch ? ` OFFSET ${offset}` : ''}`,
+      ...params,
+    );
+
+    const page = idRows.slice(0, limit);
+    const keysetCursor = idRows.length > limit ? page.at(-1)?.code : undefined;
+    const nextCursor = isSearch ? rankedNextCursor(idRows.length, limit, offset) : keysetCursor;
+
+    const orderedIds = page.map((r) => r.id);
+    const rows = orderedIds.length
+      ? await this.prisma.optionType.findMany({
+          where: { id: { in: orderedIds } },
+          include: { values: true },
+        })
+      : [];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ordered = orderedIds.flatMap((id) => {
+      const row = byId.get(id);
+      return row ? [row] : [];
     });
-    return rows.map(toView);
+    return { items: ordered.map(toView), ...(nextCursor ? { nextCursor } : {}) };
   }
 
   async get(id: string): Promise<OptionType> {
@@ -106,6 +174,17 @@ export class OptionTypeService {
     meta: RequestMeta,
   ): Promise<OptionType> {
     const current = await this.rowOrThrow(id);
+
+    // optimistic concurrency: reject a save built on a stale view of the
+    // row — mirrors `BrandService.update()`'s/`CategoryService.update()`'s
+    // own guard, same risk (concurrent edits by multiple staff), same fix.
+    if (
+      input.expectedUpdatedAt !== undefined &&
+      input.expectedUpdatedAt !== current.updatedAt.toISOString()
+    ) {
+      throw new AppError('CONFLICT', 409, { detail: 'option type changed since it was loaded' });
+    }
+
     if (input.code && input.code !== current.code) await this.assertCodeFree(input.code, id);
     if (input.name !== undefined) {
       const nextName = input.name['en'] ?? '';
@@ -148,6 +227,27 @@ export class OptionTypeService {
       before: toView(current),
       reason: 'soft delete',
     });
+  }
+
+  /** Restore a soft-deleted option type. Blocked when the freed code/name
+   * was picked up by a live row in the meantime (same reasoning as
+   * `BrandService.restore()`/`CategoryService.restore()`). */
+  async restore(id: string, actor: Actor, meta: RequestMeta): Promise<OptionType> {
+    const current = await this.archivedRowOrThrow(id);
+    await this.assertCodeFree(current.code, id);
+    await this.assertNameFree((current.nameI18n as Record<string, string>)['en'] ?? '', id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.optionType.update({ where: { id }, data: { deletedAt: null } });
+      await writeCatalogOutbox(tx, 'option_type', 'option_type.restored', id, { id });
+    });
+
+    const view = await this.get(id);
+    await this.record(actor, 'catalog.option_type_restored', id, meta, {
+      after: view,
+      reason: 'restore',
+    });
+    return view;
   }
 
   async addValue(
@@ -244,6 +344,30 @@ export class OptionTypeService {
     // known state, same reasoning `remove()` (the option type itself)
     // already uses via `toView(current)`.
     const removedCode = type.values.find((v) => v.id === valueId)?.code ?? null;
+
+    // Values are hard-deleted (no `deletedAt` column on `option_value`), and
+    // every table that can reference one FKs with `onDelete: Restrict`
+    // (`product_option_value`, `variant_option_value`, `media_option_tag`,
+    // and `product_option.required_value_id` — the "One Size" case). Without
+    // this pre-check, deleting an in-use value would fail on the raw DB
+    // constraint with no `AppError` translation, surfacing as a generic
+    // 500 instead of a clear "in use" message. Same pattern
+    // `ValueSetService.remove()` already uses (count first, block before
+    // attempting the delete) rather than catching the FK violation after
+    // the fact.
+    const [productUses, variantUses, mediaUses, requiredUses] = await Promise.all([
+      this.prisma.productOptionValue.count({ where: { optionValueId: valueId } }),
+      this.prisma.variantOptionValue.count({ where: { optionValueId: valueId } }),
+      this.prisma.mediaOptionTag.count({ where: { optionValueId: valueId } }),
+      this.prisma.productOption.count({ where: { requiredValueId: valueId } }),
+    ]);
+    const uses = productUses + variantUses + mediaUses + requiredUses;
+    if (uses > 0) {
+      throw new AppError('OPTION_VALUE_IN_USE', 409, {
+        detail: `${uses} product/variant/media reference(s) use this value — deprecate it instead`,
+      });
+    }
+
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.optionValue.deleteMany({
         where: { id: valueId, optionTypeId: id },
@@ -270,6 +394,15 @@ export class OptionTypeService {
       include: { values: true },
     });
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'option type not found' });
+    return row;
+  }
+
+  private async archivedRowOrThrow(id: string): Promise<OptionTypeWithValues> {
+    const row = await this.prisma.optionType.findFirst({
+      where: { id, deletedAt: { not: null } },
+      include: { values: true },
+    });
+    if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'archived option type not found' });
     return row;
   }
 

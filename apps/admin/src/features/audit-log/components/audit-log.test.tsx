@@ -638,7 +638,24 @@ describe('AuditLog — Target column deep-links to the live record', () => {
     for (const text of texts) expect(text.closest('a')).toBeNull();
   });
 
-  it('a targetType with no admin page yet (e.g. option_type) stays plain text', async () => {
+  it('a targetType with no admin page yet (e.g. product) stays plain text', async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [
+        event({
+          targetType: 'product',
+          targetId: 'p-1',
+          action: 'catalog.product_created',
+        }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    const texts = await screen.findAllByText('product:p-1');
+    for (const text of texts) expect(text.closest('a')).toBeNull();
+  });
+
+  it('an option_type row links to the Option Types list with a highlight param', async () => {
     mockedListAuditEvents.mockResolvedValueOnce({
       events: [
         event({
@@ -652,7 +669,12 @@ describe('AuditLog — Target column deep-links to the live record', () => {
 
     renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     const texts = await screen.findAllByText('option_type:ot-1');
-    for (const text of texts) expect(text.closest('a')).toBeNull();
+    for (const text of texts) {
+      expect(text.closest('a')).toHaveAttribute(
+        'href',
+        '/en/x7f2k9t3m1qp/catalog/option-types?highlight=ot-1',
+      );
+    }
   });
 
   it('a row with no targetType renders the em dash, not a link', async () => {

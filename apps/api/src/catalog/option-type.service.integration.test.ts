@@ -110,6 +110,56 @@ describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
     ).rejects.toMatchObject({ code: 'OPTION_VALUE_LABEL_TAKEN' });
   });
 
+  it('update rejects a stale expectedUpdatedAt (optimistic concurrency) — mirrors BrandService/CategoryService', async () => {
+    const t = await svc.create({ code: s('cc'), name: name('CC') }, actor, {});
+
+    // matching token → succeeds, and bumps updatedAt
+    const ok = await svc.update(
+      t.id,
+      { name: name('CC2'), expectedUpdatedAt: t.updatedAt },
+      actor,
+      {},
+    );
+    expect(ok.updatedAt).not.toBe(t.updatedAt);
+
+    // the original token is now stale → 409
+    await expect(
+      svc.update(t.id, { name: name('CC3'), expectedUpdatedAt: t.updatedAt }, actor, {}),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // the fresh token works again; omitting it skips the check
+    await expect(
+      svc.update(t.id, { name: name('CC4'), expectedUpdatedAt: ok.updatedAt }, actor, {}),
+    ).resolves.toMatchObject({ name: name('CC4') });
+    await expect(svc.update(t.id, { status: 'deprecated' }, actor, {})).resolves.toMatchObject({
+      status: 'deprecated',
+    });
+  });
+
+  it('updateValue reorders values by writing position directly (no dedicated reorder endpoint)', async () => {
+    const t = await svc.create(
+      {
+        code: s('finish2'),
+        name: name('Finish2'),
+        values: [
+          { code: s('matte2'), label: name('Matte2') },
+          { code: s('gloss2'), label: name('Gloss2') },
+        ],
+      },
+      actor,
+      {},
+    );
+    const [first, second] = t.values;
+    expect(first?.position).toBe(0);
+    expect(second?.position).toBe(1);
+
+    // swap: give the second value position 0, the first position 1
+    await svc.updateValue(t.id, second!.id, { position: 0 }, actor, {});
+    const reordered = await svc.updateValue(t.id, first!.id, { position: 1 }, actor, {});
+
+    expect(reordered.values.map((v) => v.id)).toEqual([second!.id, first!.id]);
+  });
+
   it('adds, updates (deprecate) and removes a value', async () => {
     const t = await svc.create({ code: s('carrier'), name: name('Carrier') }, actor, {});
     const withV = await svc.addValue(
@@ -152,15 +202,110 @@ describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
     expect(removed.before).toMatchObject({ valueId: vid, value: s('5g-nsa') });
   });
 
-  it('soft-deletes a type: gone from get + default list, kept with includeDeleted', async () => {
+  it('soft-deletes a type: gone from get + default list, kept in the archived list, restorable', async () => {
     const t = await svc.create({ code: s('grade'), name: name('Grade') }, actor, {});
     await svc.remove(t.id, actor, {});
     await expect(svc.get(t.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
-    const listed = await svc.list({ q: s('grade') });
-    expect(listed).toHaveLength(0);
-    const all = await svc.list({ q: s('grade'), includeDeleted: true });
-    expect(all.map((x) => x.id)).toContain(t.id);
+    // `.not.toContain`, not `.toHaveLength(0)`: `q` here is `s('grade')`,
+    // which — tokenized — includes the `itest-opt-<stamp>` prefix every
+    // fixture in this file shares, so other live rows created elsewhere in
+    // this run legitimately also match under OR-token search (mirrors
+    // `brand.service.integration.test.ts`'s own analogous soft-delete test).
+    const { items: listed } = await svc.list({ q: s('grade') });
+    expect(listed.map((x) => x.id)).not.toContain(t.id);
+    const { items: archived } = await svc.list({ q: s('grade'), archived: true });
+    expect(archived.map((x) => x.id)).toContain(t.id);
+
+    const restored = await svc.restore(t.id, actor, {});
+    expect(restored.id).toBe(t.id);
+    expect((await svc.get(t.id)).id).toBe(t.id);
+    const { items: archivedAfter } = await svc.list({ q: s('grade'), archived: true });
+    expect(archivedAfter.map((x) => x.id)).not.toContain(t.id);
+  });
+
+  it('restore is blocked when the freed name was picked up by a live row in the meantime', async () => {
+    // `code` isn't tested here (mirrors `brand.service.integration.test.ts`'s
+    // own equivalent test and its comment): `option_type.code` is a plain
+    // `@unique` column, unconditional at the DB level regardless of
+    // `deleted_at`, so a squatter can never actually pick up a freed code in
+    // the first place — only name collisions are reachable here.
+    const t = await svc.create({ code: s('rs-me'), name: name('rs-me') }, actor, {});
+    await svc.remove(t.id, actor, {});
+    const squatter = await svc.create({ code: s('rs-squatter'), name: name('rs-me') }, actor, {});
+    await expect(svc.restore(t.id, actor, {})).rejects.toMatchObject({
+      code: 'OPTION_TYPE_NAME_TAKEN',
+    });
+    await svc.update(squatter.id, { name: name('rs-squatter-2') }, actor, {});
+
+    await expect(svc.restore(t.id, actor, {})).resolves.toMatchObject({ id: t.id });
+  });
+
+  it('q ranks by matched-token count, name and code both count — "rank 47" style query puts the fullest match first', async () => {
+    const marker = `rank${stamp}`;
+    const full = await svc.create(
+      { code: s('rank-full'), name: { en: `${marker} Live Type 47` } },
+      actor,
+      {},
+    );
+    const partial = await svc.create(
+      { code: s('rank-partial'), name: { en: `${marker} Live Type 12` } },
+      actor,
+      {},
+    );
+    // both tokens matched, but via `code` rather than `name`
+    const codeOnly = await svc.create(
+      { code: s(`${marker}-47-codeonly`), name: name('rank-unrelated') },
+      actor,
+      {},
+    );
+    const noMatch = await svc.create(
+      { code: s('rank-no-match'), name: name('rank-nm') },
+      actor,
+      {},
+    );
+
+    const { items } = await svc.list({ q: `${marker} 47` });
+    const ids = items.map((t) => t.id);
+    // `full` (both tokens in `name`) and `codeOnly` (both tokens, via `code`)
+    // tie at 2 matched tokens — which sorts first isn't under test, only
+    // that both outrank `partial` (1 token: marker only)
+    expect(ids.indexOf(full.id)).toBeLessThan(ids.indexOf(partial.id));
+    expect(ids.indexOf(codeOnly.id)).toBeLessThan(ids.indexOf(partial.id));
+    expect(ids).not.toContain(noMatch.id);
+  });
+
+  it('paginates with a cursor, code-ordered — the second page never repeats the first', async () => {
+    const a = await svc.create({ code: s('page-a'), name: name('Page A') }, actor, {});
+    const b = await svc.create({ code: s('page-b'), name: name('Page B') }, actor, {});
+
+    const first = await svc.list({ limit: 1 });
+    expect(first.items).toHaveLength(1);
+    expect(first.nextCursor).toBeDefined();
+
+    const second = await svc.list({
+      ...(first.nextCursor ? { cursor: first.nextCursor } : {}),
+      limit: 1,
+    });
+    expect(second.items).toHaveLength(1);
+    expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
+
+    // walking the whole list this way eventually reaches both fixtures
+    // without ever repeating an id (mirrors
+    // `staff-accounts.service.integration.test.ts`'s own cursor-walk test)
+    const seen = new Set([first.items[0]!.id, second.items[0]!.id]);
+    let cursor = second.nextCursor;
+    let guard = 0;
+    while (cursor && !(seen.has(a.id) && seen.has(b.id)) && guard++ < 200) {
+      const page = await svc.list({ cursor, limit: 10 });
+      for (const item of page.items) {
+        expect(seen.has(item.id)).toBe(false);
+        seen.add(item.id);
+      }
+      cursor = page.nextCursor;
+    }
+    expect(seen.has(a.id)).toBe(true);
+    expect(seen.has(b.id)).toBe(true);
   });
 
   it('writes a catalog.outbox row per mutation', async () => {

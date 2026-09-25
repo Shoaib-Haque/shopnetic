@@ -35,7 +35,7 @@ When answered, record it as an ADR and delete/collapse the entry here.
 | Q23 | **Multi-currency/locale timing** — confirmed Phase 4? Any launch requirement for >1 locale? | Phase 4 | — |
 | Q24 | **Legal entity & compliance**: who is merchant of record (seller vs platform), marketplace facilitator tax obligations, sanctions screening vendor | Phase 2 | — |
 | Q25 | **i18n content storage** (`24` section 5): JSONB localized columns (Approach A) vs `*_translation` tables (Approach B), per entity | Lean: JSONB now (single locale), switch high-volume entities to tables when multi-locale lands | Phase 1 | — |
-| Q26 | **`open` option values** (esp. Color, `26` section 9): free text + normalization dictionary vs a curated master palette sellers map onto | Lean: curated master palette + alias, keeps facets clean | Phase 1 | — |
+| Q26 | ~~Whether sellers can propose new Option Values~~ **Decided 2026-09-25** (`26` section 1.1): yes, gated by admin approval, same shape as Brand/Product. Still open: the normalization mechanism itself — free text + normalization dictionary vs. a curated master palette sellers map onto | Lean: curated master palette + alias, keeps facets clean | Phase 1 | — |
 | Q27 | **Variant count cap per product** (`26` section 9) | Lean: warn at 100, block at 500 combinations; tune | Phase 1 | — |
 | Q28 | **Guest checkout account requirement** already Q4 — confirm interaction with cart-merge + `29` alerts | see Q4 | Phase 2 | — |
 | Q29 | **Admin base-path obfuscation** (`23` section 3): rotate `ADMIN_BASE_PATH` per environment only, or also periodically in prod? | Lean: per-env + on suspected exposure; not on a timer | Phase 0 | — |
@@ -43,6 +43,7 @@ When answered, record it as an ADR and delete/collapse the entry here.
 | Q31 | **Restricted-brand enforcement mechanism** (`26` section 6): `brand.is_restricted` exists but nothing reads it yet — block product add/edit under the brand, hold publish pending review, or just flag for a queue? | Depends on when catalog/listing moderation gets built | Phase 2 | — |
 | Q32 | **Category archived while live products reference it** (`07` section "Catalog deletion"): the guard that's supposed to prevent this isn't built, so it's reachable today — should such a product stay fully browsable/orderable, drop from search but still resolve directly, or something else? | Design once the guard itself is scheduled | Phase 1 | — |
 | Q33 | **`anonymized` account status and login**: falls through the same `status === 'active'` check as `locked`/`disabled` (blocks login) but no code path or test confirms that's deliberate, same as the open `locked` question above it (`16` section 1) | Lean: confirm block is intentional, add an explicit test | Phase 1 | — |
+| Q34 | ~~Whether sellers can propose a brand-new Option Type~~ **Decided 2026-09-25** (`26` section 1.1): yes, gated by admin approval, same shape as Brand/Product/Q26. Still open: whether it gets its own typed request table (mirroring `brand_request`) or shares one generalized `catalog_request` table with Q26/brand/product proposals — schema detail, no seller UI exists yet to build either against | Lean: typed table, matches existing `brand_request` precedent | Phase 1–2 | — |
 
 ## B. Risk register
 
