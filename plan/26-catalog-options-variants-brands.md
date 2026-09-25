@@ -310,7 +310,13 @@ category      (... , brand_requirement)   -- required | optional | none
   `product.brand_id → SET NULL` for any stragglers (`25` section 2.3). Brand storefront
   page then 410s/redirects.
 - Restricted brands (counterfeit-prone) can be flagged so new listings under them
-  need extra verification (`16` section 6).
+  need extra verification (`16` section 6). **Built today: only the flag itself**
+  (`brand.is_restricted`, admin toggle) — no downstream moderation flow reads it
+  yet, so flipping it currently has zero effect on products/listings under that
+  brand (see `plan/CODING-RULES.md`, 2026-09-17 entry). What the "extra
+  verification" should actually *do* once that flow exists — block new product
+  add/edit under the brand until reviewed, allow submission but hold publish,
+  or just flag existing listings for a queue — is undecided (Q31, `22`).
 - Brand display name is a localized field; `name`/`slug` are canonical/latin for
   matching and URLs.
 

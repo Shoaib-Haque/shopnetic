@@ -50,6 +50,22 @@ sets `status = 'locked'` (the auto-lockout mechanism itself isn't built —
 this file's own bullet above lists it as planned). Decide this for real once
 that mechanism exists; until then this is a latent gap, not an active one.
 
+### Account status → login access
+
+Distinct from the password-reset table above (that's about whether a *reset
+email* sends; this is about the login attempt itself):
+
+| Plane | `Account.status` | Can log in? | Status |
+|---|---|---|---|
+| Staff | `active` | ✅ | Built — the actual check is `status === 'active'` |
+| Staff | `locked` (auto-lockout, soft) | ❌ today | Built as a hard block via the same `active`-only check. Whether that's the *right* long-term behavior is the open question above — soft/automatic lockouts arguably shouldn't block as hard as a deliberate `disabled` |
+| Staff | `disabled` (deprovisioned) | ❌ | Built |
+| Staff | `anonymized` | ❌ (falls out of the same `active`-only check) | Not explicitly handled — no code path or test distinguishes this from `locked`/`disabled`; blocks by default but nothing confirms that's deliberate rather than incidental (Q33, `22`) |
+| Buyer/Seller | `active` | ✅ | Built |
+| Buyer/Seller | `locked` / `disabled` | ❌ (assumed, same shape as staff) | Not built — no marketplace-plane lockout mechanism exists yet |
+| Buyer/Seller | `anonymized` (GDPR erasure) | ❌ (assumed) | Not explicitly handled, same gap as staff's row above |
+| Seller (feature-level suspension) | account `active`, separate seller-scoped flag | ✅ login, ❌ sell | Not built — no `Seller` model yet. Would **not** block login at all, per the general password-reset rule above: this is a permissions restriction, not a credential-access one |
+
 ### Tokens
 - **Access JWT**: 10–15 min TTL. Claims: `sub`, `sid` (session), `grants`
   (role+scope compact), `typ`, `iat`, `exp`, `iss`, `aud`. Signed **RS256/EdDSA**

@@ -128,6 +128,15 @@ Not yet implemented: the `category`→products and `brand`→products guards, th
 `brand` restore endpoint, and the purge / bulk-reassign paths. See `25` Part 2.2
 "Current state vs. target".
 
+**Open question (Q32, `22`):** the guard above is what's *supposed* to stop a
+category being archived while live products reference it — but since it isn't
+built, that path is reachable today. What should a buyer-facing product whose
+category is archived actually do — stay fully browsable/orderable (category
+archival is purely an admin-taxonomy concern), get pulled from search/listing
+but still resolve if linked directly, or something else? Order lines are
+already unaffected either way — they hold an immutable snapshot (this section,
+`orders` context) — this is only about a *live*, not-yet-ordered product.
+
 ### Catalog naming / uniqueness
 
 Names and slugs are **case-insensitively** unique. Slugs are lowercased by the

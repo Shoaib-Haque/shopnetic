@@ -40,6 +40,9 @@ When answered, record it as an ADR and delete/collapse the entry here.
 | Q28 | **Guest checkout account requirement** already Q4 — confirm interaction with cart-merge + `29` alerts | see Q4 | Phase 2 | — |
 | Q29 | **Admin base-path obfuscation** (`23` section 3): rotate `ADMIN_BASE_PATH` per environment only, or also periodically in prod? | Lean: per-env + on suspected exposure; not on a timer | Phase 0 | — |
 | Q30 | **Analytics warehouse** timing (`30` section 8): how long can Postgres summary tables serve reporting before ClickHouse/BigQuery is needed? | Revisit when daily rollup runtime or dashboard latency degrades | Phase 3–4 | — |
+| Q31 | **Restricted-brand enforcement mechanism** (`26` section 6): `brand.is_restricted` exists but nothing reads it yet — block product add/edit under the brand, hold publish pending review, or just flag for a queue? | Depends on when catalog/listing moderation gets built | Phase 2 | — |
+| Q32 | **Category archived while live products reference it** (`07` section "Catalog deletion"): the guard that's supposed to prevent this isn't built, so it's reachable today — should such a product stay fully browsable/orderable, drop from search but still resolve directly, or something else? | Design once the guard itself is scheduled | Phase 1 | — |
+| Q33 | **`anonymized` account status and login**: falls through the same `status === 'active'` check as `locked`/`disabled` (blocks login) but no code path or test confirms that's deliberate, same as the open `locked` question above it (`16` section 1) | Lean: confirm block is intentional, add an explicit test | Phase 1 | — |
 
 ## B. Risk register
 
