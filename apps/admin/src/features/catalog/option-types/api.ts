@@ -38,6 +38,12 @@ export function listOptionTypesPage(opts: {
   ).then((r) => ({ optionTypes: r.data, nextCursor: r.meta.nextCursor }));
 }
 
+/** One record by id, regardless of live/archived — for a deep link's
+ * direct-by-id lookup (`useHighlightTarget`), not the paginated list. */
+export function getOptionType(id: string): Promise<OptionType> {
+  return adminApi<OptionType>(`/option-types/${id}`);
+}
+
 export function createOptionType(body: CreateOptionTypeRequest): Promise<OptionType> {
   return adminApi<OptionType>('/option-types', { method: 'POST', body });
 }

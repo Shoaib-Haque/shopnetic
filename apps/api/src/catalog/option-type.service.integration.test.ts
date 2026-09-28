@@ -202,10 +202,13 @@ describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
     expect(removed.before).toMatchObject({ valueId: vid, value: s('5g-nsa') });
   });
 
-  it('soft-deletes a type: gone from get + default list, kept in the archived list, restorable', async () => {
+  it('soft-deletes a type: gone from the default list, kept (as archived) in get + the archived list, restorable', async () => {
     const t = await svc.create({ code: s('grade'), name: name('Grade') }, actor, {});
     await svc.remove(t.id, actor, {});
-    await expect(svc.get(t.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // `get()` still finds it — a pure read, no lifecycle assumption —
+    // `archived: true` is the signal, not a 404. `list()` (below) is what
+    // actually drops it from the live view.
+    await expect(svc.get(t.id)).resolves.toMatchObject({ archived: true });
 
     // `.not.toContain`, not `.toHaveLength(0)`: `q` here is `s('grade')`,
     // which — tokenized — includes the `itest-opt-<stamp>` prefix every
@@ -219,7 +222,7 @@ describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
 
     const restored = await svc.restore(t.id, actor, {});
     expect(restored.id).toBe(t.id);
-    expect((await svc.get(t.id)).id).toBe(t.id);
+    await expect(svc.get(t.id)).resolves.toMatchObject({ id: t.id, archived: false });
     const { items: archivedAfter } = await svc.list({ q: s('grade'), archived: true });
     expect(archivedAfter.map((x) => x.id)).not.toContain(t.id);
   });

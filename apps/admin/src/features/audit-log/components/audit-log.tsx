@@ -92,12 +92,17 @@ const TARGET_TYPES = [
 // is exactly the action-name prefix used by both the STAFF_MANAGE-gated
 // actions (invite/role-change/etc., performed on someone else) and the
 // self-service ones (password change, TOTP), so it never matches a non-staff
-// account. `brand` always deep-links to the *live* list (unlike category's
-// combined `status=all`) — Brand's list has no single combined live+archived
-// view, only a live/archived toggle; a `brand_deleted`/`brand_merged` event
-// (whose target is now archived) simply won't find its row there, same as
-// any not-found id (`useFindById` just stops trying, no error shown). The
-// far more common case — created/updated, still live — works as-is.
+// account. `brand` and `option_type` have no single combined live+archived
+// view like category's `status=all` — only a live/archived toggle — but
+// their lists don't need a hint about which one to open on either: both
+// wire up `useHighlightTarget` (`brand-list.tsx`/`option-type-list.tsx`),
+// which fetches the target directly by id rather than paging through a
+// list looking for it, and that fetch's own `archived` field is ground
+// truth, known the moment it resolves — no guessing from the action name,
+// no waiting through a page-walk first (the 2026-09-28 fix's first two
+// passes did exactly that, in order, before landing here — both are
+// unnecessary once you fetch the thing you already have the id for
+// directly instead of trying to rediscover it).
 function targetHref(event: AuditEvent, locale: string, basePath: string): string | null {
   if (!event.targetId) return null;
   if (event.targetType === 'category') {

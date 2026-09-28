@@ -109,4 +109,74 @@ describe('useFindById', () => {
     expect(loadMore.mock.calls.length).toBeLessThan(60);
     expect(loadMore.mock.calls.length).toBeGreaterThan(0);
   });
+
+  describe('onExhausted — falling back to a second view (e.g. Brand/Option Types Live→Archived)', () => {
+    it('fires exactly once when hasMore goes false without a match', () => {
+      const loadMore = vi.fn();
+      const onExhausted = vi.fn();
+      const { rerender } = renderHook(
+        ({ hasMore }: { hasMore: boolean }) =>
+          useFindById<Row>('missing', [{ id: 'a' }], hasMore, false, loadMore, onExhausted),
+        { initialProps: { hasMore: true } },
+      );
+      expect(onExhausted).not.toHaveBeenCalled();
+
+      rerender({ hasMore: false });
+      rerender({ hasMore: false });
+      rerender({ hasMore: false });
+      expect(onExhausted).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fire while items/hasMore describe the caller's fallback view too, once the target turns up there", () => {
+      // simulates the caller's `onExhausted` flipping a `tab` state: Live
+      // exhausts (fires once), the list then starts feeding this hook the
+      // Archived view instead (hasMore resets true, new items), where the
+      // target is found — `onExhausted` must not fire a second time just
+      // because Archived also lacks it *before* that later page arrives.
+      const loadMore = vi.fn();
+      const onExhausted = vi.fn();
+      const { result, rerender } = renderHook(
+        ({ items, hasMore }: { items: Row[]; hasMore: boolean }) =>
+          useFindById<Row>('z', items, hasMore, false, loadMore, onExhausted),
+        { initialProps: { items: [{ id: 'a' }], hasMore: true } },
+      );
+
+      // Live exhausts without a match
+      rerender({ items: [{ id: 'a' }], hasMore: false });
+      expect(onExhausted).toHaveBeenCalledTimes(1);
+
+      // caller flips to Archived: fresh fetch, hasMore true again
+      rerender({ items: [{ id: 'a' }], hasMore: true });
+      // Archived's first page has the target
+      rerender({ items: [{ id: 'a' }, { id: 'z' }], hasMore: true });
+
+      expect(result.current).toEqual({ id: 'z' });
+      expect(onExhausted).toHaveBeenCalledTimes(1);
+    });
+
+    it("never fires a second time even if the fallback view also exhausts — a target nowhere doesn't bounce forever", () => {
+      const loadMore = vi.fn();
+      const onExhausted = vi.fn();
+      const { rerender } = renderHook(
+        ({ hasMore }: { hasMore: boolean }) =>
+          useFindById<Row>('nowhere', [{ id: 'a' }], hasMore, false, loadMore, onExhausted),
+        { initialProps: { hasMore: true } },
+      );
+
+      rerender({ hasMore: false }); // Live exhausts
+      expect(onExhausted).toHaveBeenCalledTimes(1);
+
+      rerender({ hasMore: true }); // caller flipped to Archived
+      rerender({ hasMore: false }); // Archived exhausts too
+      rerender({ hasMore: false });
+      expect(onExhausted).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire when there is no targetId to look for', () => {
+      const loadMore = vi.fn();
+      const onExhausted = vi.fn();
+      renderHook(() => useFindById<Row>(null, [{ id: 'a' }], false, false, loadMore, onExhausted));
+      expect(onExhausted).not.toHaveBeenCalled();
+    });
+  });
 });

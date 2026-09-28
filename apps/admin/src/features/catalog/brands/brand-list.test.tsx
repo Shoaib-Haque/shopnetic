@@ -39,6 +39,7 @@ function brand(id: string, name: string, overrides: Partial<Brand> = {}): Brand 
     status: 'active',
     isRestricted: false,
     mergedIntoBrandId: null,
+    archived: false,
     aliases: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -444,5 +445,58 @@ describe('BrandList', () => {
     const err = await screen.findByText('That alias already maps to a brand.');
     expect(err.tagName).toBe('P');
     expect(aliasInput).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  describe('deep link from Audit Log (?highlight=id) — fetches the target directly by id', () => {
+    it('splices the fetched target into the list and flashes it, even when it would sort past the first page', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'z' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount, Live page 1
+        .mockResolvedValueOnce(brand('z', 'Zulu')); // #2 GET /brands/z directly
+
+      renderAdmin(<BrandList />);
+      await screen.findAllByText('Zulu');
+
+      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('sn-row-flash');
+      // a plain GET by id — no cursor, no page-walk, no `raw: true`
+      expect(mockedAdminApi).toHaveBeenNthCalledWith(2, '/brands/z');
+    });
+
+    it('switches to the Archived tab on its own once the fetched target turns out to be archived — no action-name guessing needed', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'z' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount, Live
+        .mockResolvedValueOnce(brand('z', 'Zulu', { archived: true })) // #2 direct GET — archived
+        .mockResolvedValueOnce(page([])); // #3 Archived tab's own first page, triggered by the switch
+
+      renderAdmin(<BrandList />);
+      await screen.findAllByText('Zulu');
+
+      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('sn-row-flash');
+      expect(screen.getByRole('button', { name: 'Archived' })).toHaveClass('bg-muted');
+    });
+
+    it('a stale/invalid highlight id fails quietly — no flash, no crash', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'nope' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([brand('a', 'Acme')]))
+        .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404));
+
+      renderAdmin(<BrandList />);
+      await screen.findAllByText('Acme');
+      await waitFor(() => expect(mockedAdminApi).toHaveBeenCalledTimes(2));
+
+      expect(document.querySelector('[data-brand-row="a"]')).not.toHaveClass('sn-row-flash');
+    });
+
+    it('without a highlight param, nothing flashes and no direct fetch happens', async () => {
+      mockedAdminApi.mockResolvedValueOnce(page([brand('a', 'Acme')]));
+
+      renderAdmin(<BrandList />);
+      await screen.findAllByText('Acme');
+
+      expect(document.querySelector('[data-brand-row="a"]')).not.toHaveClass('sn-row-flash');
+      expect(mockedAdminApi).toHaveBeenCalledTimes(1);
+    });
   });
 });

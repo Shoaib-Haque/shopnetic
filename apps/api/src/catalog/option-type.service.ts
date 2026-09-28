@@ -121,7 +121,7 @@ export class OptionTypeService {
   }
 
   async get(id: string): Promise<OptionType> {
-    return toView(await this.rowOrThrow(id));
+    return toView(await this.anyRowOrThrow(id));
   }
 
   async create(
@@ -397,6 +397,20 @@ export class OptionTypeService {
     return row;
   }
 
+  /** Live or archived — for `get()` specifically, a pure read with no
+   * lifecycle assumption. Mutating actions (`update`/`remove`/`addValue`/…)
+   * keep using `rowOrThrow` (live-only): the version that also finds
+   * archived rows is deliberately not the default so those aren't
+   * accidentally loosened too. */
+  private async anyRowOrThrow(id: string): Promise<OptionTypeWithValues> {
+    const row = await this.prisma.optionType.findFirst({
+      where: { id },
+      include: { values: true },
+    });
+    if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'option type not found' });
+    return row;
+  }
+
   private async archivedRowOrThrow(id: string): Promise<OptionTypeWithValues> {
     const row = await this.prisma.optionType.findFirst({
       where: { id, deletedAt: { not: null } },
@@ -442,6 +456,11 @@ function toView(row: OptionTypeWithValues): OptionType {
     dataType: row.dataType,
     hasSwatch: row.hasSwatch,
     status: row.status,
+    // for a deep-link's direct-by-id fetch (`useHighlightTarget`) to know
+    // which tab to land on without a separate list roundtrip — not shown
+    // in the admin UI itself, `deletedAt` already implies it everywhere
+    // else.
+    archived: row.deletedAt !== null,
     values: [...row.values]
       .sort((a, b) => a.position - b.position || a.code.localeCompare(b.code))
       .map((v) => ({

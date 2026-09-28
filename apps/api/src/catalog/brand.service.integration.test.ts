@@ -125,7 +125,11 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     expect(aliases).toContain(s('dupe-name')); // source name added
     expect(aliases.filter((a) => a === s('dupe'))).toHaveLength(1); // slug collision skipped
 
-    await expect(svc.get(source.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // `get()` still finds a merged (soft-deleted) brand — it's a pure read
+    // with no lifecycle assumption, unlike the mutating actions above —
+    // `archived: true` is how a caller (e.g. a deep-link's direct-by-id
+    // fetch) tells the two apart.
+    await expect(svc.get(source.id)).resolves.toMatchObject({ archived: true });
     const raw = await prisma.brand.findUniqueOrThrow({ where: { id: source.id } });
     expect(raw.mergedIntoBrandId).toBe(target.id);
     expect(raw.deletedAt).not.toBeNull();
@@ -205,7 +209,10 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     const marker = `gonemk${stamp}`;
     const b = await svc.create({ name: marker, slug: s('gone') }, actor, {});
     await svc.remove(b.id, actor, {});
-    await expect(svc.get(b.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // `get()` still finds it (a pure read, no lifecycle assumption) —
+    // `archived: true` is the signal, not a 404. `list()` is what actually
+    // drops it from the live view.
+    await expect(svc.get(b.id)).resolves.toMatchObject({ archived: true });
     const { items } = await svc.list({ q: marker });
     expect(items).toHaveLength(0);
   });
@@ -323,7 +330,7 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
   it('restore brings an archived brand back, blocked once a live row has taken its name/slug', async () => {
     const b = await svc.create({ name: s('rs-brand'), slug: s('rs-brand') }, actor, {});
     await svc.remove(b.id, actor, {});
-    await expect(svc.get(b.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(svc.get(b.id)).resolves.toMatchObject({ archived: true });
 
     await expect(svc.restore(crypto.randomUUID(), actor, {})).rejects.toMatchObject({
       code: 'NOT_FOUND',

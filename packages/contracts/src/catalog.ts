@@ -177,6 +177,11 @@ export const brandSchema = z.object({
   status: brandStatusSchema,
   isRestricted: z.boolean(),
   mergedIntoBrandId: z.string().nullable(),
+  /** Soft-deleted right now — distinct from `status`, which is a live
+   * row's own moderation state. Only meaningful on a `get()` response
+   * (list responses are always scoped to one lifecycle already, so it's
+   * always `false`/`true` uniformly there and not worth reading). */
+  archived: z.boolean(),
   aliases: z.array(brandAliasSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -266,6 +271,11 @@ export const optionTypeSchema = z.object({
   dataType: optionDataTypeSchema,
   hasSwatch: z.boolean(),
   status: optionStatusSchema,
+  /** Soft-deleted right now — distinct from `status`, which is a live
+   * row's own moderation state. Only meaningful on a `get()` response
+   * (list responses are always scoped to one lifecycle already, so it's
+   * always `false`/`true` uniformly there and not worth reading). */
+  archived: z.boolean(),
   values: z.array(optionValueSchema),
   createdAt: z.string(),
   updatedAt: z.string(),

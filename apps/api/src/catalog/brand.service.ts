@@ -121,7 +121,7 @@ export class BrandService {
   }
 
   async get(id: string): Promise<Brand> {
-    return toView(await this.rowOrThrow(id));
+    return toView(await this.anyRowOrThrow(id));
   }
 
   async create(input: CreateBrandRequest, actor: Actor, meta: RequestMeta): Promise<Brand> {
@@ -383,6 +383,20 @@ export class BrandService {
     return row;
   }
 
+  /** Live or archived — for `get()` specifically, a pure read with no
+   * lifecycle assumption. Mutating actions (`update`/`remove`/`merge`/…)
+   * keep using `rowOrThrow` (live-only): the version that also finds
+   * archived rows is deliberately not the default so those aren't
+   * accidentally loosened too. */
+  private async anyRowOrThrow(id: string): Promise<BrandWithAliases> {
+    const row = await this.prisma.brand.findFirst({
+      where: { id },
+      include: { aliases: true },
+    });
+    if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'brand not found' });
+    return row;
+  }
+
   private async archivedRowOrThrow(id: string): Promise<BrandWithAliases> {
     const row = await this.prisma.brand.findFirst({
       where: { id, deletedAt: { not: null } },
@@ -444,6 +458,11 @@ function toView(row: BrandWithAliases): Brand {
     status: row.status,
     isRestricted: row.isRestricted,
     mergedIntoBrandId: row.mergedIntoBrandId,
+    // for a deep-link's direct-by-id fetch (`useHighlightTarget`) to know
+    // which tab to land on without a separate list roundtrip — not shown
+    // in the admin UI itself, `deletedAt` already implies it everywhere
+    // else.
+    archived: row.deletedAt !== null,
     aliases: row.aliases
       .map((a) => ({ id: a.id, alias: a.alias, createdAt: a.createdAt.toISOString() }))
       .sort((x, y) => x.alias.localeCompare(y.alias)),

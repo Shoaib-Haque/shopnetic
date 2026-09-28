@@ -4108,3 +4108,188 @@ compose file.
     + 314/314 admin (3 new: undo-restores-the-row, Archived-tab-restore-
     via-confirm-dialog, status-filter-not-carried-into-Archived); typecheck
     and lint clean on api/admin.
+- 2026-09-28 — Manual UI pass on Option Types (list/create/edit/values/
+  delete/restore/audit-log groups) surfaced two real findings, discussed
+  before touching anything:
+  - **Has-swatch toggle + orphaned `swatchHex`.** Turning `hasSwatch` off
+    after values already have colors doesn't clear those values'
+    `swatchHex` — confirmed by reading `OptionTypeService.update()`, which
+    only ever touches the `option_type` row's own columns, never a value's.
+    Not a visible bug: every swatch-dot render already gates on the
+    type's *current* `hasSwatch` (`optionType?.hasSwatch && v.swatchHex`),
+    so the color is hidden, not shown-wrong. Decided: leave as-is — turning
+    `hasSwatch` back on later correctly resurrects the old colors, which
+    reads as a feature (no re-entering data after experimenting with the
+    toggle), not a bug. No code change.
+  - **Audit Log deep-link opens the wrong tab for a since-deleted target.**
+    Already a known, documented gap for Brand alone (its own comment said
+    so) — Option Types inherited the identical gap by copying Brand's
+    pattern. Every link opens the Live tab; an event whose target is now
+    archived (`brand_deleted`, `option_type_deleted`) never gets found
+    there, and `useFindById` just quietly gives up. Category doesn't have
+    this problem, but not because it was fixed for this reason — it has a
+    genuine combined `status=all` list mode that predates this feature
+    entirely (built for cross-tree moves/breadcrumbs) and the audit link
+    just piggybacks on it. Staff isn't affected either — no archived tab
+    at all, `deprovision` is a status change, not a soft-delete.
+  - Discussed three options (build an `all`-mode for Brand/Option Types
+    too / a fallback-only fix at the deep-link layer / leave it) before
+    picking one: **fallback-only**, since Brand/Option Types' two-tab
+    Live/Archived shape didn't need restructuring just for this.
+  - `useFindById` gained an optional `onExhausted` callback — fires once,
+    exactly when the search gives up on the current view (`hasMore` false,
+    or the attempt cap hit) without a match. The hook itself doesn't know
+    or care what the callback does; it just keeps looking at whatever
+    `items`/`hasMore`/`loadMore` it's fed next. `brand-list.tsx` and
+    `option-type-list.tsx` each wire it to flip their own `tab` state from
+    `'live'` to `'archived'` (a one-line functional `setTab` update, no
+    extra ref needed — the hook's own latch already guarantees this fires
+    at most once, so a target that's genuinely nowhere doesn't bounce
+    between tabs forever). `useScrollLoad`'s existing `resetKeys` reaction
+    to the tab change does the rest — no new fetch logic anywhere.
+  - Found while adding coverage: Brand's own list had **zero** test
+    coverage for the highlight/flash deep-link feature at all, despite it
+    being implemented — added the same three tests Option Types already
+    had for it (already-on-first-page, later-page-while-still-live, and
+    the new archived-fallback), not just the new behavior.
+  - Revert-confirmed the fix at the shared-hook level (not once per list):
+    temporarily no-op'd `onExhausted?.()` inside `useFindById` itself; 5
+    tests across the hook's own suite and both list suites failed (Live
+    stayed stuck, target never found); restored.
+  - Full suite green: 322/322 admin (7 new: 4 hook-level `onExhausted`
+    tests, 1 new Option Types fallback test, 3 new Brand deep-link tests
+    including its own fallback test); typecheck and lint clean.
+- 2026-09-28 (follow-up, same day) — Manual testing caught what the
+  fallback-only fix above actually felt like in practice: clicking a
+  delete event's link visibly sat on Live for a moment before jumping to
+  Archived — because `useFindById` has to exhaust every Live page (network
+  round-trip per page) before `onExhausted` even fires once.
+  - Fixed at the source instead of speeding up the fallback: the audit
+    event's own `action` name already says which state the target is in
+    *right now* — a `*_deleted`/`*_merged` action's target is archived,
+    full stop, no need to discover that the slow way. New
+    `targetLooksArchived()` in `audit-log.tsx`; `targetHref()` appends
+    `&tab=archived` to the Brand/Option Types link when it matches, so the
+    list opens on the correct tab immediately — one fetch, no exhaustion
+    phase, no visible wait for the common case.
+  - The exhaustion fallback from the same-day fix above didn't get thrown
+    away — it's now the safety net for when the action-name guess is
+    wrong (restored again since the event; or an `_updated`/`_created`
+    event whose target was deleted afterward): generalized
+    `onHighlightExhausted` in both list components from a one-way
+    live→archived flip to a bidirectional toggle
+    (`current === 'live' ? 'archived' : 'live'`) — `useFindById`'s own
+    one-shot latch already guarantees it fires at most once, so this
+    doesn't risk bouncing between tabs.
+  - Revert-confirmed both halves independently: disabled
+    `targetLooksArchived`'s action-name check → both new "links straight
+    to Archived" tests failed (href had no `tab=archived`); reverted
+    `onHighlightExhausted` back to one-directional → the new "falls back
+    to Live" test failed (stuck on Archived); restored both.
+  - New tests: 4 in `audit-log.test.tsx` (deleted/merged → `tab=archived`,
+    restored → still plain, for both Brand and Option Types), 2 per list
+    component (opens straight on the hinted tab with a single fetch;
+    falls back the other direction when that hint was wrong) — the
+    existing "falls back to Archived" tests from the same-day fix above
+    were kept and re-scoped as the no-hint/old-bookmarked-link case, not
+    replaced.
+  - Full suite green: 330/330 admin; typecheck and lint clean.
+- 2026-09-28 (follow-up, same day) — A separate concern raised after the
+  tab-hint fix above: even landing on the right tab immediately, a target
+  that sorts late in a long list still needed every page before it loaded
+  first, since both `useFindById` passes were page-walking to *find* an id
+  already known — real, user-visible wait once a list runs past a couple
+  of pages, worse for the item's own position than for which tab it's on.
+  - Replaced page-walking with a direct-by-id fetch for Brand and Option
+    Types: new `useHighlightTarget` hook fetches the target with a single
+    `GET /:id` (new `getBrand`/`getOptionType` API calls), splices it into
+    the caller's already-loaded `items` at its correct sorted position (a
+    per-list `compare` — `code` ascending for Option Types, `id`
+    descending for Brand — matching each list's real order, not just
+    appended), and reads the record's own `archived` flag to set `tab`
+    directly instead of guessing from the audit event's action name.
+    `targetLooksArchived()` and the `&tab=archived` href logic from the
+    same-day fix above are now redundant and were removed from
+    `targetHref()`.
+  - Backend change needed for this: `get()` on both services used
+    `rowOrThrow` (live rows only), so a deep link to an archived target
+    would 404 before the frontend could even read its `archived` flag.
+    New `anyRowOrThrow` helper (finds a row regardless of `deletedAt`,
+    parallel to the existing live-only `rowOrThrow`) is now used
+    exclusively by `get()`; every mutating action keeps using
+    `rowOrThrow` unchanged. New `archived: boolean` field on both view
+    schemas (`packages/contracts`), computed as `row.deletedAt !== null`
+    — distinct from each row's own `status` field. `list()` is untouched
+    and still excludes archived rows from the live view exactly as
+    before; only `get()`'s behavior changed (now succeeds on an archived
+    row instead of 404ing).
+  - `useFindById` (the page-walking hook, including its `onExhausted`
+    callback from the two fixes above) was left as-is — Category and
+    Staff still use it and weren't touched in this pass. Category doesn't
+    have this problem to begin with (its combined `status=all` list mode
+    predates this feature) and Staff has no archived tab at all.
+  - Revert-confirmed both halves of the new hook independently: disabled
+    the splice call → 4 tests failed (target fetched but never appeared
+    in the list); disabled the tab-switch condition (`false &&`) → 2 more
+    failed via a subtler path — the item spliced into the *wrong*
+    (currently-active) tab, but the hook's own return-value gate
+    (`onRightTab` check) still correctly kept `flash()` from firing,
+    confirming the tab-switch effect and the return-value gate are two
+    independent safeguards, not a redundant pair; restored both.
+  - Full suite green: 325/325 admin (rewrote 3 Option Types deep-link
+    tests and 4 Brand ones for the new fetch-by-id shape; consolidated 4
+    now-obsolete `tab=archived`-hint tests in `audit-log.test.tsx` into 2
+    plain-href tests) + 139/139 API integration (4 rewritten: `get()` on
+    an archived row now resolves with `archived: true` instead of
+    rejecting `NOT_FOUND`, 3 in `brand.service.integration.test.ts` + 1 in
+    `option-type.service.integration.test.ts`) + 25/25 API unit;
+    typecheck and lint clean on both api and admin.
+- 2026-09-28 (follow-up, same day) — Manual UI test on Option Types
+  caught a real bug in the `useHighlightTarget` hook just built above: an
+  update to a row whose `code` sorts past the first page (edited
+  `name.en` on `yrtyt`) never appeared after clicking its Audit Log
+  link, in a dev session — the fetch-by-id call itself succeeded (200 in
+  the network tab), but its result was never applied.
+  - Root cause: `next.config` has `reactStrictMode: true`, which
+    double-invokes a mount effect in dev (mount → cleanup → mount again,
+    no real unmount in between). The hook's fetch effect guards re-fetch
+    with a `requestedFor` ref set on the first invocation, and its
+    cleanup sets a `cancelled` flag for that invocation's own promise —
+    but never reset `requestedFor`. The second invocation's guard then
+    saw the id already "requested" and skipped fetching again, while the
+    cleanup had just marked the first (only) fetch's result as
+    `cancelled` — so the request fired exactly once (visibly succeeding)
+    but its result was silently discarded and nothing retried it.
+    Production doesn't double-invoke, so this was dev-only — exactly the
+    environment manual testing runs in.
+  - Reproduced directly against the running dev server (Chrome, via
+    Claude in Chrome) before touching code: confirmed via
+    `fetch('/api/admin/option-types/<id>')` from the page console that
+    the record existed and was fetchable, then confirmed
+    `document.querySelector('[data-option-type-row="<id>"]')` was `null`
+    — the fetch worked, the splice never happened.
+  - Fix: reset `requestedFor.current = null` in the effect's own cleanup.
+    StrictMode's second invocation now genuinely re-fetches (one extra,
+    harmless request in dev only); the first invocation's stale result
+    stays correctly discarded via `cancelled`. Re-tested live against the
+    same dev server and confirmed the row now spliced in and rendered.
+  - No new automated test added for this specific case — React Testing
+    Library's `render()` doesn't run under actual `StrictMode` double-
+    invoke unless the test explicitly wraps in `<StrictMode>`, so the
+    existing suite wouldn't have caught this class of bug regardless;
+    reproducing against a real dev server was the actual verification.
+  - Full suite green: 325/325 admin (unchanged — this was a dev-only
+    double-invoke bug, not something the existing tests exercise);
+    typecheck and lint clean.
+  - Follow-up UX question raised once the fix was confirmed live: a
+    target spliced in far down a long list is technically in the DOM and
+    auto-scrolled to (`useRowFlash` already calls `scrollIntoView` once
+    the row lands), but the default `block: 'nearest'` can leave it flush
+    against a viewport edge — easy to miss for something meant to be the
+    focal point of the navigation. Both list components now pass
+    `{ block: 'center' }` to their own `useRowFlash` call — used on these
+    two lists exclusively for the deep-link case, so this doesn't affect
+    any other flash trigger. `use-row-flash.test.ts` already had coverage
+    for the `block: 'center'` option path generically; no test changes
+    needed. Full suite still green: 325/325 admin; typecheck and lint
+    clean.

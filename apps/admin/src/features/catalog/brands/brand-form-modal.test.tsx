@@ -32,6 +32,7 @@ function brand(id: string, name: string, overrides: Partial<Brand> = {}): Brand 
     status: 'active',
     isRestricted: false,
     mergedIntoBrandId: null,
+    archived: false,
     aliases: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

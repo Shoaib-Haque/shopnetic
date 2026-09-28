@@ -610,6 +610,40 @@ describe('AuditLog — Target column deep-links to the live record', () => {
     }
   });
 
+  it("a brand row's link is the same plain highlight href regardless of action — the target list resolves live-vs-archived itself now, not the link", async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [
+        event({
+          id: '01a0000000000000000000011',
+          targetType: 'brand',
+          targetId: 'brand-1',
+          action: 'catalog.brand_deleted',
+        }),
+        event({
+          id: '01a0000000000000000000012',
+          targetType: 'brand',
+          targetId: 'brand-2',
+          action: 'catalog.brand_restored',
+        }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    for (const link of await screen.findAllByText('brand:brand-1')) {
+      expect(link.closest('a')).toHaveAttribute(
+        'href',
+        '/en/x7f2k9t3m1qp/catalog/brands?highlight=brand-1',
+      );
+    }
+    for (const link of await screen.findAllByText('brand:brand-2')) {
+      expect(link.closest('a')).toHaveAttribute(
+        'href',
+        '/en/x7f2k9t3m1qp/catalog/brands?highlight=brand-2',
+      );
+    }
+  });
+
   it('a staff-action account row (e.g. a role change) links to the Staff List', async () => {
     mockedListAuditEvents.mockResolvedValueOnce({
       events: [
@@ -673,6 +707,40 @@ describe('AuditLog — Target column deep-links to the live record', () => {
       expect(text.closest('a')).toHaveAttribute(
         'href',
         '/en/x7f2k9t3m1qp/catalog/option-types?highlight=ot-1',
+      );
+    }
+  });
+
+  it("an option_type row's link is the same plain highlight href regardless of action — the target list resolves live-vs-archived itself now, not the link", async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [
+        event({
+          id: '01a0000000000000000000021',
+          targetType: 'option_type',
+          targetId: 'ot-2',
+          action: 'catalog.option_type_deleted',
+        }),
+        event({
+          id: '01a0000000000000000000022',
+          targetType: 'option_type',
+          targetId: 'ot-3',
+          action: 'catalog.option_type_restored',
+        }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    for (const text of await screen.findAllByText('option_type:ot-2')) {
+      expect(text.closest('a')).toHaveAttribute(
+        'href',
+        '/en/x7f2k9t3m1qp/catalog/option-types?highlight=ot-2',
+      );
+    }
+    for (const text of await screen.findAllByText('option_type:ot-3')) {
+      expect(text.closest('a')).toHaveAttribute(
+        'href',
+        '/en/x7f2k9t3m1qp/catalog/option-types?highlight=ot-3',
       );
     }
   });

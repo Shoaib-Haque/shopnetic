@@ -37,6 +37,7 @@ function optionType(id: string, code: string, overrides: Partial<OptionType> = {
     dataType: 'select',
     hasSwatch: false,
     status: 'active',
+    archived: false,
     values: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -335,38 +336,49 @@ describe('OptionTypeList', () => {
     });
   });
 
-  describe('deep link from Audit Log (?highlight=id)', () => {
-    it('flashes the target row when it is already on the first page', async () => {
-      mockSearchParams = new URLSearchParams({ highlight: 'b' });
-      mockedAdminApi.mockResolvedValueOnce(
-        page([
-          optionType('a', 'color', { name: { en: 'Color' } }),
-          optionType('b', 'ram', { name: { en: 'RAM' } }),
-        ]),
-      );
-
-      renderAdmin(<OptionTypeList />);
-      await screen.findAllByText('RAM');
-
-      expect(document.querySelector('[data-option-type-row="b"]')).toHaveClass('sn-row-flash');
-    });
-
-    it('keeps loading pages until the target turns up, then flashes it', async () => {
+  describe('deep link from Audit Log (?highlight=id) — fetches the target directly by id', () => {
+    it('splices the fetched target into the list and flashes it, even when it would sort past the first page', async () => {
       mockSearchParams = new URLSearchParams({ highlight: 'z' });
       mockedAdminApi
-        .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })], 'a'))
-        .mockResolvedValueOnce(page([optionType('z', 'zzz', { name: { en: 'ZZZ' } })]));
+        .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })])) // #1 mount, Live page 1
+        .mockResolvedValueOnce(optionType('z', 'zzz', { name: { en: 'ZZZ' } })); // #2 GET /option-types/z directly
 
       renderAdmin(<OptionTypeList />);
       await screen.findAllByText('ZZZ');
 
       expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('sn-row-flash');
-      expect(mockedAdminApi).toHaveBeenNthCalledWith(2, '/option-types?cursor=a&limit=30', {
-        raw: true,
-      });
+      // a plain GET by id — no cursor, no page-walk, no `raw: true`
+      expect(mockedAdminApi).toHaveBeenNthCalledWith(2, '/option-types/z');
     });
 
-    it('without a highlight param, nothing flashes', async () => {
+    it('switches to the Archived tab on its own once the fetched target turns out to be archived — no action-name guessing needed', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'z' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })])) // #1 mount, Live
+        .mockResolvedValueOnce(optionType('z', 'zzz', { name: { en: 'ZZZ' }, archived: true })) // #2 direct GET — archived
+        .mockResolvedValueOnce(page([])); // #3 Archived tab's own first page, triggered by the switch
+
+      renderAdmin(<OptionTypeList />);
+      await screen.findAllByText('ZZZ');
+
+      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('sn-row-flash');
+      expect(screen.getByRole('button', { name: 'Archived' })).toHaveClass('bg-muted');
+    });
+
+    it('a stale/invalid highlight id fails quietly — no flash, no crash', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'nope' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })]))
+        .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404));
+
+      renderAdmin(<OptionTypeList />);
+      await screen.findAllByText('Color');
+      await waitFor(() => expect(mockedAdminApi).toHaveBeenCalledTimes(2));
+
+      expect(document.querySelector('[data-option-type-row="a"]')).not.toHaveClass('sn-row-flash');
+    });
+
+    it('without a highlight param, nothing flashes and no direct fetch happens', async () => {
       mockedAdminApi.mockResolvedValueOnce(
         page([optionType('a', 'color', { name: { en: 'Color' } })]),
       );
@@ -375,6 +387,7 @@ describe('OptionTypeList', () => {
       await screen.findAllByText('Color');
 
       expect(document.querySelector('[data-option-type-row="a"]')).not.toHaveClass('sn-row-flash');
+      expect(mockedAdminApi).toHaveBeenCalledTimes(1);
     });
   });
 });

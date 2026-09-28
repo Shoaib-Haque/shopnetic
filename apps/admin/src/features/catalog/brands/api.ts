@@ -40,6 +40,12 @@ export function listBrandsPage(opts: {
   ).then((r) => ({ brands: r.data, nextCursor: r.meta.nextCursor }));
 }
 
+/** One record by id, regardless of live/archived — for a deep link's
+ * direct-by-id lookup (`useHighlightTarget`), not the paginated list. */
+export function getBrand(id: string): Promise<Brand> {
+  return adminApi<Brand>(`/brands/${id}`);
+}
+
 export function createBrand(body: CreateBrandRequest): Promise<Brand> {
   return adminApi<Brand>('/brands', { method: 'POST', body });
 }

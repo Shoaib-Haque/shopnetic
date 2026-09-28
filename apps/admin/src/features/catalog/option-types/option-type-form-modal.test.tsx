@@ -38,6 +38,7 @@ function optionType(id: string, code: string, overrides: Partial<OptionType> = {
     dataType: 'select',
     hasSwatch: false,
     status: 'active',
+    archived: false,
     values: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

@@ -33,7 +33,7 @@ import { ScrollLoadFooter, ScrollLoadSkeleton } from '@/components/crud/scroll-l
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
-import { useFindById } from '@/hooks/use-find-by-id';
+import { useHighlightTarget } from '@/hooks/use-highlight-target';
 import { useRowFlash } from '@/hooks/use-row-flash';
 import { useUrlParamsSync } from '@/hooks/use-url-params-sync';
 import { capForMessage } from '@/lib/format';
@@ -41,7 +41,7 @@ import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { BrandFormModal } from './brand-form-modal';
 import { BrandMergeDialog } from './brand-merge-dialog';
-import { deleteBrand, listBrandsPage, restoreBrand } from './api';
+import { deleteBrand, getBrand, listBrandsPage, restoreBrand } from './api';
 
 type Tab = 'live' | 'archived';
 const TABS: Tab[] = ['live', 'archived'];
@@ -127,17 +127,25 @@ export function BrandList() {
   );
   const list = useScrollLoad<Brand>(fetchPage, [tab, statusFilter, debouncedQ]);
 
-  // deep link from Audit Log's Target column — keeps loading pages until the
-  // row turns up (only ever finds it on the live tab; see audit-log.tsx's
-  // own comment on this limitation), then flashes it in place.
-  const highlighted = useFindById(
-    highlightId,
-    list.items,
-    list.hasMore,
-    list.loading || list.loadingMore,
-    list.loadMore,
-  );
-  const { flashId, flash } = useRowFlash('data-brand-row');
+  // deep link from Audit Log's Target column — a direct fetch by id, not a
+  // page-walk (`useHighlightTarget`'s own doc comment has the full
+  // reasoning) — lands on the right tab and splices the row into view in
+  // one small request, regardless of list size or where it'd naturally
+  // sort.
+  const compareById = useCallback((a: Brand, b: Brand) => b.id.localeCompare(a.id), []);
+  const highlighted = useHighlightTarget<Brand>({
+    targetId: highlightId,
+    fetchById: getBrand,
+    items: list.items,
+    setItems: list.setItems,
+    tab,
+    setTab,
+    compare: compareById,
+  });
+  // `center`, not the default `nearest` — a deep-link target should land as
+  // the clear focal point of the screen, not flush against an edge where a
+  // minimal scroll would otherwise leave it.
+  const { flashId, flash } = useRowFlash('data-brand-row', { block: 'center' });
   useEffect(() => {
     if (highlighted) flash(highlighted.id);
   }, [highlighted, flash]);
