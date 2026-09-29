@@ -106,6 +106,23 @@ export class StaffAccountsService {
     return { accounts: ordered.map(toStaffAccount), ...(nextCursor ? { nextCursor } : {}) };
   }
 
+  /** One account by id, for a deep link's fetch-by-id lookup (the admin's
+   * `useHighlightTarget`) — not scoped to `deleted_at IS NULL` the way
+   * `list()` is, so it still resolves once an account's since been
+   * anonymized/removed and dropped out of the directory entirely (there's
+   * no "Archived" tab to view it from either way, unlike Brand/Option
+   * Types/Category — this just keeps the deep link itself from 404ing). */
+  async get(accountId: string): Promise<StaffAccount> {
+    const account = await this.prisma.account.findUnique({
+      where: { id: accountId },
+      include: { grants: { include: { role: true } }, totpSecret: true },
+    });
+    if (!account || account.plane !== 'staff') {
+      throw new AppError('NOT_FOUND', 404, { detail: 'no such staff account' });
+    }
+    return toStaffAccount(account);
+  }
+
   async changeRole(
     accountId: string,
     role: StaffRole,

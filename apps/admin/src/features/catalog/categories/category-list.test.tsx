@@ -577,24 +577,39 @@ describe('CategoryList drag-reorder rollback', () => {
   });
 });
 
-describe('CategoryList — deep link from Audit Log (?status=all&highlight=categoryId)', () => {
-  it('flashes the target row once the flat/all view has it, even when it is not on the first page', async () => {
+describe('CategoryList — deep link from Audit Log (?status=all&highlight=categoryId) — fetches the target directly by id', () => {
+  it('splices the fetched target into the list (appended, not tree-sorted) and flashes it, even when it is not on the first page', async () => {
     mockSearchParams = new URLSearchParams({ status: 'all', highlight: 'z' });
     mockedAdminApi
       .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
-      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: { nextCursor: 'c1' } }) // flat page 1
-      .mockResolvedValueOnce([]) // breadcrumb-pool GET (status=all) — the 2026-09-18 fix
-      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // flat page 2 — has the target
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }) // #2 flat page 1 — no target
+      .mockResolvedValueOnce(cat('z', 'Zulu')) // #3 direct GET /categories/z — a plain object, not `{data, meta}`
+      .mockResolvedValueOnce([]); // #4 breadcrumb-pool GET (status=all) — the 2026-09-18 fix
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Zulu');
 
-    await waitFor(() =>
-      expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('sn-row-flash'),
-    );
+    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('sn-row-flash');
+    // a plain GET by id — no cursor, no page-walk, no `raw: true`
+    expect(mockedAdminApi).toHaveBeenNthCalledWith(3, '/categories/z');
   });
 
-  it('without a highlight param, nothing flashes', async () => {
+  it('a stale/invalid highlight id fails quietly — no flash, no crash', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'all', highlight: 'nope' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // tree's own unconditional load
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }) // flat page 1
+      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)) // direct GET — no such category
+      .mockResolvedValueOnce([]); // breadcrumb-pool GET
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+    await waitFor(() => expect(mockedAdminApi).toHaveBeenCalledTimes(4));
+
+    expect(document.querySelector('[data-cat-row="a"]')).not.toHaveClass('sn-row-flash');
+  });
+
+  it('without a highlight param, nothing flashes and no direct fetch happens', async () => {
     mockSearchParams = new URLSearchParams({ status: 'all' });
     mockedAdminApi
       .mockResolvedValueOnce([]) // tree's own unconditional load
@@ -605,5 +620,6 @@ describe('CategoryList — deep link from Audit Log (?status=all&highlight=categ
     await screen.findAllByText('Alpha');
 
     expect(document.querySelector('[data-cat-row="a"]')).not.toHaveClass('sn-row-flash');
+    expect(mockedAdminApi).toHaveBeenCalledTimes(3);
   });
 });

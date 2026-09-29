@@ -140,6 +140,7 @@ export function BrandList() {
     setItems: list.setItems,
     tab,
     setTab,
+    isArchived: (b) => b.archived,
     compare: compareById,
   });
   // `center`, not the default `nearest` — a deep-link target should land as

@@ -75,6 +75,28 @@ describe.skipIf(!hasDb)('StaffAccountsService (integration)', () => {
     expect(found?.totpEnrolled).toBe(false);
   });
 
+  it('gets one account by id — for a deep link fetch-by-id, not the paginated list', async () => {
+    const found = await accounts.get(targetId);
+    expect(found.id).toBe(targetId);
+    expect(found.roles).toEqual(['ADMIN']);
+  });
+
+  it('404s get() on an accountId that is not a staff account, or does not exist', async () => {
+    const marketplace = await prisma.account.create({
+      data: {
+        email: `itest-get-marketplace-${stamp}@shopnetic.test`,
+        plane: 'marketplace',
+        status: 'active',
+      },
+    });
+    await expect(accounts.get(marketplace.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await prisma.account.delete({ where: { id: marketplace.id } });
+
+    await expect(accounts.get('01a00000-0000-7000-8000-000000000000')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+  });
+
   it('is case-insensitive and excludes accounts that share no word with the query', async () => {
     // "target" only appears in targetEmail's local part, not superAdminEmail's
     const upper = await accounts.list(undefined, 100, 'TARGET');

@@ -407,6 +407,23 @@ export class StaffController {
     return ok(req, page);
   }
 
+  /** For a deep link's fetch-by-id lookup (the admin's `useHighlightTarget`)
+   * — declared after the bare `sessions` route above so a request to
+   * `/staff/sessions` still matches that literal route first, not this one
+   * treating "sessions" as an `accountId` (Nest/Express try routes in
+   * registration order, not most-specific-first). */
+  @Get(':accountId')
+  @HttpCode(200)
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.STAFF_MANAGE)
+  async get(
+    @Req() req: Request,
+    @Param('accountId') accountId: string,
+  ): Promise<{ data: StaffAccount; meta: { requestId: string } }> {
+    const account = await this.accounts.get(accountId);
+    return ok(req, account);
+  }
+
   /** Super Admin's "by person" tab, expanded — one staff member's sessions. */
   @Get(':accountId/sessions')
   @HttpCode(200)

@@ -46,6 +46,12 @@ export function listCategoriesPage(opts: {
   ).then((r) => ({ categories: r.data, nextCursor: r.meta.nextCursor }));
 }
 
+/** One record by id, regardless of live/archived — for a deep link's
+ * direct-by-id lookup (`useHighlightTarget`), not the paginated/tree list. */
+export function getCategory(id: string): Promise<Category> {
+  return adminApi<Category>(`/categories/${id}`);
+}
+
 export function createCategory(body: CreateCategoryRequest): Promise<Category> {
   return adminApi<Category>('/categories', { method: 'POST', body });
 }

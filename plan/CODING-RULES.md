@@ -4293,3 +4293,78 @@ compose file.
     for the `block: 'center'` option path generically; no test changes
     needed. Full suite still green: 325/325 admin; typecheck and lint
     clean.
+- 2026-09-29 — Extended `useHighlightTarget` (the fetch-by-id deep-link
+  mechanism, previously Brand/Option Types only) to Category and Staff,
+  fully retiring the old page-walking `useFindById` (deleted, along with
+  its test file — nothing used it anymore).
+  - Before writing any code: investigated whether Category and Staff's
+    actual list shapes even fit the hook's existing two-tab (`archived`
+    boolean + `tab`/`setTab`) assumption, since both were scoped out of
+    the original pass specifically because this was unknown. Staff
+    doesn't need it (no archived tab — deprovision is a status flip, not
+    a soft delete) and its non-search order is a plain `id ASC`
+    (`staff-accounts.service.ts`'s own `list()` doc comment) — a clean
+    fit, same shape as Brand. Category's own deep link already always
+    opens the existing combined `status=all` view (no tab problem to
+    begin with), but its flat/all order turned out to be a
+    server-computed recursive tree rank (`category.service.ts`'s
+    `list()`/`listRankedFlat()`) with offset pagination, not any field a
+    single fetched row carries — no client-side `compare` can replicate
+    it. Surfaced this to be discussed before implementing: chose to
+    append the fetched target rather than sort it into its "true" tree
+    position, in exchange for still not needing a page-walk wait. Category
+    keeps its own list otherwise unsorted-by-this only for the one
+    spliced-in row — normal pagination still loads everything else in the
+    server's real order.
+  - Generalized `useHighlightTarget` accordingly: `tab`/`setTab` (now with
+    a required `isArchived: (item) => boolean` alongside them, replacing
+    the old hardcoded `.archived` field access) are optional as a group —
+    omit for a single-combined-view list (Category, Staff), keep for a
+    two-tab one (Brand, Option Types — both updated to pass `isArchived`
+    explicitly). `compare` is independently optional — omit for a list
+    whose real order can't be replicated client-side (Category); the
+    record is then appended instead of sorted in. TypeScript's aliased-
+    condition narrowing (`const usesTabs = tab !== undefined && …`) keeps
+    every internal access type-safe without an `!` assertion anywhere.
+    Brand/Option Types' own behavior and tests were unaffected by this —
+    confirmed by running their suites straight after the hook change,
+    before touching Category/Staff at all.
+  - Backend, mirroring the Brand/Option Types `anyRowOrThrow` pattern
+    exactly: Category's `get()` now uses a new `anyRowOrThrow` (finds a
+    row regardless of `deleted_at`) instead of the live-only `rowOrThrow`
+    — a deep link to an archived category no longer 404s. No new field
+    needed on the view (`archivedAt` was already there). Staff had no
+    single-record `GET` endpoint at all before this — added
+    `StaffAccountsService.get()` and `StaffController`'s new
+    `@Get(':accountId')`, deliberately declared *after* the existing bare
+    `@Get('sessions')` route (not before it) so `/staff/sessions` still
+    matches that literal route first — Nest/Express try routes in
+    registration order, not most-specific-first, the same reasoning the
+    pre-existing `sessions` route's own comment already documents.
+  - Revert-confirmed: Category's `get()` (swapped back to `rowOrThrow`) —
+    the soft-delete test failed on the now-archived row 404ing again, as
+    expected; restored. The hook's new optional-tab branch (temporarily
+    forced `onRightTab` to require a `tab` match unconditionally, instead
+    of short-circuiting when `usesTabs` is false) — exactly the 3
+    Category/Staff deep-link tests failed (the ones with no tab to match),
+    every Brand/Option Types test stayed green; restored.
+  - New API surface: `getCategory`/`getStaffAccount` (admin), mirroring
+    `getBrand`/`getOptionType`'s own doc comments.
+  - New tests: `StaffAccountsService.get()` + a non-staff-plane 404 case
+    (integration); Category's `get()`-on-archived-row case updated the
+    same way Brand/Option Types' own was (2026-09-28); both list
+    components' deep-link `describe` blocks rewritten to the direct-
+    fetch-by-id shape (mirroring Option Types' own rewritten block:
+    already-on-first-page, appended/spliced-past-first-page, stale-id-
+    fails-quietly, no-highlight-param cases).
+  - Full suite green: 316/316 admin (325 before, minus `use-find-by-id`'s
+    own 12 removed tests, plus the new deep-link tests replacing them net
+    lower since Category/Staff needed fewer cases than the old page-walk
+    tests did) + 141/141 API integration (2 new: `StaffAccountsService
+    .get()` + its 404 case) + 25/25 API unit; typecheck and lint clean on
+    both api and admin.
+  - Not done: the API dev server (`apps/api`, port 4000) runs without
+    `--watch`, so it hasn't picked up the backend changes here (`get()`
+    on Category/Staff) — needs a restart before manual UI testing exercises
+    the new endpoints live; not something to do without asking, same as
+    the stale-dev-server case earlier in this project.

@@ -8,6 +8,7 @@ import {
   activateStaff,
   changeStaffRole,
   deprovisionStaff,
+  getStaffAccount,
   listStaff,
   resetStaffTotp,
   type StaffListPage,
@@ -16,6 +17,7 @@ import { StaffList } from './staff-list';
 
 vi.mock('../api', () => ({
   listStaff: vi.fn(),
+  getStaffAccount: vi.fn(),
   changeStaffRole: vi.fn(),
   activateStaff: vi.fn(),
   resetStaffTotp: vi.fn(),
@@ -43,6 +45,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 const mockedListStaff = vi.mocked(listStaff);
+const mockedGetStaffAccount = vi.mocked(getStaffAccount);
 const mockedChangeStaffRole = vi.mocked(changeStaffRole);
 const mockedActivateStaff = vi.mocked(activateStaff);
 const mockedResetStaffTotp = vi.mocked(resetStaffTotp);
@@ -104,6 +107,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   mockedListStaff.mockReset();
+  mockedGetStaffAccount.mockReset();
   mockedChangeStaffRole.mockReset();
   mockedActivateStaff.mockReset();
   mockedResetStaffTotp.mockReset();
@@ -448,39 +452,54 @@ describe('StaffList', () => {
   });
 });
 
-describe('StaffList — deep link from Audit Log (?highlight=accountId)', () => {
+describe('StaffList — deep link from Audit Log (?highlight=accountId) — fetches the target directly by id', () => {
   it('flashes the target row when it is already on the first page, and strips the param from the URL', async () => {
     const target = account({ id: 'acc-2', email: 'target@example.com' });
     mockSearchParams = new URLSearchParams({ highlight: target.id });
     mockedListStaff.mockResolvedValueOnce(page([ME, target]));
+    mockedGetStaffAccount.mockResolvedValueOnce(target);
 
     render();
     await screen.findAllByText(target.email);
 
     expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('sn-row-flash');
     expect(routerReplace).toHaveBeenCalledWith(PATHNAME, { scroll: false });
+    expect(mockedGetStaffAccount).toHaveBeenCalledWith(target.id);
   });
 
-  it('keeps loading pages until the target turns up, then flashes it', async () => {
-    const target = account({ id: 'acc-9', email: 'later-page@example.com' });
+  it('splices the fetched target into the list and flashes it, even when it would sort past the first page', async () => {
+    const target = account({ id: 'zzz-target', email: 'later@example.com' });
     mockSearchParams = new URLSearchParams({ highlight: target.id });
-    mockedListStaff
-      .mockResolvedValueOnce(page([ME], 'cursor-1'))
-      .mockResolvedValueOnce(page([target], undefined));
+    mockedListStaff.mockResolvedValueOnce(page([ME])); // page 1 — no target
+    mockedGetStaffAccount.mockResolvedValueOnce(target); // direct GET by id
 
     render();
     await screen.findAllByText(target.email);
 
     expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('sn-row-flash');
-    expect(mockedListStaff).toHaveBeenCalledWith('cursor-1');
+    // one direct fetch — no page-walk, `listStaff` never called with a cursor
+    expect(mockedListStaff).toHaveBeenCalledTimes(1);
   });
 
-  it('without a highlight param, nothing flashes and the URL never gets a highlight param added', async () => {
+  it('a stale/invalid highlight id fails quietly — no flash, no crash', async () => {
+    mockSearchParams = new URLSearchParams({ highlight: 'nope' });
+    mockedListStaff.mockResolvedValueOnce(page([ME]));
+    mockedGetStaffAccount.mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404));
+
+    render();
+    await screen.findAllByText(ME.email);
+    await waitFor(() => expect(mockedGetStaffAccount).toHaveBeenCalledWith('nope'));
+
+    expect(document.querySelector(`[data-staff-row="${ME.id}"]`)).not.toHaveClass('sn-row-flash');
+  });
+
+  it('without a highlight param, nothing flashes and no direct fetch happens', async () => {
     mockedListStaff.mockResolvedValueOnce(page([ME]));
     render();
     await screen.findAllByText(ME.email);
 
     expect(document.querySelector(`[data-staff-row="${ME.id}"]`)).not.toHaveClass('sn-row-flash');
+    expect(mockedGetStaffAccount).not.toHaveBeenCalled();
     // the q-sync effect below still fires a mount-time no-op replace (same
     // as Category List / Audit Log's own filter sync) — what matters here
     // is that `highlight` never appears in any of those calls

@@ -11,7 +11,7 @@ import { ActionButton } from '@/components/crud/action-button';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { ScrollLoadFooter } from '@/components/crud/scroll-load-states';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
-import { useFindById } from '@/hooks/use-find-by-id';
+import { useHighlightTarget } from '@/hooks/use-highlight-target';
 import { useRowFlash } from '@/hooks/use-row-flash';
 import { useUrlParamsSync } from '@/hooks/use-url-params-sync';
 import { capForMessage } from '@/lib/format';
@@ -25,6 +25,7 @@ import { CategoryFormModal } from './category-form-modal';
 import { applyMoveLocally, type CategoryMove } from './reorder';
 import {
   deleteCategory,
+  getCategory,
   listCategories,
   listCategoriesPage,
   reorderCategories,
@@ -186,7 +187,11 @@ export function CategoryList() {
   // row can land off-screen (and scroll anchoring only follows it in one
   // direction), so this re-runs when the list reloads too, to land on the
   // row's final position, not just where it was when flash() was called.
-  const { flashId, flash } = useRowFlash('data-cat-row', { rescrollOn: items });
+  // `center`, not the default `nearest` — most valuable here of every list
+  // using it: a deep-link target lands appended, disconnected from its tree
+  // neighbors (see `highlightedCategory` below), so a minimal scroll to its
+  // edge would be easy to miss entirely.
+  const { flashId, flash } = useRowFlash('data-cat-row', { rescrollOn: items, block: 'center' });
 
   // collapsed tree nodes — lifted out of CategoryTree so the toolbar's
   // expand-all / collapse-to-roots control can sit next to the search box.
@@ -270,18 +275,23 @@ export function CategoryList() {
   // action.
   const flatRefresh = flatList.refresh;
 
-  // Deep link landed on a specific category — keep loading pages of the
-  // flat/all view until it turns up, then reuse the exact same flash/scroll
-  // affordance a move or restore already gets, rather than also auto-opening
-  // its edit modal: the row itself (plus the audit diff that sent someone
-  // here in the first place) already says what changed.
-  const highlightedCategory = useFindById(
-    highlightId,
-    flatList.items,
-    flatList.hasMore,
-    flatList.loading || flatList.loadingMore,
-    flatList.loadMore,
-  );
+  // Deep link landed on a specific category — a direct fetch by id, not a
+  // page-walk (`useHighlightTarget`'s own doc comment has the full
+  // reasoning), then reuse the exact same flash/scroll affordance a move or
+  // restore already gets, rather than also auto-opening its edit modal: the
+  // row itself (plus the audit diff that sent someone here in the first
+  // place) already says what changed. No `compare` — the flat/all view's
+  // real order is a server-computed recursive tree rank
+  // (`category.service.ts`'s own `list()` doc comment), not any field a
+  // fetched row carries, so the target is appended rather than sorted into
+  // its "true" position; still no page-walk wait, just not tree-ordered
+  // within whatever's currently loaded.
+  const highlightedCategory = useHighlightTarget<Category>({
+    targetId: highlightId,
+    fetchById: getCategory,
+    items: flatList.items,
+    setItems: flatList.setItems,
+  });
   useEffect(() => {
     if (highlightedCategory) flash(highlightedCategory.id);
   }, [highlightedCategory, flash]);

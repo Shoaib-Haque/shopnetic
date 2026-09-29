@@ -37,7 +37,7 @@ import {
 } from '@/components/crud/scroll-load-states';
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
-import { useFindById } from '@/hooks/use-find-by-id';
+import { useHighlightTarget } from '@/hooks/use-highlight-target';
 import { useRowFlash } from '@/hooks/use-row-flash';
 import { useUrlParamsSync } from '@/hooks/use-url-params-sync';
 import { capForMessage } from '@/lib/format';
@@ -47,6 +47,7 @@ import {
   activateStaff,
   changeStaffRole,
   deprovisionStaff,
+  getStaffAccount,
   listStaff,
   resetStaffTotp,
 } from '../api';
@@ -112,17 +113,26 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
     loadMore,
   } = useScrollLoad<StaffAccount>(fetchPage, [debouncedQ]);
 
+  // deep link from Audit Log's Target column — a direct fetch by id, not a
+  // page-walk (`useHighlightTarget`'s own doc comment has the full
+  // reasoning). No tab to land on (Staff has no archived view), so just
+  // `id` for sorted-position insert — the list's own real order (`id ASC`,
+  // `staff-accounts.service.ts`'s own `list()` doc comment).
+  const compareById = useCallback(
+    (a: StaffAccount, b: StaffAccount) => a.id.localeCompare(b.id),
+    [],
+  );
+  const highlightedAccount = useHighlightTarget<StaffAccount>({
+    targetId: highlightId,
+    fetchById: getStaffAccount,
+    items: accounts,
+    setItems: setAccounts,
+    compare: compareById,
+  });
   // briefly highlight the row a deep link landed on, so it's easy to spot in
   // a long list — same `sn-row-flash` affordance Category List already uses
   // for its own move/restore/deep-link cases.
   const { flashId, flash } = useRowFlash('data-staff-row', { block: 'center' });
-  const highlightedAccount = useFindById(
-    highlightId,
-    accounts,
-    hasMore,
-    loading || loadingMore,
-    loadMore,
-  );
   useEffect(() => {
     if (highlightedAccount) flash(highlightedAccount.id);
   }, [highlightedAccount, flash]);

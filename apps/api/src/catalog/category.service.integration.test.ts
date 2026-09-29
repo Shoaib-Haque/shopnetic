@@ -288,11 +288,15 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     });
 
     await svc.remove(c.id, actor, {});
-    await expect(svc.get(c.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // gone from the default (live) list, but get() still finds it — it's
+    // used by a deep link's fetch-by-id, which must succeed for an archived
+    // target too (the 2026-09-29 fix, mirroring Brand/Option Types' own
+    // anyRowOrThrow). list() is what actually still excludes archived rows.
+    await expect(svc.get(c.id)).resolves.toMatchObject({ archivedAt: expect.any(String) });
 
     // now the parent has no live children → delete works
     await svc.remove(p.id, actor, {});
-    await expect(svc.get(p.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(svc.get(p.id)).resolves.toMatchObject({ archivedAt: expect.any(String) });
   });
 
   it("create/update/remove/restore audit rows snapshot the parent's name, not just its id — the 2026-09-17 fix", async () => {

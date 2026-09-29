@@ -237,7 +237,7 @@ export class CategoryService {
   }
 
   async get(id: string): Promise<Category> {
-    return toView(await this.rowOrThrow(id));
+    return toView(await this.anyRowOrThrow(id));
   }
 
   async create(input: CreateCategoryRequest, actor: Actor, meta: RequestMeta): Promise<Category> {
@@ -565,6 +565,22 @@ export class CategoryService {
   private async rowOrThrow(id: string): Promise<RawCategory> {
     const rows = await this.prisma.$queryRawUnsafe<RawCategory[]>(
       `SELECT ${COLUMNS} FROM catalog.category WHERE id = $1::uuid AND deleted_at IS NULL`,
+      id,
+    );
+    const row = rows[0];
+    if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'category not found' });
+    return row;
+  }
+
+  /** Finds a row regardless of `deleted_at` — unlike `rowOrThrow` (live
+   * only), used exclusively by `get()`. Deliberately not `archivedAt` alone
+   * on the view: a deep link's fetch-by-id (`get()`) needs to succeed for a
+   * live OR archived row, matching Brand/Option Types' own `anyRowOrThrow`
+   * (the 2026-09-28 fix). Every mutating action keeps using the live-only
+   * `rowOrThrow`. */
+  private async anyRowOrThrow(id: string): Promise<RawCategory> {
+    const rows = await this.prisma.$queryRawUnsafe<RawCategory[]>(
+      `SELECT ${COLUMNS} FROM catalog.category WHERE id = $1::uuid`,
       id,
     );
     const row = rows[0];

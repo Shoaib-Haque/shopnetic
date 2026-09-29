@@ -138,6 +138,7 @@ export function OptionTypeList() {
     setItems: list.setItems,
     tab,
     setTab,
+    isArchived: (ot) => ot.archived,
     compare: compareByCode,
   });
   // `center`, not the default `nearest` — a deep-link target should land as
