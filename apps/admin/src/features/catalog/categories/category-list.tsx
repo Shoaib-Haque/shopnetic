@@ -277,24 +277,23 @@ export function CategoryList() {
 
   // Deep link landed on a specific category — a direct fetch by id, not a
   // page-walk (`useHighlightTarget`'s own doc comment has the full
-  // reasoning), then reuse the exact same flash/scroll affordance a move or
-  // restore already gets, rather than also auto-opening its edit modal: the
-  // row itself (plus the audit diff that sent someone here in the first
-  // place) already says what changed. No `compare` — the flat/all view's
+  // reasoning). Never spliced into `flatList.items` — the flat/all view's
   // real order is a server-computed recursive tree rank
   // (`category.service.ts`'s own `list()` doc comment), not any field a
-  // fetched row carries, so the target is appended rather than sorted into
-  // its "true" position; still no page-walk wait, just not tree-ordered
-  // within whatever's currently loaded.
-  const highlightedCategory = useHighlightTarget<Category>({
+  // fetched row carries, so there was never a "correct position" to splice
+  // into or sort by in the first place. Always pinned as the first row
+  // (below, `showSpotlight`), using the exact same `CategoryFlatTable`/
+  // `CategoryCards` the real list renders with, rather than also
+  // auto-opening its edit modal: the row itself (plus the audit diff that
+  // sent someone here in the first place) already says what changed.
+  const [highlighted, setHighlighted] = useHighlightTarget<Category>({
     targetId: highlightId,
     fetchById: getCategory,
-    items: flatList.items,
-    setItems: flatList.setItems,
   });
-  useEffect(() => {
-    if (highlightedCategory) flash(highlightedCategory.id);
-  }, [highlightedCategory, flash]);
+  // gated on `isFlatMode` too — if the user switches away to the Active
+  // tree tab, a leftover pinned row for a target that's no longer even the
+  // view being shown would be confusing, not helpful.
+  const showSpotlight = isFlatMode && highlighted !== null;
 
   // post-mutation reload: keeps the rows on screen if the refresh itself
   // fails (the mutation already surfaced its own error), never blanks to the
@@ -348,9 +347,22 @@ export function CategoryList() {
   // "a partial chain is fine"), so staying briefly stale after an in-view
   // rename/move is an acceptable tradeoff against re-fetching the entire
   // table on every mutation.
+  //
+  // Skipped entirely while the current tab's own `status` is already `all`
+  // — `load()` (above) is unconditional and, on that tab, is already
+  // fetching this exact same `listCategories({status: 'all'})` payload, so
+  // a second identical request just for the pool was pure waste. This
+  // wasn't just inefficiency: a deep link always opens on `status=all`, and
+  // that redundant request was one of 4 concurrent fetches Category's mount
+  // fires (doubled to 8 by React StrictMode in dev) against Chrome's
+  // 6-connections-per-origin cap — enough to force 2 of them to queue,
+  // which is what was delaying the deep-link target's own by-id lookup by
+  // ~850ms after the rest of the list had already painted (found live
+  // 2026-09-30). Dropping to 3 distinct fetches keeps StrictMode's doubled
+  // count at 6, right at the cap instead of over it.
   const [breadcrumbPool, setBreadcrumbPool] = useState<Category[] | null>(null);
   useEffect(() => {
-    if (!isFlatMode) return;
+    if (!isFlatMode || status === 'all') return;
     let cancelled = false;
     listCategories({ status: 'all' })
       .then((rows) => {
@@ -362,7 +374,14 @@ export function CategoryList() {
     return () => {
       cancelled = true;
     };
-  }, [isFlatMode]);
+    // Deliberately `status === 'all'`, not raw `status` — re-runs only when
+    // crossing into/out of the `all` tab, matching the original "once per
+    // flat-mode entry" intent above, not on every status change within flat
+    // mode.
+  }, [isFlatMode, status === 'all']);
+  // On the `all` tab, `items` (from `load()`, unconditional, same payload)
+  // stands in for the dedicated fetch above, which is skipped there.
+  const effectiveBreadcrumbPool = status === 'all' ? items : breadcrumbPool;
 
   // The modal's parent *picker* deliberately only offers live categories
   // (above) — you shouldn't be able to nest new/edited content under an
@@ -373,10 +392,10 @@ export function CategoryList() {
   // matching the row's real `parentId`, and an unmatched `<select>` value
   // falls back to showing its first option ("— none (root) —"), silently
   // claiming a parented row is a root (found live: "shouldn't this show its
-  // parent?"). Injects just that one archived ancestor from `breadcrumbPool`
-  // (already fetched whenever this is reachable, since archived rows are
-  // only ever opened from Archived/All) rather than opening the whole
-  // picker up to every archived category.
+  // parent?"). Injects just that one archived ancestor from
+  // `effectiveBreadcrumbPool` (already available whenever this is reachable,
+  // since archived rows are only ever opened from Archived/All) rather than
+  // opening the whole picker up to every archived category.
   const modalParentOptions = useMemo(() => {
     const base = ((status === 'active' ? items : modalActiveCategories) ?? []).filter(
       (c) => c.archivedAt == null,
@@ -386,9 +405,9 @@ export function CategoryList() {
     }
     const parentId = modal.category.parentId;
     if (base.some((c) => c.id === parentId)) return base;
-    const archivedParent = (breadcrumbPool ?? []).find((c) => c.id === parentId);
+    const archivedParent = (effectiveBreadcrumbPool ?? []).find((c) => c.id === parentId);
     return archivedParent ? [...base, archivedParent] : base;
-  }, [status, items, modalActiveCategories, breadcrumbPool, modal]);
+  }, [status, items, modalActiveCategories, effectiveBreadcrumbPool, modal]);
 
   // Toasts and confirm-dialog copy interpolate this name into a sentence —
   // an unbounded name (FX's fixtures go past 200 chars) wraps a *fixed-width*
@@ -449,7 +468,28 @@ export function CategoryList() {
 
   function onSaved(action: 'created' | 'updated', c: Category): void {
     notify.saved(t(`categories.toast.${action}`, { name: labelOf(c) }));
-    resync();
+    if (action === 'updated') {
+      // patch the saved record straight into the already-loaded flat/all
+      // view — the save response already has the fresh data, so there's
+      // nothing `flatRefresh()` would add. `flatRefresh()` (as this used
+      // to call, via `resync()`) only ever re-fetches page 1 and replaces
+      // the whole array with it, which made editing anything loaded via
+      // scroll vanish from view until scrolling back down re-fetched it
+      // from scratch (found 2026-09-29) — the active tree tab was already
+      // immune, since `load()` always reloads its whole unpaginated set.
+      // No re-sort attempted: the flat/all view's true order can't be
+      // computed client-side at all (`useHighlightTarget`'s own spotlight
+      // above has the full reasoning), so a patched row just keeps sitting
+      // wherever it already was, same tradeoff already accepted there.
+      if (isFlatMode) flatList.setItems((prev) => prev.map((x) => (x.id === c.id ? c : x)));
+      // the pinned deep-link row (if this is it) is its own separate state
+      // — the patch above never reaches it on its own (`useHighlightTarget`'s
+      // own doc comment has the full reasoning).
+      if (highlighted?.id === c.id) setHighlighted(c);
+      load({ background: true });
+    } else {
+      resync();
+    }
   }
 
   // ── drag reorder / reparent: apply now, offer a one-click undo, no confirm ──
@@ -623,9 +663,17 @@ export function CategoryList() {
     </ActionButton>
   );
 
-  const flat = isFlatMode ? flatList.items : (items ?? []);
+  // the deep-link target pinned as the first row, filtered out of its own
+  // natural spot below so it never appears twice once normal pagination
+  // organically loads it too — `useHighlightTarget`'s own doc comment has
+  // the full reasoning why it's never sorted into a "true" tree position.
+  const flatWithSpotlight =
+    showSpotlight && highlighted
+      ? [highlighted, ...flatList.items.filter((c) => c.id !== highlighted.id)]
+      : flatList.items;
+  const flat = isFlatMode ? flatWithSpotlight : (items ?? []);
   const flatEmpty =
-    !flatList.loading && !flatList.loadError && flatList.items.length === 0
+    !flatList.loading && !flatList.loadError && flatList.items.length === 0 && !showSpotlight
       ? searching
         ? t('categories.noMatch')
         : t('categories.empty')
@@ -705,7 +753,17 @@ export function CategoryList() {
       ) : !isFlatMode && error !== null ? (
         <p className="px-6 py-10 text-center text-sm text-destructive">{error}</p>
       ) : isFlatMode ? (
-        flatList.loading ? (
+        flatList.loading && !highlighted ? (
+          // skipped once the deep-link target is already known, even if
+          // the rest of the list hasn't loaded yet — it shows pinned
+          // immediately instead of waiting behind the same skeleton as
+          // everything else. Most noticeable here of all four lists
+          // before this fix: Category's mount fires three concurrent
+          // requests (tree reload + flat page + breadcrumb-pool, plus the
+          // highlight fetch itself) versus two for the others, doubled
+          // again by React StrictMode in dev — so its first page
+          // routinely took longer, delaying the target's own appearance
+          // right along with it (found live 2026-09-29).
           <CategoryListSkeleton />
         ) : emptyMsg ? (
           <p className="text-sm text-muted-foreground">{emptyMsg}</p>
@@ -714,17 +772,19 @@ export function CategoryList() {
             {/* desktop: a flat table — Archived/All, or any search */}
             <div className="hidden rounded-md border border-border md:block">
               <CategoryFlatTable
-                items={flatList.items}
-                {...(breadcrumbPool ? { allCategories: breadcrumbPool } : {})}
+                items={flatWithSpotlight}
+                {...(effectiveBreadcrumbPool ? { allCategories: effectiveBreadcrumbPool } : {})}
                 renderActions={rowActions}
                 flashId={flashId}
+                spotlightId={showSpotlight ? (highlighted?.id ?? null) : null}
               />
             </div>
             {/* mobile: always a flat card list, parent-then-children order */}
             <div className="rounded-md border border-border md:hidden">
               <CategoryCards
                 items={flat}
-                {...(breadcrumbPool ? { allCategories: breadcrumbPool } : {})}
+                spotlightId={showSpotlight ? (highlighted?.id ?? null) : null}
+                {...(effectiveBreadcrumbPool ? { allCategories: effectiveBreadcrumbPool } : {})}
                 renderAction={cardAction}
               />
             </div>

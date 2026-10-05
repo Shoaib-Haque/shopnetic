@@ -453,7 +453,26 @@ describe('StaffList', () => {
 });
 
 describe('StaffList — deep link from Audit Log (?highlight=accountId) — fetches the target directly by id', () => {
-  it('flashes the target row when it is already on the first page, and strips the param from the URL', async () => {
+  it('shows the pinned target immediately, before the rest of the list has finished loading', async () => {
+    const target = account({ id: 'zzz-target', email: 'later@example.com' });
+    mockSearchParams = new URLSearchParams({ highlight: target.id });
+    let resolvePage1!: (v: StaffListPage) => void;
+    mockedListStaff.mockReturnValueOnce(new Promise((resolve) => (resolvePage1 = resolve))); // page 1 — held open
+    mockedGetStaffAccount.mockResolvedValueOnce(target); // direct GET — resolves fast
+
+    render();
+    // the pinned row shows even though page 1 is still pending — it used
+    // to be gated behind the same loading skeleton as the rest of the list
+    // (found live 2026-09-29)
+    await screen.findAllByText(target.email);
+    expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('bg-primary/5');
+    expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
+
+    resolvePage1(page([ME]));
+    await screen.findAllByText(ME.email);
+  });
+
+  it('pins the target as the first row with a light tint, even when it was already loaded on the first page', async () => {
     const target = account({ id: 'acc-2', email: 'target@example.com' });
     mockSearchParams = new URLSearchParams({ highlight: target.id });
     mockedListStaff.mockResolvedValueOnce(page([ME, target]));
@@ -461,13 +480,17 @@ describe('StaffList — deep link from Audit Log (?highlight=accountId) — fetc
 
     render();
     await screen.findAllByText(target.email);
-
-    expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('sn-row-flash');
+    await waitFor(() =>
+      expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('bg-primary/5'),
+    );
     expect(routerReplace).toHaveBeenCalledWith(PATHNAME, { scroll: false });
     expect(mockedGetStaffAccount).toHaveBeenCalledWith(target.id);
+    // pinned once (desktop + its hidden mobile twin) — its own natural
+    // spot in the loaded page is filtered out, not rendered a second time
+    expect(document.querySelectorAll(`[data-staff-row="${target.id}"]`)).toHaveLength(2);
   });
 
-  it('splices the fetched target into the list and flashes it, even when it would sort past the first page', async () => {
+  it('pins the target as the first row with a light tint when it would otherwise sort past the first page', async () => {
     const target = account({ id: 'zzz-target', email: 'later@example.com' });
     mockSearchParams = new URLSearchParams({ highlight: target.id });
     mockedListStaff.mockResolvedValueOnce(page([ME])); // page 1 — no target
@@ -476,12 +499,57 @@ describe('StaffList — deep link from Audit Log (?highlight=accountId) — fetc
     render();
     await screen.findAllByText(target.email);
 
-    expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('sn-row-flash');
+    expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('bg-primary/5');
     // one direct fetch — no page-walk, `listStaff` never called with a cursor
     expect(mockedListStaff).toHaveBeenCalledTimes(1);
   });
 
-  it('a stale/invalid highlight id fails quietly — no flash, no crash', async () => {
+  it('stays pinned, never duplicated, once normal pagination organically loads the same target too', async () => {
+    const target = account({ id: 'zzz-target', email: 'later@example.com' });
+    mockSearchParams = new URLSearchParams({ highlight: target.id });
+    mockedListStaff
+      .mockResolvedValueOnce(page([ME], 'cursor-1')) // page 1, more to come
+      .mockResolvedValueOnce(page([target])); // page 2 — its natural spot
+    mockedGetStaffAccount.mockResolvedValueOnce(target); // direct GET — pinned at top
+
+    render();
+    await screen.findAllByText(target.email);
+    expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('bg-primary/5');
+
+    act(() => triggerIntersection(screen.getByTestId('scroll-sentinel')));
+    // page 2 (which naturally contains the target too) has landed once the
+    // sentinel — rendered only while `hasMore` — disappears
+    await waitFor(() => expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument());
+
+    // still pinned once (desktop + its hidden mobile twin) — the copy that
+    // just loaded into its natural spot is filtered out, not shown
+    expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('bg-primary/5');
+    expect(document.querySelectorAll(`[data-staff-row="${target.id}"]`)).toHaveLength(2);
+  });
+
+  it('changing the pinned deep-link target’s role patches its pinned copy too', async () => {
+    const target = account({ id: 'zzz-target', email: 'later@example.com', roles: ['ADMIN'] });
+    mockSearchParams = new URLSearchParams({ highlight: target.id });
+    mockedListStaff.mockResolvedValueOnce(page([ME])); // page 1 — no target
+    mockedGetStaffAccount.mockResolvedValueOnce(target); // direct GET — pinned at top
+    mockedChangeStaffRole.mockResolvedValueOnce({ ...target, roles: ['SUPER_ADMIN'] });
+
+    render();
+    await screen.findAllByText(target.email);
+    expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('bg-primary/5');
+
+    openRowMenu(tableRowFor(target.email));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Change role' }));
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'SUPER_ADMIN' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Role updated for later@example.com.')).toBeInTheDocument();
+    const row = tableRowFor(target.email);
+    expect(within(row).getByText('Super Admin')).toBeInTheDocument();
+    expect(row).toHaveClass('bg-primary/5');
+  });
+
+  it('a stale/invalid highlight id fails quietly — nothing pinned, no crash', async () => {
     mockSearchParams = new URLSearchParams({ highlight: 'nope' });
     mockedListStaff.mockResolvedValueOnce(page([ME]));
     mockedGetStaffAccount.mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404));
@@ -490,15 +558,15 @@ describe('StaffList — deep link from Audit Log (?highlight=accountId) — fetc
     await screen.findAllByText(ME.email);
     await waitFor(() => expect(mockedGetStaffAccount).toHaveBeenCalledWith('nope'));
 
-    expect(document.querySelector(`[data-staff-row="${ME.id}"]`)).not.toHaveClass('sn-row-flash');
+    expect(document.querySelector(`[data-staff-row="${ME.id}"]`)).not.toHaveClass('bg-primary/5');
   });
 
-  it('without a highlight param, nothing flashes and no direct fetch happens', async () => {
+  it('without a highlight param, nothing is pinned and no direct fetch happens', async () => {
     mockedListStaff.mockResolvedValueOnce(page([ME]));
     render();
     await screen.findAllByText(ME.email);
 
-    expect(document.querySelector(`[data-staff-row="${ME.id}"]`)).not.toHaveClass('sn-row-flash');
+    expect(document.querySelector(`[data-staff-row="${ME.id}"]`)).not.toHaveClass('bg-primary/5');
     expect(mockedGetStaffAccount).not.toHaveBeenCalled();
     // the q-sync effect below still fires a mount-time no-op replace (same
     // as Category List / Audit Log's own filter sync) — what matters here

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { MoreHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -38,7 +38,6 @@ import {
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useHighlightTarget } from '@/hooks/use-highlight-target';
-import { useRowFlash } from '@/hooks/use-row-flash';
 import { useUrlParamsSync } from '@/hooks/use-url-params-sync';
 import { capForMessage } from '@/lib/format';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -115,30 +114,23 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
 
   // deep link from Audit Log's Target column — a direct fetch by id, not a
   // page-walk (`useHighlightTarget`'s own doc comment has the full
-  // reasoning). No tab to land on (Staff has no archived view), so just
-  // `id` for sorted-position insert — the list's own real order (`id ASC`,
-  // `staff-accounts.service.ts`'s own `list()` doc comment).
-  const compareById = useCallback(
-    (a: StaffAccount, b: StaffAccount) => a.id.localeCompare(b.id),
-    [],
-  );
-  const highlightedAccount = useHighlightTarget<StaffAccount>({
+  // reasoning). No tab to land on (Staff has no archived view). Always
+  // pinned as the first row of the real list below (never spliced into
+  // `accounts`) — consistent regardless of whether it happened to already
+  // be loaded, told directly not to make this a separate section.
+  const [highlighted, setHighlighted] = useHighlightTarget<StaffAccount>({
     targetId: highlightId,
     fetchById: getStaffAccount,
-    items: accounts,
-    setItems: setAccounts,
-    compare: compareById,
   });
-  // briefly highlight the row a deep link landed on, so it's easy to spot in
-  // a long list — same `sn-row-flash` affordance Category List already uses
-  // for its own move/restore/deep-link cases.
-  const { flashId, flash } = useRowFlash('data-staff-row', { block: 'center' });
-  useEffect(() => {
-    if (highlightedAccount) flash(highlightedAccount.id);
-  }, [highlightedAccount, flash]);
 
   function applyUpdate(updated: StaffAccount): void {
     setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    // the pinned deep-link row (if this is it) is its own separate state —
+    // the patch above never reaches it on its own (`useHighlightTarget`'s
+    // own doc comment has the full reasoning). Every Staff mutation
+    // (role change, activate, reset-totp, deprovision) funnels through
+    // this one function, so this single check covers all of them.
+    if (highlighted?.id === updated.id) setHighlighted(updated);
   }
 
   function reportError(err: unknown): void {
@@ -294,6 +286,82 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
     }
   }
 
+  // `spotlight` (a light tint) marks the deep-link target — extracted so
+  // the pinned copy (always the first row, see below) and the real list
+  // render the exact same shape from one definition.
+  const desktopRow = (account: StaffAccount, opts?: { spotlight?: boolean }): ReactNode => {
+    const isSelf = account.email === currentEmail;
+    return (
+      <TableRow
+        key={account.id}
+        data-staff-row={account.id}
+        className={cn('scroll-my-24', opts?.spotlight && 'bg-primary/5')}
+      >
+        <TableCell>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate" title={account.email}>
+              {account.email}
+            </span>
+            {isSelf && (
+              <span className="shrink-0 text-xs text-muted-foreground">{t('manage.you')}</span>
+            )}
+          </div>
+        </TableCell>
+        <TableCell className="hidden truncate lg:table-cell">
+          {account.roles.map((role) => t(`invite.roles.${role}`)).join(', ')}
+        </TableCell>
+        <TableCell>
+          <StatusBadge tone={STATUS_TONE[account.status]}>
+            {t(`manage.status.${account.status}`)}
+          </StatusBadge>
+        </TableCell>
+        <TableCell className="truncate">
+          {account.totpEnrolled ? t('manage.totpEnrolled') : t('manage.totpNotEnrolled')}
+        </TableCell>
+        <TableCell>{renderMenu(account)}</TableCell>
+      </TableRow>
+    );
+  };
+
+  const mobileCard = (account: StaffAccount, opts?: { spotlight?: boolean }): ReactNode => {
+    const isSelf = account.email === currentEmail;
+    return (
+      <li
+        key={account.id}
+        data-staff-row={account.id}
+        className={cn(
+          'flex items-start gap-3 scroll-my-24 px-3 py-3',
+          opts?.spotlight && 'bg-primary/5',
+        )}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-2">
+            <span className="truncate font-medium" title={account.email}>
+              {account.email}
+            </span>
+            {isSelf && (
+              <span className="shrink-0 text-xs text-muted-foreground">{t('manage.you')}</span>
+            )}
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+            <span>{account.roles.map((role) => t(`invite.roles.${role}`)).join(', ')}</span>
+            <span aria-hidden>·</span>
+            <StatusBadge tone={STATUS_TONE[account.status]}>
+              {t(`manage.status.${account.status}`)}
+            </StatusBadge>
+            <span aria-hidden>·</span>
+            <span>
+              {account.totpEnrolled ? t('manage.totpEnrolled') : t('manage.totpNotEnrolled')}
+            </span>
+          </p>
+        </div>
+        <div className="shrink-0">{renderMenu(account)}</div>
+      </li>
+    );
+  };
+
+  const showSpotlight = highlighted !== null;
+
   return (
     <section className="mb-8">
       <PageHeader title={t('manage.title')} description={t('manage.intro')} />
@@ -311,9 +379,13 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
 
       {loadError && accounts.length === 0 ? (
         <ScrollLoadError onRetry={retry} />
-      ) : loading ? (
+      ) : loading && !highlighted ? (
+        // skipped once the deep-link target is already known, even if the
+        // rest of the list hasn't loaded yet — it shows pinned immediately
+        // instead of waiting behind the same skeleton as everything else
+        // (found live 2026-09-29).
         <ScrollLoadSkeleton />
-      ) : accounts.length === 0 ? (
+      ) : accounts.length === 0 && !showSpotlight ? (
         <p className="text-sm text-muted-foreground">
           {debouncedQ ? t('manage.noMatch') : t('manage.empty')}
         </p>
@@ -334,91 +406,20 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {accounts.map((account) => {
-                  const isSelf = account.email === currentEmail;
-                  return (
-                    <TableRow
-                      key={account.id}
-                      data-staff-row={account.id}
-                      className={cn('scroll-my-24', flashId === account.id && 'sn-row-flash')}
-                    >
-                      <TableCell>
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="truncate" title={account.email}>
-                            {account.email}
-                          </span>
-                          {isSelf && (
-                            <span className="shrink-0 text-xs text-muted-foreground">
-                              {t('manage.you')}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden truncate lg:table-cell">
-                        {account.roles.map((role) => t(`invite.roles.${role}`)).join(', ')}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge tone={STATUS_TONE[account.status]}>
-                          {t(`manage.status.${account.status}`)}
-                        </StatusBadge>
-                      </TableCell>
-                      <TableCell className="truncate">
-                        {account.totpEnrolled
-                          ? t('manage.totpEnrolled')
-                          : t('manage.totpNotEnrolled')}
-                      </TableCell>
-                      <TableCell>{renderMenu(account)}</TableCell>
-                    </TableRow>
-                  );
-                })}
+                {highlighted && desktopRow(highlighted, { spotlight: true })}
+                {accounts
+                  .filter((account) => account.id !== highlighted?.id)
+                  .map((account) => desktopRow(account))}
               </TableBody>
             </Table>
           </div>
           {/* mobile: one card per account — label + secondary fields on a
               muted sub-line + the same menu as the primary action (G7). */}
           <ul className="divide-y divide-border rounded-md border border-border md:hidden">
-            {accounts.map((account) => {
-              const isSelf = account.email === currentEmail;
-              return (
-                <li
-                  key={account.id}
-                  data-staff-row={account.id}
-                  className={cn(
-                    'flex items-start gap-3 scroll-my-24 px-3 py-3',
-                    flashId === account.id && 'sn-row-flash',
-                  )}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2">
-                      <span className="truncate font-medium" title={account.email}>
-                        {account.email}
-                      </span>
-                      {isSelf && (
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {t('manage.you')}
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-                      <span>
-                        {account.roles.map((role) => t(`invite.roles.${role}`)).join(', ')}
-                      </span>
-                      <span aria-hidden>·</span>
-                      <StatusBadge tone={STATUS_TONE[account.status]}>
-                        {t(`manage.status.${account.status}`)}
-                      </StatusBadge>
-                      <span aria-hidden>·</span>
-                      <span>
-                        {account.totpEnrolled
-                          ? t('manage.totpEnrolled')
-                          : t('manage.totpNotEnrolled')}
-                      </span>
-                    </p>
-                  </div>
-                  <div className="shrink-0">{renderMenu(account)}</div>
-                </li>
-              );
-            })}
+            {highlighted && mobileCard(highlighted, { spotlight: true })}
+            {accounts
+              .filter((account) => account.id !== highlighted?.id)
+              .map((account) => mobileCard(account))}
           </ul>
         </>
       )}

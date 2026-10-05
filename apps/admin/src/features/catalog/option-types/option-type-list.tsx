@@ -34,7 +34,6 @@ import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useHighlightTarget } from '@/hooks/use-highlight-target';
-import { useRowFlash } from '@/hooks/use-row-flash';
 import { useUrlParamsSync } from '@/hooks/use-url-params-sync';
 import { capForMessage } from '@/lib/format';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -124,30 +123,17 @@ export function OptionTypeList() {
 
   // deep link from Audit Log's Target column — a direct fetch by id, not a
   // page-walk (`useHighlightTarget`'s own doc comment has the full
-  // reasoning) — lands on the right tab and splices the row into view in
-  // one small request, regardless of list size or where it'd naturally
-  // sort.
-  const compareByCode = useCallback(
-    (a: OptionType, b: OptionType) => a.code.localeCompare(b.code),
-    [],
-  );
-  const highlighted = useHighlightTarget<OptionType>({
+  // reasoning). Always pinned as the first row of the real list below
+  // (never spliced into `list.items`, never sorted into a "true"
+  // position) — consistent regardless of whether it happened to already
+  // be loaded, told directly not to make this a separate section.
+  const [highlighted, setHighlighted] = useHighlightTarget<OptionType>({
     targetId: highlightId,
     fetchById: getOptionType,
-    items: list.items,
-    setItems: list.setItems,
     tab,
     setTab,
     isArchived: (ot) => ot.archived,
-    compare: compareByCode,
   });
-  // `center`, not the default `nearest` — a deep-link target should land as
-  // the clear focal point of the screen, not flush against an edge where a
-  // minimal scroll would otherwise leave it.
-  const { flashId, flash } = useRowFlash('data-option-type-row', { block: 'center' });
-  useEffect(() => {
-    if (highlighted) flash(highlighted.id);
-  }, [highlighted, flash]);
 
   // `refresh`, not `retry` — a post-mutation resync must not blank/skeleton
   // the whole list before showing it again (mirrors Brand List's own
@@ -182,11 +168,32 @@ export function OptionTypeList() {
 
   function onSaved(action: 'created' | 'updated', ot: OptionType): void {
     notify.saved(t(`optionTypes.toast.${action}`, { name: labelOf(ot) }));
-    resync();
+    if (action === 'updated') {
+      // patch the saved record straight into the already-loaded list — the
+      // save response already has the fresh data, so there's nothing a
+      // network resync would add. A `resync()` here (as this used to do)
+      // only ever re-fetches page 1 and replaces the whole array with it
+      // (`useScrollLoad.refresh`'s own doc comment), which made editing
+      // anything loaded via scroll vanish from view until scrolling back
+      // down re-fetched it from scratch (found 2026-09-29). Re-sorted by
+      // `code` since the form allows editing it, unlike `id`/`slug`
+      // elsewhere in this codebase — an edit that changes it needs to
+      // settle back into its correct position, not just wherever it sits.
+      list.setItems((prev) =>
+        prev.map((x) => (x.id === ot.id ? ot : x)).sort((a, b) => a.code.localeCompare(b.code)),
+      );
+      // the pinned deep-link row (if this is it) is its own separate state
+      // — the patch above never reaches it on its own (`useHighlightTarget`'s
+      // own doc comment has the full reasoning).
+      if (highlighted?.id === ot.id) setHighlighted(ot);
+    } else {
+      resync();
+    }
   }
 
+  const showSpotlight = highlighted !== null;
   const emptyMsg =
-    !list.loading && !list.loadError && list.items.length === 0
+    !list.loading && !list.loadError && list.items.length === 0 && !showSpotlight
       ? debouncedQ
         ? t('optionTypes.noMatch')
         : t('optionTypes.empty')
@@ -225,6 +232,61 @@ export function OptionTypeList() {
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+
+  // `spotlight` (a light tint) marks the deep-link target — extracted so
+  // the pinned copy (always the first row, see below) and the real list
+  // render the exact same shape from one definition.
+  const desktopRow = (ot: OptionType, opts?: { spotlight?: boolean }): ReactNode => (
+    <TableRow
+      key={ot.id}
+      data-option-type-row={ot.id}
+      className={cn('scroll-my-24', opts?.spotlight && 'bg-primary/5')}
+    >
+      <TableCell className="pl-2 text-sm text-muted-foreground">{ot.code}</TableCell>
+      <TableCell className="truncate font-medium">{ot.name['en'] ?? ot.code}</TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {t(`optionTypes.dataType.${ot.dataType}`)}
+      </TableCell>
+      <TableCell className="hidden text-center lg:table-cell">
+        {ot.hasSwatch ? t('optionTypes.yes') : t('optionTypes.no')}
+      </TableCell>
+      <TableCell className="hidden text-right text-sm text-muted-foreground lg:table-cell">
+        {ot.values.length}
+      </TableCell>
+      <TableCell>
+        <StatusBadge tone={STATUS_TONE[ot.status]}>
+          {t(`optionTypes.status.${ot.status}`)}
+        </StatusBadge>
+      </TableCell>
+      <TableCell>{rowMenu(ot)}</TableCell>
+    </TableRow>
+  );
+
+  const mobileCard = (ot: OptionType, opts?: { spotlight?: boolean }): ReactNode => (
+    <li
+      key={ot.id}
+      data-option-type-row={ot.id}
+      className={cn('flex items-start gap-3 px-3 py-3', opts?.spotlight && 'bg-primary/5')}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="min-w-0 flex-initial truncate font-medium">
+            {ot.name['en'] ?? ot.code}
+          </span>
+          <span className="min-w-0 shrink truncate text-xs text-muted-foreground">{ot.code}</span>
+        </div>
+        <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+          <StatusBadge tone={STATUS_TONE[ot.status]}>
+            {t(`optionTypes.status.${ot.status}`)}
+          </StatusBadge>
+          <span>{t(`optionTypes.dataType.${ot.dataType}`)}</span>
+          <span>·</span>
+          <span>{ot.values.length}</span>
+        </p>
+      </div>
+      <div className="shrink-0">{rowMenu(ot)}</div>
+    </li>
   );
 
   return (
@@ -291,7 +353,15 @@ export function OptionTypeList() {
             {tCommon('list.retry')}
           </ActionButton>
         </div>
-      ) : list.loading ? (
+      ) : list.loading && !highlighted ? (
+        // skipped once the deep-link target is already known, even if the
+        // rest of the list hasn't loaded yet — it shows pinned immediately
+        // instead of waiting behind the same skeleton as everything else
+        // (found live 2026-09-29: the two used to be gated together, so a
+        // slower first page delayed the target's own appearance right along
+        // with it, worst on Category — three concurrent requests on mount
+        // there, doubled by React StrictMode in dev, versus two for this
+        // list — though this fix removes the wait everywhere, not just there)
         <ScrollLoadSkeleton />
       ) : emptyMsg ? (
         <p className="text-sm text-muted-foreground">{emptyMsg}</p>
@@ -315,68 +385,15 @@ export function OptionTypeList() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {list.items.map((ot) => (
-                  <TableRow
-                    key={ot.id}
-                    data-option-type-row={ot.id}
-                    className={cn('scroll-my-24', ot.id === flashId && 'sn-row-flash')}
-                  >
-                    <TableCell className="pl-2 text-sm text-muted-foreground">{ot.code}</TableCell>
-                    <TableCell className="truncate font-medium">
-                      {ot.name['en'] ?? ot.code}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {t(`optionTypes.dataType.${ot.dataType}`)}
-                    </TableCell>
-                    <TableCell className="hidden text-center lg:table-cell">
-                      {ot.hasSwatch ? t('optionTypes.yes') : t('optionTypes.no')}
-                    </TableCell>
-                    <TableCell className="hidden text-right text-sm text-muted-foreground lg:table-cell">
-                      {ot.values.length}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge tone={STATUS_TONE[ot.status]}>
-                        {t(`optionTypes.status.${ot.status}`)}
-                      </StatusBadge>
-                    </TableCell>
-                    <TableCell>{rowMenu(ot)}</TableCell>
-                  </TableRow>
-                ))}
+                {highlighted && desktopRow(highlighted, { spotlight: true })}
+                {list.items.filter((ot) => ot.id !== highlighted?.id).map((ot) => desktopRow(ot))}
               </TableBody>
             </Table>
           </div>
 
           <ul className="divide-y divide-border rounded-md border border-border md:hidden">
-            {list.items.map((ot) => (
-              <li
-                key={ot.id}
-                data-option-type-row={ot.id}
-                className={cn(
-                  'flex items-start gap-3 px-3 py-3',
-                  ot.id === flashId && 'sn-row-flash',
-                )}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-1">
-                    <span className="min-w-0 flex-initial truncate font-medium">
-                      {ot.name['en'] ?? ot.code}
-                    </span>
-                    <span className="min-w-0 shrink truncate text-xs text-muted-foreground">
-                      {ot.code}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                    <StatusBadge tone={STATUS_TONE[ot.status]}>
-                      {t(`optionTypes.status.${ot.status}`)}
-                    </StatusBadge>
-                    <span>{t(`optionTypes.dataType.${ot.dataType}`)}</span>
-                    <span>·</span>
-                    <span>{ot.values.length}</span>
-                  </p>
-                </div>
-                <div className="shrink-0">{rowMenu(ot)}</div>
-              </li>
-            ))}
+            {highlighted && mobileCard(highlighted, { spotlight: true })}
+            {list.items.filter((ot) => ot.id !== highlighted?.id).map((ot) => mobileCard(ot))}
           </ul>
 
           <ScrollLoadFooter
@@ -402,9 +419,10 @@ export function OptionTypeList() {
             setModal(null);
             void doDelete(ot);
           }}
-          onValuesChanged={(ot) =>
-            list.setItems((prev) => prev.map((x) => (x.id === ot.id ? ot : x)))
-          }
+          onValuesChanged={(ot) => {
+            list.setItems((prev) => prev.map((x) => (x.id === ot.id ? ot : x)));
+            if (highlighted?.id === ot.id) setHighlighted(ot);
+          }}
           onConflict={() => {
             setModal(null);
             notify.error(t('optionTypes.editConflict'), 5000);

@@ -43,7 +43,7 @@ export function listBrandsPage(opts: {
 /** One record by id, regardless of live/archived — for a deep link's
  * direct-by-id lookup (`useHighlightTarget`), not the paginated list. */
 export function getBrand(id: string): Promise<Brand> {
-  return adminApi<Brand>(`/brands/${id}`);
+  return adminApi<Brand>(`/brands/${id}`, { priority: 'high' });
 }
 
 export function createBrand(body: CreateBrandRequest): Promise<Brand> {

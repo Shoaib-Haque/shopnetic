@@ -235,12 +235,10 @@ describe('OptionTypeList', () => {
     );
   });
 
-  it('the post-mutation resync never re-shows the loading skeleton — rows stay on screen while it refetches in the background', async () => {
-    let resolveResync!: (v: { data: OptionType[]; meta: object }) => void;
+  it('editing an option type patches the row in place instantly — no network resync, no skeleton flash', async () => {
     mockedAdminApi
       .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })])) // #1 mount
-      .mockResolvedValueOnce(optionType('a', 'color', { name: { en: 'Colour' } })) // #2 PATCH
-      .mockReturnValueOnce(new Promise((resolve) => (resolveResync = resolve))); // #3 resync — held open
+      .mockResolvedValueOnce(optionType('a', 'color', { name: { en: 'Colour' } })); // #2 PATCH
 
     renderAdmin(<OptionTypeList />);
     await screen.findAllByText('Color');
@@ -253,13 +251,14 @@ describe('OptionTypeList', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await screen.findByText('Option type “Colour” saved.');
-    // the resync (#3) is still in flight — the old row must still be on
-    // screen, not blanked out by the skeleton (the 2026-09-25 fix)
-    expect(screen.getAllByText('Color').length).toBeGreaterThan(0);
-    expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
-
-    resolveResync(page([optionType('a', 'color', { name: { en: 'Colour' } })]));
     await screen.findAllByText('Colour');
+    expect(screen.queryByText('Color')).not.toBeInTheDocument();
+    expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
+    // the PATCH response already has the fresh data — patched straight into
+    // the list, no third request to re-fetch it (the 2026-09-29 fix; this
+    // also means an edit to a row loaded via scroll, past page 1, no longer
+    // vanishes from view until scrolling back down re-fetches it)
+    expect(mockedAdminApi).toHaveBeenCalledTimes(2);
   });
 
   it("a stale edit conflict closes the modal, refetches, and notifies — mirrors Brand/Category's own guard", async () => {
@@ -337,7 +336,44 @@ describe('OptionTypeList', () => {
   });
 
   describe('deep link from Audit Log (?highlight=id) — fetches the target directly by id', () => {
-    it('splices the fetched target into the list and flashes it, even when it would sort past the first page', async () => {
+    it('shows the pinned target immediately, before the rest of the list has finished loading', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'z' });
+      let resolvePage1!: (v: { data: OptionType[]; meta: object }) => void;
+      mockedAdminApi
+        .mockReturnValueOnce(new Promise((resolve) => (resolvePage1 = resolve))) // #1 page 1 — held open
+        .mockResolvedValueOnce(optionType('z', 'zzz', { name: { en: 'ZZZ' } })); // #2 direct GET — resolves fast
+
+      renderAdmin(<OptionTypeList />);
+      // the pinned row shows even though page 1 is still pending — it used
+      // to be gated behind the same loading skeleton as the rest of the
+      // list (found live 2026-09-29), so a slow first page delayed the
+      // target's own appearance right along with it
+      await screen.findAllByText('ZZZ');
+      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('bg-primary/5');
+      expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
+
+      resolvePage1(page([optionType('a', 'color', { name: { en: 'Color' } })]));
+      await screen.findAllByText('Color');
+    });
+
+    it('pins the target as the first row with a light tint, even when it was already loaded on the first page', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'a' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })])) // #1 mount, Live page 1 — has the target
+        .mockResolvedValueOnce(optionType('a', 'color', { name: { en: 'Color' } })); // #2 direct GET by id — same row
+
+      renderAdmin(<OptionTypeList />);
+      await screen.findAllByText('Color');
+      await waitFor(() =>
+        expect(document.querySelector('[data-option-type-row="a"]')).toHaveClass('bg-primary/5'),
+      );
+
+      // pinned once (desktop + its hidden mobile twin) — its own natural
+      // spot in the loaded page is filtered out, not rendered a second time
+      expect(document.querySelectorAll('[data-option-type-row="a"]')).toHaveLength(2);
+    });
+
+    it('pins the target as the first row with a light tint when it would otherwise sort past the first page', async () => {
       mockSearchParams = new URLSearchParams({ highlight: 'z' });
       mockedAdminApi
         .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })])) // #1 mount, Live page 1
@@ -346,9 +382,61 @@ describe('OptionTypeList', () => {
       renderAdmin(<OptionTypeList />);
       await screen.findAllByText('ZZZ');
 
-      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('sn-row-flash');
-      // a plain GET by id — no cursor, no page-walk, no `raw: true`
-      expect(mockedAdminApi).toHaveBeenNthCalledWith(2, '/option-types/z');
+      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('bg-primary/5');
+      // a plain GET by id — no cursor, no page-walk, no `raw: true`; `priority:
+      // 'high'` so it doesn't queue behind bulkier list fetches on a busy
+      // mount (2026-09-30 fix)
+      expect(mockedAdminApi).toHaveBeenNthCalledWith(2, '/option-types/z', { priority: 'high' });
+    });
+
+    it('stays pinned, never duplicated, once normal pagination organically loads the same target too', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'z' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })], 'a')) // #1 page 1, more to come
+        .mockResolvedValueOnce(optionType('z', 'zzz', { name: { en: 'ZZZ' } })) // #2 direct GET — pinned at top
+        .mockResolvedValueOnce(page([optionType('z', 'zzz', { name: { en: 'ZZZ' } })])); // #3 page 2 — its natural spot
+
+      renderAdmin(<OptionTypeList />);
+      await screen.findAllByText('ZZZ');
+      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('bg-primary/5');
+
+      act(() => triggerIntersection(screen.getByTestId('scroll-sentinel')));
+      // page 2 (which naturally contains the target too) has landed once
+      // the sentinel — rendered only while `hasMore` — disappears
+      await waitFor(() => expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument());
+
+      // still pinned once (desktop + its hidden mobile twin) — the copy
+      // that just loaded into its natural spot is filtered out, not shown
+      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('bg-primary/5');
+      expect(document.querySelectorAll('[data-option-type-row="z"]')).toHaveLength(2);
+    });
+
+    it('editing the pinned deep-link target patches its pinned copy too', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'z' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })])) // #1 page 1 — no target
+        .mockResolvedValueOnce(optionType('z', 'zzz', { name: { en: 'ZZZ' } })) // #2 direct GET — pinned at top
+        .mockResolvedValueOnce(optionType('z', 'zzz', { name: { en: 'ZZZ Renamed' } })); // #3 PATCH
+
+      renderAdmin(<OptionTypeList />);
+      await screen.findAllByText('ZZZ');
+      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('bg-primary/5');
+
+      openRowMenu(); // targets the first "More actions" trigger — the pinned row
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+      await screen.findByText('Edit option type');
+
+      fireEvent.change(screen.getByLabelText('Name (English)'), {
+        target: { value: 'ZZZ Renamed' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await screen.findByText('Option type “ZZZ Renamed” saved.');
+      await screen.findAllByText('ZZZ Renamed');
+      expect(screen.queryByText('ZZZ')).not.toBeInTheDocument();
+      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('bg-primary/5');
+      // no extra fetch beyond the PATCH — the pinned copy is patched locally
+      expect(mockedAdminApi).toHaveBeenCalledTimes(3);
     });
 
     it('switches to the Archived tab on its own once the fetched target turns out to be archived — no action-name guessing needed', async () => {
@@ -361,11 +449,11 @@ describe('OptionTypeList', () => {
       renderAdmin(<OptionTypeList />);
       await screen.findAllByText('ZZZ');
 
-      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('sn-row-flash');
+      expect(document.querySelector('[data-option-type-row="z"]')).toHaveClass('bg-primary/5');
       expect(screen.getByRole('button', { name: 'Archived' })).toHaveClass('bg-muted');
     });
 
-    it('a stale/invalid highlight id fails quietly — no flash, no crash', async () => {
+    it('a stale/invalid highlight id fails quietly — nothing pinned, no crash', async () => {
       mockSearchParams = new URLSearchParams({ highlight: 'nope' });
       mockedAdminApi
         .mockResolvedValueOnce(page([optionType('a', 'color', { name: { en: 'Color' } })]))
@@ -375,10 +463,10 @@ describe('OptionTypeList', () => {
       await screen.findAllByText('Color');
       await waitFor(() => expect(mockedAdminApi).toHaveBeenCalledTimes(2));
 
-      expect(document.querySelector('[data-option-type-row="a"]')).not.toHaveClass('sn-row-flash');
+      expect(document.querySelector('[data-option-type-row="a"]')).not.toHaveClass('bg-primary/5');
     });
 
-    it('without a highlight param, nothing flashes and no direct fetch happens', async () => {
+    it('without a highlight param, nothing is pinned and no direct fetch happens', async () => {
       mockedAdminApi.mockResolvedValueOnce(
         page([optionType('a', 'color', { name: { en: 'Color' } })]),
       );
@@ -386,7 +474,7 @@ describe('OptionTypeList', () => {
       renderAdmin(<OptionTypeList />);
       await screen.findAllByText('Color');
 
-      expect(document.querySelector('[data-option-type-row="a"]')).not.toHaveClass('sn-row-flash');
+      expect(document.querySelector('[data-option-type-row="a"]')).not.toHaveClass('bg-primary/5');
       expect(mockedAdminApi).toHaveBeenCalledTimes(1);
     });
   });

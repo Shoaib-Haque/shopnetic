@@ -22,7 +22,7 @@ export function listStaff(cursor?: string, q?: string): Promise<StaffListPage> {
 /** One account by id — for a deep link's direct-by-id lookup
  * (`useHighlightTarget`), not the paginated list. */
 export function getStaffAccount(accountId: string): Promise<StaffAccount> {
-  return staffManageApi<StaffAccount>(`/${accountId}`);
+  return staffManageApi<StaffAccount>(`/${accountId}`, { priority: 'high' });
 }
 
 export function changeStaffRole(accountId: string, role: StaffRole): Promise<StaffAccount> {

@@ -34,7 +34,6 @@ import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useHighlightTarget } from '@/hooks/use-highlight-target';
-import { useRowFlash } from '@/hooks/use-row-flash';
 import { useUrlParamsSync } from '@/hooks/use-url-params-sync';
 import { capForMessage } from '@/lib/format';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -129,27 +128,17 @@ export function BrandList() {
 
   // deep link from Audit Log's Target column — a direct fetch by id, not a
   // page-walk (`useHighlightTarget`'s own doc comment has the full
-  // reasoning) — lands on the right tab and splices the row into view in
-  // one small request, regardless of list size or where it'd naturally
-  // sort.
-  const compareById = useCallback((a: Brand, b: Brand) => b.id.localeCompare(a.id), []);
-  const highlighted = useHighlightTarget<Brand>({
+  // reasoning). Always pinned as the first row of the real list below
+  // (never spliced into `list.items`, never sorted into a "true"
+  // position) — consistent regardless of whether it happened to already
+  // be loaded, told directly not to make this a separate section.
+  const [highlighted, setHighlighted] = useHighlightTarget<Brand>({
     targetId: highlightId,
     fetchById: getBrand,
-    items: list.items,
-    setItems: list.setItems,
     tab,
     setTab,
     isArchived: (b) => b.archived,
-    compare: compareById,
   });
-  // `center`, not the default `nearest` — a deep-link target should land as
-  // the clear focal point of the screen, not flush against an edge where a
-  // minimal scroll would otherwise leave it.
-  const { flashId, flash } = useRowFlash('data-brand-row', { block: 'center' });
-  useEffect(() => {
-    if (highlighted) flash(highlighted.id);
-  }, [highlighted, flash]);
 
   // `refresh`, not `retry` — this list has no separate unpaginated data
   // source with its own background-safe loader (Category's tree does; this
@@ -185,7 +174,24 @@ export function BrandList() {
 
   function onSaved(action: 'created' | 'updated', b: Brand): void {
     notify.saved(t(`brands.toast.${action}`, { name: labelOf(b) }));
-    resync();
+    if (action === 'updated') {
+      // patch the saved record straight into the already-loaded list — the
+      // save response already has the fresh data, so there's nothing a
+      // network resync would add. A `resync()` here (as this used to do)
+      // only ever re-fetches page 1 and replaces the whole array with it
+      // (`useScrollLoad.refresh`'s own doc comment), which made editing
+      // anything loaded via scroll vanish from view until scrolling back
+      // down re-fetched it from scratch (found 2026-09-29). No re-sort
+      // needed after — the list's own sort key is `id`, which the edit
+      // form never touches (unlike Option Types' `code`).
+      list.setItems((prev) => prev.map((x) => (x.id === b.id ? b : x)));
+      // the pinned deep-link row (if this is it) is its own separate state
+      // — the patch above never reaches it on its own (`useHighlightTarget`'s
+      // own doc comment has the full reasoning).
+      if (highlighted?.id === b.id) setHighlighted(b);
+    } else {
+      resync();
+    }
   }
 
   function onMerged(source: Brand, target: Brand): void {
@@ -194,8 +200,9 @@ export function BrandList() {
     resync();
   }
 
+  const showSpotlight = highlighted !== null;
   const emptyMsg =
-    !list.loading && !list.loadError && list.items.length === 0
+    !list.loading && !list.loadError && list.items.length === 0 && !showSpotlight
       ? debouncedQ
         ? t('brands.noMatch')
         : t('brands.empty')
@@ -268,6 +275,63 @@ export function BrandList() {
     </DropdownMenu>
   );
 
+  // `spotlight` (a light tint) marks the deep-link target — extracted so
+  // the pinned copy (always the first row, see below) and the real list
+  // render the exact same shape from one definition.
+  const desktopRow = (b: Brand, opts?: { spotlight?: boolean }): ReactNode => (
+    <TableRow
+      key={b.id}
+      data-brand-row={b.id}
+      className={cn('scroll-my-24', opts?.spotlight && 'bg-primary/5')}
+    >
+      <TableCell className="pl-2">
+        {/* name (`flex-initial` — shrinks under real pressure, but never
+         * *grows* into unused space the way `flex-1` did; a short name now
+         * sits right next to the badge instead of stretching the
+         * badge/slug off to the far right), badge (shrink-0, always
+         * visible), /slug (still its own truncate — free to shrink away
+         * under real pressure exactly like before, no new guarantee added
+         * for it, only for the badge). */}
+        <div className="flex min-w-0 items-center gap-1" title={`${b.name} /${b.slug}`}>
+          <span className="min-w-0 flex-initial truncate font-medium">{b.name}</span>
+          {restrictedIcon(b)}
+          <span className="min-w-0 shrink truncate text-xs text-muted-foreground">/{b.slug}</span>
+        </div>
+      </TableCell>
+      <TableCell>
+        <StatusBadge tone={STATUS_TONE[b.status]}>{t(`brands.status.${b.status}`)}</StatusBadge>
+      </TableCell>
+      <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
+        {b.aliases.length}
+      </TableCell>
+      <TableCell>{rowMenu(b)}</TableCell>
+    </TableRow>
+  );
+
+  const mobileCard = (b: Brand, opts?: { spotlight?: boolean }): ReactNode => (
+    <li
+      key={b.id}
+      data-brand-row={b.id}
+      className={cn('flex items-start gap-3 px-3 py-3', opts?.spotlight && 'bg-primary/5')}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1" title={`${b.name} /${b.slug}`}>
+          <span className="min-w-0 flex-initial truncate font-medium">{b.name}</span>
+          {restrictedIcon(b)}
+          <span className="min-w-0 shrink truncate text-xs text-muted-foreground">/{b.slug}</span>
+        </div>
+        <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+          <StatusBadge tone={STATUS_TONE[b.status]}>{t(`brands.status.${b.status}`)}</StatusBadge>
+        </p>
+      </div>
+      {/* the same menu as the desktop table — Merge/Delete had no way to be
+       * reached on mobile before this (the 2026-09-18 fix); a single "…"
+       * costs no more room than the one direct button that used to sit
+       * here. */}
+      <div className="shrink-0">{rowMenu(b)}</div>
+    </li>
+  );
+
   return (
     <section>
       <PageHeader
@@ -332,7 +396,11 @@ export function BrandList() {
             {tCommon('list.retry')}
           </ActionButton>
         </div>
-      ) : list.loading ? (
+      ) : list.loading && !highlighted ? (
+        // skipped once the deep-link target is already known, even if the
+        // rest of the list hasn't loaded yet — it shows pinned immediately
+        // instead of waiting behind the same skeleton as everything else
+        // (found live 2026-09-29).
         <ScrollLoadSkeleton />
       ) : emptyMsg ? (
         <p className="text-sm text-muted-foreground">{emptyMsg}</p>
@@ -351,73 +419,16 @@ export function BrandList() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {list.items.map((b) => (
-                  <TableRow
-                    key={b.id}
-                    data-brand-row={b.id}
-                    className={cn('scroll-my-24', b.id === flashId && 'sn-row-flash')}
-                  >
-                    <TableCell className="pl-2">
-                      {/* name (`flex-initial` — shrinks under real
-                       * pressure, but never *grows* into unused space the
-                       * way `flex-1` did; a short name now sits right next
-                       * to the badge instead of stretching the badge/slug
-                       * off to the far right), badge (shrink-0, always
-                       * visible), /slug (still its own truncate — free to
-                       * shrink away under real pressure exactly like
-                       * before, no new guarantee added for it, only for
-                       * the badge). */}
-                      <div
-                        className="flex min-w-0 items-center gap-1"
-                        title={`${b.name} /${b.slug}`}
-                      >
-                        <span className="min-w-0 flex-initial truncate font-medium">{b.name}</span>
-                        {restrictedIcon(b)}
-                        <span className="min-w-0 shrink truncate text-xs text-muted-foreground">
-                          /{b.slug}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge tone={STATUS_TONE[b.status]}>
-                        {t(`brands.status.${b.status}`)}
-                      </StatusBadge>
-                    </TableCell>
-                    <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                      {b.aliases.length}
-                    </TableCell>
-                    <TableCell>{rowMenu(b)}</TableCell>
-                  </TableRow>
-                ))}
+                {highlighted && desktopRow(highlighted, { spotlight: true })}
+                {list.items.filter((b) => b.id !== highlighted?.id).map((b) => desktopRow(b))}
               </TableBody>
             </Table>
           </div>
 
           {/* mobile: a flat card list */}
           <ul className="divide-y divide-border rounded-md border border-border md:hidden">
-            {list.items.map((b) => (
-              <li key={b.id} data-brand-row={b.id} className="flex items-start gap-3 px-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-1" title={`${b.name} /${b.slug}`}>
-                    <span className="min-w-0 flex-initial truncate font-medium">{b.name}</span>
-                    {restrictedIcon(b)}
-                    <span className="min-w-0 shrink truncate text-xs text-muted-foreground">
-                      /{b.slug}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                    <StatusBadge tone={STATUS_TONE[b.status]}>
-                      {t(`brands.status.${b.status}`)}
-                    </StatusBadge>
-                  </p>
-                </div>
-                {/* the same menu as the desktop table — Merge/Delete had no
-                 * way to be reached on mobile before this (the 2026-09-18
-                 * fix); a single "…" costs no more room than the one direct
-                 * button that used to sit here. */}
-                <div className="shrink-0">{rowMenu(b)}</div>
-              </li>
-            ))}
+            {highlighted && mobileCard(highlighted, { spotlight: true })}
+            {list.items.filter((b) => b.id !== highlighted?.id).map((b) => mobileCard(b))}
           </ul>
 
           <ScrollLoadFooter
@@ -443,9 +454,10 @@ export function BrandList() {
             setModal(null);
             void doDelete(b);
           }}
-          onAliasesChanged={(b) =>
-            list.setItems((prev) => prev.map((x) => (x.id === b.id ? b : x)))
-          }
+          onAliasesChanged={(b) => {
+            list.setItems((prev) => prev.map((x) => (x.id === b.id ? b : x)));
+            if (highlighted?.id === b.id) setHighlighted(b);
+          }}
           onConflict={() => {
             setModal(null);
             notify.error(t('brands.editConflict'), 5000);

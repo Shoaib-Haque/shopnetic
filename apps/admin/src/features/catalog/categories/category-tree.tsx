@@ -100,6 +100,11 @@ interface RowProps {
   context?: string;
   /** Briefly highlight this row — it was just moved / restored. */
   flash?: boolean;
+  /** A light, non-animated tint — a deep-link target prepended ahead of the
+   * real rows, not yet organically loaded (`useHighlightTarget`'s own doc
+   * comment has the full reasoning). Distinct from `flash`, which is for
+   * the real row settling into its actual position once it does. */
+  spotlight?: boolean;
   /** Tree metadata; omit for a flat row. */
   tree?: {
     depth: number;
@@ -208,7 +213,7 @@ function TreeGuides({ tree }: { tree: NonNullable<RowProps['tree']> }) {
   );
 }
 
-function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProps) {
+function CategoryRow({ cat, context, flash, spotlight, tree, drag, renderActions }: RowProps) {
   const t = useTranslations('catalog');
   const life = lifecycle(cat);
   const label = cat.name['en'] ?? cat.slug;
@@ -223,6 +228,7 @@ function CategoryRow({ cat, context, flash, tree, drag, renderActions }: RowProp
         drag?.dragging && 'opacity-40',
         drag?.hint === 'inside' && 'bg-primary/10',
         flash && 'sn-row-flash',
+        spotlight && 'bg-primary/5',
       )}
       {...(tree
         ? {
@@ -588,6 +594,7 @@ export function CategoryFlatTable({
   allCategories,
   renderActions,
   flashId,
+  spotlightId,
 }: {
   items: Category[];
   /** name-resolution pool for the "in A › B" line — pass the full list when
@@ -595,6 +602,10 @@ export function CategoryFlatTable({
   allCategories?: Category[];
   renderActions: (c: Category) => ReactNode;
   flashId?: string | null;
+  /** A deep-link target prepended into `items` ahead of its real position —
+   * marks that one row with a light tint instead of `flash`'s animation
+   * (`RowProps.spotlight`'s own doc comment has the full reasoning). */
+  spotlightId?: string | null;
 }) {
   const ancestorPath = useAncestorPath(allCategories ?? items);
   return (
@@ -607,6 +618,7 @@ export function CategoryFlatTable({
             cat={cat}
             context={ancestorPath(cat)}
             flash={cat.id === flashId}
+            spotlight={cat.id === spotlightId}
             renderActions={renderActions}
           />
         ))}
@@ -624,6 +636,7 @@ export function CategoryCards({
   items,
   allCategories,
   renderAction,
+  spotlightId,
 }: {
   items: Category[];
   /** name-resolution pool for the "in A › B" line — pass the full list when
@@ -631,6 +644,11 @@ export function CategoryCards({
    *  resolve. Same idea as `CategoryFlatTable`'s own prop of the same name. */
   allCategories?: Category[];
   renderAction: (c: Category) => ReactNode;
+  /** A deep-link target prepended into `items` ahead of its real position —
+   * marks that one card with a light tint (`RowProps.spotlight`'s own doc
+   * comment has the full reasoning; mobile cards have no `flash` here to
+   * begin with, so this is the only highlight treatment they get). */
+  spotlightId?: string | null;
 }) {
   const t = useTranslations('catalog');
   const contextOf = useAncestorPath(allCategories ?? items);
@@ -641,7 +659,13 @@ export function CategoryCards({
         const life = lifecycle(c);
         const ctx = contextOf(c);
         return (
-          <li key={c.id} className="flex items-start gap-3 px-3 py-3">
+          <li
+            key={c.id}
+            className={cn(
+              'flex items-start gap-3 px-3 py-3',
+              c.id === spotlightId && 'bg-primary/5',
+            )}
+          >
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium" title={`${c.name['en'] ?? c.slug} /${c.slug}`}>
                 {c.name['en'] ?? c.slug}

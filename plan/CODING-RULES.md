@@ -4368,3 +4368,282 @@ compose file.
     on Category/Staff) — needs a restart before manual UI testing exercises
     the new endpoints live; not something to do without asking, same as
     the stale-dev-server case earlier in this project.
+- 2026-09-29 (follow-up, same day) — Manual testing raised two more findings
+  once Category/Staff's own migration above was live, discussed before
+  coding both:
+  - **A deep-link target sorting past the first page still needed a scroll
+    animation to reach**, even centered — asked whether it could appear
+    with zero scroll instead. Discussed three options (pin as a separate
+    spotlight card above the list; insert at index 0 then visually jump to
+    its true position once known; leave the existing centered auto-scroll
+    as-is) and picked the spotlight, recommended for working identically
+    across all four lists (including Category, which structurally can't
+    compute a "true position" to jump to) and for carrying no risk of
+    landing a row in the wrong sort order.
+  - Investigating the splice-based design (2026-09-28/29) to build the
+    spotlight surfaced two real problems it had that the spotlight design
+    doesn't: a list with a working `compare` could silently drift out of
+    true order once more pages loaded past the manually-spliced row (each
+    `loadMore()` page is appended raw, never re-sorted against an earlier
+    manual insert), and — worse — once normal pagination organically
+    reached the target's real page, its id would render **twice** (nothing
+    deduped the manual splice against the naturally-loaded copy). Neither
+    had been hit/reported yet, but both are closed by construction now:
+    `useHighlightTarget` no longer touches the caller's `items` at all.
+  - Redesigned `useHighlightTarget`: drops `setItems`/`compare` entirely,
+    returns `{ target, inList }` instead of a bare `T | null`. `inList`
+    flips `true` once the fetched target's id shows up in the caller's own
+    `items` (i.e. real pagination reached it) — the caller renders `target`
+    as a spotlight while `inList` is `false`, and flashes the real row once
+    it flips `true`. New shared `HighlightSpotlight` wrapper component
+    (`components/crud/`) renders whatever row-shape the caller passes it
+    inside a labelled ("Jump target") bordered card. Each of the four list
+    components had its row-rendering extracted into `desktopRow`/
+    `mobileCard` functions (previously inline in a `.map()`) so the
+    spotlight and the real list render the *exact* same row shape from one
+    definition — Category alone reuses its existing shared
+    `CategoryFlatTable`/`CategoryCards` components directly instead, no
+    extraction needed there.
+  - Revert-confirmed the `inList` dedup check (temporarily forced it
+    `false`) — 8 tests failed across all four lists (their own "already on
+    first page" and "spotlight steps aside" cases), all for the expected
+    reason; restored. Also revert-confirmed one list's `showSpotlight`
+    gate (temporarily dropped the `!inList` condition) — its own 2 tests
+    failed with the spotlight staying up after the real row loaded;
+    restored.
+  - Live-verified against the running dev server (Chrome): a deep-link
+    target confirmed showing instantly as a spotlight with zero scroll.
+    Chasing the "spotlight steps aside once scrolled-to organically" case
+    live hit unrelated dev-server flakiness (a Next.js RSC-prefetch
+    pattern that also reproduced on the plain list with no highlight
+    param at all) that made a clean live demonstration impractical in the
+    time available — not something this change introduced; the jsdom
+    suite's own revert-confirmed coverage of the exact mechanism was
+    treated as sufficient given that.
+  - New tests across all four lists' deep-link `describe` blocks: split
+    the old single "splices...flashes" test into "already on first page —
+    no spotlight needed" and "shows as spotlight...when past first page";
+    added "the spotlight steps aside once normal pagination organically
+    loads the target — no duplicate row" (drives the scroll sentinel,
+    asserts exactly one row element for the target's id, not two).
+  - Full suite green: 323/323 admin; typecheck and lint clean.
+  - **Separately, editing an item loaded via scroll (past page 1) made it
+    vanish until scrolling back down re-fetched it from scratch** — Brand
+    and Option Types only; Category didn't show this (its default view is
+    the unpaginated tree, which always reloads everything) and Staff
+    didn't either (its own mutations already patch the changed record
+    directly into the list, never resync at all). Root cause: `onSaved`'s
+    post-edit `resync()` calls `useScrollLoad.refresh()`, which — per its
+    own doc comment — only ever re-fetches page 1 and *replaces* the whole
+    array with it; anything loaded via scroll past page 1 simply isn't in
+    that response, so it disappears from `items` until further scrolling
+    re-triggers `loadMore()` from scratch.
+  - Fixed by skipping the network resync entirely for an *update* (not a
+    create) and patching the save response's own record straight into the
+    already-loaded list instead — there's nothing a resync would add,
+    since the response already has the fresh data. Matches the pattern
+    Staff's mutations and these same files' own sub-resource handlers
+    (`onAliasesChanged`/`onValuesChanged`) already used, just not applied
+    to the main edit action before now. Option Types re-sorts by `code`
+    after patching (the one field among these lists' own sort keys that
+    the edit form actually allows changing); Brand's sort key is the
+    immutable `id`, so no re-sort needed. Scope, per a direct question
+    asked before coding: also closed Category's own latent copy of this
+    bug in its flat/all view (proactively, since the same fix was already
+    being made) — patched there too, with no re-sort attempted at all,
+    since that view's true order can't be computed client-side to begin
+    with (same tradeoff the spotlight above already accepts for it).
+    `created` and the stale-edit-conflict path are both untouched — a
+    create still needs a real fetch to know where a brand-new row
+    belongs, and a conflict's whole point is that the local copy is known
+    stale.
+  - Revert-confirmed all three call sites independently (temporarily
+    replaced each local-patch call with a no-op comment) — each list's own
+    new "patches in place instantly" test failed for the right reason
+    (stuck waiting for a row-text update that a resync-less flow never
+    produces); restored all three.
+  - New tests: Option Types' and Category's existing skeleton-flash/PATCH
+    tests rewritten (the old ones specifically asserted a held-open third
+    "resync" mock, which no longer exists for an update); Brand and
+    Category each gained a new "editing patches the row in place
+    instantly — no network resync, no skeleton flash" test asserting the
+    exact call count (no third request).
+  - Live-verified against the running dev server: edited a page-1 Option
+    Type's name — toast appeared, the row updated instantly with no
+    skeleton flash, and the network log showed exactly one request (the
+    PATCH), confirming no follow-up resync fires.
+  - Full suite green: 325/325 admin; typecheck and lint clean.
+- 2026-09-29 (follow-up, same day) — Simplified the deep-link spotlight
+  UI right after building it: told directly not to make it a separate
+  section — just prepend the target row at the top of the real list with
+  a light background, nothing else.
+  - Dropped the standalone `HighlightSpotlight` wrapper component
+    (deleted, along with its now-unused `list.highlightLabel` translation
+    key) and the separate mini-table/mini-card it rendered above the real
+    list. The target is now prepended as the *first* row inside the same
+    `<TableBody>`/`<ul>` the real rows render in, tinted `bg-primary/5` —
+    a new `spotlight` option alongside each list's existing `flash`
+    option on its `desktopRow`/`mobileCard` functions (`RowProps.spotlight`
+    for Category, which still reuses its own shared `CategoryFlatTable`/
+    `CategoryCards` rather than inline row functions — extended both with
+    a `spotlightId` prop, matching their existing `flashId`). Once the
+    target loads into the real list organically, the prepended copy is
+    removed the same way as before (`showSpotlight` still gates on
+    `!inList`) and the real row flashes instead — no behavior change, only
+    where and how it's presented.
+  - Each list's own `emptyMsg`/`flatEmpty` computation gained a
+    `&& !showSpotlight` guard — otherwise a search with zero real matches
+    but an active spotlight would show "Nothing here yet." stacked above
+    (or instead of) a target that's clearly right there.
+  - Revert-confirmed the prepend itself (Option Types): disabling only the
+    desktop-side prepend left every test green, since `document
+    .querySelector` happily matches the surviving mobile-side copy of the
+    same `data-*-row` id — not a real gap, just how the dual desktop/
+    mobile render already works for every row. Disabling *both* copies
+    together failed the expected 3 tests; restored both.
+  - Updated every "Jump target" text assertion across all four lists' test
+    files to check the `bg-primary/5` class on the target row directly
+    instead (the label/section no longer exists to query for).
+  - Live-verified against the running dev server: navigated straight to a
+    deep link for a row that sorts last alphabetically (so pagination
+    hasn't organically reached it yet) — it rendered as the very first row
+    of the real table, `bg-primary/5` visibly tinted, confirmed via a
+    zoomed screenshot.
+  - Full suite green: 325/325 admin; typecheck and lint clean.
+- 2026-09-29 (follow-up, same day) — Asked directly whether the deep-link
+  target's behavior was actually consistent: it wasn't. An item already
+  loaded (e.g. sorted early, or otherwise already present in `items`) had
+  flashed in its own natural position with no top placement at all, while
+  an item not yet loaded showed pinned at top and then visually *jumped*
+  down to its natural position once real pagination reached it — two
+  genuinely different behaviors depending on load state, not one
+  predictable rule. Discussed the alternative (always pin at top,
+  unconditionally, for every case) before implementing it.
+  - Simplified `useHighlightTarget` back to returning the fetched record
+    directly (`T | null`, no more `{target, inList}`) — `items` is no
+    longer a parameter at all, since the hook doesn't need to know
+    whether the caller's list already contains the target anymore. Kept
+    the tab-correction logic (`tab`/`setTab`/`isArchived`) unchanged.
+  - Every caller now renders the highlighted record unconditionally
+    (whenever non-null) as the pinned first row, and **filters that same
+    id out of its normal list rendering** — `items.filter(x => x.id !==
+    highlighted?.id)` — so the row never appears a second time once
+    normal pagination organically loads it too. This replaces the old
+    `inList`-gated "spotlight only until it's found for real, then flash
+    the real row instead" transition with one flat rule: always pinned,
+    never duplicated, regardless of load state. The `flash`/`sn-row-flash`
+    machinery this used to trigger on "arrival" is now entirely removed
+    from Brand/Option Types/Staff (deleted `useRowFlash` there — it had no
+    other caller in any of the three); Category keeps its own `flash` for
+    drag-move/restore, unrelated to this, and just dropped the one
+    deep-link-specific trigger.
+  - Revert-confirmed the filter itself (Option Types): removing `.filter
+    (…)` from the real list's own render left the previously-pinned row
+    rendering a *third* time once its real page loaded — exactly the
+    duplication this exists to prevent; the 2 tests exercising that case
+    failed with a row count of 3 instead of 2; restored.
+  - Live-verified against the running dev server: deep-linked to an item
+    that was already sitting second on page 1 — it moved to the very top,
+    tinted, pushing the row that used to be first down to second, proving
+    the same treatment now applies whether or not the target was already
+    loaded.
+  - Full suite green: 325/325 admin; typecheck and lint clean.
+- 2026-09-29 (follow-up 2, same day) — Two more issues reported after
+  further manual testing on all four lists: (1) the pinned deep-link row
+  could take visibly longer to appear on Category specifically than on
+  Brand/Option Types/Staff; (2) editing (or changing status/role on) a
+  record that arrived via a deep link updated the real list correctly but
+  left the pinned copy at top showing the stale pre-edit value.
+  - Root cause of (2): the local-patch-instead-of-resync pattern each
+    list's save handler already used (`items.map(x => x.id === saved.id ?
+    saved : x)`) only ever touched the caller's own `items`/`accounts`
+    state — the pinned record returned by `useHighlightTarget` is separate
+    state internal to the hook, so a patch never reached it.
+  - Fix: `useHighlightTarget` now returns `[value, setValue]` (`useState`
+    -shaped) instead of a bare value. Every caller's save handler calls
+    `setValue(saved)` alongside its existing patch whenever `saved.id`
+    matches the currently pinned id. Applied to Option Types (`onSaved`,
+    `onValuesChanged`), Brand (`onSaved`, `onAliasesChanged`), Staff
+    (single `applyUpdate` covering role/activate/reset-TOTP/deprovision),
+    Category (`onSaved`).
+  - Root cause of (1), at the time: Category's own render gated the
+    *entire* flat-mode branch (including the pinned row) behind `flatList
+    .loading`, so the pinned row wasn't shown until the list's own first
+    page had also finished loading — unlike the other three lists, whose
+    simpler mount (2 concurrent fetches vs Category's 3-4) usually finished
+    fast enough that this was never noticed. Changed the gate to `flatList
+    .loading && !highlighted`, mirrored on all four lists, so the pinned
+    row renders the instant the by-id fetch resolves, independent of the
+    rest of the list's own load state.
+  - Revert-confirmed both fixes on Category (temporarily reverting each to
+    the old behavior) — the corresponding new test failed for the expected
+    reason each time; restored.
+  - Full suite green: 333/333 admin; typecheck and lint clean.
+  - This loading-gate change turned out *not* to fully close the gap live
+    (see 2026-09-30 below) — the actual bottleneck was a browser connection
+    limit, not the render gate, which is why it wasn't caught by jsdom
+    tests (no real network queuing to reproduce).
+- 2026-09-30 — The 2026-09-29 loading-gate fix passed every automated test
+  but the user reported live that Category's pinned deep-link target was
+  *still* appearing well after the rest of the list, sometimes close to a
+  second later. Investigated live against the running dev server with
+  `performance.getEntriesByType('resource')` timing (not just screenshots)
+  since the discrepancy between "tests pass" and "still broken live" meant
+  the render-gate fix, though correct, wasn't the actual bottleneck.
+  - Root cause: Category's mount fires 4 distinct concurrent requests
+    (tree reload via `load()`, the flat page, a breadcrumb-name-resolution
+    pool fetch, and the deep link's own by-id lookup), and React
+    StrictMode (dev only) double-invokes every mount effect, doubling that
+    to 8. Chrome caps concurrent HTTP/1.1 connections *per origin* at 6.
+    The first 6 requests dispatch immediately; the rest queue for a slot.
+    The by-id lookup — a single small row — happened to be one of the
+    queued ones, so it waited ~850ms for a connection to free, then took
+    another ~850ms itself: ~1.7s total before the pinned row could render,
+    while the rest of the list (which won an immediate slot) painted
+    ~800ms earlier. Measured via `requestStart - startTime` per request
+    (a near-zero gap for the immediate 6, ~840-890ms for the queued rest).
+    Confirmed dev-only: StrictMode's doubling never happens in a
+    production build, so production only ever fires 4 concurrent requests
+    — under the cap, no queuing, this bug is unreachable there.
+  - Fix, part 1: added a `priority: 'high'` fetch hint (`Options.priority`
+    on the shared `adminApi`/`staffManageApi` client, threaded to the
+    underlying `fetch()` call) on all four deep-link by-id lookups
+    (`getCategory`, `getBrand`, `getOptionType`, `getStaffAccount`) —
+    always correct (a small latency-sensitive request shouldn't sit behind
+    bulkier list fetches when the queue is contended), and fully
+    sufficient on its own in production math. Measured live afterward:
+    this alone reordered *which* queued request wins a freed slot first,
+    but didn't stop the by-id lookup from queuing at all when 8 requests
+    fire in the same tick — Chrome's per-origin cap governs which requests
+    get one of the first 6 sockets outright, and priority only affects
+    dequeue order for whatever's left once that's decided, not admission
+    into it.
+  - Fix, part 2 (closes the dev-mode gap too): found that Category's
+    breadcrumb-pool fetch (`listCategories({status: 'all'})`, for
+    resolving ancestor names outside whatever page is loaded) and its own
+    unconditional tree-reload fetch (`load()`, also `listCategories({
+    status})`) request the *exact same payload* whenever the current tab's
+    `status` is already `'all'` — which a deep link always forces. Skipped
+    the breadcrumb-pool fetch entirely in that case and reuse `items` (from
+    `load()`) instead via a derived `effectiveBreadcrumbPool`, dropping
+    Category's distinct concurrent fetches from 4 to 3 — doubled by
+    StrictMode that's 6, exactly at the cap instead of over it, so nothing
+    queues at all. The dedicated fetch still runs normally whenever the
+    tab isn't `all` (Archived, or a search from Active) — re-triggered on
+    crossing into/out of the `all` tab (`useEffect` keyed on `status ===
+    'all'`, not raw `status`, to keep the original "fetch once per
+    flat-mode entry, not on every tab switch" intent).
+  - Live re-verified via the same resource-timing method: both StrictMode
+    invocations of the by-id lookup landed in the immediate group
+    (`requestStart - startTime` ≈ 1ms, no queuing) — the two remaining
+    queued entries were Next.js's own RSC navigation prefetch requests
+    (identified by an `_rsc` query param), not admin API data fetches, so
+    unrelated to this bug. Screenshot after a fresh deep-link navigation
+    showed the pinned target at top immediately, no "wrong item first,
+    correct item pops in later" flash.
+  - Test updates: adjusted mock call-count/sequence assertions across the
+    Category, Brand, and Option Types deep-link tests for the extra
+    `{priority: 'high'}` fetch arg, and across several Category tests for
+    the now-skipped breadcrumb-pool call shifting every subsequent mock in
+    the sequence down by one position.
+  - Full suite green: 333/333 admin; typecheck and lint clean.

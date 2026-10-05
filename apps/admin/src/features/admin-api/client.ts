@@ -22,6 +22,19 @@ interface Options {
   /** Return the whole `{data, meta}` envelope instead of unwrapping to just
    * `data` — for callers that need `meta` too (e.g. cursor pagination). */
   raw?: boolean;
+  /** Fetch Priority hint (`'high'`) — for a request that's small and
+   * latency-sensitive but mounts alongside several bulkier ones on the same
+   * origin. Chrome caps concurrent HTTP/1.1 connections per origin at 6; a
+   * page whose mount fires more than that (Category: tree + flat page +
+   * breadcrumb pool + a deep-link's own by-id lookup, doubled again by React
+   * StrictMode in dev) queues the overflow in *arrival* order, not size or
+   * urgency — so a one-row by-id GET can end up waiting behind bulkier list
+   * fetches and land over a second late (found live 2026-09-30, Category's
+   * deep-link target appearing well after the rest of the list). `priority`
+   * only changes which queued request Chrome dequeues next once a
+   * connection frees, letting this one jump that queue instead of taking
+   * its turn. */
+  priority?: RequestPriority;
 }
 
 // Set once the first `UNAUTHENTICATED` has kicked off a login redirect. Every
@@ -74,6 +87,7 @@ function createApiClient(basePath: string) {
       // browser must not serve a stale GET from its HTTP cache.
       cache: 'no-store',
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.priority ? { priority: opts.priority } : {}),
     };
     if (opts.body !== undefined) {
       init.headers = { 'content-type': 'application/json' };

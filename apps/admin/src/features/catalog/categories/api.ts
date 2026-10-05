@@ -49,7 +49,7 @@ export function listCategoriesPage(opts: {
 /** One record by id, regardless of live/archived — for a deep link's
  * direct-by-id lookup (`useHighlightTarget`), not the paginated/tree list. */
 export function getCategory(id: string): Promise<Category> {
-  return adminApi<Category>(`/categories/${id}`);
+  return adminApi<Category>(`/categories/${id}`, { priority: 'high' });
 }
 
 export function createCategory(body: CreateCategoryRequest): Promise<Category> {

@@ -206,6 +206,31 @@ describe('BrandList', () => {
     expect(await screen.findByText('Brand “Acme” deleted.')).toBeInTheDocument();
   });
 
+  it('editing a brand patches the row in place instantly — no network resync, no skeleton flash', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount
+      .mockResolvedValueOnce(brand('a', 'Acme Renamed')); // #2 PATCH
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    await screen.findByText('Edit brand');
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Acme Renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByText('Brand “Acme Renamed” saved.');
+    await screen.findAllByText('Acme Renamed');
+    expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
+    // the PATCH response already has the fresh data — patched straight into
+    // the list, no third request to re-fetch it (the 2026-09-29 fix; this
+    // also means an edit to a row loaded via scroll, past page 1, no longer
+    // vanishes from view until scrolling back down re-fetches it)
+    expect(mockedAdminApi).toHaveBeenCalledTimes(2);
+  });
+
   it("a stale edit conflict closes the modal, refetches, and notifies — mirrors Category's own guard", async () => {
     mockedAdminApi
       .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount
@@ -448,7 +473,43 @@ describe('BrandList', () => {
   });
 
   describe('deep link from Audit Log (?highlight=id) — fetches the target directly by id', () => {
-    it('splices the fetched target into the list and flashes it, even when it would sort past the first page', async () => {
+    it('shows the pinned target immediately, before the rest of the list has finished loading', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'z' });
+      let resolvePage1!: (v: { data: Brand[]; meta: object }) => void;
+      mockedAdminApi
+        .mockReturnValueOnce(new Promise((resolve) => (resolvePage1 = resolve))) // #1 page 1 — held open
+        .mockResolvedValueOnce(brand('z', 'Zulu')); // #2 direct GET — resolves fast
+
+      renderAdmin(<BrandList />);
+      // the pinned row shows even though page 1 is still pending — it used
+      // to be gated behind the same loading skeleton as the rest of the
+      // list (found live 2026-09-29)
+      await screen.findAllByText('Zulu');
+      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('bg-primary/5');
+      expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
+
+      resolvePage1(page([brand('a', 'Acme')]));
+      await screen.findAllByText('Acme');
+    });
+
+    it('pins the target as the first row with a light tint, even when it was already loaded on the first page', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'a' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount, Live page 1 — has the target
+        .mockResolvedValueOnce(brand('a', 'Acme')); // #2 direct GET by id — same row
+
+      renderAdmin(<BrandList />);
+      await screen.findAllByText('Acme');
+      await waitFor(() =>
+        expect(document.querySelector('[data-brand-row="a"]')).toHaveClass('bg-primary/5'),
+      );
+
+      // pinned once (desktop + its hidden mobile twin) — its own natural
+      // spot in the loaded page is filtered out, not rendered a second time
+      expect(document.querySelectorAll('[data-brand-row="a"]')).toHaveLength(2);
+    });
+
+    it('pins the target as the first row with a light tint when it would otherwise sort past the first page', async () => {
       mockSearchParams = new URLSearchParams({ highlight: 'z' });
       mockedAdminApi
         .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount, Live page 1
@@ -457,9 +518,59 @@ describe('BrandList', () => {
       renderAdmin(<BrandList />);
       await screen.findAllByText('Zulu');
 
-      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('sn-row-flash');
-      // a plain GET by id — no cursor, no page-walk, no `raw: true`
-      expect(mockedAdminApi).toHaveBeenNthCalledWith(2, '/brands/z');
+      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('bg-primary/5');
+      // a plain GET by id — no cursor, no page-walk, no `raw: true`; `priority:
+      // 'high'` so it doesn't queue behind bulkier list fetches on a busy
+      // mount (2026-09-30 fix)
+      expect(mockedAdminApi).toHaveBeenNthCalledWith(2, '/brands/z', { priority: 'high' });
+    });
+
+    it('stays pinned, never duplicated, once normal pagination organically loads the same target too', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'z' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([brand('a', 'Acme')], 'a')) // #1 page 1, more to come
+        .mockResolvedValueOnce(brand('z', 'Zulu')) // #2 direct GET — pinned at top
+        .mockResolvedValueOnce(page([brand('z', 'Zulu')])); // #3 page 2 — its natural spot
+
+      renderAdmin(<BrandList />);
+      await screen.findAllByText('Zulu');
+      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('bg-primary/5');
+
+      triggerIntersection(await screen.findByTestId('scroll-sentinel'));
+      // page 2 (which naturally contains the target too) has landed once
+      // the sentinel — rendered only while `hasMore` — disappears
+      await waitFor(() => expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument());
+
+      // still pinned once (desktop + its hidden mobile twin) — the copy
+      // that just loaded into its natural spot is filtered out, not shown
+      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('bg-primary/5');
+      expect(document.querySelectorAll('[data-brand-row="z"]')).toHaveLength(2);
+    });
+
+    it('editing the pinned deep-link target patches its pinned copy too', async () => {
+      mockSearchParams = new URLSearchParams({ highlight: 'z' });
+      mockedAdminApi
+        .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 page 1 — no target
+        .mockResolvedValueOnce(brand('z', 'Zulu')) // #2 direct GET — pinned at top
+        .mockResolvedValueOnce(brand('z', 'Zulu Renamed')); // #3 PATCH
+
+      renderAdmin(<BrandList />);
+      await screen.findAllByText('Zulu');
+      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('bg-primary/5');
+
+      openRowMenu(); // targets the first "More actions" trigger — the pinned row
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+      await screen.findByText('Edit brand');
+
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Zulu Renamed' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await screen.findByText('Brand “Zulu Renamed” saved.');
+      await screen.findAllByText('Zulu Renamed');
+      expect(screen.queryByText('Zulu')).not.toBeInTheDocument();
+      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('bg-primary/5');
+      // no extra fetch beyond the PATCH — the pinned copy is patched locally
+      expect(mockedAdminApi).toHaveBeenCalledTimes(3);
     });
 
     it('switches to the Archived tab on its own once the fetched target turns out to be archived — no action-name guessing needed', async () => {
@@ -472,11 +583,11 @@ describe('BrandList', () => {
       renderAdmin(<BrandList />);
       await screen.findAllByText('Zulu');
 
-      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('sn-row-flash');
+      expect(document.querySelector('[data-brand-row="z"]')).toHaveClass('bg-primary/5');
       expect(screen.getByRole('button', { name: 'Archived' })).toHaveClass('bg-muted');
     });
 
-    it('a stale/invalid highlight id fails quietly — no flash, no crash', async () => {
+    it('a stale/invalid highlight id fails quietly — nothing pinned, no crash', async () => {
       mockSearchParams = new URLSearchParams({ highlight: 'nope' });
       mockedAdminApi
         .mockResolvedValueOnce(page([brand('a', 'Acme')]))
@@ -486,16 +597,16 @@ describe('BrandList', () => {
       await screen.findAllByText('Acme');
       await waitFor(() => expect(mockedAdminApi).toHaveBeenCalledTimes(2));
 
-      expect(document.querySelector('[data-brand-row="a"]')).not.toHaveClass('sn-row-flash');
+      expect(document.querySelector('[data-brand-row="a"]')).not.toHaveClass('bg-primary/5');
     });
 
-    it('without a highlight param, nothing flashes and no direct fetch happens', async () => {
+    it('without a highlight param, nothing is pinned and no direct fetch happens', async () => {
       mockedAdminApi.mockResolvedValueOnce(page([brand('a', 'Acme')]));
 
       renderAdmin(<BrandList />);
       await screen.findAllByText('Acme');
 
-      expect(document.querySelector('[data-brand-row="a"]')).not.toHaveClass('sn-row-flash');
+      expect(document.querySelector('[data-brand-row="a"]')).not.toHaveClass('bg-primary/5');
       expect(mockedAdminApi).toHaveBeenCalledTimes(1);
     });
   });

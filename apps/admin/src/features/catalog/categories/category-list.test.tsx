@@ -280,6 +280,42 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
   });
 
+  it('editing a category from the flat/all view patches the row in place — no flat-page resync, no skeleton flash', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'all' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }) // #2 flat page 1
+      // no separate breadcrumb-pool GET — `status` is already `all`, so it
+      // reuses #1's `items` instead of firing an identical request
+      .mockResolvedValueOnce([]) // #3 modal-open GET — the live active list (status !== 'active')
+      .mockResolvedValueOnce(cat('a', 'Alpha Renamed')) // #4 PATCH /categories/a — a plain object
+      .mockResolvedValueOnce([]); // #5 the tree's own background reload (unrelated to what's shown)
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    const dialog = within(await screen.findByRole('dialog'));
+    await dialog.findByText('Edit category');
+
+    fireEvent.change(dialog.getByLabelText('Name (English)'), {
+      target: { value: 'Alpha Renamed' },
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'Save' }));
+
+    await screen.findByText('Category “Alpha Renamed” saved.');
+    await screen.findAllByText('Alpha Renamed');
+    expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
+    expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
+    // the PATCH response already has the fresh data — patched straight into
+    // the flat view, no extra flat-page fetch to re-fetch it (the 2026-09-29
+    // fix; this also means an edit to a row loaded via scroll, past page 1,
+    // no longer vanishes from view until scrolling back down re-fetches it).
+    // Exactly 5 calls total — #5 is only the tree's own unrelated background
+    // reload, not a flat-page resync.
+    expect(mockedAdminApi).toHaveBeenCalledTimes(5);
+  });
+
   it('New Category from the Archived tab still offers live categories as a parent — the 2026-09-18 fix', async () => {
     // On Archived, `items` (the tab's own data) holds only archived rows —
     // filtering those down to non-archived ones used to leave the parent
@@ -578,48 +614,150 @@ describe('CategoryList drag-reorder rollback', () => {
 });
 
 describe('CategoryList — deep link from Audit Log (?status=all&highlight=categoryId) — fetches the target directly by id', () => {
-  it('splices the fetched target into the list (appended, not tree-sorted) and flashes it, even when it is not on the first page', async () => {
+  it('shows the pinned target immediately, before the rest of the flat list has finished loading', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'all', highlight: 'z' });
+    let resolveFlatPage1!: (v: { data: Category[]; meta: object }) => void;
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
+      .mockReturnValueOnce(new Promise((resolve) => (resolveFlatPage1 = resolve))) // #2 flat page 1 — held open
+      .mockResolvedValueOnce(cat('z', 'Zulu')); // #3 direct GET — resolves fast
+    // no separate breadcrumb-pool GET — `status` is already `all`, so it
+    // reuses `items` (#1) instead of firing an identical request
+
+    renderAdmin(<CategoryList />);
+    // the pinned row shows even though the flat page is still pending — it
+    // used to be gated behind the same loading skeleton as the rest of the
+    // list, most noticeable here of all four lists (found live 2026-09-29;
+    // `CategoryListSkeleton`'s own doc comment has the full reasoning)
+    await screen.findAllByText('Zulu');
+    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('bg-primary/5');
+    expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
+
+    resolveFlatPage1({ data: [cat('a', 'Alpha')], meta: {} });
+    await screen.findAllByText('Alpha');
+  });
+
+  it('pins the target as the first row with a light tint, even when it was already loaded on the first page', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'all', highlight: 'z' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha'), cat('z', 'Zulu')], meta: {} }) // #2 flat page 1 — has the target
+      .mockResolvedValueOnce(cat('z', 'Zulu')); // #3 direct GET /categories/z — same row
+    // no separate breadcrumb-pool GET — `status` is already `all`
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Zulu');
+    await waitFor(() =>
+      expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('bg-primary/5'),
+    );
+
+    // pinned once — unlike Brand/Option Types/Staff, Category's mobile
+    // `CategoryCards` doesn't carry `data-cat-row` at all, so a single
+    // match here is the correct no-duplicate signal for this list; its
+    // own natural spot in the loaded page is filtered out, not shown again
+    expect(document.querySelectorAll('[data-cat-row="z"]')).toHaveLength(1);
+  });
+
+  it('pins the target as the first row with a light tint when it is not on the first page', async () => {
     mockSearchParams = new URLSearchParams({ status: 'all', highlight: 'z' });
     mockedAdminApi
       .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
       .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }) // #2 flat page 1 — no target
-      .mockResolvedValueOnce(cat('z', 'Zulu')) // #3 direct GET /categories/z — a plain object, not `{data, meta}`
-      .mockResolvedValueOnce([]); // #4 breadcrumb-pool GET (status=all) — the 2026-09-18 fix
+      .mockResolvedValueOnce(cat('z', 'Zulu')); // #3 direct GET /categories/z — a plain object, not `{data, meta}`
+    // no separate breadcrumb-pool GET — `status` is already `all`
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Zulu');
 
-    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('sn-row-flash');
-    // a plain GET by id — no cursor, no page-walk, no `raw: true`
-    expect(mockedAdminApi).toHaveBeenNthCalledWith(3, '/categories/z');
+    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('bg-primary/5');
+    // a plain GET by id — no cursor, no page-walk, no `raw: true`; `priority:
+    // 'high'` so this one row doesn't queue behind Category's bulkier
+    // tree/flat/breadcrumb fetches on a busy mount (2026-09-30 fix)
+    expect(mockedAdminApi).toHaveBeenNthCalledWith(3, '/categories/z', { priority: 'high' });
   });
 
-  it('a stale/invalid highlight id fails quietly — no flash, no crash', async () => {
+  it('stays pinned, never duplicated, once normal pagination organically loads the same target too', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'all', highlight: 'z' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: { nextCursor: 'c1' } }) // #2 flat page 1, more to come
+      .mockResolvedValueOnce(cat('z', 'Zulu')) // #3 direct GET — pinned at top
+      // no separate breadcrumb-pool GET — `status` is already `all`
+      .mockResolvedValueOnce({ data: [cat('z', 'Zulu')], meta: {} }); // #4 flat page 2 — its natural spot
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Zulu');
+    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('bg-primary/5');
+
+    const sentinel = screen.getByTestId('scroll-sentinel');
+    act(() => triggerIntersection(sentinel));
+    // page 2 (which naturally contains the target too) has landed once the
+    // sentinel — rendered only while `hasMore` — disappears
+    await waitFor(() => expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument());
+
+    // still pinned once — the copy that just loaded into its natural spot
+    // is filtered out, not shown a second time
+    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('bg-primary/5');
+    expect(document.querySelectorAll('[data-cat-row="z"]')).toHaveLength(1);
+  });
+
+  it('editing the pinned deep-link target patches its pinned copy too', async () => {
+    mockSearchParams = new URLSearchParams({ status: 'all', highlight: 'z' });
+    mockedAdminApi
+      .mockResolvedValueOnce([]) // #1 mount GET — the tree's own unconditional load
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }) // #2 flat page 1 — no target
+      .mockResolvedValueOnce(cat('z', 'Zulu')) // #3 direct GET — pinned at top
+      // no separate breadcrumb-pool GET — `status` is already `all`
+      .mockResolvedValueOnce([]) // #4 modal-open GET — the live active list (status !== 'active')
+      .mockResolvedValueOnce(cat('z', 'Zulu Renamed')) // #5 PATCH /categories/z
+      .mockResolvedValueOnce([]); // #6 the tree's own background reload
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Zulu');
+    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('bg-primary/5');
+
+    // the pinned row is the first row of the flat table
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    const dialog = within(await screen.findByRole('dialog'));
+    await dialog.findByText('Edit category');
+
+    fireEvent.change(dialog.getByLabelText('Name (English)'), {
+      target: { value: 'Zulu Renamed' },
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'Save' }));
+
+    await screen.findByText('Category “Zulu Renamed” saved.');
+    await screen.findAllByText('Zulu Renamed');
+    expect(screen.queryByText('Zulu')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('bg-primary/5');
+  });
+
+  it('a stale/invalid highlight id fails quietly — nothing pinned, no crash', async () => {
     mockSearchParams = new URLSearchParams({ status: 'all', highlight: 'nope' });
     mockedAdminApi
       .mockResolvedValueOnce([]) // tree's own unconditional load
       .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }) // flat page 1
-      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)) // direct GET — no such category
-      .mockResolvedValueOnce([]); // breadcrumb-pool GET
+      .mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404)); // direct GET — no such category
+    // no separate breadcrumb-pool GET — `status` is already `all`
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
-    await waitFor(() => expect(mockedAdminApi).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(mockedAdminApi).toHaveBeenCalledTimes(3));
 
-    expect(document.querySelector('[data-cat-row="a"]')).not.toHaveClass('sn-row-flash');
+    expect(document.querySelector('[data-cat-row="a"]')).not.toHaveClass('bg-primary/5');
   });
 
-  it('without a highlight param, nothing flashes and no direct fetch happens', async () => {
+  it('without a highlight param, nothing is pinned and no direct fetch happens', async () => {
     mockSearchParams = new URLSearchParams({ status: 'all' });
     mockedAdminApi
       .mockResolvedValueOnce([]) // tree's own unconditional load
-      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }) // flat page
-      .mockResolvedValueOnce([]); // breadcrumb-pool GET (status=all) — the 2026-09-18 fix
+      .mockResolvedValueOnce({ data: [cat('a', 'Alpha')], meta: {} }); // flat page
+    // no separate breadcrumb-pool GET — `status` is already `all`
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
 
-    expect(document.querySelector('[data-cat-row="a"]')).not.toHaveClass('sn-row-flash');
-    expect(mockedAdminApi).toHaveBeenCalledTimes(3);
+    expect(document.querySelector('[data-cat-row="a"]')).not.toHaveClass('bg-primary/5');
+    expect(mockedAdminApi).toHaveBeenCalledTimes(2);
   });
 });
