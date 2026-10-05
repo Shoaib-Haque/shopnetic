@@ -9,7 +9,7 @@ export interface SpinnerProps {
 /** Accessible loading indicator. */
 export function Spinner({ className, label = 'Loading' }: SpinnerProps) {
   return (
-    <span role="status" aria-live="polite" className="inline-flex items-center">
+    <span role="status" aria-live="polite" className="relative inline-flex items-center">
       <Loader2 className={cn('size-4 animate-spin', className)} aria-hidden="true" />
       <span className="sr-only">{label}</span>
     </span>

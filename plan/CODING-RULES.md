@@ -4647,3 +4647,30 @@ compose file.
     the now-skipped breadcrumb-pool call shifting every subsequent mock in
     the sequence down by one position.
   - Full suite green: 333/333 admin; typecheck and lint clean.
+- 2026-10-05 — Two vertical scrollbars appeared at the right edge during
+  the infinite scroll transition (while `loadingMore` is active) on
+  paginated item lists (Category "All", Brands, Option Types, Staff).
+  - Root cause: when the user scrolls to the bottom of the page,
+    `ScrollLoadFooter` mounts the `Spinner` component, which renders an
+    accessible label via `<span className="sr-only">{label}</span>`.
+    Tailwind's `.sr-only` class applies `position: absolute`. Because none
+    of its ancestor containers (`span.inline-flex`, `div.mt-3`, `<main>`, or
+    the shell's `overflow-y-auto` container) established a positioned
+    containing block (`position: relative`), `span.sr-only` resolved its
+    containing block against the initial containing block (`<html>`).
+    Because the footer sat at the bottom of the list (e.g. `top: 1756px`),
+    the `span.sr-only` element escaped the inner scroll container and
+    inflated `document.documentElement.scrollHeight` from `713px` to
+    `1757px`, causing the browser window itself to render an outer vertical
+    scrollbar next to the inner container's scrollbar. Once the request
+    finished, `Spinner` unmounted and the outer scrollbar disappeared.
+  - Fix: added `relative` to `Spinner`'s wrapper `span` in `@shopnetic/ui`
+    (`packages/ui/src/components/spinner.tsx`), keeping `span.sr-only`
+    bounded within the spinner itself. Also defensively added `relative` to
+    the admin shell's scrollable container in `apps/admin/src/components/layout/admin-shell.tsx`.
+  - Live re-verified via headless Chrome across all 4 lists (Brands,
+    Categories, Option Types, Staff): during `loadingMore` (with the spinner
+    actively mounted), `htmlScrollHeight === htmlClientHeight` (`713px`),
+    confirming `hasWindowScrollbar: false` and leaving only the single inner
+    scrollbar.
+  - Full suite green: 333/333 admin; typecheck and lint clean.

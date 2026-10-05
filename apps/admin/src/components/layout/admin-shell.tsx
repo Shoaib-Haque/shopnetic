@@ -79,7 +79,7 @@ export function AdminShell({
             expandedGroups={expandedGroups}
             onToggleGroup={toggleGroup}
           />
-          <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+          <div className="relative flex min-w-0 flex-1 flex-col overflow-y-auto">
             {/* left-aligned, soft cap so tables don't sprawl on ultra-wide screens */}
             <main className="w-full max-w-[1600px] flex-1 px-4 py-6 md:px-6 lg:px-8">
               {children}

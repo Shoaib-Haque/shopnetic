@@ -275,6 +275,7 @@ When modifying or writing code, **strictly adhere** to the locked rules in `plan
 ### J. Working Agreements With the Owner
 
 - Rules the owner states during a session are recorded here for future agents. Add new ones as they are agreed.
+- **Temporary test artifacts & screenshots (owner's rule):** Never save screenshots, debug files, or scratch outputs in the OS root `/tmp`. Always store them inside the workspace's ignored local directory (`/var/www/html/idea/shopnetic/tmp/`) instead.
 
 ---
 
