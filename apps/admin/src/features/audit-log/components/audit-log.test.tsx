@@ -162,7 +162,7 @@ describe('AuditLog', () => {
     await screen.findByText('No more items');
     // two events now, each shown twice
     expect(screen.getAllByText('identity.staff_activated')).toHaveLength(4);
-    expect(mockedListAuditEvents).toHaveBeenCalledWith('cursor-1', {});
+    expect(mockedListAuditEvents).toHaveBeenCalledWith({ cursor: 'cursor-1', limit: 30 });
     expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument();
   });
 
@@ -350,7 +350,7 @@ describe('AuditLog — filter bar', () => {
     openFiltersPanel();
     expect(await screen.findByText('Clear filters')).toBeInTheDocument();
     await waitFor(
-      () => expect(mockedListAuditEvents).toHaveBeenLastCalledWith(undefined, { q: 'sukanto' }),
+      () => expect(mockedListAuditEvents).toHaveBeenLastCalledWith({ q: 'sukanto', limit: 30 }),
       { timeout: 2000 },
     );
   });
@@ -405,7 +405,7 @@ describe('AuditLog — filter bar', () => {
     fireEvent.change(await screen.findByLabelText('Domain'), { target: { value: 'catalog' } });
 
     await screen.findByText('Clear filters');
-    expect(mockedListAuditEvents).toHaveBeenLastCalledWith(undefined, { domain: 'catalog' });
+    expect(mockedListAuditEvents).toHaveBeenLastCalledWith({ domain: 'catalog', limit: 30 });
   });
 
   it('picking a target type re-fetches with it', async () => {
@@ -422,7 +422,10 @@ describe('AuditLog — filter bar', () => {
     });
 
     await screen.findByText('Clear filters');
-    expect(mockedListAuditEvents).toHaveBeenLastCalledWith(undefined, { targetType: 'category' });
+    expect(mockedListAuditEvents).toHaveBeenLastCalledWith({
+      targetType: 'category',
+      limit: 30,
+    });
   });
 
   it('setting From/To re-fetches with the date range', async () => {
@@ -437,13 +440,14 @@ describe('AuditLog — filter bar', () => {
     openFiltersPanel();
     fireEvent.change(await screen.findByLabelText('From'), { target: { value: '2026-09-01' } });
     await screen.findByText('Clear filters');
-    expect(mockedListAuditEvents).toHaveBeenLastCalledWith(undefined, { from: '2026-09-01' });
+    expect(mockedListAuditEvents).toHaveBeenLastCalledWith({ from: '2026-09-01', limit: 30 });
 
     fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-09-16' } });
     await waitFor(() =>
-      expect(mockedListAuditEvents).toHaveBeenLastCalledWith(undefined, {
+      expect(mockedListAuditEvents).toHaveBeenLastCalledWith({
         from: '2026-09-01',
         to: '2026-09-16',
+        limit: 30,
       }),
     );
   });
@@ -479,16 +483,17 @@ describe('AuditLog — filter bar', () => {
     fireEvent.change(screen.getByLabelText('Target type'), { target: { value: 'account' } });
     await screen.findByText('Clear filters');
     await waitFor(() =>
-      expect(mockedListAuditEvents).toHaveBeenLastCalledWith(undefined, {
+      expect(mockedListAuditEvents).toHaveBeenLastCalledWith({
         domain: 'identity',
         targetType: 'account',
+        limit: 30,
       }),
     );
 
     fireEvent.click(screen.getByText('Clear filters'));
     expect(screen.queryByText('Clear filters')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Domain')).toHaveValue('all');
-    await waitFor(() => expect(mockedListAuditEvents).toHaveBeenLastCalledWith(undefined, {}));
+    await waitFor(() => expect(mockedListAuditEvents).toHaveBeenLastCalledWith({ limit: 30 }));
   });
 });
 
@@ -506,12 +511,13 @@ describe('AuditLog — filters sync to the URL', () => {
     renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
 
-    expect(mockedListAuditEvents).toHaveBeenCalledWith(undefined, {
+    expect(mockedListAuditEvents).toHaveBeenCalledWith({
       q: 'sukanto',
       domain: 'catalog',
       targetType: 'category',
       from: '2026-09-01',
       to: '2026-09-16',
+      limit: 30,
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Filters' }));

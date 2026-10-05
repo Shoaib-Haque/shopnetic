@@ -60,6 +60,28 @@ export interface UseScrollLoadResult<T> {
  * sentinel sits below the fold, the same observer fires again only once
  * the user actually scrolls it into view.
  */
+function getScrollContainer(element: HTMLElement | null): HTMLElement | null {
+  if (!element || typeof window === 'undefined') return null;
+  let parent = element.parentElement;
+  while (parent && parent !== document.body && parent !== document.documentElement) {
+    const { overflowY } = window.getComputedStyle(parent);
+    if (overflowY === 'auto' || overflowY === 'scroll') {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return null;
+}
+
+function isContainerFilled(element: HTMLElement | null): boolean {
+  if (!element || typeof window === 'undefined') return false;
+  const scroller = getScrollContainer(element);
+  if (scroller) {
+    return scroller.scrollHeight > scroller.clientHeight;
+  }
+  return document.documentElement.scrollHeight > window.innerHeight;
+}
+
 export function useScrollLoad<T>(
   fetchPage: (cursor: string | undefined) => Promise<ScrollLoadPage<T>>,
   /** When any value here changes (a status tab, a debounced search query, …)
@@ -114,9 +136,10 @@ export function useScrollLoad<T>(
       .then((page) => {
         if (seq !== seqRef.current) return;
         setItems((prev) => [...prev, ...page.items]);
-        cursorRef.current = page.nextCursor;
-        hasMoreRef.current = page.nextCursor !== undefined;
-        setHasMore(hasMoreRef.current);
+        const more = page.nextCursor !== undefined && page.items.length > 0;
+        cursorRef.current = more ? page.nextCursor : undefined;
+        hasMoreRef.current = more;
+        setHasMore(more);
       })
       .catch(() => {
         if (seq === seqRef.current) setLoadError(true);
@@ -145,9 +168,10 @@ export function useScrollLoad<T>(
       .then((page) => {
         if (seq !== seqRef.current) return;
         setItems(page.items);
-        cursorRef.current = page.nextCursor;
-        hasMoreRef.current = page.nextCursor !== undefined;
-        setHasMore(hasMoreRef.current);
+        const more = page.nextCursor !== undefined && page.items.length > 0;
+        cursorRef.current = more ? page.nextCursor : undefined;
+        hasMoreRef.current = more;
+        setHasMore(more);
       })
       .catch(() => {
         if (seq === seqRef.current) setLoadError(true);
@@ -163,19 +187,84 @@ export function useScrollLoad<T>(
   // the underlying DOM node itself mounts or unmounts, so the observer
   // attaches as soon as the sentinel actually renders.
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelNodeRef = useRef<HTMLElement | null>(null);
+  const scrollCleanupRef = useRef<(() => void) | null>(null);
+
   const sentinelRef = useCallback(
     (node: HTMLElement | null) => {
       observerRef.current?.disconnect();
       observerRef.current = null;
+      scrollCleanupRef.current?.();
+      scrollCleanupRef.current = null;
+      sentinelNodeRef.current = node;
       if (!node) return;
+
       const observer = new IntersectionObserver((entries) => {
         if (entries[0]?.isIntersecting) loadMore();
       });
       observer.observe(node);
       observerRef.current = observer;
+
+      const scroller = getScrollContainer(node) ?? (typeof window !== 'undefined' ? window : null);
+      if (scroller) {
+        const onScroll = () => {
+          if (loadingMoreRef.current || !hasMoreRef.current) return;
+          if (scroller instanceof HTMLElement) {
+            if (
+              scroller.scrollTop > 0 &&
+              scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 50
+            ) {
+              loadMore();
+            }
+          } else if (typeof window !== 'undefined') {
+            const doc = document.documentElement;
+            if (
+              window.scrollY > 0 &&
+              window.scrollY + window.innerHeight >= doc.scrollHeight - 50
+            ) {
+              loadMore();
+            }
+          }
+        };
+        scroller.addEventListener('scroll', onScroll, { passive: true });
+        scrollCleanupRef.current = () => scroller.removeEventListener('scroll', onScroll);
+      }
     },
     [loadMore],
   );
+
+  // Clean up observer and scroll listener on hook unmount
+  useEffect(() => {
+    return () => {
+      observerRef.current?.disconnect();
+      scrollCleanupRef.current?.();
+    };
+  }, []);
+
+  // If newly loaded items still don't fill the viewport / scroll container,
+  // the sentinel remains inside the visible area. Since IntersectionObserver
+  // only fires when crossing a threshold (e.g. non-intersecting -> intersecting),
+  // a sentinel that stayed visible across a page load will not fire on its own.
+  // Re-observing the sentinel after render forces the browser to evaluate
+  // intersection against the updated layout, auto-loading pages until the
+  // viewport is filled or hasMore is false.
+  useEffect(() => {
+    if (!enabled || !hasMore || loading || loadingMore || loadError) return;
+    const node = sentinelNodeRef.current;
+    if (!node) return;
+
+    // If the scroll container is already filled with content (it has scrollable overflow),
+    // we do not need to auto-load more items without user scrolling.
+    if (isContainerFilled(node)) {
+      return;
+    }
+
+    const observer = observerRef.current;
+    if (observer) {
+      observer.unobserve(node);
+      observer.observe(node);
+    }
+  }, [items, hasMore, loading, loadingMore, loadError, enabled]);
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
@@ -186,9 +275,10 @@ export function useScrollLoad<T>(
       .then((page) => {
         if (seq !== seqRef.current) return;
         setItems(page.items);
-        cursorRef.current = page.nextCursor;
-        hasMoreRef.current = page.nextCursor !== undefined;
-        setHasMore(hasMoreRef.current);
+        const more = page.nextCursor !== undefined && page.items.length > 0;
+        cursorRef.current = more ? page.nextCursor : undefined;
+        hasMoreRef.current = more;
+        setHasMore(more);
       })
       .catch(() => {
         // best-effort — see the doc comment on `refresh` above

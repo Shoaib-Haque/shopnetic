@@ -140,7 +140,7 @@ describe('StaffList', () => {
     act(() => triggerIntersection(sentinel));
 
     await screen.findAllByText(other.email);
-    expect(mockedListStaff).toHaveBeenCalledWith('cursor-1');
+    expect(mockedListStaff).toHaveBeenCalledWith({ cursor: 'cursor-1', limit: 30 });
     expect(screen.queryByTestId('scroll-sentinel')).not.toBeInTheDocument();
   });
 
@@ -590,7 +590,7 @@ describe('StaffList — search', () => {
     });
 
     await screen.findAllByText(target.email);
-    expect(mockedListStaff).toHaveBeenLastCalledWith(undefined, 'search-target');
+    expect(mockedListStaff).toHaveBeenLastCalledWith({ q: 'search-target', limit: 30 });
     await waitFor(() =>
       expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?q=search-target`, {
         scroll: false,
@@ -606,7 +606,7 @@ describe('StaffList — search', () => {
     await screen.findAllByText(ME.email);
 
     expect(screen.getByPlaceholderText('Search staff by email…')).toHaveValue('sukanto');
-    expect(mockedListStaff).toHaveBeenCalledWith(undefined, 'sukanto');
+    expect(mockedListStaff).toHaveBeenCalledWith({ q: 'sukanto', limit: 30 });
   });
 
   it('no matches shows "no staff match your search", not the generic empty state', async () => {
@@ -633,7 +633,7 @@ describe('StaffList — search', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
 
-    await waitFor(() => expect(mockedListStaff).toHaveBeenLastCalledWith(undefined));
+    await waitFor(() => expect(mockedListStaff).toHaveBeenLastCalledWith({ limit: 30 }));
     await waitFor(() =>
       expect(routerReplace).toHaveBeenLastCalledWith(PATHNAME, { scroll: false }),
     );

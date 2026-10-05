@@ -8,10 +8,28 @@ export interface StaffListPage {
   nextCursor: string | undefined;
 }
 
-export function listStaff(cursor?: string, q?: string): Promise<StaffListPage> {
+export interface ListStaffOptions {
+  cursor?: string | undefined;
+  q?: string | undefined;
+  limit?: number | undefined;
+}
+
+export function listStaff(opts?: ListStaffOptions): Promise<StaffListPage>;
+export function listStaff(cursor?: string, q?: string, limit?: number): Promise<StaffListPage>;
+export function listStaff(
+  cursorOrOpts?: string | ListStaffOptions,
+  q?: string,
+  limit?: number,
+): Promise<StaffListPage> {
+  const opts: ListStaffOptions =
+    typeof cursorOrOpts === 'object' && cursorOrOpts !== null
+      ? cursorOrOpts
+      : { cursor: cursorOrOpts, q, limit };
+
   const params = new URLSearchParams();
-  if (cursor) params.set('cursor', cursor);
-  if (q) params.set('q', q);
+  if (opts.cursor) params.set('cursor', opts.cursor);
+  if (opts.q) params.set('q', opts.q);
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit));
   const qs = params.toString();
   return staffManageApi<StaffListResponse>(qs ? `?${qs}` : '').then((r) => ({
     accounts: r.accounts,

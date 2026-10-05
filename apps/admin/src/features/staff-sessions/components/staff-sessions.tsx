@@ -58,7 +58,10 @@ function AllSessionsTab({ currentAccountId }: { currentAccountId: string }) {
   const t = useTranslations('staff');
   const fetchPage = useCallback(
     (cursor: string | undefined) =>
-      listAllSessions(cursor, 30).then((p) => ({ items: p.sessions, nextCursor: p.nextCursor })),
+      listAllSessions({
+        ...(cursor ? { cursor } : {}),
+        limit: 30,
+      }).then((p) => ({ items: p.sessions, nextCursor: p.nextCursor })),
     [],
   );
   return (
@@ -88,7 +91,11 @@ function ByPersonTab({ currentAccountId }: { currentAccountId: string }) {
 
   const fetchPage = useCallback(
     (cursor: string | undefined) =>
-      listStaff(cursor, debouncedQ).then((p) => ({ items: p.accounts, nextCursor: p.nextCursor })),
+      listStaff({
+        ...(debouncedQ ? { q: debouncedQ } : {}),
+        ...(cursor ? { cursor } : {}),
+        limit: 30,
+      }).then((p) => ({ items: p.accounts, nextCursor: p.nextCursor })),
     [debouncedQ],
   );
   const list = useScrollLoad<StaffAccount>(fetchPage, [debouncedQ]);

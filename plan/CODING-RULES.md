@@ -4674,3 +4674,32 @@ compose file.
     confirming `hasWindowScrollbar: false` and leaving only the single inner
     scrollbar.
   - Full suite green: 333/333 admin; typecheck and lint clean.
+- 2026-10-05 — Infinite scroll stopped auto-loading prematurely after page 2
+  when loaded items did not yet fill the viewport/container.
+  - Root cause: W3C IntersectionObserver only notifies when an element crosses
+    an intersection threshold. On initial mount, page 1 loaded, sentinel mounted,
+    and IntersectionObserver fired (non-intersecting -> intersecting), loading page 2.
+    When page 2 finished rendering, if the combined items still did not fill the
+    container, the sentinel was pushed down but remained visible (`isIntersecting === true`).
+    Because no intersection threshold was crossed, the observer never fired again,
+    and because `scroller.scrollHeight <= scroller.clientHeight`, no scrollbar
+    existed for the user to scroll. Auto-loading was permanently halted.
+  - Fix: in `apps/admin/src/components/crud/use-scroll-load.ts`:
+    1. Stored `sentinelNodeRef`.
+    2. Added an effect on `items`, `hasMore`, `loading`, `loadingMore`, `loadError`,
+       `enabled` that re-evaluates the sentinel (`unobserve` + `observe`) after
+       new items are committed to the DOM.
+    3. Added `isContainerFilled(node)` precision check: auto-fill stops immediately
+       the moment `scroller.scrollHeight > scroller.clientHeight`, avoiding redundant
+       extra page requests when the viewport is already filled with content.
+    4. Attached a scroll listener to the scroll container to load more when the user
+       scrolls near the bottom, seamlessly handling cases where the sentinel was
+       already near the bottom of the viewport.
+    5. Defensively guarded `hasMore` in all fetch paths (`loadMore`, initial, `refresh`)
+       to become false if `page.items.length === 0` even if `nextCursor` was returned,
+       preventing infinite loops on empty pages.
+  - Verified live in headless Chrome on 1080p display: with `limit: 5`,
+    it automatically loaded pages 1 -> 2 -> 3 (exactly 15 items total, 1010px scrollHeight
+    > 937px clientHeight) and stopped without requesting a 4th page.
+    Scrolling down then seamlessly triggered page 4 (20 items) and page 5 (25 items).
+  - Full suite green: 334/334 admin tests pass; monorepo typecheck & lint clean.

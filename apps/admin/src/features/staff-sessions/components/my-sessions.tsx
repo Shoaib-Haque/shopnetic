@@ -10,7 +10,10 @@ export function MySessions() {
 
   const fetchPage = useCallback(
     (cursor: string | undefined) =>
-      listMySessions(cursor, 30).then((p) => ({ items: p.sessions, nextCursor: p.nextCursor })),
+      listMySessions({
+        ...(cursor ? { cursor } : {}),
+        limit: 30,
+      }).then((p) => ({ items: p.sessions, nextCursor: p.nextCursor })),
     [],
   );
 

@@ -12,6 +12,21 @@ function toPage(r: StaffSessionListResponse): StaffSessionPage {
   return { sessions: r.sessions, nextCursor: r.nextCursor };
 }
 
+export interface ListSessionsOptions {
+  cursor?: string | undefined;
+  limit?: number | undefined;
+}
+
+function parseSessionArgs(
+  cursorOrOpts?: string | ListSessionsOptions,
+  limit?: number,
+): { cursor?: string | undefined; limit?: number | undefined } {
+  if (typeof cursorOrOpts === 'object' && cursorOrOpts !== null) {
+    return cursorOrOpts;
+  }
+  return { cursor: cursorOrOpts, limit };
+}
+
 function pageParams(cursor?: string, limit?: number): string {
   const params = new URLSearchParams();
   if (cursor) params.set('cursor', cursor);
@@ -21,10 +36,16 @@ function pageParams(cursor?: string, limit?: number): string {
 }
 
 /** Self-service — every staff role, not just Super Admin. */
-export function listMySessions(cursor?: string, limit?: number): Promise<StaffSessionPage> {
-  return staffManageApi<StaffSessionListResponse>(`/me/sessions${pageParams(cursor, limit)}`).then(
-    toPage,
-  );
+export function listMySessions(opts?: ListSessionsOptions): Promise<StaffSessionPage>;
+export function listMySessions(cursor?: string, limit?: number): Promise<StaffSessionPage>;
+export function listMySessions(
+  cursorOrOpts?: string | ListSessionsOptions,
+  limit?: number,
+): Promise<StaffSessionPage> {
+  const opts = parseSessionArgs(cursorOrOpts, limit);
+  return staffManageApi<StaffSessionListResponse>(
+    `/me/sessions${pageParams(opts.cursor, opts.limit)}`,
+  ).then(toPage);
 }
 
 export function revokeMySession(sessionId: string): Promise<void> {
@@ -37,20 +58,36 @@ export function revokeMyOtherSessions(): Promise<void> {
 }
 
 /** Super Admin only (`staff:manage`) — every staff account's sessions, flattened. */
-export function listAllSessions(cursor?: string, limit?: number): Promise<StaffSessionPage> {
-  return staffManageApi<StaffSessionListResponse>(`/sessions${pageParams(cursor, limit)}`).then(
-    toPage,
-  );
+export function listAllSessions(opts?: ListSessionsOptions): Promise<StaffSessionPage>;
+export function listAllSessions(cursor?: string, limit?: number): Promise<StaffSessionPage>;
+export function listAllSessions(
+  cursorOrOpts?: string | ListSessionsOptions,
+  limit?: number,
+): Promise<StaffSessionPage> {
+  const opts = parseSessionArgs(cursorOrOpts, limit);
+  return staffManageApi<StaffSessionListResponse>(
+    `/sessions${pageParams(opts.cursor, opts.limit)}`,
+  ).then(toPage);
 }
 
 /** Super Admin only — one other staff member's sessions. */
 export function listAccountSessions(
   accountId: string,
+  opts?: ListSessionsOptions,
+): Promise<StaffSessionPage>;
+export function listAccountSessions(
+  accountId: string,
   cursor?: string,
   limit?: number,
+): Promise<StaffSessionPage>;
+export function listAccountSessions(
+  accountId: string,
+  cursorOrOpts?: string | ListSessionsOptions,
+  limit?: number,
 ): Promise<StaffSessionPage> {
+  const opts = parseSessionArgs(cursorOrOpts, limit);
   return staffManageApi<StaffSessionListResponse>(
-    `/${accountId}/sessions${pageParams(cursor, limit)}`,
+    `/${accountId}/sessions${pageParams(opts.cursor, opts.limit)}`,
   ).then(toPage);
 }
 

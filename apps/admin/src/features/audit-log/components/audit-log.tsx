@@ -184,12 +184,14 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
 
   const fetchPage = useCallback(
     (cursor: string | undefined) =>
-      listAuditEvents(cursor, {
+      listAuditEvents({
         ...(debouncedQ ? { q: debouncedQ } : {}),
         ...(domain !== 'all' ? { domain } : {}),
         ...(targetType ? { targetType } : {}),
         ...(from ? { from } : {}),
         ...(to ? { to } : {}),
+        ...(cursor ? { cursor } : {}),
+        limit: 30,
       }).then((page) => ({ items: page.events, nextCursor: page.nextCursor })),
     [debouncedQ, domain, targetType, from, to],
   );

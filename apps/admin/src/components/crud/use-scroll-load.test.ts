@@ -57,6 +57,21 @@ describe('useScrollLoad', () => {
     expect(fetchPage).toHaveBeenCalledTimes(3);
   });
 
+  it('marks hasMore as false if a page returns zero items even when nextCursor is defined', async () => {
+    const fetchPage = vi
+      .fn()
+      .mockResolvedValueOnce(page([1], 'c1'))
+      .mockResolvedValueOnce(page([], 'c2'));
+
+    const { result } = renderHook(() => useScrollLoad<number>(fetchPage));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const sentinel = mountSentinel(result.current.sentinelRef);
+    act(() => triggerIntersection(sentinel));
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
+    expect(result.current.items).toEqual([1]);
+  });
+
   it('ignores a second trigger while a page is already loading (no duplicate fetch)', async () => {
     let resolveSecond!: (p: ScrollLoadPage<number>) => void;
     const fetchPage = vi

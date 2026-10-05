@@ -88,12 +88,13 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
   const debouncedQ = useDebouncedSearch(q);
   useUrlParamsSync({ q: debouncedQ });
 
-  // Keeps the mount-time call shape identical to before search existed
-  // (`listStaff(cursor)`, one arg) when no search is active, rather than
-  // always passing a possibly-empty second argument.
   const fetchPage = useCallback(
     (cursor: string | undefined) =>
-      (debouncedQ ? listStaff(cursor, debouncedQ) : listStaff(cursor)).then((page) => ({
+      listStaff({
+        ...(debouncedQ ? { q: debouncedQ } : {}),
+        ...(cursor ? { cursor } : {}),
+        limit: 30,
+      }).then((page) => ({
         items: page.accounts,
         nextCursor: page.nextCursor,
       })),
