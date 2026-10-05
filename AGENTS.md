@@ -267,7 +267,14 @@ When modifying or writing code, **strictly adhere** to the locked rules in `plan
 
 ### I. Git & Commit Guidelines
 
-- **J4. Conventional Commits:** Follow the format `type(scope): description` (e.g., `feat(admin,api): add option type management`, `fix(api): handle token expiration`). Valid types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `chore`. Enforced by Commitlint.
+- **J4. Conventional Commits:** Follow the format `type(scope): description` (e.g., `feat(admin,api): add option type management`, `fix(api): handle token expiration`). Valid types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `chore`. Enforced by Commitlint (scope must be kebab-case; use a comma-separated list for multi-app changes).
+- **Agents never commit or push (owner's rule):** Do NOT run `git add`, `git commit`, `git push`, `git reset`, or anything else that stages or rewrites history. The owner commits manually. After finishing a change, **provide a suggested commit message** (Conventional Commits format, optional body explaining the why) and stop.
+- **Keep commits small:** One purpose per commit (A3). If a change spans unrelated concerns, suggest separate commit messages.
+- **Plan docs travel with the code (J5):** If a change alters anything documented in `plan/`, update it in the same change and mention it in the suggested commit message.
+
+### J. Working Agreements With the Owner
+
+- Rules the owner states during a session are recorded here for future agents. Add new ones as they are agreed.
 
 ---
 
