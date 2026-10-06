@@ -2,10 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArchiveRestore, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Category, CategoryListStatus } from '@shopnetic/contracts';
-import { cn, notify, ScrollToTopButton, SearchInput, Skeleton } from '@shopnetic/ui';
+import {
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  notify,
+  ScrollToTopButton,
+  SearchInput,
+  Skeleton,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
 import { ActionButton } from '@/components/crud/action-button';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
@@ -22,6 +35,7 @@ import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
 import { CategoryCards, CategoryFlatTable, CategoryTree } from './category-tree';
 import { CategoryFormModal } from './category-form-modal';
+import { CategoryOptionsDialog } from './category-options-dialog';
 import { applyMoveLocally, type CategoryMove } from './reorder';
 import {
   deleteCategory,
@@ -100,6 +114,7 @@ export function CategoryList() {
   const [q, setQ] = useState(() => searchParams.get('q') ?? '');
   const debouncedQ = useDebouncedSearch(q);
   const [modal, setModal] = useState<ModalState>(null);
+  const [optionsCategory, setOptionsCategory] = useState<Category | null>(null);
 
   useUrlParamsSync({ status: status !== 'active' ? status : undefined, q: debouncedQ });
 
@@ -572,96 +587,74 @@ export function CategoryList() {
 
   const restoreCount = restoreTarget ? archivedDescendants(restoreTarget) : 0;
 
-  // desktop row actions — labels collapse to icons in the md–lg band so the
-  // name column keeps its width (Brand column is also hidden there)
-  const rowActions = (c: Category) => {
+  // Always the "…" menu, matching Staff, Brand, and Option Types list
+  const rowMenu = (c: Category) => {
     if (c.archivedAt != null) {
       const blocked = parentArchived(c);
-      const restore = (
-        <ActionButton
-          icon={ArchiveRestore}
-          variant="ghost"
-          size="sm"
-          collapseLabel="lg"
-          disabled={blocked}
-          onClick={() => setRestoreTarget(c)}
-        >
-          {t('categories.restore')}
-        </ActionButton>
-      );
       return (
-        <span className="inline-flex items-center gap-1">
-          {/* archived rows are view-only — this opens the same read-only modal
-              the mobile card list offers */}
-          <ActionButton
-            icon={Eye}
-            variant="ghost"
-            size="sm"
-            collapseLabel="lg"
-            onClick={() => setModal({ mode: 'edit', category: c })}
-          >
-            {t('categories.view')}
-          </ActionButton>
-          {/* a disabled <button> eats hover events, so the "restore the parent
-              first" tooltip has to live on a wrapper the pointer can reach */}
-          {blocked ? (
-            <span
-              className="inline-flex cursor-not-allowed"
-              title={t('errors.categoryParentArchived')}
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger
+                aria-label={tCommon('actions.more')}
+                className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <MoreHorizontal className="size-4" aria-hidden />
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{tCommon('actions.more')}</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent>
+            <DropdownMenuItem onSelect={() => setModal({ mode: 'edit', category: c })}>
+              {t('categories.view')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setOptionsCategory(c)}>
+              {t('categories.options')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={blocked}
+              onSelect={() => setRestoreTarget(c)}
+              title={blocked ? t('errors.categoryParentArchived') : undefined}
             >
-              {restore}
-            </span>
-          ) : (
-            restore
-          )}
-        </span>
+              {t('categories.restore')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1">
-        <button
-          type="button"
-          title={t('categories.addChild')}
-          aria-label={t('categories.addChild')}
-          onClick={() => setModal({ mode: 'create', parentId: c.id })}
-          className="hidden size-7 shrink-0 -translate-x-1 place-items-center rounded text-muted-foreground opacity-0 transition duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:translate-x-0 focus-visible:opacity-100 group-hover:translate-x-0 group-hover:opacity-100 lg:grid"
-        >
-          <Plus className="size-4" aria-hidden />
-        </button>
-        <ActionButton
-          icon={Pencil}
-          variant="ghost"
-          size="sm"
-          collapseLabel="lg"
-          onClick={() => setModal({ mode: 'edit', category: c })}
-        >
-          {t('categories.edit')}
-        </ActionButton>
-        <ActionButton
-          icon={Trash2}
-          variant="ghost"
-          size="sm"
-          collapseLabel="lg"
-          className="text-muted-foreground hover:text-destructive"
-          onClick={() => void doDelete(c)}
-        >
-          {t('categories.delete')}
-        </ActionButton>
-      </span>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger
+              aria-label={tCommon('actions.more')}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <MoreHorizontal className="size-4" aria-hidden />
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{tCommon('actions.more')}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent>
+          <DropdownMenuItem onSelect={() => setModal({ mode: 'edit', category: c })}>
+            {t('categories.edit')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setOptionsCategory(c)}>
+            {t('categories.options')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setModal({ mode: 'create', parentId: c.id })}>
+            {t('categories.addChild')}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => void doDelete(c)}
+            className="text-destructive focus:text-destructive"
+          >
+            {t('categories.delete')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   };
-
-  // mobile card action — always Edit; Delete / Restore live inside the modal
-  const cardAction = (c: Category) => (
-    <ActionButton
-      icon={Pencil}
-      variant="outline"
-      size="sm"
-      onClick={() => setModal({ mode: 'edit', category: c })}
-    >
-      {t('categories.edit')}
-    </ActionButton>
-  );
 
   // the deep-link target pinned as the first row, filtered out of its own
   // natural spot below so it never appears twice once normal pagination
@@ -774,7 +767,7 @@ export function CategoryList() {
               <CategoryFlatTable
                 items={flatWithSpotlight}
                 {...(effectiveBreadcrumbPool ? { allCategories: effectiveBreadcrumbPool } : {})}
-                renderActions={rowActions}
+                renderActions={rowMenu}
                 flashId={flashId}
                 spotlightId={showSpotlight ? (highlighted?.id ?? null) : null}
               />
@@ -785,7 +778,7 @@ export function CategoryList() {
                 items={flat}
                 spotlightId={showSpotlight ? (highlighted?.id ?? null) : null}
                 {...(effectiveBreadcrumbPool ? { allCategories: effectiveBreadcrumbPool } : {})}
-                renderAction={cardAction}
+                renderAction={rowMenu}
               />
             </div>
             {/* one sentinel, not duplicated per breakpoint — jsdom aside, only
@@ -811,7 +804,7 @@ export function CategoryList() {
           <div className="hidden rounded-md border border-border md:block">
             <CategoryTree
               items={items}
-              renderActions={rowActions}
+              renderActions={rowMenu}
               flashId={flashId}
               collapsed={collapsed}
               onToggleCollapsed={toggleCollapsed}
@@ -821,7 +814,7 @@ export function CategoryList() {
           </div>
           {/* mobile: always a flat card list, parent-then-children order */}
           <div className="rounded-md border border-border md:hidden">
-            <CategoryCards items={flat} renderAction={cardAction} />
+            <CategoryCards items={flat} renderAction={rowMenu} />
           </div>
         </>
       )}
@@ -849,6 +842,16 @@ export function CategoryList() {
           }}
         />
       )}
+
+      <CategoryOptionsDialog
+        key={optionsCategory?.id}
+        open={optionsCategory !== null}
+        onOpenChange={(o) => {
+          if (!o) setOptionsCategory(null);
+        }}
+        category={optionsCategory}
+        onCategoryChanged={resync}
+      />
 
       <ConfirmDialog
         open={restoreTarget !== null}

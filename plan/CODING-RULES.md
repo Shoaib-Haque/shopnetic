@@ -4711,4 +4711,27 @@ compose file.
   - Added unit test in `apps/admin/src/features/staff-auth/components/login-form.test.tsx` verifying error banner display.
   - Added real-DB integration test suite in `apps/api/src/identity/staff-auth.integration.test.ts` verifying regression guards for `locked` and `disabled` (`ACCOUNT_LOCKED`) and `anonymized` (`ACCOUNT_ANONYMIZED`, not `ACCOUNT_LOCKED`).
   - Updated docs in `plan/16-security.md` and `plan/22-risks-and-open-questions.md`.
+- 2026-10-06 — Category-Option mapping UI in Category Management (Admin Phase 1, Step 1; ADR/plan/26 §2.1).
+  - Implemented `CategoryOptionsDialog` modal in `apps/admin/src/features/catalog/categories/category-options-dialog.tsx` for configuring option types on categories (`PUT` / `DELETE /admin/v1/categories/:categoryId/options/:optionTypeId`).
+  - Added "Options" row action (`SlidersHorizontal`) to `CategoryList` (`category-list.tsx`) desktop row actions and mobile cards.
+  - Supports configuring role (variant axis vs informational attribute), applicability (`optional` vs `required`), value source (`open`, `predefined`, `hybrid`), matching Value Set selection, and price impact toggle.
+  - Enforces frontend validation that `predefined` / `hybrid` value sources require a Value Set whose items match the option type.
+  - Integrated soft-delete with Undo toast (`useSoftDeleteWithUndo`) on category option removals, allowing instant one-click restoration without modal round-trips.
+  - Fixed shared Modal & Popover Tailwind arbitrary calc syntax bug: replaced invalid `max-h-[calc(100dvh - 2rem)]` (which Tailwind silently drops due to unescaped spaces) with `max-h-[calc(100dvh_-_2rem)]` and paired with `w-full` across `packages/ui/src/components/modal.tsx` and `popover.tsx`, preventing modal width shifts when form controls mount.
+  - Fixed category switch state leak in `CategoryOptionsDialog`: immediately wipes stale options and resets `loading: true` upon `category.id` prop change.
+  - Consolidated category row action buttons across `CategoryTree`, `CategoryFlatTable`, and `CategoryCards` into a unified 3-dots `MoreHorizontal` dropdown menu in the exact order: `Edit`, `Options`, `Add sub-category`, `Delete` (and `View`, `Options`, `Restore` for archived rows), narrowing the action column from `w-44` to `w-10 text-right` and reclaiming ~140px width for category names.
+  - Enforced read-only mode for archived categories in `CategoryOptionsDialog`: hides the "Map option type" trigger and Edit/Remove row actions, showing an `Archived — view only` badge and read-only empty state.
+  - Implemented backend data orphaning and lifecycle integrity guards in `apps/api/src/catalog/category-option.service.ts`:
+    1. Blocks `put` and `remove` on archived categories with `CATEGORY_PARENT_ARCHIVED` (422).
+    2. Blocks removing a category option mapping if any active products under that category have `ProductOption` rows configured for it (`CATEGORY_OPTION_IN_USE`, 409).
+    3. Blocks demoting `isVariantAxis: true` to `false` if existing product variants depend on that axis (`CATEGORY_OPTION_IN_USE`, 409).
+    4. Blocks setting `applicability: not_applicable` if products currently use the option type (`CATEGORY_OPTION_IN_USE`, 409).
+  - Implemented pristine edit optimization (no-op save suppression): In `CategoryOptionsDialog` inline edit mode, if no fields changed (`isPristine`), clicking Save immediately closes the inline form without triggering network calls, loading spinners, audit events, or toasts (matching `CategoryFormModal`, `BrandFormModal`, and `OptionTypeFormModal`). Supported on the backend `CategoryOptionService.put()` as well (returns early without writing duplicate audit or outbox entries).
+  - Implemented responsive mobile card view for `CategoryOptionsDialog`: On smaller screens (< 768px / `md:hidden`), the 6-column desktop table is hidden in favor of a stacked card list (`<ul className="divide-y divide-border rounded-md border border-border md:hidden">`) displaying entity code, name, role badges, applicability, value source badges, price impact tag, and action buttons, completely eliminating horizontal scrolling on mobile viewports.
+  - Implemented ellipsis text truncation (`truncate`, `text-overflow: ellipsis`, and `title` tooltips) on long category names in the modal header (`Options & attributes — “{name}”`), option type names, and option codes across desktop table rows and mobile card lists.
+  - Added typed API helpers in `apps/admin/src/features/catalog/categories/api.ts` and `apps/admin/src/features/catalog/value-sets/api.ts`.
+  - Added localized messages and error mappings in `apps/admin/messages/en/catalog.json` and `apps/admin/src/features/catalog/error-copy.ts`.
+  - Added unit test suite in `apps/admin/src/features/catalog/categories/category-options-dialog.test.tsx` (12 tests covering empty state, dual desktop table and mobile cards rendering, header ellipsis truncation, create, edit, pristine edit no-op, remove, undo restoration, value-set validation, error translation, category switch wipe, and archived read-only mode).
+  - Added real-DB integration test suite in `apps/api/src/catalog/category-option.service.integration.test.ts` (11 tests covering full lifecycle, no-op put suppression, audit snapshotting, outbox events, archived mutation prevention, and product/variant in-use orphaning blocks).
+
 

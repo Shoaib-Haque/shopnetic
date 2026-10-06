@@ -60,12 +60,43 @@ export class CategoryOptionService {
     actor: Actor,
     meta: RequestMeta,
   ): Promise<CategoryOption> {
-    await this.assertCategory(categoryId);
+    await this.assertCategoryMutable(categoryId);
     await this.assertOptionType(optionTypeId);
 
     const existing = await this.prisma.categoryOption.findUnique({
       where: { categoryId_optionTypeId: { categoryId, optionTypeId } },
     });
+
+    if (existing?.isVariantAxis && input.isVariantAxis === false) {
+      const variantInUseCount = await this.prisma.variantOptionValue.count({
+        where: {
+          optionTypeId,
+          variant: {
+            deletedAt: null,
+            product: { categoryId, deletedAt: null },
+          },
+        },
+      });
+      if (variantInUseCount > 0) {
+        throw new AppError('CATEGORY_OPTION_IN_USE', 409, {
+          detail: 'cannot disable variant axis: existing product variants depend on it',
+        });
+      }
+    }
+
+    if (input.applicability === 'not_applicable' && existing?.applicability !== 'not_applicable') {
+      const inUseProductCount = await this.prisma.productOption.count({
+        where: {
+          optionTypeId,
+          product: { categoryId, deletedAt: null },
+        },
+      });
+      if (inUseProductCount > 0) {
+        throw new AppError('CATEGORY_OPTION_IN_USE', 409, {
+          detail: 'cannot mark as not applicable: active products in this category are using it',
+        });
+      }
+    }
 
     const effSource: ValueSource = input.valueSource ?? existing?.valueSource ?? 'open';
     const effSetId =
@@ -79,6 +110,20 @@ export class CategoryOptionService {
     if (input.valueSetId !== undefined) patch.valueSetId = input.valueSetId;
     if (input.priceImpact !== undefined) patch.priceImpact = input.priceImpact;
     if (input.position !== undefined) patch.position = input.position;
+
+    // No-op check: if nothing changed, avoid redundant DB writes, outbox events, and audit logs
+    if (existing) {
+      const isNoOp =
+        (patch.applicability === undefined || patch.applicability === existing.applicability) &&
+        (patch.isVariantAxis === undefined || patch.isVariantAxis === existing.isVariantAxis) &&
+        (patch.valueSource === undefined || patch.valueSource === existing.valueSource) &&
+        (patch.valueSetId === undefined || patch.valueSetId === existing.valueSetId) &&
+        (patch.priceImpact === undefined || patch.priceImpact === existing.priceImpact) &&
+        (patch.position === undefined || patch.position === existing.position);
+      if (isNoOp) {
+        return this.rowView(categoryId, optionTypeId);
+      }
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.categoryOption.upsert({
@@ -122,6 +167,20 @@ export class CategoryOptionService {
     actor: Actor,
     meta: RequestMeta,
   ): Promise<void> {
+    await this.assertCategoryMutable(categoryId);
+
+    const inUseProductCount = await this.prisma.productOption.count({
+      where: {
+        optionTypeId,
+        product: { categoryId, deletedAt: null },
+      },
+    });
+    if (inUseProductCount > 0) {
+      throw new AppError('CATEGORY_OPTION_IN_USE', 409, {
+        detail: 'cannot remove option type: active products in this category are using it',
+      });
+    }
+
     // best-effort, for the audit snapshot below — neither name is
     // otherwise fetched by this method (only existence-checked elsewhere)
     const [categoryName, optionType] = await Promise.all([
@@ -180,11 +239,24 @@ export class CategoryOptionService {
   }
 
   private async assertCategory(id: string): Promise<void> {
-    const row = await this.prisma.category.findFirst({
-      where: { id, deletedAt: null },
+    const row = await this.prisma.category.findUnique({
+      where: { id },
       select: { id: true },
     });
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'category not found' });
+  }
+
+  private async assertCategoryMutable(id: string): Promise<void> {
+    const row = await this.prisma.category.findUnique({
+      where: { id },
+      select: { id: true, deletedAt: true },
+    });
+    if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'category not found' });
+    if (row.deletedAt !== null) {
+      throw new AppError('CATEGORY_PARENT_ARCHIVED', 422, {
+        detail: 'cannot modify option types on an archived category',
+      });
+    }
   }
 
   private async assertOptionType(id: string): Promise<void> {

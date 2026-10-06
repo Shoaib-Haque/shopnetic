@@ -56,6 +56,12 @@ function cat(id: string, name: string): Category {
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 const OFFLINE_ERROR = 'You appear to be offline. Check your connection and try again.';
 
+function openRowMenu(index = 0): void {
+  const trigger = screen.getAllByRole('button', { name: 'More actions' })[index]!;
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: 'Enter' });
+}
+
 beforeEach(() => {
   mockSearchParams = new URLSearchParams();
   routerReplace.mockReset();
@@ -93,7 +99,8 @@ describe('CategoryList error states', () => {
     // query here, not a workaround for a product bug.
     await screen.findAllByText('Alpha');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
     await screen.findByText(/deleted/i);
 
     // let the resync's rejected promise settle before asserting on its outcome
@@ -116,7 +123,8 @@ describe('CategoryList error states', () => {
     // query here, not a workaround for a product bug.
     await screen.findAllByText('Alpha');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
 
     expect(await screen.findByText(OFFLINE_ERROR)).toBeInTheDocument();
     expect(screen.getAllByText('Alpha').length).toBeGreaterThan(0);
@@ -132,7 +140,8 @@ describe('CategoryList error states', () => {
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
     const dialog = within(await screen.findByRole('dialog'));
     await dialog.findByText('Edit category');
 
@@ -166,7 +175,8 @@ describe('CategoryList error states', () => {
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
 
     expect(await screen.findByText('“Alpha” was already deleted.')).toBeInTheDocument();
     expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
@@ -199,8 +209,9 @@ describe('CategoryList error states', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
     await screen.findAllByText('Zulu');
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]!);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]!);
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Restore' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
 
     expect(await screen.findByText('“Zulu” was already restored.')).toBeInTheDocument();
     expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
@@ -242,8 +253,9 @@ describe('CategoryList error states', () => {
     await screen.findAllByText('Zulu');
     await screen.findAllByText('Yankee');
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]!);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]!);
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Restore' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
 
     // the restore itself has resolved (toast shown) and resync()'s flat
     // call is in flight but deliberately unresolved — `.retry` blanks
@@ -294,7 +306,8 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
     const dialog = within(await screen.findByRole('dialog'));
     await dialog.findByText('Edit category');
 
@@ -399,7 +412,8 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     // only exercising the *display* of the current (archived) parent.
     mockedAdminApi.mockResolvedValueOnce([]); // #4 modal-open GET — the live active list
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'View' })[0]!);
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'View' }));
     await screen.findByText('Category (archived)');
 
     expect(screen.getByLabelText('Parent')).toHaveValue('arch-parent');
@@ -717,7 +731,8 @@ describe('CategoryList — deep link from Audit Log (?status=all&highlight=categ
     expect(document.querySelector('[data-cat-row="z"]')).toHaveClass('bg-primary/5');
 
     // the pinned row is the first row of the flat table
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    openRowMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
     const dialog = within(await screen.findByRole('dialog'));
     await dialog.findByText('Edit category');
 
@@ -759,5 +774,35 @@ describe('CategoryList — deep link from Audit Log (?status=all&highlight=categ
 
     expect(document.querySelector('[data-cat-row="a"]')).not.toHaveClass('bg-primary/5');
     expect(mockedAdminApi).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('CategoryList row menu actions', () => {
+  it('opens 3-dots menu showing all 4 actions, and opens Options dialog on selecting Options', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce([cat('a', 'Alpha')]) // #1 mount (active tree)
+      .mockResolvedValueOnce([]) // options mappings
+      .mockResolvedValueOnce([]) // option types
+      .mockResolvedValueOnce([]); // value sets
+
+    renderAdmin(<CategoryList />);
+    await screen.findAllByText('Alpha');
+
+    openRowMenu();
+
+    // Verify all four items are present in the expected order: Edit, Options, Add sub-category, Delete
+    const items = await screen.findAllByRole('menuitem');
+    expect(items.map((el) => el.textContent?.trim())).toEqual([
+      'Edit',
+      'Options',
+      'Add sub-category',
+      'Delete',
+    ]);
+
+    // Select "Options"
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Options' }));
+
+    // Expect Options dialog to open
+    expect(await screen.findByText('Options & attributes — “Alpha”')).toBeInTheDocument();
   });
 });

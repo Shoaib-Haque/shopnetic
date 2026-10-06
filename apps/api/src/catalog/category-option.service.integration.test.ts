@@ -83,6 +83,12 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
       `itest-co-${stamp}-%`,
     );
     await prisma.categoryOption.deleteMany({ where: { categoryId } });
+    await prisma.variantOptionValue.deleteMany({
+      where: { variant: { product: { categoryId } } },
+    });
+    await prisma.variant.deleteMany({ where: { product: { categoryId } } });
+    await prisma.productOption.deleteMany({ where: { product: { categoryId } } });
+    await prisma.product.deleteMany({ where: { categoryId } });
     await prisma.$executeRawUnsafe(
       `DELETE FROM catalog.category WHERE slug LIKE $1`,
       `itest-co-${stamp}-%`,
@@ -169,6 +175,34 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
 
     const list = await categoryOptions.list(categoryId);
     expect(list.map((r) => r.optionTypeId)).toContain(sizeTypeId);
+  });
+
+  it('put with identical values is a no-op that does not write duplicate outbox or audit events', async () => {
+    const auditCountBefore = await prisma.auditEvent.count({
+      where: { action: 'catalog.category_option_set', targetId: `${categoryId}:${sizeTypeId}` },
+    });
+    const outboxCountBefore = await prisma.catalogOutbox.count({
+      where: { eventType: 'category_option.set', aggregateId: `${categoryId}:${sizeTypeId}` },
+    });
+
+    const noopResult = await categoryOptions.put(
+      categoryId,
+      sizeTypeId,
+      { applicability: 'required', position: 3, priceImpact: true },
+      actor,
+      {},
+    );
+    expect(noopResult).toMatchObject({ applicability: 'required', position: 3, priceImpact: true });
+
+    const auditCountAfter = await prisma.auditEvent.count({
+      where: { action: 'catalog.category_option_set', targetId: `${categoryId}:${sizeTypeId}` },
+    });
+    const outboxCountAfter = await prisma.catalogOutbox.count({
+      where: { eventType: 'category_option.set', aggregateId: `${categoryId}:${sizeTypeId}` },
+    });
+
+    expect(auditCountAfter).toBe(auditCountBefore);
+    expect(outboxCountAfter).toBe(outboxCountBefore);
   });
 
   it('enforces value-source ↔ value-set rules and type consistency', async () => {
@@ -273,5 +307,82 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
     const types = rows.map((r) => r.eventType);
     expect(types).toContain('category_option.set');
     expect(types).toContain('category_option.removed');
+  });
+
+  it('blocks put and remove on an archived category with CATEGORY_PARENT_ARCHIVED', async () => {
+    const archCat = await prisma.category.create({
+      data: {
+        slug: s('arch-cat'),
+        nameI18n: name('Archived Category'),
+        deletedAt: new Date(),
+      },
+    });
+
+    await expect(categoryOptions.put(archCat.id, sizeTypeId, {}, actor, {})).rejects.toMatchObject({
+      code: 'CATEGORY_PARENT_ARCHIVED',
+      status: 422,
+    });
+
+    await expect(categoryOptions.remove(archCat.id, sizeTypeId, actor, {})).rejects.toMatchObject({
+      code: 'CATEGORY_PARENT_ARCHIVED',
+      status: 422,
+    });
+  });
+
+  it('blocks removing or demoting a category option if active products or variants use it', async () => {
+    // 1. Map size to category
+    await categoryOptions.put(categoryId, sizeTypeId, { isVariantAxis: true }, actor, {});
+
+    // 2. Create a product under categoryId and a ProductOption linking sizeTypeId
+    const product = await prisma.product.create({
+      data: {
+        categoryId,
+        slug: s('shirt'),
+        titleI18n: name('Shirt'),
+      },
+    });
+    await prisma.productOption.create({
+      data: {
+        productId: product.id,
+        optionTypeId: sizeTypeId,
+      },
+    });
+
+    // 3. Removing must be rejected with CATEGORY_OPTION_IN_USE (409)
+    await expect(categoryOptions.remove(categoryId, sizeTypeId, actor, {})).rejects.toMatchObject({
+      code: 'CATEGORY_OPTION_IN_USE',
+      status: 409,
+    });
+
+    // 4. Demoting applicability to not_applicable must be rejected with CATEGORY_OPTION_IN_USE (409)
+    await expect(
+      categoryOptions.put(categoryId, sizeTypeId, { applicability: 'not_applicable' }, actor, {}),
+    ).rejects.toMatchObject({ code: 'CATEGORY_OPTION_IN_USE', status: 409 });
+
+    // 5. Demoting isVariantAxis when variants exist
+    const variant = await prisma.variant.create({
+      data: {
+        productId: product.id,
+        comboSignature: `${sizeTypeId}:${sizeValueIds[0]!}`,
+      },
+    });
+    await prisma.variantOptionValue.create({
+      data: {
+        variantId: variant.id,
+        optionTypeId: sizeTypeId,
+        optionValueId: sizeValueIds[0]!,
+      },
+    });
+
+    await expect(
+      categoryOptions.put(categoryId, sizeTypeId, { isVariantAxis: false }, actor, {}),
+    ).rejects.toMatchObject({ code: 'CATEGORY_OPTION_IN_USE', status: 409 });
+
+    // Cleanup the test product and variant
+    await prisma.variantOptionValue.deleteMany({ where: { variantId: variant.id } });
+    await prisma.variant.deleteMany({ where: { id: variant.id } });
+    await prisma.productOption.deleteMany({ where: { productId: product.id } });
+    await prisma.product.deleteMany({ where: { id: product.id } });
+    await categoryOptions.remove(categoryId, sizeTypeId, actor, {});
   });
 });

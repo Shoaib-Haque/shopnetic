@@ -2,8 +2,10 @@
 import type {
   Category,
   CategoryListStatus,
+  CategoryOption,
   CreateCategoryRequest,
   MoveCategoryRequest,
+  PutCategoryOptionRequest,
   ReorderCategoriesRequest,
   UpdateCategoryRequest,
 } from '@shopnetic/contracts';
@@ -77,4 +79,27 @@ export function deleteCategory(id: string): Promise<void> {
 /** Un-archive a category and its archived subtree (cascade). */
 export function restoreCategory(id: string): Promise<Category> {
   return adminApi<Category>(`/categories/${id}/restore`, { method: 'POST' });
+}
+
+// ── Category Option Mappings (plan/26 §2.1) ───────────────────────────────────
+
+export function listCategoryOptions(categoryId: string): Promise<CategoryOption[]> {
+  return adminApi<CategoryOption[]>(`/categories/${categoryId}/options`);
+}
+
+export function putCategoryOption(
+  categoryId: string,
+  optionTypeId: string,
+  body: PutCategoryOptionRequest,
+): Promise<CategoryOption> {
+  return adminApi<CategoryOption>(`/categories/${categoryId}/options/${optionTypeId}`, {
+    method: 'PUT',
+    body,
+  });
+}
+
+export function deleteCategoryOption(categoryId: string, optionTypeId: string): Promise<void> {
+  return adminApi<void>(`/categories/${categoryId}/options/${optionTypeId}`, {
+    method: 'DELETE',
+  });
 }

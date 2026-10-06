@@ -43,7 +43,7 @@ export const PopoverContent = forwardRef<ElementRef<typeof RPopover.Content>, Po
           align={align}
           sideOffset={sideOffset}
           className={cn(
-            'sn-popover z-50 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-border',
+            'sn-popover z-50 w-80 max-w-[calc(100vw_-_2rem)] rounded-md border border-border',
             'bg-background p-4 shadow-md focus:outline-none',
             className,
           )}

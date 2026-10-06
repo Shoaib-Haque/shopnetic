@@ -35,6 +35,78 @@
         "none": "none"
       },
       "edit": "Edit",
+      "options": "Options",
+      "optionsDialog": {
+        "title": "Options & attributes — “{name}”",
+        "description": "Configure the option types and specifications that apply to products in this category.",
+        "add": "Map option type",
+        "edit": "Edit configuration",
+        "remove": "Remove from category",
+        "close": "Close",
+        "archivedBadge": "Archived — view only",
+        "empty": "No option types mapped to this category yet.",
+        "emptyArchived": "No option types are mapped to this archived category.",
+        "emptyHint": "Map an option type so products in this category can offer choices (e.g. Size, Color) or specifications (e.g. Material).",
+        "cols": {
+          "optionType": "Option type",
+          "role": "Role",
+          "applicability": "Applicability",
+          "valueSource": "Value source",
+          "priceImpact": "Price impact",
+          "actions": "Actions"
+        },
+        "role": {
+          "variantAxis": "Variant axis",
+          "variantAxisHint": "Generates SKUs",
+          "attribute": "Attribute",
+          "attributeHint": "Specification"
+        },
+        "applicability": {
+          "required": "Required",
+          "optional": "Optional",
+          "notApplicable": "Not applicable"
+        },
+        "source": {
+          "open": "Open",
+          "predefined": "Predefined",
+          "hybrid": "Hybrid"
+        },
+        "priceImpact": {
+          "yes": "Yes",
+          "no": "No"
+        },
+        "form": {
+          "addTitle": "Map new option type",
+          "editTitle": "Edit mapping: {name}",
+          "optionType": "Option type",
+          "selectOptionType": "Select an option type…",
+          "role": "Role",
+          "isVariantAxis": "Variant axis",
+          "isVariantAxisHint": "Values create distinct purchasable SKUs (e.g. Size, Color). Turn off for informational specifications (e.g. Material).",
+          "applicability": "Applicability",
+          "applicabilityHint": "Whether products in this category are required to include this option.",
+          "valueSource": "Value source",
+          "valueSourceHint": "Where allowed values come from.",
+          "valueSourceOpen": "Open (any active value in the catalog)",
+          "valueSourcePredefined": "Predefined (strictly restricted to a value set)",
+          "valueSourceHybrid": "Hybrid (predefined value set with custom additions)",
+          "valueSet": "Value set",
+          "selectValueSet": "Select a value set…",
+          "noMatchingValueSets": "No value sets match this option type.",
+          "priceImpact": "Price impact",
+          "priceImpactHint": "Indicate that choices on this axis commonly differ in price.",
+          "position": "Position",
+          "save": "Save mapping",
+          "cancel": "Cancel",
+          "allMapped": "All available option types are already mapped to this category."
+        },
+        "deleteConfirm": "Remove “{name}” from this category?",
+        "toast": {
+          "saved": "Option type “{name}” mapped to category.",
+          "removed": "Option type “{name}” removed from category.",
+          "restored": "Option type “{name}” restored to category."
+        }
+      },
       "view": "View",
       "addChild": "Add sub-category",
       "delete": "Delete",
@@ -249,6 +321,10 @@
       "optionValueCodeTaken": "That code is already used by another value on this option type.",
       "optionValueLabelTaken": "That label is already used by another value on this option type (case-insensitive).",
       "optionValueInUse": "This value is used by one or more products, variants, or media — deprecate it instead of removing it.",
+      "categoryOptionInvalid": "The option configuration is invalid for this value source.",
+      "categoryOptionInUse": "Cannot remove or change this option type because products in this category are currently using it.",
+      "valueSetTypeMismatch": "The selected value set contains values of another option type.",
+      "categoryOptionNotConfigured": "This option is not configured on the category.",
       "conflict": "That action conflicts with the current state — reload and try again.",
       "validation": "Please check the highlighted fields.",
       "unauthenticated": "Your session expired. Please sign in again.",

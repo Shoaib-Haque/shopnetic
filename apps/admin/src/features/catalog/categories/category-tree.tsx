@@ -313,9 +313,7 @@ function CategoryRow({ cat, context, flash, spotlight, tree, drag, renderActions
       <TableCell className="w-28">
         <StatusBadge tone={life.tone}>{t(`categories.status.${life.key}`)}</StatusBadge>
       </TableCell>
-      <TableCell className="w-28 whitespace-nowrap px-2 text-right lg:w-56">
-        {renderActions(cat)}
-      </TableCell>
+      <TableCell className="w-10 text-right">{renderActions(cat)}</TableCell>
     </TableRow>
   );
 }
@@ -328,7 +326,7 @@ function HeadRow() {
         <TableHead className="pl-2">{t('categories.cols.name')}</TableHead>
         <TableHead className="hidden w-36 lg:table-cell">{t('categories.cols.brand')}</TableHead>
         <TableHead className="w-28">{t('categories.cols.status')}</TableHead>
-        <TableHead className="w-28 lg:w-56" />
+        <TableHead className="w-10" />
       </TableRow>
     </TableHeader>
   );

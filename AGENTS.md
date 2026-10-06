@@ -274,8 +274,8 @@ When modifying or writing code, **strictly adhere** to the locked rules in `plan
 
 ### J. Working Agreements With the Owner
 
-- Rules the owner states during a session are recorded here for future agents. Add new ones as they are agreed.
-- **Temporary test artifacts & screenshots (owner's rule):** Never save screenshots, debug files, or scratch outputs in the OS root `/tmp`. Always store them inside the workspace's ignored local directory (`/var/www/html/idea/shopnetic/tmp/`) instead.
+- **Temporary test artifacts & screenshots (owner's rule):** Never save screenshots, debug files, or scratch outputs in the OS root `/tmp`. Always store them inside the workspace's ignored local directory (`/var/www/html/idea/shopnetic/tmp/`) organized directory-wise by domain/feature (e.g., `tmp/catalog/categories/`, `tmp/auth/`). Before saving any screenshot or test artifact, always check if the target directory exists and create it (`mkdir -p` / `fs.mkdirSync(dir, { recursive: true })`) if needed.
+- **UI tests section in reports (owner's rule):** Always execute browser UI tests and include a dedicated "UI Tests" section with test steps, verified outcomes, and screenshot links (`tmp/**/*.png`) after implementing or updating UI features whenever applicable.
 
 ---
 

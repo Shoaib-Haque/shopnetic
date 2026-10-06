@@ -66,7 +66,7 @@ export const ModalContent = forwardRef<ElementRef<typeof RDialog.Content>, Modal
             <RDialog.Content
               ref={ref}
               className={cn(
-                'relative flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col rounded-lg',
+                'relative flex max-h-[calc(100dvh_-_2rem)] w-full flex-col rounded-lg',
                 'border border-border bg-background shadow-xl',
                 // panel-scale (G11): a centered dialog fades + scales in/out,
                 // not the slide Drawer uses from an edge — `transition-all`
