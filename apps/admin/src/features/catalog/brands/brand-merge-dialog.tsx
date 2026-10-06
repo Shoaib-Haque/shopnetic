@@ -90,7 +90,12 @@ export function BrandMergeDialog({
     <Modal open={open} onOpenChange={(o) => !merging && onOpenChange(o)}>
       <ModalContent size="sm" closeLabel={t('brands.mergeDialog.cancel')}>
         <ModalHeader>
-          <ModalTitle>{t('brands.mergeDialog.title', { name: source.name })}</ModalTitle>
+          <ModalTitle
+            className="min-w-0 truncate"
+            title={t('brands.mergeDialog.title', { name: source.name })}
+          >
+            {t('brands.mergeDialog.title', { name: source.name })}
+          </ModalTitle>
         </ModalHeader>
         <ModalBody className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">

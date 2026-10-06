@@ -459,7 +459,9 @@ export function OptionTypeFormModal({
                       aria-hidden
                     />
                   )}
-                  <span className="min-w-0 flex-1 truncate">{d.labelEn}</span>
+                  <span className="min-w-0 flex-1 truncate" title={d.labelEn}>
+                    {d.labelEn}
+                  </span>
                   <span className="shrink-0 text-xs text-muted-foreground">{d.code}</span>
                   <button
                     type="button"
@@ -505,7 +507,9 @@ export function OptionTypeFormModal({
                         aria-hidden
                       />
                     )}
-                    <span className="min-w-0 flex-1 truncate">{v.label['en'] ?? v.code}</span>
+                    <span className="min-w-0 flex-1 truncate" title={v.label['en'] ?? v.code}>
+                      {v.label['en'] ?? v.code}
+                    </span>
                     <span className="shrink-0 text-xs text-muted-foreground">{v.code}</span>
                     <button
                       type="button"

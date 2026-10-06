@@ -243,8 +243,15 @@ export function OptionTypeList() {
       data-option-type-row={ot.id}
       className={cn('scroll-my-24', opts?.spotlight && 'bg-primary/5')}
     >
-      <TableCell className="pl-2 text-sm text-muted-foreground">{ot.code}</TableCell>
-      <TableCell className="truncate font-medium">{ot.name['en'] ?? ot.code}</TableCell>
+      <TableCell
+        className="max-w-[140px] truncate pl-2 text-sm text-muted-foreground"
+        title={ot.code}
+      >
+        {ot.code}
+      </TableCell>
+      <TableCell className="truncate font-medium" title={ot.name['en'] ?? ot.code}>
+        {ot.name['en'] ?? ot.code}
+      </TableCell>
       <TableCell className="text-sm text-muted-foreground">
         {t(`optionTypes.dataType.${ot.dataType}`)}
       </TableCell>

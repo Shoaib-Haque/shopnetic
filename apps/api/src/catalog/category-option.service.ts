@@ -103,6 +103,44 @@ export class CategoryOptionService {
       input.valueSetId !== undefined ? input.valueSetId : (existing?.valueSetId ?? null);
     await this.assertSourceAndSet(effSource, effSetId, optionTypeId);
 
+    // `predefined` is the only source that actually restricts which values are
+    // allowed — `open` takes anything, and `hybrid` is `predefined` *plus*
+    // seller-proposed values (plan/26 section 2.1's own doc comment), so it
+    // never excludes a value that was valid a moment ago. Only becoming
+    // `predefined` (freshly, or swapping to a different value set while
+    // staying `predefined`) can retroactively invalidate an already-selected
+    // `ProductOptionValue` whose value isn't a member of the new set — guard
+    // that the same way the other three mutation guards above do, rather than
+    // silently stranding a live product's selection outside the set it's now
+    // supposedly drawn from.
+    const narrowingToSet =
+      effSource === 'predefined' &&
+      effSetId !== null &&
+      (existing?.valueSource !== 'predefined' || existing.valueSetId !== effSetId);
+    if (narrowingToSet) {
+      const [allowedValueIds, selectedValues] = await Promise.all([
+        this.prisma.valueSetItem.findMany({
+          where: { valueSetId: effSetId },
+          select: { optionValueId: true },
+        }),
+        this.prisma.productOptionValue.findMany({
+          where: {
+            optionTypeId,
+            productOption: { product: { categoryId, deletedAt: null } },
+          },
+          select: { optionValueId: true },
+          distinct: ['optionValueId'],
+        }),
+      ]);
+      const allowed = new Set(allowedValueIds.map((i) => i.optionValueId));
+      if (selectedValues.some((v) => !allowed.has(v.optionValueId))) {
+        throw new AppError('CATEGORY_OPTION_IN_USE', 409, {
+          detail:
+            'cannot restrict to this value set: a product in this category has already selected a value outside it',
+        });
+      }
+    }
+
     const patch: Patch = {};
     if (input.applicability !== undefined) patch.applicability = input.applicability;
     if (input.isVariantAxis !== undefined) patch.isVariantAxis = input.isVariantAxis;

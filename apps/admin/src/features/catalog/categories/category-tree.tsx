@@ -669,7 +669,10 @@ export function CategoryCards({
                 {c.name['en'] ?? c.slug}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">/{c.slug}</span>
               </p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              <p
+                className="mt-0.5 truncate text-xs text-muted-foreground"
+                title={`${t(`categories.status.${life.key}`)} · ${t(`categories.brandReq.${c.brandRequirement}`)}${ctx ? ` · ${t('categories.inPath', { path: ctx })}` : ''}`}
+              >
                 {t(`categories.status.${life.key}`)} ·{' '}
                 {t(`categories.brandReq.${c.brandRequirement}`)}
                 {ctx ? ` · ${t('categories.inPath', { path: ctx })}` : ''}

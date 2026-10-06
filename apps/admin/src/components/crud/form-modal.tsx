@@ -64,7 +64,7 @@ export function FormModal({
       <Modal open={open} onOpenChange={requestChange}>
         <ModalContent size={size} closeLabel={t('actions.cancel')}>
           <ModalHeader>
-            <ModalTitle>{title}</ModalTitle>
+            <ModalTitle className="min-w-0 truncate">{title}</ModalTitle>
             {description !== undefined && <ModalDescription>{description}</ModalDescription>}
           </ModalHeader>
           {/* noValidate: native constraint validation (e.g. a number input's

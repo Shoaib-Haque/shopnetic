@@ -385,4 +385,72 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
     await prisma.product.deleteMany({ where: { id: product.id } });
     await categoryOptions.remove(categoryId, sizeTypeId, actor, {});
   });
+
+  it('blocks narrowing to a value set that excludes a value an active product already selected', async () => {
+    // 1. Map size to the category as 'open' — any value allowed, no set.
+    await categoryOptions.put(categoryId, sizeTypeId, { valueSource: 'open' }, actor, {});
+
+    // 2. A product in this category selects "S" while the option is still open.
+    const product = await prisma.product.create({
+      data: { categoryId, slug: s('open-shirt'), titleI18n: name('Open Shirt') },
+    });
+    await prisma.productOption.create({
+      data: { productId: product.id, optionTypeId: sizeTypeId },
+    });
+    await prisma.productOptionValue.create({
+      data: { productId: product.id, optionTypeId: sizeTypeId, optionValueId: sizeValueIds[0]! },
+    });
+
+    // 3. A set that only has "M" — doesn't cover the product's existing "S" pick.
+    const tooNarrowSet = await valueSets.create(
+      { name: s('sizes-m-only'), items: [{ optionValueId: sizeValueIds[1]! }] },
+      actor,
+      {},
+    );
+    await expect(
+      categoryOptions.put(
+        categoryId,
+        sizeTypeId,
+        { valueSource: 'predefined', valueSetId: tooNarrowSet.id },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'CATEGORY_OPTION_IN_USE', status: 409 });
+
+    // 4. A set that *does* cover "S" — the same transition succeeds.
+    const coveringSet = await valueSets.create(
+      {
+        name: s('sizes-s-and-m'),
+        items: [{ optionValueId: sizeValueIds[0]! }, { optionValueId: sizeValueIds[1]! }],
+      },
+      actor,
+      {},
+    );
+    const row = await categoryOptions.put(
+      categoryId,
+      sizeTypeId,
+      { valueSource: 'predefined', valueSetId: coveringSet.id },
+      actor,
+      {},
+    );
+    expect(row).toMatchObject({ valueSource: 'predefined', valueSetId: coveringSet.id });
+
+    // 5. Loosening back to 'open' is never blocked — only narrowing *to*
+    //    predefined is guarded, confirmed by this direction working freely.
+    await expect(
+      categoryOptions.put(
+        categoryId,
+        sizeTypeId,
+        { valueSource: 'open', valueSetId: null },
+        actor,
+        {},
+      ),
+    ).resolves.toMatchObject({ valueSource: 'open' });
+
+    // Cleanup
+    await prisma.productOptionValue.deleteMany({ where: { productId: product.id } });
+    await prisma.productOption.deleteMany({ where: { productId: product.id } });
+    await prisma.product.deleteMany({ where: { id: product.id } });
+    await categoryOptions.remove(categoryId, sizeTypeId, actor, {});
+  });
 });

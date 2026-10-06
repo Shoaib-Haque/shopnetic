@@ -4733,5 +4733,51 @@ compose file.
   - Added localized messages and error mappings in `apps/admin/messages/en/catalog.json` and `apps/admin/src/features/catalog/error-copy.ts`.
   - Added unit test suite in `apps/admin/src/features/catalog/categories/category-options-dialog.test.tsx` (12 tests covering empty state, dual desktop table and mobile cards rendering, header ellipsis truncation, create, edit, pristine edit no-op, remove, undo restoration, value-set validation, error translation, category switch wipe, and archived read-only mode).
   - Added real-DB integration test suite in `apps/api/src/catalog/category-option.service.integration.test.ts` (11 tests covering full lifecycle, no-op put suppression, audit snapshotting, outbox events, archived mutation prevention, and product/variant in-use orphaning blocks).
+  - Cross-checked by a second, independent audit against the no-op/card-view/ellipsis
+    conventions established above, applied catalog-wide (Category, Brand, Option
+    Types and their sub-features). Four real, pre-existing gaps found and fixed,
+    none introduced by this feature itself:
+    1. `CategoryCards`' mobile breadcrumb/status line (`category-tree.tsx`) had
+       `truncate` but no `title` — unlike its desktop `CategoryRow` counterpart,
+       which already had one. Added a `title` built from the same three
+       concatenated fragments (status · brand requirement · optional path) the
+       line actually renders, not just the path alone.
+    2. `BrandMergeDialog`'s `ModalTitle` (`brand-merge-dialog.tsx`) interpolates
+       the source brand's own name with zero `min-w-0`/`truncate`/`title` — at
+       `size="sm"` (384px), the smallest modal size in the app. Unlike
+       `FormModal`'s case below, this one already interpolates a real dynamic
+       name today, not just a future risk. Added the guard.
+    3. `OptionTypeList`'s desktop table (`option-type-list.tsx`): the name cell
+       had `truncate` but no `title`; the code cell next to it had no `truncate`
+       at all (unlike its own mobile card, which does) — a long code could widen
+       the column instead of clipping. Added `title` to the name cell and
+       `truncate` + a `max-w-[140px]` cap + `title` to the code cell.
+    4. Option Values' labels in both create-draft and saved-edit rows
+       (`option-type-form-modal.tsx`) had `truncate` but no `title`. Added it to
+       both.
+    - Also applied the proactive `min-w-0 truncate` guard to the shared
+      `FormModal`'s `ModalTitle` (`components/crud/form-modal.tsx`) flagged
+      independently by both audits — latent today (every current caller passes a
+      static string), but the next entity whose edit modal titles itself with the
+      record's own name (Product almost certainly will) would otherwise hit the
+      same bug as #2 above, in the one component every single-entity edit modal
+      shares.
+    - Full suite re-verified after all five fixes: 361/361 admin, typecheck/lint/
+      format clean, no regressions (text content unchanged, only attributes/
+      wrapper elements added).
+  - Closed the one residual orphaning gap this feature's own audit had flagged
+    but left open: narrowing a mapping's `valueSource` to `predefined` (fresh,
+    or swapping to a different value set while already `predefined`) now
+    blocks with `CATEGORY_OPTION_IN_USE` (409) if any active product in the
+    category has already selected a value outside the new set.
+    `open`/`hybrid` were never guarded here — `hybrid` is `predefined` *plus*
+    seller-proposed values (plan/26 section 2.1), so it never excludes a value
+    that was valid a moment ago, and loosening back to `open`/`hybrid` is
+    never blocked either — only narrowing *to* `predefined` is. Added
+    `apps/api/src/catalog/category-option.service.integration.test.ts`'s own
+    test proving both the narrowing-blocked and loosening-allowed directions.
+    Full suite re-verified: 361/361 admin, 148/148 API integration
+    (`category-option.service.integration.test.ts` now 12/12), typecheck/
+    lint/format clean.
 
 
