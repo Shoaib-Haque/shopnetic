@@ -16,6 +16,7 @@ import { auditRecordFor } from '../audit/audit-record-for.js';
 import { clampLimit } from '../common/pagination.js';
 import { tokenizeForSql, buildTokenSearch } from '../common/text-search.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
+import { isLocalizedEqual } from './catalog-utils.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 
 interface RawCategory {
@@ -315,11 +316,27 @@ export class CategoryService {
         : null;
 
     const data: Prisma.CategoryUpdateInput = {};
-    if (input.slug !== undefined) data.slug = input.slug;
-    if (input.name !== undefined) data.nameI18n = input.name;
-    if (input.position !== undefined) data.position = input.position;
-    if (input.isActive !== undefined) data.isActive = input.isActive;
-    if (input.brandRequirement !== undefined) data.brandRequirement = input.brandRequirement;
+    if (input.slug !== undefined && input.slug !== current.slug) data.slug = input.slug;
+    if (input.name !== undefined && !isLocalizedEqual(input.name, current.name_i18n)) {
+      data.nameI18n = input.name;
+    }
+    if (input.position !== undefined && input.position !== current.position) {
+      data.position = input.position;
+    }
+    if (input.isActive !== undefined && input.isActive !== current.is_active) {
+      data.isActive = input.isActive;
+    }
+    if (
+      input.brandRequirement !== undefined &&
+      input.brandRequirement !== current.brand_requirement
+    ) {
+      data.brandRequirement = input.brandRequirement;
+    }
+
+    // No-op check: if nothing changed and no reparent requested, skip DB write, outbox, and audit
+    if (Object.keys(data).length === 0 && !wantsReparent) {
+      return toView(current);
+    }
 
     await this.prisma
       .$transaction(async (tx) => {

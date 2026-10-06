@@ -142,25 +142,28 @@ export class CategoryOptionService {
     }
 
     const patch: Patch = {};
-    if (input.applicability !== undefined) patch.applicability = input.applicability;
-    if (input.isVariantAxis !== undefined) patch.isVariantAxis = input.isVariantAxis;
-    if (input.valueSource !== undefined) patch.valueSource = input.valueSource;
-    if (input.valueSetId !== undefined) patch.valueSetId = input.valueSetId;
-    if (input.priceImpact !== undefined) patch.priceImpact = input.priceImpact;
-    if (input.position !== undefined) patch.position = input.position;
+    if (input.applicability !== undefined && input.applicability !== existing?.applicability) {
+      patch.applicability = input.applicability;
+    }
+    if (input.isVariantAxis !== undefined && input.isVariantAxis !== existing?.isVariantAxis) {
+      patch.isVariantAxis = input.isVariantAxis;
+    }
+    if (input.valueSource !== undefined && input.valueSource !== existing?.valueSource) {
+      patch.valueSource = input.valueSource;
+    }
+    if (input.valueSetId !== undefined && input.valueSetId !== existing?.valueSetId) {
+      patch.valueSetId = input.valueSetId;
+    }
+    if (input.priceImpact !== undefined && input.priceImpact !== existing?.priceImpact) {
+      patch.priceImpact = input.priceImpact;
+    }
+    if (input.position !== undefined && input.position !== existing?.position) {
+      patch.position = input.position;
+    }
 
     // No-op check: if nothing changed, avoid redundant DB writes, outbox events, and audit logs
-    if (existing) {
-      const isNoOp =
-        (patch.applicability === undefined || patch.applicability === existing.applicability) &&
-        (patch.isVariantAxis === undefined || patch.isVariantAxis === existing.isVariantAxis) &&
-        (patch.valueSource === undefined || patch.valueSource === existing.valueSource) &&
-        (patch.valueSetId === undefined || patch.valueSetId === existing.valueSetId) &&
-        (patch.priceImpact === undefined || patch.priceImpact === existing.priceImpact) &&
-        (patch.position === undefined || patch.position === existing.position);
-      if (isNoOp) {
-        return this.rowView(categoryId, optionTypeId);
-      }
+    if (existing && Object.keys(patch).length === 0) {
+      return this.rowView(categoryId, optionTypeId);
     }
 
     await this.prisma.$transaction(async (tx) => {

@@ -22,6 +22,7 @@ import {
 import { clampLimit } from '../common/pagination.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
+import { isLocalizedEqual } from './catalog-utils.js';
 
 type OptionTypeWithValues = OptionTypeRow & { values: OptionValueRow[] };
 
@@ -195,11 +196,27 @@ export class OptionTypeService {
     }
 
     const data: Prisma.OptionTypeUpdateInput = {};
-    if (input.code !== undefined) data.code = input.code;
-    if (input.name !== undefined) data.nameI18n = input.name;
-    if (input.dataType !== undefined) data.dataType = input.dataType;
-    if (input.hasSwatch !== undefined) data.hasSwatch = input.hasSwatch;
-    if (input.status !== undefined) data.status = input.status;
+    if (input.code !== undefined && input.code !== current.code) data.code = input.code;
+    if (
+      input.name !== undefined &&
+      !isLocalizedEqual(input.name, current.nameI18n as Record<string, string>)
+    ) {
+      data.nameI18n = input.name;
+    }
+    if (input.dataType !== undefined && input.dataType !== current.dataType) {
+      data.dataType = input.dataType;
+    }
+    if (input.hasSwatch !== undefined && input.hasSwatch !== current.hasSwatch) {
+      data.hasSwatch = input.hasSwatch;
+    }
+    if (input.status !== undefined && input.status !== current.status) {
+      data.status = input.status;
+    }
+
+    // No-op check: if nothing changed, skip DB write, outbox, and audit
+    if (Object.keys(data).length === 0) {
+      return toView(current);
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.optionType.update({ where: { id }, data });

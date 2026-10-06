@@ -243,6 +243,47 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     });
   });
 
+  it('update with identical values is a no-op that does not bump updatedAt, write outbox, or audit events', async () => {
+    const b = await svc.create(
+      { name: s('noop-brand'), slug: s('noop-brand'), isRestricted: false },
+      actor,
+      {},
+    );
+
+    const auditCountBefore = await prisma.auditEvent.count({
+      where: { action: 'catalog.brand_updated', targetId: b.id },
+    });
+    const outboxCountBefore = await prisma.catalogOutbox.count({
+      where: { eventType: 'brand.updated', aggregateId: b.id },
+    });
+
+    const noopResult = await svc.update(
+      b.id,
+      {
+        name: s('noop-brand'),
+        slug: s('noop-brand'),
+        status: 'active',
+        isRestricted: false,
+        expectedUpdatedAt: b.updatedAt,
+      },
+      actor,
+      {},
+    );
+
+    expect(noopResult.updatedAt).toBe(b.updatedAt);
+    expect(noopResult.name).toBe(s('noop-brand'));
+
+    const auditCountAfter = await prisma.auditEvent.count({
+      where: { action: 'catalog.brand_updated', targetId: b.id },
+    });
+    const outboxCountAfter = await prisma.catalogOutbox.count({
+      where: { eventType: 'brand.updated', aggregateId: b.id },
+    });
+
+    expect(auditCountAfter).toBe(auditCountBefore);
+    expect(outboxCountAfter).toBe(outboxCountBefore);
+  });
+
   it('isRestricted is orthogonal to status — settable on create and update, independently of it', async () => {
     const b = await svc.create(
       { name: s('flagged'), slug: s('flagged'), isRestricted: true },

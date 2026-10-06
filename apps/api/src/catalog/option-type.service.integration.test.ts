@@ -136,6 +136,53 @@ describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
     });
   });
 
+  it('update with identical values is a no-op that does not bump updatedAt, write outbox, or audit events', async () => {
+    const t = await svc.create(
+      {
+        code: s('noop-ot'),
+        name: name('NoopOT'),
+        dataType: 'select',
+        hasSwatch: false,
+      },
+      actor,
+      {},
+    );
+
+    const auditCountBefore = await prisma.auditEvent.count({
+      where: { action: 'catalog.option_type_updated', targetId: t.id },
+    });
+    const outboxCountBefore = await prisma.catalogOutbox.count({
+      where: { eventType: 'option_type.updated', aggregateId: t.id },
+    });
+
+    const noopResult = await svc.update(
+      t.id,
+      {
+        code: s('noop-ot'),
+        name: name('NoopOT'),
+        dataType: 'select',
+        hasSwatch: false,
+        status: 'active',
+        expectedUpdatedAt: t.updatedAt,
+      },
+      actor,
+      {},
+    );
+
+    expect(noopResult.updatedAt).toBe(t.updatedAt);
+    expect(noopResult.code).toBe(s('noop-ot'));
+
+    const auditCountAfter = await prisma.auditEvent.count({
+      where: { action: 'catalog.option_type_updated', targetId: t.id },
+    });
+    const outboxCountAfter = await prisma.catalogOutbox.count({
+      where: { eventType: 'option_type.updated', aggregateId: t.id },
+    });
+
+    expect(auditCountAfter).toBe(auditCountBefore);
+    expect(outboxCountAfter).toBe(outboxCountBefore);
+  });
+
   it('updateValue reorders values by writing position directly (no dedicated reorder endpoint)', async () => {
     const t = await svc.create(
       {

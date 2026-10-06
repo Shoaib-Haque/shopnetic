@@ -4779,5 +4779,23 @@ compose file.
     Full suite re-verified: 361/361 admin, 148/148 API integration
     (`category-option.service.integration.test.ts` now 12/12), typecheck/
     lint/format clean.
+  - Backported backend-side no-op mutation guards to `CategoryService.update()`,
+    `BrandService.update()`, and `OptionTypeService.update()`, eliminating redundant
+    database writes, outbox event generation, and audit log pollution when identical
+    payloads are submitted.
+    - Addressed the field-sync fragility risk: rather than maintaining separate,
+      manual lists of fields for comparison and assignment, each service populates
+      its Prisma update input (`data`) only when a field value differs from the existing
+      row (using `isLocalizedEqual` in `catalog-utils.ts` for JSON text fields). The no-op
+      check evaluates `Object.keys(data).length === 0` (and `!wantsReparent` for Category).
+    - If a future field is added without a diff comparison, it simply executes the
+      standard update without ever falsely dropping real user changes.
+    - Also hardened `CategoryOptionService.put()` with the same patch-key-derived
+      no-op check, eliminating its previous duplicate field checklist.
+    - Added integration tests across `category.service.integration.test.ts`,
+      `brand.service.integration.test.ts`, and `option-type.service.integration.test.ts`
+      verifying that no-op updates preserve `updatedAt` and skip outbox and audit log writes.
+    - Full suite re-verified: 151/151 API integration tests passing, 361/361 admin tests green,
+      typecheck/lint/format all clean.
 
 

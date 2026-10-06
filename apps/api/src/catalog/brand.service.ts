@@ -22,6 +22,7 @@ import {
 } from '../common/text-search.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
+import { isLocalizedEqual } from './catalog-utils.js';
 
 type BrandWithAliases = BrandRow & { aliases: BrandAliasRow[] };
 
@@ -181,13 +182,28 @@ export class BrandService {
     }
 
     const data: Prisma.BrandUpdateInput = {};
-    if (input.name !== undefined) data.name = input.name;
-    if (input.slug !== undefined) data.slug = input.slug;
-    if (input.status !== undefined) data.status = input.status;
-    if (input.isRestricted !== undefined) data.isRestricted = input.isRestricted;
-    if (input.logoKey !== undefined) data.logoKey = input.logoKey;
-    if (input.displayName !== undefined) {
+    if (input.name !== undefined && input.name !== current.name) data.name = input.name;
+    if (input.slug !== undefined && input.slug !== current.slug) data.slug = input.slug;
+    if (input.status !== undefined && input.status !== current.status) data.status = input.status;
+    if (input.isRestricted !== undefined && input.isRestricted !== current.isRestricted) {
+      data.isRestricted = input.isRestricted;
+    }
+    if (input.logoKey !== undefined && (input.logoKey ?? null) !== (current.logoKey ?? null)) {
+      data.logoKey = input.logoKey;
+    }
+    if (
+      input.displayName !== undefined &&
+      !isLocalizedEqual(
+        input.displayName ?? null,
+        (current.displayNameI18n as Record<string, string> | null) ?? null,
+      )
+    ) {
       data.displayNameI18n = input.displayName === null ? Prisma.DbNull : input.displayName;
+    }
+
+    // No-op check: if nothing changed, skip DB write, outbox, and audit
+    if (Object.keys(data).length === 0) {
+      return toView(current);
     }
 
     await this.prisma.$transaction(async (tx) => {

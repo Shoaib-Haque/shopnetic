@@ -368,6 +368,48 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     });
   });
 
+  it('update with identical values is a no-op that does not bump updatedAt, write outbox, or audit events', async () => {
+    const cat = await svc.create(
+      { slug: s('noop-cat'), name: name('NoopCat'), position: 5 },
+      actor,
+      {},
+    );
+
+    const auditCountBefore = await prisma.auditEvent.count({
+      where: { action: 'catalog.category_updated', targetId: cat.id },
+    });
+    const outboxCountBefore = await prisma.catalogOutbox.count({
+      where: { eventType: 'category.updated', aggregateId: cat.id },
+    });
+
+    const noopResult = await svc.update(
+      cat.id,
+      {
+        slug: s('noop-cat'),
+        name: name('NoopCat'),
+        position: 5,
+        isActive: true,
+        brandRequirement: 'optional',
+        expectedUpdatedAt: cat.updatedAt,
+      },
+      actor,
+      {},
+    );
+
+    expect(noopResult.updatedAt).toBe(cat.updatedAt);
+    expect(noopResult.slug).toBe(s('noop-cat'));
+
+    const auditCountAfter = await prisma.auditEvent.count({
+      where: { action: 'catalog.category_updated', targetId: cat.id },
+    });
+    const outboxCountAfter = await prisma.catalogOutbox.count({
+      where: { eventType: 'category.updated', aggregateId: cat.id },
+    });
+
+    expect(auditCountAfter).toBe(auditCountBefore);
+    expect(outboxCountAfter).toBe(outboxCountBefore);
+  });
+
   describe('list: pagination and search', () => {
     it('list() with no limit still returns everything under {categories} — the tree load-all path is unaffected', async () => {
       const root = await svc.create({ slug: s('pg-root'), name: name('PgRoot') }, actor, {});
