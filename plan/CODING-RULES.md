@@ -4797,5 +4797,12 @@ compose file.
       verifying that no-op updates preserve `updatedAt` and skip outbox and audit log writes.
     - Full suite re-verified: 151/151 API integration tests passing, 361/361 admin tests green,
       typecheck/lint/format all clean.
+  - Closed the optimistic concurrency control gap on Category Options:
+    - Added `expectedUpdatedAt?: string` to `PutCategoryOptionRequest` (`putCategoryOptionRequestSchema`) in `@shopnetic/contracts`, aligning Category Options with the concurrency protection already present on Category, Brand, and Option Type mutations.
+    - Added backend optimistic concurrency enforcement in `CategoryOptionService.put()` (`apps/api/src/catalog/category-option.service.ts`): if `expectedUpdatedAt` is provided, verifies `expectedUpdatedAt === existing.updatedAt.toISOString()` before applying mutations; throws `CONFLICT` (409) if the row was modified or deleted since it was loaded.
+    - Updated `CategoryOptionsDialog` (`apps/admin/src/features/catalog/categories/category-options-dialog.tsx`) to supply `expectedUpdatedAt` from the loaded record when saving edits, catch `CONFLICT` (409) API errors, notify the user with `t('errors.conflict')`, reset the edit form state, and reload the latest category options automatically.
+    - Added end-to-end integration tests in `apps/api/src/catalog/category-option.service.integration.test.ts` verifying that stale `expectedUpdatedAt` tokens yield 409 CONFLICT, fresh tokens succeed, and missing records with `expectedUpdatedAt` also 409.
+    - Added unit test coverage in `apps/admin/src/features/catalog/categories/category-options-dialog.test.tsx` asserting `expectedUpdatedAt` transmission on edit and verifying 409 CONFLICT notification and data reload.
+    - Full suite verified: 362/362 admin unit tests green, 152/152 API integration tests green, typecheck and linting clean across monorepo.
 
 

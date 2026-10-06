@@ -67,6 +67,15 @@ export class CategoryOptionService {
       where: { categoryId_optionTypeId: { categoryId, optionTypeId } },
     });
 
+    // optimistic concurrency: reject a save built on a stale view of the row
+    if (input.expectedUpdatedAt !== undefined) {
+      if (!existing || input.expectedUpdatedAt !== existing.updatedAt.toISOString()) {
+        throw new AppError('CONFLICT', 409, {
+          detail: 'category option changed since it was loaded',
+        });
+      }
+    }
+
     if (existing?.isVariantAxis && input.isVariantAxis === false) {
       const variantInUseCount = await this.prisma.variantOptionValue.count({
         where: {

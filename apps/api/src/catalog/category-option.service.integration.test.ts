@@ -205,6 +205,65 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
     expect(outboxCountAfter).toBe(outboxCountBefore);
   });
 
+  it('put rejects a stale expectedUpdatedAt (optimistic concurrency)', async () => {
+    const initial = await categoryOptions.put(
+      categoryId,
+      colorTypeId,
+      { applicability: 'optional', position: 1 },
+      actor,
+      {},
+    );
+
+    // matching token → succeeds and bumps updatedAt
+    const ok = await categoryOptions.put(
+      categoryId,
+      colorTypeId,
+      { applicability: 'required', expectedUpdatedAt: initial.updatedAt },
+      actor,
+      {},
+    );
+    expect(ok.updatedAt).not.toBe(initial.updatedAt);
+    expect(ok.applicability).toBe('required');
+
+    // the original token is now stale → 409
+    await expect(
+      categoryOptions.put(
+        categoryId,
+        colorTypeId,
+        { applicability: 'optional', expectedUpdatedAt: initial.updatedAt },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // the fresh token works again; omitting it skips the check
+    await expect(
+      categoryOptions.put(
+        categoryId,
+        colorTypeId,
+        { applicability: 'optional', expectedUpdatedAt: ok.updatedAt },
+        actor,
+        {},
+      ),
+    ).resolves.toMatchObject({ applicability: 'optional' });
+
+    // token provided for an unmapped option type → 409
+    const brandType = await optionTypes.create(
+      { code: s('brand-opt'), name: name('BrandOpt') },
+      actor,
+      {},
+    );
+    await expect(
+      categoryOptions.put(
+        categoryId,
+        brandType.id,
+        { applicability: 'optional', expectedUpdatedAt: initial.updatedAt },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
   it('enforces value-source ↔ value-set rules and type consistency', async () => {
     // predefined needs a set
     await expect(

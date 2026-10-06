@@ -289,6 +289,7 @@ describe('CategoryOptionsDialog', () => {
         'ot_size',
         expect.objectContaining({
           applicability: 'optional',
+          expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
         }),
       );
     });
@@ -458,5 +459,43 @@ describe('CategoryOptionsDialog', () => {
 
     // putCategoryOption must NOT have been called
     expect(mockedPutCategoryOption).not.toHaveBeenCalled();
+  });
+
+  it('handles 409 CONFLICT by closing edit form, showing conflict notification, and reloading', async () => {
+    mockedListCategoryOptions.mockResolvedValueOnce([mappedSizeOption]);
+    mockedPutCategoryOption.mockRejectedValueOnce(new AdminApiError('CONFLICT', 409));
+
+    renderAdmin(<CategoryOptionsDialog open onOpenChange={vi.fn()} category={sampleCategory} />);
+
+    expect((await screen.findAllByText('Size')).length).toBeGreaterThan(0);
+
+    // Click edit button
+    const editBtn = screen.getAllByRole('button', { name: 'Edit configuration' })[0]!;
+    fireEvent.click(editBtn);
+
+    expect(await screen.findByText('Edit mapping: Size')).toBeInTheDocument();
+
+    // Change applicability to optional
+    const appSelect = screen.getByLabelText('Applicability');
+    fireEvent.change(appSelect, { target: { value: 'optional' } });
+
+    // Save
+    const saveButton = screen.getByRole('button', { name: 'Save mapping' });
+    fireEvent.click(saveButton);
+
+    // Edit form should close on conflict
+    await waitFor(() => {
+      expect(screen.queryByText('Edit mapping: Size')).not.toBeInTheDocument();
+    });
+
+    // Conflict error message/toast should appear
+    expect(
+      await screen.findByText(
+        'That action conflicts with the current state — reload and try again.',
+      ),
+    ).toBeInTheDocument();
+
+    // Data should be reloaded
+    expect(mockedListCategoryOptions).toHaveBeenCalledTimes(2);
   });
 });

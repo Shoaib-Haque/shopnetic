@@ -242,6 +242,7 @@ export function CategoryOptionsDialog({
       valueSource,
       valueSetId: valueSource === 'open' ? null : valueSetId,
       priceImpact,
+      ...(currentOpt ? { expectedUpdatedAt: currentOpt.updatedAt } : {}),
     };
 
     try {
@@ -252,7 +253,14 @@ export function CategoryOptionsDialog({
       await loadData();
       onCategoryChanged?.();
     } catch (e) {
-      setSaveError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+      const code = e instanceof AdminApiError ? e.code : undefined;
+      if (code === 'CONFLICT') {
+        notify.error(t('errors.conflict'));
+        setEditState(null);
+        await loadData();
+        return;
+      }
+      setSaveError(t(catalogErrorKey(code)));
     } finally {
       setSaving(false);
     }

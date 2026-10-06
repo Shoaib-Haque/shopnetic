@@ -409,6 +409,11 @@ export const putCategoryOptionRequestSchema = z.object({
   valueSetId: z.string().uuid().nullable().optional(),
   priceImpact: z.boolean().optional(),
   position: positionField.optional(),
+  /** Optimistic-concurrency guard, same shape as `updateBrandRequestSchema`'s
+   * own field — the `updatedAt` the client last read for this row. If it no
+   * longer matches the stored value the update is rejected with `409
+   * CONFLICT`. Omit to skip the check. */
+  expectedUpdatedAt: z.string().optional(),
 });
 export type PutCategoryOptionRequest = z.infer<typeof putCategoryOptionRequestSchema>;
 
