@@ -253,4 +253,61 @@ describe('useScrollLoad', () => {
       expect(result.current.items).toEqual([3]);
     });
   });
+
+  describe('scroll container overflow and scroll listener', () => {
+    it('does not auto-re-observe sentinel if scroll container already has overflow', async () => {
+      const fetchPage = vi
+        .fn()
+        .mockResolvedValueOnce(page([1, 2], 'c1'))
+        .mockResolvedValueOnce(page([3, 4], undefined));
+
+      const { result } = renderHook(() => useScrollLoad<number>(fetchPage));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const container = document.createElement('div');
+      container.style.overflowY = 'auto';
+      Object.defineProperty(container, 'clientHeight', { value: 500, configurable: true });
+      Object.defineProperty(container, 'scrollHeight', { value: 1000, configurable: true });
+      const sentinel = document.createElement('div');
+      container.appendChild(sentinel);
+      document.body.appendChild(container);
+
+      act(() => result.current.sentinelRef(sentinel));
+
+      // Container has overflow, so no automatic loadMore should be triggered
+      expect(fetchPage).toHaveBeenCalledTimes(1);
+
+      document.body.removeChild(container);
+    });
+
+    it('triggers loadMore when user scrolls near the bottom of a scroll container', async () => {
+      const fetchPage = vi
+        .fn()
+        .mockResolvedValueOnce(page([1, 2], 'c1'))
+        .mockResolvedValueOnce(page([3, 4], undefined));
+
+      const { result } = renderHook(() => useScrollLoad<number>(fetchPage));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const container = document.createElement('div');
+      container.style.overflowY = 'auto';
+      Object.defineProperty(container, 'clientHeight', { value: 500, configurable: true });
+      Object.defineProperty(container, 'scrollHeight', { value: 1000, configurable: true });
+      Object.defineProperty(container, 'scrollTop', { value: 460, configurable: true });
+      const sentinel = document.createElement('div');
+      container.appendChild(sentinel);
+      document.body.appendChild(container);
+
+      act(() => result.current.sentinelRef(sentinel));
+
+      act(() => {
+        container.dispatchEvent(new Event('scroll'));
+      });
+
+      await waitFor(() => expect(result.current.items).toEqual([1, 2, 3, 4]));
+      expect(fetchPage).toHaveBeenCalledTimes(2);
+
+      document.body.removeChild(container);
+    });
+  });
 });
