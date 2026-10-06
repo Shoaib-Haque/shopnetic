@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { authenticator } from 'otplib';
+import { ARGON2_PARAMS } from '@shopnetic/auth';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import type { ApiEnv } from '../config/env.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
@@ -35,6 +36,8 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
   let prisma: PrismaClient;
   let invites: StaffInviteService;
   let staffAuth: StaffAuthService;
+  let passwords: PasswordService;
+  let staffRoleId: string;
   let inviterId: string;
   let accountId = '';
   let inviteToken = '';
@@ -53,7 +56,7 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
     const jwks = new JwksService(env);
     await jwks.onModuleInit();
     const audit = new AuditService(px);
-    const passwords = new PasswordService(env);
+    passwords = new PasswordService(env);
     const totp = new TotpService(px, new SecretBoxService(env), env);
     const sessions = new SessionService(px, env, audit);
     const accessTokens = new AccessTokenService(env, jwks);
@@ -84,6 +87,7 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
     );
 
     const superRole = await prisma.role.findUniqueOrThrow({ where: { key: 'SUPER_ADMIN' } });
+    staffRoleId = superRole.id;
     const inviter = await prisma.account.create({
       data: {
         email: `itest-inviter-${stamp}@shopnetic.test`,
@@ -428,6 +432,52 @@ describe.skipIf(!hasDb)('staff plane (integration)', () => {
       await expect(staffAuth.resetPassword(firstToken, 'whatever-pass-5678')).rejects.toMatchObject(
         { code: 'PASSWORD_RESET_TOKEN_ALREADY_USED' },
       );
+    });
+  });
+
+  describe('status-based login rejection', () => {
+    const createAccountWithStatus = async (status: 'locked' | 'disabled' | 'anonymized') => {
+      const email = `itest-status-${status}-${stamp}@shopnetic.test`;
+      const password = `pass-${status}-1234`;
+      extraInviteEmails.push(email);
+      const passwordHash = await passwords.hash(password);
+      await prisma.account.create({
+        data: {
+          email,
+          plane: 'staff',
+          status,
+          emailVerifiedAt: new Date(),
+          credential: { create: { passwordHash, hashAlgo: 'argon2id', params: ARGON2_PARAMS } },
+          grants: { create: { roleId: staffRoleId, scopeType: 'global', scopeId: null } },
+        },
+      });
+      return { email, password };
+    };
+
+    it('a locked account still throws ACCOUNT_LOCKED (regression guard)', async () => {
+      const { email, password } = await createAccountWithStatus('locked');
+      await expect(staffAuth.login({ email, password }, {})).rejects.toMatchObject({
+        code: 'ACCOUNT_LOCKED',
+        status: 403,
+      });
+    });
+
+    it('a disabled account still throws ACCOUNT_LOCKED', async () => {
+      const { email, password } = await createAccountWithStatus('disabled');
+      await expect(staffAuth.login({ email, password }, {})).rejects.toMatchObject({
+        code: 'ACCOUNT_LOCKED',
+        status: 403,
+      });
+    });
+
+    it('an anonymized account throws ACCOUNT_ANONYMIZED, not ACCOUNT_LOCKED', async () => {
+      const { email, password } = await createAccountWithStatus('anonymized');
+      await expect(staffAuth.login({ email, password }, {})).rejects.toMatchObject({
+        code: 'ACCOUNT_ANONYMIZED',
+        status: 403,
+      });
+      const rejection = await staffAuth.login({ email, password }, {}).catch((e: unknown) => e);
+      expect((rejection as { code?: string }).code).not.toBe('ACCOUNT_LOCKED');
     });
   });
 });

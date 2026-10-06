@@ -4703,3 +4703,12 @@ compose file.
     > 937px clientHeight) and stopped without requesting a 4th page.
     Scrolling down then seamlessly triggered page 4 (20 items) and page 5 (25 items).
   - Full suite green: 334/334 admin tests pass; monorepo typecheck & lint clean.
+- 2026-10-06 — Distinct `ACCOUNT_ANONYMIZED` login error code for staff accounts (Q33, `plan/22-risks-and-open-questions.md`).
+  - Previously, staff login collapsed `locked`, `disabled`, and `anonymized` into generic `ACCOUNT_LOCKED`.
+  - Added `ACCOUNT_ANONYMIZED` to `packages/contracts/src/error-codes.ts`.
+  - Updated `apps/api/src/identity/staff-auth.service.ts` to check `account.status === 'anonymized'` and throw `ACCOUNT_ANONYMIZED` (403), preserving `ACCOUNT_LOCKED` (403) for other non-active statuses.
+  - Added frontend mapping in `apps/admin/src/features/staff-auth/error-copy.ts` (`ACCOUNT_ANONYMIZED: 'errors.accountAnonymized'`) and localized message in `apps/admin/messages/en/staff.json`.
+  - Added unit test in `apps/admin/src/features/staff-auth/components/login-form.test.tsx` verifying error banner display.
+  - Added real-DB integration test suite in `apps/api/src/identity/staff-auth.integration.test.ts` verifying regression guards for `locked` and `disabled` (`ACCOUNT_LOCKED`) and `anonymized` (`ACCOUNT_ANONYMIZED`, not `ACCOUNT_LOCKED`).
+  - Updated docs in `plan/16-security.md` and `plan/22-risks-and-open-questions.md`.
+

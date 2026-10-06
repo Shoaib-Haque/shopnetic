@@ -28,6 +28,13 @@ export async function seedFixtureIdentity(
     roles: [Role.SERVICE_ADMIN],
   });
   await upsertAccount(prisma, ctx, {
+    email: 'anonymized-staff@shopnetic.test',
+    plane: 'staff',
+    password: '12345678',
+    status: 'anonymized',
+    roles: [Role.ADMIN],
+  });
+  await upsertAccount(prisma, ctx, {
     email: 'unverified-buyer@shopnetic.test',
     plane: 'marketplace',
     password: '12345678',

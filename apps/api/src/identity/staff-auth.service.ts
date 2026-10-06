@@ -227,6 +227,9 @@ export class StaffAuthService {
       });
       throw new AppError('INVALID_CREDENTIALS', 401, { detail: 'email or password is wrong' });
     }
+    if (account.status === 'anonymized') {
+      throw new AppError('ACCOUNT_ANONYMIZED', 403, { detail: 'account has been anonymized' });
+    }
     if (account.status !== 'active') {
       throw new AppError('ACCOUNT_LOCKED', 403, { detail: `account status is ${account.status}` });
     }

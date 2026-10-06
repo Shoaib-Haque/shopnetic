@@ -60,7 +60,7 @@ email* sends; this is about the login attempt itself):
 | Staff | `active` | ✅ | Built — the actual check is `status === 'active'` |
 | Staff | `locked` (auto-lockout, soft) | ❌ today | Built as a hard block via the same `active`-only check. Whether that's the *right* long-term behavior is the open question above — soft/automatic lockouts arguably shouldn't block as hard as a deliberate `disabled` |
 | Staff | `disabled` (deprovisioned) | ❌ | Built |
-| Staff | `anonymized` | ❌ (falls out of the same `active`-only check) | Not explicitly handled — no code path or test distinguishes this from `locked`/`disabled`; blocks by default but nothing confirms that's deliberate rather than incidental (Q33, `22`) |
+| Staff | `anonymized` | ❌ | Explicitly handled with distinct `ACCOUNT_ANONYMIZED` error code (Q33, `22`); tested in `staff-auth.integration.test.ts` |
 | Buyer/Seller | `active` | ✅ | Built |
 | Buyer/Seller | `locked` / `disabled` | ❌ (assumed, same shape as staff) | Not built — no marketplace-plane lockout mechanism exists yet |
 | Buyer/Seller | `anonymized` (GDPR erasure) | ❌ (assumed) | Not explicitly handled, same gap as staff's row above |

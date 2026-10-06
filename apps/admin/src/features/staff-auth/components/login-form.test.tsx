@@ -152,6 +152,23 @@ describe('StaffLoginForm', () => {
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
+  it('anonymized account → shows the account-anonymized copy and does not advance past the password step', async () => {
+    mockedPostJson.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      body: { error: { code: 'ACCOUNT_ANONYMIZED' } },
+    });
+
+    render();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByText(/This account has been anonymized/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Authenticator code')).not.toBeInTheDocument();
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
   it('first login → TOTP enrolment → recovery codes → Continue redirects to the dashboard', async () => {
     mockedPostJson
       .mockResolvedValueOnce({

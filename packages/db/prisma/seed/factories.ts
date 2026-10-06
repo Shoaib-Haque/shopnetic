@@ -20,7 +20,7 @@ export async function upsertAccount(
     email: string;
     plane: 'staff' | 'marketplace';
     password?: string;
-    status?: 'active' | 'locked' | 'disabled';
+    status?: 'active' | 'locked' | 'disabled' | 'anonymized';
     emailVerified?: boolean;
     /** Global-scope role grants. Scoped grants land when seller/category scopes exist. */
     roles?: Role[];

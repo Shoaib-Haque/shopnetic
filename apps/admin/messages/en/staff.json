@@ -220,6 +220,7 @@
       "mfaInvalid": "That code isn't right. Try again.",
       "mfaAlreadyEnrolled": "An authenticator is already set up for this account.",
       "accountLocked": "This account isn't available. Contact another Super Admin.",
+      "accountAnonymized": "This account has been anonymized. Contact another Super Admin.",
       "rateLimited": "Too many attempts. Please wait a bit and try again.",
       "inviteInvalid": "This invite link is invalid.",
       "inviteExpired": "This invite link has expired.",

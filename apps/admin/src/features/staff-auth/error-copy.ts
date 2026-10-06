@@ -8,6 +8,7 @@ const CODE_TO_KEY: Record<string, string> = {
   MFA_INVALID: 'errors.mfaInvalid',
   MFA_ALREADY_ENROLLED: 'errors.mfaAlreadyEnrolled',
   ACCOUNT_LOCKED: 'errors.accountLocked',
+  ACCOUNT_ANONYMIZED: 'errors.accountAnonymized',
   RATE_LIMITED: 'errors.rateLimited',
   VALIDATION_ERROR: 'errors.validation',
   INVITE_INVALID: 'errors.inviteInvalid',
