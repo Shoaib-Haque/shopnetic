@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { Actor } from '@shopnetic/auth';
-import type { CreateProductRequest, Product, UpdateProductRequest } from '@shopnetic/contracts';
+import type {
+  CreateProductRequest,
+  Product,
+  ProductListStatus,
+  ProductOrigin,
+  UpdateProductRequest,
+} from '@shopnetic/contracts';
 import { Prisma } from '@shopnetic/db';
 import type { Product as ProductRow } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -8,6 +14,12 @@ import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import { clampLimit, paginate } from '../common/pagination.js';
+import {
+  buildTokenSearch,
+  rankedNextCursor,
+  rankedOffsetFromCursor,
+  tokenizeForSql,
+} from '../common/text-search.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
@@ -33,30 +45,89 @@ export class ProductService {
   async list(opts: {
     categoryId?: string;
     brandId?: string;
-    status?: Product['status'];
+    status?: ProductListStatus;
+    origin?: ProductOrigin;
     q?: string;
     cursor?: string;
     limit?: number;
   }): Promise<{ items: Product[]; nextCursor?: string }> {
     const limit = clampLimit(opts.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
-    const where: Prisma.ProductWhereInput = { deletedAt: null };
-    if (opts.categoryId) where.categoryId = opts.categoryId;
-    if (opts.brandId) where.brandId = opts.brandId;
-    if (opts.status) where.status = opts.status;
-    if (opts.q) where.slug = { contains: opts.q.toLowerCase() };
+    const params: unknown[] = [];
+    const where: string[] = [];
 
-    const rows = await this.prisma.product.findMany({
-      where,
-      orderBy: { id: 'desc' },
-      take: limit + 1,
-      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+    if (opts.status === 'archived') {
+      where.push("(deleted_at IS NOT NULL OR status = 'archived')");
+    } else if (opts.status === 'active') {
+      where.push("deleted_at IS NULL AND status = 'active'");
+    } else if (opts.status === 'pending') {
+      where.push("deleted_at IS NULL AND status = 'pending'");
+    } else if (opts.status === 'draft') {
+      where.push("deleted_at IS NULL AND status = 'draft'");
+    } else if (opts.status === 'all') {
+      // show all rows including archived
+    } else {
+      // default: live non-archived products
+      where.push('deleted_at IS NULL');
+    }
+
+    if (opts.origin === '1p') {
+      where.push('proposed_by_seller_id IS NULL');
+    } else if (opts.origin === '3p') {
+      where.push('proposed_by_seller_id IS NOT NULL');
+    }
+
+    if (opts.categoryId) {
+      params.push(opts.categoryId);
+      where.push(`category_id = $${params.length}::uuid`);
+    }
+    if (opts.brandId) {
+      params.push(opts.brandId);
+      where.push(`brand_id = $${params.length}::uuid`);
+    }
+
+    const tokens = opts.q ? tokenizeForSql(opts.q) : [];
+    const isSearch = tokens.length > 0;
+    let scoreExpr = '0';
+    if (isSearch) {
+      const haystack = `lower(coalesce(title_i18n->>'en', '') || ' ' || slug)`;
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params);
+      where.push(whereSql);
+      scoreExpr = scoreSql;
+    }
+    if (opts.cursor && !isSearch) {
+      params.push(opts.cursor);
+      where.push(`id < $${params.length}::uuid`);
+    }
+
+    const offset = isSearch ? rankedOffsetFromCursor(opts.cursor) : 0;
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const idRows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id
+         FROM catalog.product
+        ${whereClause}
+        ORDER BY ${isSearch ? `${scoreExpr} DESC, ` : ''}id DESC
+        LIMIT ${limit + 1}${isSearch ? ` OFFSET ${offset}` : ''}`,
+      ...params,
+    );
+
+    const { page: idPage, nextCursor: keysetCursor } = paginate(idRows, limit);
+    const nextCursor = isSearch ? rankedNextCursor(idRows.length, limit, offset) : keysetCursor;
+
+    const orderedIds = idPage.map((r) => r.id);
+    const rows = orderedIds.length
+      ? await this.prisma.product.findMany({ where: { id: { in: orderedIds } } })
+      : [];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ordered = orderedIds.flatMap((id) => {
+      const row = byId.get(id);
+      return row ? [row] : [];
     });
-    const { page, nextCursor } = paginate(rows, limit);
-    return { items: page.map(toView), ...(nextCursor ? { nextCursor } : {}) };
+
+    return { items: ordered.map(toView), ...(nextCursor ? { nextCursor } : {}) };
   }
 
   async get(id: string): Promise<Product> {
-    return toView(await this.rowOrThrow(id));
+    return toView(await this.anyRowOrThrow(id));
   }
 
   async create(input: CreateProductRequest, actor: Actor, meta: RequestMeta): Promise<Product> {
@@ -114,6 +185,12 @@ export class ProductService {
     meta: RequestMeta,
   ): Promise<Product> {
     const current = await this.rowOrThrow(id);
+    if (input.expectedUpdatedAt && input.expectedUpdatedAt !== current.updatedAt.toISOString()) {
+      throw new AppError('CONFLICT', 409, {
+        detail: 'product was modified concurrently; reload and try again',
+      });
+    }
+
     if (input.slug !== undefined && input.slug !== current.slug) {
       await this.assertSlugFree(input.slug, id);
     }
@@ -148,6 +225,10 @@ export class ProductService {
     if (input.currency !== undefined) data.currency = input.currency;
     if (input.spec !== undefined) data.spec = input.spec as Prisma.InputJsonValue;
 
+    if (Object.keys(data).length === 0) {
+      return toView(current);
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({ where: { id }, data });
       await writeCatalogOutbox(tx, 'product', 'product.updated', id, {
@@ -175,24 +256,93 @@ export class ProductService {
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
     const current = await this.rowOrThrow(id);
     await this.prisma.$transaction(async (tx) => {
-      await tx.product.update({ where: { id }, data: { deletedAt: new Date() } });
+      await tx.product.update({
+        where: { id },
+        data: { deletedAt: new Date(), status: 'archived' },
+      });
       await writeCatalogOutbox(tx, 'product', 'product.deleted', id, { id });
     });
-    const view = toView(current);
+    const view = toView({ ...current, deletedAt: new Date(), status: 'archived' });
     const [categoryName, brandName] = await Promise.all([
       this.categoryNameOf(view.categoryId),
       this.brandNameOf(view.brandId),
     ]);
     await this.record(actor, 'catalog.product_deleted', id, meta, {
-      before: { ...view, categoryName, brandName },
+      before: { ...toView(current), categoryName, brandName },
       reason: 'soft delete',
     });
+  }
+
+  async restore(id: string, actor: Actor, meta: RequestMeta): Promise<Product> {
+    const current = await this.anyRowOrThrow(id);
+    if (current.deletedAt === null && current.status !== 'archived') {
+      return toView(current);
+    }
+
+    const category = await this.prisma.category.findUnique({
+      where: { id: current.categoryId },
+      select: { id: true, deletedAt: true, brandRequirement: true },
+    });
+    if (!category || category.deletedAt !== null) {
+      throw new AppError('CATEGORY_PARENT_ARCHIVED', 409, {
+        detail:
+          'cannot restore product because its category is archived; restore the category first',
+      });
+    }
+
+    if (current.brandId) {
+      const brand = await this.prisma.brand.findUnique({
+        where: { id: current.brandId },
+        select: { id: true, deletedAt: true },
+      });
+      if (!brand || brand.deletedAt !== null) {
+        throw new AppError('BRAND_PARENT_ARCHIVED', 409, {
+          detail:
+            'cannot restore product because its brand is archived; restore or change the brand first',
+        });
+      }
+    } else if (category.brandRequirement === 'required') {
+      throw new AppError('PRODUCT_BRAND_INVALID', 422, {
+        detail: 'cannot restore product because its category now requires a brand',
+      });
+    }
+
+    await this.assertSlugFree(current.slug, id);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.product.update({
+        where: { id },
+        data: {
+          deletedAt: null,
+          status: current.status === 'archived' ? 'draft' : current.status,
+        },
+      });
+      await writeCatalogOutbox(tx, 'product', 'product.restored', id, { id });
+      return row;
+    });
+
+    const view = toView(updated);
+    const [categoryName, brandName] = await Promise.all([
+      this.categoryNameOf(view.categoryId),
+      this.brandNameOf(view.brandId),
+    ]);
+    await this.record(actor, 'catalog.product_restored', id, meta, {
+      after: { ...view, categoryName, brandName },
+      reason: 'restore',
+    });
+    return view;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
   private async rowOrThrow(id: string): Promise<ProductRow> {
     const row = await this.prisma.product.findFirst({ where: { id, deletedAt: null } });
+    if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'product not found' });
+    return row;
+  }
+
+  private async anyRowOrThrow(id: string): Promise<ProductRow> {
+    const row = await this.prisma.product.findUnique({ where: { id } });
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'product not found' });
     return row;
   }
@@ -285,6 +435,7 @@ function toView(row: ProductRow): Product {
     currency: row.currency,
     spec: (row.spec as Record<string, unknown>) ?? {},
     proposedBySellerId: row.proposedBySellerId,
+    archivedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

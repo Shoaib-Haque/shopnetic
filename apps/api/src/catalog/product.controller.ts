@@ -46,6 +46,7 @@ export class ProductController {
     @Query('categoryId') categoryId?: string,
     @Query('brandId') brandId?: string,
     @Query('status') status?: string,
+    @Query('origin') origin?: string,
     @Query('q') q?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
@@ -57,9 +58,13 @@ export class ProductController {
       status === 'draft' ||
       status === 'pending' ||
       status === 'active' ||
-      status === 'archived'
+      status === 'archived' ||
+      status === 'all'
     ) {
       opts.status = status;
+    }
+    if (origin === '1p' || origin === '3p' || origin === 'all') {
+      opts.origin = origin;
     }
     if (q) opts.q = q;
     if (cursor) opts.cursor = cursor;
@@ -106,5 +111,14 @@ export class ProductController {
     @Param('id') id: string,
   ): Promise<void> {
     await this.products.remove(id, actor, meta(req));
+  }
+
+  @Post(':id/restore')
+  async restore(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+  ): Promise<Envelope<Product>> {
+    return ok(req, await this.products.restore(id, actor, meta(req)));
   }
 }

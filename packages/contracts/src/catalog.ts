@@ -442,6 +442,12 @@ export type PutCategoryOptionRequest = z.infer<typeof putCategoryOptionRequestSc
 export const productStatusSchema = z.enum(['draft', 'pending', 'active', 'archived']);
 export type ProductStatus = z.infer<typeof productStatusSchema>;
 
+export const productListStatusSchema = z.enum(['all', 'active', 'pending', 'draft', 'archived']);
+export type ProductListStatus = z.infer<typeof productListStatusSchema>;
+
+export const productOriginSchema = z.enum(['all', '1p', '3p']);
+export type ProductOrigin = z.infer<typeof productOriginSchema>;
+
 export const currencySchema = z
   .string()
   .trim()
@@ -464,6 +470,7 @@ export const productSchema = z.object({
   currency: z.string().nullable(),
   spec: specSchema,
   proposedBySellerId: z.string().nullable(),
+  archivedAt: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -494,6 +501,7 @@ export const updateProductRequestSchema = z
     basePriceMinor: priceMinorSchema.nullable(),
     currency: currencySchema.nullable(),
     spec: specSchema,
+    expectedUpdatedAt: z.string().optional(),
   })
   .partial();
 export type UpdateProductRequest = z.infer<typeof updateProductRequestSchema>;

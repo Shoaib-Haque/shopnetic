@@ -114,10 +114,18 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
 
   afterAll(async () => {
     if (!prisma) return;
-    const cats = [catOptionalId, catNoneId];
-    const prodIds = (await prisma.product.findMany({ where: { categoryId: { in: cats } } })).map(
-      (p) => p.id,
-    );
+    const testCats = await prisma.category.findMany({
+      where: { slug: { startsWith: `itest-pr-${stamp}-` } },
+      select: { id: true },
+    });
+    const catIds = Array.from(new Set([...testCats.map((c) => c.id), catOptionalId, catNoneId]));
+    const prodIds = (
+      await prisma.product.findMany({
+        where: {
+          OR: [{ categoryId: { in: catIds } }, { slug: { startsWith: `itest-pr-${stamp}-` } }],
+        },
+      })
+    ).map((p) => p.id);
     const varIds = (await prisma.variant.findMany({ where: { productId: { in: prodIds } } })).map(
       (v) => v.id,
     );
@@ -132,8 +140,12 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
       `${catOptionalId}%`,
       `${catNoneId}%`,
     );
-    await prisma.product.deleteMany({ where: { categoryId: { in: cats } } }); // cascades options + variants
-    await prisma.categoryOption.deleteMany({ where: { categoryId: { in: cats } } });
+    await prisma.product.deleteMany({
+      where: {
+        OR: [{ categoryId: { in: catIds } }, { id: { in: prodIds } }],
+      },
+    }); // cascades options + variants
+    await prisma.categoryOption.deleteMany({ where: { categoryId: { in: catIds } } });
     await prisma.optionType.deleteMany({ where: { code: { startsWith: `itest-pr-${stamp}-` } } });
     await prisma.brand.deleteMany({ where: { slug: { startsWith: `itest-pr-${stamp}-` } } });
     await prisma.$executeRawUnsafe(
@@ -353,7 +365,56 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     );
     await productOptions.put(p.id, sizeTypeId, {}, actor, {});
     await products.remove(p.id, actor, {});
-    await expect(products.get(p.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    const archived = await products.get(p.id);
+    expect(archived.archivedAt).toBeTruthy();
+    expect(archived.status).toBe('archived');
+
+    // restore brings it back
+    const restored = await products.restore(p.id, actor, {});
+    expect(restored.archivedAt).toBeNull();
+    expect(restored.status).toBe('draft');
+
+    // restore blocks if parent category is archived
+    await products.remove(p.id, actor, {});
+    const catToArchive = await prisma.category.create({
+      data: { slug: s('temp-cat'), nameI18n: t('Temp Cat'), brandRequirement: 'none' },
+    });
+    const pTemp = await products.create(
+      { categoryId: catToArchive.id, title: t('Temp Prod'), slug: s('temp-prod') },
+      actor,
+      {},
+    );
+    await products.remove(pTemp.id, actor, {});
+    await prisma.category.update({
+      where: { id: catToArchive.id },
+      data: { deletedAt: new Date() },
+    });
+    await expect(products.restore(pTemp.id, actor, {})).rejects.toMatchObject({
+      code: 'CATEGORY_PARENT_ARCHIVED',
+    });
+
+    // restore blocks if assigned brand is archived
+    const brandToArchive = await prisma.brand.create({
+      data: { slug: s('temp-brand'), name: 'Temp Brand' },
+    });
+    const pBrandTemp = await products.create(
+      {
+        categoryId: catOptionalId,
+        brandId: brandToArchive.id,
+        title: t('Temp Brand Prod'),
+        slug: s('temp-brand-prod'),
+      },
+      actor,
+      {},
+    );
+    await products.remove(pBrandTemp.id, actor, {});
+    await prisma.brand.update({
+      where: { id: brandToArchive.id },
+      data: { deletedAt: new Date() },
+    });
+    await expect(products.restore(pBrandTemp.id, actor, {})).rejects.toMatchObject({
+      code: 'BRAND_PARENT_ARCHIVED',
+    });
 
     const events = (await prisma.catalogOutbox.findMany({ where: { aggregateId: p.id } })).map(
       (r) => r.eventType,
@@ -361,6 +422,67 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     expect(events).toContain('product.created');
     expect(events).toContain('product.options_changed');
     expect(events).toContain('product.deleted');
+    expect(events).toContain('product.restored');
+  });
+
+  it('update rejects a stale expectedUpdatedAt (optimistic concurrency)', async () => {
+    const p = await products.create(
+      { categoryId: catOptionalId, title: t('Occ Prod'), slug: s('occ-prod') },
+      actor,
+      {},
+    );
+    await expect(
+      products.update(
+        p.id,
+        { title: t('Occ Next'), expectedUpdatedAt: '2020-01-01T00:00:00.000Z' },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    await expect(
+      products.update(p.id, { title: t('Occ Next'), expectedUpdatedAt: p.updatedAt }, actor, {}),
+    ).resolves.toMatchObject({ id: p.id });
+  });
+
+  it('list filters by status, origin, and searches by multi-token q', async () => {
+    const p1 = await products.create(
+      { categoryId: catOptionalId, title: { en: 'Alpha Running Shoe' }, slug: s('alpha-shoe') },
+      actor,
+      {},
+    );
+    const sellerId = crypto.randomUUID();
+    const p2 = await products.create(
+      {
+        categoryId: catOptionalId,
+        title: { en: 'Beta Trail Running' },
+        slug: s('beta-shoe'),
+        proposedBySellerId: sellerId,
+        status: 'pending',
+      },
+      actor,
+      {},
+    );
+
+    // Origin 1p vs 3p
+    const res1p = await products.list({ origin: '1p', q: 'Running' });
+    const ids1p = res1p.items.map((x) => x.id);
+    expect(ids1p).toContain(p1.id);
+    expect(ids1p).not.toContain(p2.id);
+
+    const res3p = await products.list({ origin: '3p' });
+    const ids3p = res3p.items.map((x) => x.id);
+    expect(ids3p).toContain(p2.id);
+    expect(ids3p).not.toContain(p1.id);
+
+    // Multi-token search: 'Alpha Shoe' matches p1
+    const resSearch = await products.list({ q: 'Alpha Shoe' });
+    expect(resSearch.items.map((x) => x.id)).toContain(p1.id);
+
+    // Status filter
+    const resPending = await products.list({ status: 'pending' });
+    expect(resPending.items.map((x) => x.id)).toContain(p2.id);
+    expect(resPending.items.map((x) => x.id)).not.toContain(p1.id);
   });
 
   it("a product's create/update/delete audit rows snapshot category and brand names — the 2026-09-17 fix", async () => {

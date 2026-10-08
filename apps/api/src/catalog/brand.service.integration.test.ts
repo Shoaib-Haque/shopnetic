@@ -321,12 +321,12 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
   it('q ranks by matched-token count, name/slug/alias all count — "FX 47" style query puts the fullest match first', async () => {
     const marker = `rank${stamp}`;
     const full = await svc.create(
-      { name: `${marker} Live Brand 47`, slug: s('rank-full') },
+      { name: `${marker} Live Brand targetmatch`, slug: s('rank-full') },
       actor,
       {},
     );
     const partial = await svc.create(
-      { name: `${marker} Live Brand 12`, slug: s('rank-partial') },
+      { name: `${marker} Live Brand other`, slug: s('rank-partial') },
       actor,
       {},
     );
@@ -335,10 +335,10 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
       actor,
       {},
     );
-    await svc.addAlias(aliasOnly.id, { alias: `${marker} 47` }, actor, {});
+    await svc.addAlias(aliasOnly.id, { alias: `${marker} targetmatch` }, actor, {});
     const noMatch = await svc.create({ name: s('rank-no-match'), slug: s('rank-nm') }, actor, {});
 
-    const { items } = await svc.list({ q: `${marker} 47` });
+    const { items } = await svc.list({ q: `${marker} targetmatch` });
     const ids = items.map((b) => b.id);
     // `full` (both tokens in `name`) and `aliasOnly` (both tokens, via the
     // alias table) tie at 2 matched tokens — which of the two sorts first

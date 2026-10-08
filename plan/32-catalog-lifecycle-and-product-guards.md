@@ -57,12 +57,15 @@ This document formalizes the universal lifecycle invariants, resolve deferred po
 - **Rationale**: Products without a category break URL structures, faceted search filters, tax codes, and breadcrumbs. Archival requires deliberate re-categorization or archival of dependent products.
 
 ### Q31: Brand Restriction Enforcement Mechanism
-- **Decision**: **GATE AT SUBMISSION / MODERATION (`pending_review`)**.
-- **Rule**: When `brand.is_restricted = true`, creating or submitting a product under that brand does not crash or block the form. Instead, the product is routed to catalog moderation with status `pending_review`.
+- **Decision**: **GATE AT SUBMISSION / MODERATION (status: `pending`, displayed as "Pending Review")**.
+- **Rule**: When `brand.is_restricted = true`, creating or submitting a product proposal under that brand does not crash or block the form. Instead, the product is routed to catalog moderation with status `pending`.
+- **Workflow & Ownership**:
+  - For new product listings and proposals (current Admin & Moderation scope): The product row is created with `status = 'pending'`. Internal staff reviews and approves/rejects via the moderation workflow.
+  - For 3P seller-initiated edits to live products (Phase 1 Seller Portal scope): Edits flow through the `product_edit_request` table rather than mutating the active product directly.
 - **Seller Flow**: The seller must submit brand authorization proof / invoices before the product is published.
 - **Existing Products**: Existing approved products under the brand remain active unless specifically revoked via a moderation sweep.
 
-### Brand Archival Guard (Q31/Q32 Sibling)
+### Brand Archival Guard (Sibling Invariant of Q32)
 - **Decision**: **STRICTLY BLOCKED** (`BRAND_HAS_PRODUCTS`, 409).
 - **Rule**: `brand.service.remove()` queries `prisma.product.count({ where: { brandId: id, deletedAt: null } })`. If `count > 0`, the operation is rejected with `BRAND_HAS_PRODUCTS` (409) and detail message: *"Cannot archive brand while N product(s) reference it; use the merge tool or reassign the products first."*
 - **Escape Hatch**: The admin must use the **Brand Merge Tool** (`26` Section 6) to consolidate products into an active brand, or reassign products.
@@ -70,13 +73,14 @@ This document formalizes the universal lifecycle invariants, resolve deferred po
 ### Restore Safety (Reverse Lifecycle)
 - **Category Restore**: Blocked if parent category is archived (`CATEGORY_PARENT_ARCHIVED`, 409) or if name/slug collides with a live category.
 - **Brand Restore**: Blocked if the brand was merged into another brand (`BRAND_MERGE_INVALID`, 422) or if name/slug collides with a live brand.
-- **Product Restore**: Blocked if parent Category is currently archived (`CATEGORY_PARENT_ARCHIVED`, 409).
+- **Product Restore**: Blocked if parent Category is currently archived (`CATEGORY_PARENT_ARCHIVED`, 409) or if its assigned Brand is currently archived (`BRAND_PARENT_ARCHIVED`, 409).
 - **Variant Restore**: Blocked if parent Product is archived, or if combination signature (`comboSignature`) collides with a live variant.
 
-### Product Re-Categorization Lock
-- An existing product may be moved to a new category only if:
-  1. The target category's brand requirement (`none`, `optional`, `required`) is satisfied.
-  2. The target category's configured variant axes (`is_variant_axis: true`) match or can be reconciled with the product's existing variant matrix. If mismatched, re-categorization is blocked until variants are reconciled.
+### Product Category Immutability Invariant (`07-data-model.md`)
+- Per `07-data-model.md`, **category is strictly fixed after product creation**.
+- Re-categorizing an existing product is forbidden (`updateProduct` does not accept `categoryId`; category is displayed read-only in admin edit forms).
+- **Rationale**: Changing a product's category after creation breaks variant axes contracts, value sets, tax codes, and historical taxonomy paths.
+- **Remediation**: If a product was miscategorized, it must be soft-deleted (archived) and recreated under the correct category.
 
 ---
 
@@ -90,17 +94,17 @@ This document formalizes the universal lifecycle invariants, resolve deferred po
 | **4** | **Category Moved / Reparented** | Path rewritten in DB transaction. | Breadcrumb path updates in inventory. | Facets & breadcrumbs update dynamically. | Unchanged (same product & price). | **100% immune.** |
 | **5** | **Category Brand Rule Changed** (e.g. `optional` → `required`) | New products must select brand. Edit form enforces on save. | Existing live products stay active. Edit form requires brand before saving. | Unchanged. Active products render as-is. | Unchanged. | **100% immune.** |
 | **6** | **Category Option Added** (New required attribute) | New products must supply attribute. | Existing products stay live; flagged as "Incomplete specs". | Displayed if present, omitted if legacy. | Unchanged. | **100% immune.** |
-| **7** | **Product Re-categorized** | Blocked if target category variant axes mismatch existing variants. | Seller must reconcile variant axes before moving. | Breadcrumbs update to new category immediately. | Unchanged. | **100% immune.** |
+| **7** | **Product Category Change Attempt** | **FORBIDDEN (07)**: Category is fixed post-creation (`categoryId` is immutable in API & UI). | N/A (Immutable). | N/A. | N/A. | **100% immune.** |
 | **8** | **Brand Archived** (has live products) | **BLOCKED**: `BRAND_HAS_PRODUCTS` (409). Error directs to Brand Merge. | N/A (Guarded). | N/A (Guarded). | N/A (Guarded). | **100% immune.** |
 | **9** | **Brand Merged** (Brand B → Brand A) | Brand B soft-deleted. Aliases moved to Brand A. | `product.brandId` updated to Brand A via background job. Seller notified. | Search reindexes under Brand A. Brand B URL 301/410 redirects to Brand A. | Low-severity `info` alert: *"Brand updated to Brand A"*. | **100% immune.** Frozen receipt displays purchased brand. |
-| **10** | **Brand Restricted** (`is_restricted = true`) (Q31) | Adding/editing allowed; status holds at `pending_review`. | Seller listing gated: must upload authorization/invoices. | Unapproved items hidden. Approved items visible. | Existing active cart items unchanged. | **100% immune.** |
+| **10** | **Brand Restricted** (`is_restricted = true`) (Q31) | Adding/submitting allowed; product status holds at `pending` ("Pending Review"). | Seller listing gated: must upload authorization/invoices. | Unapproved items hidden. Approved items visible. | Existing active cart items unchanged. | **100% immune.** |
 | **11** | **Option Type Deprecated** | Hidden from new Product Option pickers. | Existing variants remain valid and sellable. Cannot create new variants with it. | Swatch/chip renders normally on PDP. Buyable. | Orderable until inventory runs out. | **100% immune.** |
 | **12** | **Option Value Deprecated** | Hidden from new variant creation pickers. | Existing variants keep value. Cannot create new variants with it. | Swatch/chip renders normally on PDP. Buyable. | Orderable until inventory runs out. | **100% immune.** |
 | **13** | **Option Value Renamed** | Displays updated label across admin pickers. | Displays updated label in inventory table. | PDP dynamically displays new label/swatch. | `info` alert: `option_changed` (*"Color updated"*). Non-blocking. | **100% immune.** Receipt shows frozen snapshot. |
 | **14** | **Option Value Pruned from Value Set** | Dropped from category pickers for new products. | Existing variants remain sellable. Cannot create new variants with it. | Existing variant buyable on PDP. | Orderable until inventory runs out. | **100% immune.** |
 | **15** | **Category-Option Axis Demoted** | Cannot add axis to new products. | **BLOCKED**: `CATEGORY_OPTION_IN_USE` (409) if variants exist. | N/A (Guarded). | N/A (Guarded). | **100% immune.** |
 | **16** | **Product Archived by Platform** | Product soft-deleted. All variants deactivated. | All seller offers on product disabled. Notification sent. | PDP returns 404 or "Discontinued". Dropped from search. | `blocking` alert: `product_removed`. Moved to Unavailable group. | Step 1 saga revalidation aborts checkout before charge. |
-| **17** | **Product Restored** | Blocked if category is archived or brand deleted. | Seller offers restored to `draft` (require seller re-activation). | PDP goes live once active seller offer exists. | If in saved list, alerts: *"Back in stock"*. | Normal checkout resumes. |
+| **17** | **Product Restored** | Blocked if category is archived (`CATEGORY_PARENT_ARCHIVED`) or assigned brand is archived (`BRAND_PARENT_ARCHIVED`). | Seller offers restored to `draft` (require seller re-activation). | PDP goes live once active seller offer exists. | If in saved list, alerts: *"Back in stock"*. | Normal checkout resumes. |
 | **18** | **Variant Deactivated** | Variant status sets to `inactive`. | Inventory for this SKU zeroed/disabled. | Swatch struck through / disabled on PDP. | `action_required` alert: `variant_gone`. Must pick another variant. | Checkout blocks unacknowledged line. |
 | **19** | **Multi-Seller Stockout (Failover)** | Aggregated stock reflects surviving offers. | Seller 1 offer paused. Seller 2 becomes Buy Box winner. | PDP Buy Box flips to Seller 2. | If buyer had Seller 1: Alert offers 1-click switch to Seller 2. | Seamless if buyer accepts switch. |
 | **20** | **Seller Suspended** | Seller locked out of catalog editing. | Seller portal enters **Fulfillment Only** mode. Must ship pending orders. | Seller offers removed from Buy Box. If no other seller, PDP "Unavailable". | `blocking` alert: `seller_suspended`. Offers alternative seller if available. | **Saga blocks new orders.** Seller fulfills existing placed orders. |
@@ -114,6 +118,7 @@ This document formalizes the universal lifecycle invariants, resolve deferred po
 ### 1. Error Codes (`packages/contracts/src/error-codes.ts`)
 - Add `CATEGORY_HAS_PRODUCTS: 'CATEGORY_HAS_PRODUCTS'`
 - Add `BRAND_HAS_PRODUCTS: 'BRAND_HAS_PRODUCTS'`
+- Add `BRAND_PARENT_ARCHIVED: 'BRAND_PARENT_ARCHIVED'`
 
 ### 2. Service-Level Guards (`apps/api/src/catalog/`)
 - **`CategoryService.remove(id)`**:
@@ -150,9 +155,19 @@ This document formalizes the universal lifecycle invariants, resolve deferred po
       detail: 'cannot restore product because its category is archived; restore the category first',
     });
   }
+  if (current.brandId) {
+    const brand = await this.prisma.brand.findUnique({ where: { id: current.brandId } });
+    if (!brand || brand.deletedAt) {
+      throw new AppError('BRAND_PARENT_ARCHIVED', 409, {
+        detail: 'cannot restore product because its brand is archived; restore or change the brand first',
+      });
+    }
+  }
   ```
 
 ### 3. Integration Tests
 - Verify `CategoryService.remove()` throws `CATEGORY_HAS_PRODUCTS` when live products exist.
 - Verify `BrandService.remove()` throws `BRAND_HAS_PRODUCTS` when live products exist.
 - Verify `BrandService.restore()` throws `BRAND_MERGE_INVALID` when brand was merged.
+- Verify `ProductService.restore()` throws `CATEGORY_PARENT_ARCHIVED` when category is archived.
+- Verify `ProductService.restore()` throws `BRAND_PARENT_ARCHIVED` when brand is archived.

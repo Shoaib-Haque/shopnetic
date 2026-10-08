@@ -294,18 +294,18 @@ describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
   it('q ranks by matched-token count, name and code both count — "rank 47" style query puts the fullest match first', async () => {
     const marker = `rank${stamp}`;
     const full = await svc.create(
-      { code: s('rank-full'), name: { en: `${marker} Live Type 47` } },
+      { code: s('rank-full'), name: { en: `${marker} Live Type targetmatch` } },
       actor,
       {},
     );
     const partial = await svc.create(
-      { code: s('rank-partial'), name: { en: `${marker} Live Type 12` } },
+      { code: s('rank-partial'), name: { en: `${marker} Live Type other` } },
       actor,
       {},
     );
     // both tokens matched, but via `code` rather than `name`
     const codeOnly = await svc.create(
-      { code: s(`${marker}-47-codeonly`), name: name('rank-unrelated') },
+      { code: s(`${marker}-targetmatch-codeonly`), name: name('rank-unrelated') },
       actor,
       {},
     );
@@ -315,7 +315,7 @@ describe.skipIf(!hasDb)('OptionTypeService (integration)', () => {
       {},
     );
 
-    const { items } = await svc.list({ q: `${marker} 47` });
+    const { items } = await svc.list({ q: `${marker} targetmatch` });
     const ids = items.map((t) => t.id);
     // `full` (both tokens in `name`) and `codeOnly` (both tokens, via `code`)
     // tie at 2 matched tokens — which sorts first isn't under test, only
