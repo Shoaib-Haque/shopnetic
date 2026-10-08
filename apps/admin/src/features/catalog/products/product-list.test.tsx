@@ -269,4 +269,36 @@ describe('ProductList', () => {
     const rows = document.querySelectorAll('[data-product-row="p-target"]');
     expect(rows.length).toBeGreaterThan(0);
   });
+
+  it('opens configure options dialog from row menu', async () => {
+    const item = sampleProduct('p-1', 'Platform Hoodie');
+    mockedListProductsPage.mockResolvedValue({ products: [item], nextCursor: undefined });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Platform Hoodie')).not.toHaveLength(0);
+
+    openFirstRowMenu();
+
+    const optionsBtn = await screen.findByRole('menuitem', { name: 'Configure Options' });
+    fireEvent.click(optionsBtn);
+
+    expect(await screen.findByText('Product Options & Attributes')).toBeInTheDocument();
+  });
+
+  it('opens manage variants dialog from row menu', async () => {
+    const item = sampleProduct('p-1', 'Platform Hoodie');
+    mockedListProductsPage.mockResolvedValue({ products: [item], nextCursor: undefined });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Platform Hoodie')).not.toHaveLength(0);
+
+    openFirstRowMenu();
+
+    const variantsBtn = await screen.findByRole('menuitem', { name: 'Manage Variants' });
+    fireEvent.click(variantsBtn);
+
+    expect(await screen.findByText('Product Variants')).toBeInTheDocument();
+  });
 });

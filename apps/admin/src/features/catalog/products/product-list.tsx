@@ -47,6 +47,8 @@ import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listCategories } from '@/features/catalog/categories/api';
 import { listBrandsPage } from '@/features/catalog/brands/api';
 import { ProductFormModal } from './product-form-modal';
+import { ProductOptionsDialog } from './product-options-dialog';
+import { ProductVariantsDialog } from './product-variants-dialog';
 import { deleteProduct, getProduct, listProductsPage, restoreProduct } from './api';
 
 type Tab = ProductListStatus;
@@ -113,6 +115,8 @@ export function ProductList() {
   });
 
   const [modal, setModal] = useState<ModalState>(null);
+  const [optionsProduct, setOptionsProduct] = useState<Product | null>(null);
+  const [variantsProduct, setVariantsProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
 
@@ -198,6 +202,16 @@ export function ProductList() {
     [highlighted, highlightId, list.items],
   );
 
+  useEffect(() => {
+    if (!effectiveHighlighted) return;
+    const action = searchParams.get('action');
+    if (action === 'options') {
+      setOptionsProduct(effectiveHighlighted);
+    } else if (action === 'variants') {
+      setVariantsProduct(effectiveHighlighted);
+    }
+  }, [effectiveHighlighted, searchParams]);
+
   const listRefresh = list.refresh;
   const resync = useCallback(() => {
     if (!mounted.current) return;
@@ -272,6 +286,12 @@ export function ProductList() {
             <DropdownMenuItem onSelect={() => setModal({ mode: 'review', product: p })}>
               {t('products.review')}
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setOptionsProduct(p)}>
+              {t('products.optionsAction')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setVariantsProduct(p)}>
+              {t('products.variantsAction')}
+            </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => void doDelete(p)}
               className="text-destructive focus:text-destructive"
@@ -283,6 +303,12 @@ export function ProductList() {
           <>
             <DropdownMenuItem onSelect={() => setModal({ mode: 'edit', product: p })}>
               {t('products.edit')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setOptionsProduct(p)}>
+              {t('products.optionsAction')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setVariantsProduct(p)}>
+              {t('products.variantsAction')}
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => void doDelete(p)}
@@ -551,6 +577,30 @@ export function ProductList() {
         cancelLabel={tCommon('actions.cancel')}
         onConfirm={confirmRestore}
         loading={restoring}
+      />
+
+      <ProductOptionsDialog
+        open={optionsProduct !== null}
+        onOpenChange={(open) => {
+          if (!open) setOptionsProduct(null);
+        }}
+        product={optionsProduct}
+        onManageVariants={(p) => {
+          setOptionsProduct(null);
+          setVariantsProduct(p);
+        }}
+      />
+
+      <ProductVariantsDialog
+        open={variantsProduct !== null}
+        onOpenChange={(open) => {
+          if (!open) setVariantsProduct(null);
+        }}
+        product={variantsProduct}
+        onBackToOptions={(p) => {
+          setVariantsProduct(null);
+          setOptionsProduct(p);
+        }}
       />
     </section>
   );

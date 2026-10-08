@@ -2,10 +2,16 @@
 
 import type {
   CreateProductRequest,
+  CreateVariantRequest,
   Product,
   ProductListStatus,
+  ProductOption,
   ProductOrigin,
+  PutProductOptionRequest,
+  SetProductOptionValuesRequest,
   UpdateProductRequest,
+  UpdateVariantRequest,
+  Variant,
 } from '@shopnetic/contracts';
 import { adminApi } from '@/features/admin-api/client';
 
@@ -58,4 +64,72 @@ export function deleteProduct(id: string): Promise<void> {
 
 export function restoreProduct(id: string): Promise<Product> {
   return adminApi<Product>(`/products/${id}/restore`, { method: 'POST' });
+}
+
+// ── Product options (plan/26 §2.2) ──────────────────────────────────────────
+
+export function listProductOptions(productId: string): Promise<ProductOption[]> {
+  return adminApi<ProductOption[]>(`/products/${productId}/options`);
+}
+
+export function putProductOption(
+  productId: string,
+  optionTypeId: string,
+  body: PutProductOptionRequest,
+): Promise<ProductOption> {
+  return adminApi<ProductOption>(`/products/${productId}/options/${optionTypeId}`, {
+    method: 'PUT',
+    body,
+  });
+}
+
+export function setProductOptionValues(
+  productId: string,
+  optionTypeId: string,
+  body: SetProductOptionValuesRequest,
+): Promise<ProductOption> {
+  return adminApi<ProductOption>(`/products/${productId}/options/${optionTypeId}/values`, {
+    method: 'PUT',
+    body,
+  });
+}
+
+export function deleteProductOption(productId: string, optionTypeId: string): Promise<void> {
+  return adminApi<void>(`/products/${productId}/options/${optionTypeId}`, {
+    method: 'DELETE',
+  });
+}
+
+// ── Product variants (plan/26 §2.3) ─────────────────────────────────────────
+
+export function listVariants(productId: string): Promise<Variant[]> {
+  return adminApi<Variant[]>(`/products/${productId}/variants`);
+}
+
+export function getVariant(productId: string, id: string): Promise<Variant> {
+  return adminApi<Variant>(`/products/${productId}/variants/${id}`);
+}
+
+export function createVariant(productId: string, body: CreateVariantRequest): Promise<Variant> {
+  return adminApi<Variant>(`/products/${productId}/variants`, {
+    method: 'POST',
+    body,
+  });
+}
+
+export function updateVariant(
+  productId: string,
+  id: string,
+  body: UpdateVariantRequest,
+): Promise<Variant> {
+  return adminApi<Variant>(`/products/${productId}/variants/${id}`, {
+    method: 'PATCH',
+    body,
+  });
+}
+
+export function deleteVariant(productId: string, id: string): Promise<void> {
+  return adminApi<void>(`/products/${productId}/variants/${id}`, {
+    method: 'DELETE',
+  });
 }
