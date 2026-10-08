@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -15,9 +16,12 @@ import { Permission, type Actor } from '@shopnetic/auth';
 import {
   addValueSetItemRequestSchema,
   createValueSetRequestSchema,
+  reorderValueSetItemsRequestSchema,
   updateValueSetRequestSchema,
+  valueSetListStatusSchema,
   type AddValueSetItemRequest,
   type CreateValueSetRequest,
+  type ReorderValueSetItemsRequest,
   type UpdateValueSetRequest,
   type ValueSet,
 } from '@shopnetic/contracts';
@@ -33,6 +37,7 @@ import { ValueSetService } from './value-set.service.js';
 const createBody = new ZodBodyPipe(createValueSetRequestSchema);
 const updateBody = new ZodBodyPipe(updateValueSetRequestSchema);
 const itemBody = new ZodBodyPipe(addValueSetItemRequestSchema);
+const reorderBody = new ZodBodyPipe(reorderValueSetItemsRequestSchema);
 
 type Envelope<T> = { data: T; meta: { requestId: string; count?: number } };
 
@@ -43,8 +48,18 @@ export class ValueSetController {
   constructor(private readonly valueSets: ValueSetService) {}
 
   @Get()
-  async list(@Req() req: Request): Promise<Envelope<ValueSet[]>> {
-    const items = await this.valueSets.list();
+  async list(
+    @Req() req: Request,
+    @Query('status') status?: string,
+    @Query('optionTypeId') optionTypeId?: string,
+    @Query('q') q?: string,
+  ): Promise<Envelope<ValueSet[]>> {
+    const parsedStatus = valueSetListStatusSchema.safeParse(status).data ?? 'active';
+    const items = await this.valueSets.list({
+      status: parsedStatus,
+      ...(optionTypeId ? { optionTypeId } : {}),
+      ...(q ? { q } : {}),
+    });
     const base = ok(req, items);
     return { data: base.data, meta: { ...base.meta, count: items.length } };
   }
@@ -84,6 +99,16 @@ export class ValueSetController {
     await this.valueSets.remove(id, actor, meta(req));
   }
 
+  @Post(':id/restore')
+  @HttpCode(200)
+  async restore(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+  ): Promise<Envelope<ValueSet>> {
+    return ok(req, await this.valueSets.restore(id, actor, meta(req)));
+  }
+
   @Post(':id/items')
   @HttpCode(201)
   async addItem(
@@ -93,6 +118,17 @@ export class ValueSetController {
     @Body(itemBody) body: AddValueSetItemRequest,
   ): Promise<Envelope<ValueSet>> {
     return ok(req, await this.valueSets.addItem(id, body, actor, meta(req)));
+  }
+
+  @Post(':id/items/reorder')
+  @HttpCode(200)
+  async reorderItems(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+    @Body(reorderBody) body: ReorderValueSetItemsRequest,
+  ): Promise<Envelope<ValueSet>> {
+    return ok(req, await this.valueSets.reorderItems(id, body, actor, meta(req)));
   }
 
   @Delete(':id/items/:optionValueId')

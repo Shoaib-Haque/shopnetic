@@ -104,6 +104,7 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
     const vs = await valueSets.create(
       {
         name: s('apparel-sizes'),
+        optionTypeId: sizeTypeId,
         items: [
           { optionValueId: sizeValueIds[0]!, position: 0 },
           { optionValueId: sizeValueIds[1]!, position: 1 },
@@ -116,17 +117,23 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
     expect(vs.items).toHaveLength(2);
     expect(vs.items.every((i) => i.optionTypeId === sizeTypeId)).toBe(true);
 
-    await expect(valueSets.create({ name: s('apparel-sizes') }, actor, {})).rejects.toMatchObject({
+    await expect(
+      valueSets.create({ name: s('apparel-sizes'), optionTypeId: sizeTypeId }, actor, {}),
+    ).rejects.toMatchObject({
       code: 'VALUE_SET_NAME_TAKEN',
     });
     // case-insensitive
     await expect(
-      valueSets.create({ name: s('apparel-sizes').toUpperCase() }, actor, {}),
+      valueSets.create(
+        { name: s('apparel-sizes').toUpperCase(), optionTypeId: sizeTypeId },
+        actor,
+        {},
+      ),
     ).rejects.toMatchObject({ code: 'VALUE_SET_NAME_TAKEN' });
   });
 
   it('adds and removes value set items; rejects a duplicate', async () => {
-    const vs = await valueSets.create({ name: s('sizes-2') }, actor, {});
+    const vs = await valueSets.create({ name: s('sizes-2'), optionTypeId: sizeTypeId }, actor, {});
     const withItem = await valueSets.addItem(vs.id, { optionValueId: sizeValueIds[2]! }, actor, {});
     expect(withItem.items.map((i) => i.optionValueId)).toContain(sizeValueIds[2]);
     await expect(
@@ -137,7 +144,7 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
   });
 
   it("a value-set item add/remove audit rows snapshot the option value's code — the 2026-09-17 fix", async () => {
-    const vs = await valueSets.create({ name: s('sizes-4') }, actor, {});
+    const vs = await valueSets.create({ name: s('sizes-4'), optionTypeId: sizeTypeId }, actor, {});
     await valueSets.addItem(vs.id, { optionValueId: sizeValueIds[0]! }, actor, {});
     const added = await prisma.auditEvent.findFirstOrThrow({
       where: { action: 'catalog.value_set_updated', targetId: vs.id },
@@ -272,7 +279,11 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
 
     // a set of Size values cannot back a Color option
     const sizeSet = await valueSets.create(
-      { name: s('sizes-3'), items: [{ optionValueId: sizeValueIds[0]! }] },
+      {
+        name: s('sizes-3'),
+        optionTypeId: sizeTypeId,
+        items: [{ optionValueId: sizeValueIds[0]! }],
+      },
       actor,
       {},
     );
@@ -288,7 +299,11 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
 
     // a matching set works
     const colorSet = await valueSets.create(
-      { name: s('colors'), items: [{ optionValueId: colorValueId }] },
+      {
+        name: s('colors'),
+        optionTypeId: colorTypeId,
+        items: [{ optionValueId: colorValueId }],
+      },
       actor,
       {},
     );
@@ -322,7 +337,11 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
 
   it("a category option's put/remove audit rows snapshot the category and value-set names — the 2026-09-17 fix", async () => {
     const colorSet = await valueSets.create(
-      { name: s('colors-2'), items: [{ optionValueId: colorValueId }] },
+      {
+        name: s('colors-2'),
+        optionTypeId: colorTypeId,
+        items: [{ optionValueId: colorValueId }],
+      },
       actor,
       {},
     );
@@ -462,7 +481,11 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
 
     // 3. A set that only has "M" — doesn't cover the product's existing "S" pick.
     const tooNarrowSet = await valueSets.create(
-      { name: s('sizes-m-only'), items: [{ optionValueId: sizeValueIds[1]! }] },
+      {
+        name: s('sizes-m-only'),
+        optionTypeId: sizeTypeId,
+        items: [{ optionValueId: sizeValueIds[1]! }],
+      },
       actor,
       {},
     );
@@ -480,6 +503,7 @@ describe.skipIf(!hasDb)('ValueSet + CategoryOption (integration)', () => {
     const coveringSet = await valueSets.create(
       {
         name: s('sizes-s-and-m'),
+        optionTypeId: sizeTypeId,
         items: [{ optionValueId: sizeValueIds[0]! }, { optionValueId: sizeValueIds[1]! }],
       },
       actor,

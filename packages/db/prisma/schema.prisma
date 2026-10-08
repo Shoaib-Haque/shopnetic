@@ -469,6 +469,7 @@ model OptionType {
   hasSwatch       Boolean          @default(false) @map("has_swatch")
   status          OptionTypeStatus @default(active)
   values          OptionValue[]
+  valueSets       ValueSet[]
   categoryOptions CategoryOption[]
   productOptions  ProductOption[]
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -533,18 +534,22 @@ enum OptionValueStatus {
 }
 
 /// A managed, named, ordered list of option values (plan/26 §2.1) — e.g.
-/// "Apparel sizes" (S…3XL). Referenced by `category_option.value_set_id` for the
-/// `predefined` / `hybrid` value sources. Not bound to an option type in the
-/// schema; the category-option wiring endpoint checks every item belongs to the
-/// option type it is attached to.
+/// "Apparel sizes" (S…3XL). Bound to an option type, referenced by
+/// `category_option.value_set_id` for `predefined` / `hybrid` value sources.
 model ValueSet {
-  id        String           @id @default(uuid(7)) @db.Uuid
-  name      String           @unique
-  items     ValueSetItem[]
-  usedBy    CategoryOption[]
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String           @id @default(uuid(7)) @db.Uuid
+  name         String
+  optionTypeId String           @map("option_type_id") @db.Uuid
+  optionType   OptionType       @relation(fields: [optionTypeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  items        ValueSetItem[]
+  usedBy       CategoryOption[]
+  deletedAt    DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  // Hand-managed partial unique index on `lower(name)` WHERE deleted_at IS NULL
+  @@index([optionTypeId])
+  @@index([deletedAt])
   @@map("value_set")
   @@schema("catalog")
 }

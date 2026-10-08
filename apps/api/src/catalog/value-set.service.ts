@@ -3,10 +3,13 @@ import type { Actor } from '@shopnetic/auth';
 import type {
   AddValueSetItemRequest,
   CreateValueSetRequest,
+  ReorderValueSetItemsRequest,
   UpdateValueSetRequest,
   ValueSet,
+  ValueSetListStatus,
 } from '@shopnetic/contracts';
 import type { Prisma } from '@shopnetic/db';
+import { tokenizeForSql, buildTokenSearch } from '../common/text-search.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -19,10 +22,16 @@ const withItems = {
 
 type ValueSetRow = Prisma.ValueSetGetPayload<{ include: typeof withItems }>;
 
+export interface ListValueSetOpts {
+  status?: ValueSetListStatus;
+  optionTypeId?: string;
+  q?: string;
+}
+
 /**
- * Managed value lists (plan/26 section 2.1) — e.g. "Apparel sizes". A set is a bag of
- * option values; it is not bound to an option type here. `CategoryOptionService`
- * checks type consistency when a set is attached to a (category, option type).
+ * Managed value lists (plan/26 section 2.1) — e.g. "Apparel sizes".
+ * Bound to an option type; referenced by `category_option.value_set_id` for
+ * `predefined` and `hybrid` value sources.
  */
 @Injectable()
 export class ValueSetService {
@@ -31,12 +40,56 @@ export class ValueSetService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(): Promise<ValueSet[]> {
+  async list(opts?: ListValueSetOpts): Promise<ValueSet[]> {
+    const status = opts?.status ?? 'active';
+    const tokens = opts?.q ? tokenizeForSql(opts.q) : [];
+    const isSearch = tokens.length > 0;
+
+    const params: unknown[] = [];
+    const where: string[] = [];
+
+    if (status === 'active') {
+      where.push('deleted_at IS NULL');
+    } else if (status === 'archived') {
+      where.push('deleted_at IS NOT NULL');
+    }
+
+    if (opts?.optionTypeId) {
+      params.push(opts.optionTypeId);
+      where.push(`option_type_id = $${params.length}::uuid`);
+    }
+
+    let scoreExpr = '0';
+    if (isSearch) {
+      const haystack = 'lower(name)';
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params);
+      where.push(whereSql);
+      scoreExpr = scoreSql;
+    }
+
+    const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+    const orderClause = isSearch ? `ORDER BY ${scoreExpr} DESC, name ASC` : 'ORDER BY name ASC';
+
+    const idRows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id FROM catalog.value_set ${whereClause} ${orderClause}`,
+      ...params,
+    );
+
+    if (idRows.length === 0) {
+      return [];
+    }
+
+    const ids = idRows.map((r) => r.id);
     const rows = await this.prisma.valueSet.findMany({
+      where: { id: { in: ids } },
       include: withItems,
-      orderBy: { name: 'asc' },
     });
-    return rows.map(toView);
+
+    const rowMap = new Map(rows.map((r) => [r.id, r]));
+    return ids
+      .map((id) => rowMap.get(id))
+      .filter((r): r is ValueSetRow => r !== undefined)
+      .map(toView);
   }
 
   async get(id: string): Promise<ValueSet> {
@@ -44,14 +97,27 @@ export class ValueSetService {
   }
 
   async create(input: CreateValueSetRequest, actor: Actor, meta: RequestMeta): Promise<ValueSet> {
+    const ot = await this.prisma.optionType.findUnique({
+      where: { id: input.optionTypeId, deletedAt: null },
+    });
+    if (!ot) {
+      throw new AppError('NOT_FOUND', 404, { detail: 'option type not found' });
+    }
+
     await this.assertNameFree(input.name, null);
     const items = dedupeById(input.items ?? []);
-    if (items.length > 0) await this.assertOptionValuesExist(items.map((i) => i.optionValueId));
+    if (items.length > 0) {
+      await this.assertOptionValuesBelongToType(
+        items.map((i) => i.optionValueId),
+        input.optionTypeId,
+      );
+    }
 
     const created = await this.prisma.$transaction(async (tx) => {
       const row = await tx.valueSet.create({
         data: {
           name: input.name,
+          optionTypeId: input.optionTypeId,
           items: {
             create: items.map((i, idx) => ({
               optionValueId: i.optionValueId,
@@ -64,6 +130,7 @@ export class ValueSetService {
       await writeCatalogOutbox(tx, 'value_set', 'value_set.created', row.id, {
         id: row.id,
         name: row.name,
+        optionTypeId: row.optionTypeId,
         itemCount: row.items.length,
       });
       return row;
@@ -82,7 +149,21 @@ export class ValueSetService {
     meta: RequestMeta,
   ): Promise<ValueSet> {
     const current = await this.rowOrThrow(id);
-    if (input.name !== current.name) await this.assertNameFree(input.name, id);
+    if (current.deletedAt !== null) {
+      throw new AppError('VALUE_SET_ARCHIVED', 409, { detail: 'cannot update archived value set' });
+    }
+
+    if (input.expectedUpdatedAt !== undefined) {
+      if (input.expectedUpdatedAt !== current.updatedAt.toISOString()) {
+        throw new AppError('CONFLICT', 409, { detail: 'value set changed since it was loaded' });
+      }
+    }
+
+    if (input.name === current.name) {
+      return toView(current);
+    }
+
+    await this.assertNameFree(input.name, id);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.valueSet.update({ where: { id }, data: { name: input.name } });
@@ -99,6 +180,10 @@ export class ValueSetService {
 
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
     const current = await this.rowOrThrow(id);
+    if (current.deletedAt !== null) {
+      return;
+    }
+
     const uses = await this.prisma.categoryOption.count({ where: { valueSetId: id } });
     if (uses > 0) {
       throw new AppError('VALUE_SET_IN_USE', 409, {
@@ -107,13 +192,44 @@ export class ValueSetService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.valueSet.delete({ where: { id } });
-      await writeCatalogOutbox(tx, 'value_set', 'value_set.deleted', id, { id });
+      await tx.valueSet.update({ where: { id }, data: { deletedAt: new Date() } });
+      await writeCatalogOutbox(tx, 'value_set', 'value_set.archived', id, { id });
     });
-    await this.record(actor, 'catalog.value_set_deleted', id, meta, {
+    await this.record(actor, 'catalog.value_set_archived', id, meta, {
       before: toView(current),
-      reason: 'deleted',
+      reason: 'archived',
     });
+  }
+
+  async restore(id: string, actor: Actor, meta: RequestMeta): Promise<ValueSet> {
+    const current = await this.rowOrThrow(id);
+    if (current.deletedAt === null) {
+      return toView(current);
+    }
+
+    const ot = await this.prisma.optionType.findUnique({
+      where: { id: current.optionTypeId },
+      select: { id: true, deletedAt: true },
+    });
+    if (!ot || ot.deletedAt !== null) {
+      throw new AppError('OPTION_TYPE_ARCHIVED', 409, {
+        detail: "that value set's option type is archived — restore the option type first",
+      });
+    }
+
+    await this.assertNameFree(current.name, id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.valueSet.update({ where: { id }, data: { deletedAt: null } });
+      await writeCatalogOutbox(tx, 'value_set', 'value_set.restored', id, { id });
+    });
+
+    const restored = await this.rowOrThrow(id);
+    await this.record(actor, 'catalog.value_set_restored', id, meta, {
+      before: toView(current),
+      after: toView(restored),
+    });
+    return toView(restored);
   }
 
   async addItem(
@@ -123,7 +239,12 @@ export class ValueSetService {
     meta: RequestMeta,
   ): Promise<ValueSet> {
     const current = await this.rowOrThrow(id);
-    await this.assertOptionValuesExist([input.optionValueId]);
+    if (current.deletedAt !== null) {
+      throw new AppError('VALUE_SET_ARCHIVED', 409, { detail: 'cannot modify archived value set' });
+    }
+
+    await this.assertOptionValuesBelongToType([input.optionValueId], current.optionTypeId);
+
     if (current.items.some((i) => i.optionValueId === input.optionValueId)) {
       throw new AppError('CONFLICT', 409, { detail: 'value already in this set' });
     }
@@ -136,6 +257,7 @@ export class ValueSetService {
           position: input.position ?? current.items.length,
         },
       });
+      await tx.valueSet.update({ where: { id }, data: { updatedAt: new Date() } });
       await writeCatalogOutbox(tx, 'value_set', 'value_set.updated', id, {
         id,
         itemAdded: input.optionValueId,
@@ -158,15 +280,18 @@ export class ValueSetService {
     actor: Actor,
     meta: RequestMeta,
   ): Promise<void> {
-    await this.rowOrThrow(id);
-    // captured before the delete — same reasoning as `remove()`'s own
-    // `before: toView(current)`
+    const current = await this.rowOrThrow(id);
+    if (current.deletedAt !== null) {
+      throw new AppError('VALUE_SET_ARCHIVED', 409, { detail: 'cannot modify archived value set' });
+    }
+
     const removedCode = await this.codeOf(optionValueId);
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.valueSetItem.deleteMany({
         where: { valueSetId: id, optionValueId },
       });
       if (count === 0) throw new AppError('NOT_FOUND', 404, { detail: 'value not in this set' });
+      await tx.valueSet.update({ where: { id }, data: { updatedAt: new Date() } });
       await writeCatalogOutbox(tx, 'value_set', 'value_set.updated', id, {
         id,
         itemRemoved: optionValueId,
@@ -177,6 +302,55 @@ export class ValueSetService {
     });
   }
 
+  async reorderItems(
+    id: string,
+    input: ReorderValueSetItemsRequest,
+    actor: Actor,
+    meta: RequestMeta,
+  ): Promise<ValueSet> {
+    const current = await this.rowOrThrow(id);
+    if (current.deletedAt !== null) {
+      throw new AppError('VALUE_SET_ARCHIVED', 409, { detail: 'cannot modify archived value set' });
+    }
+
+    const currentIds = new Set(current.items.map((i) => i.optionValueId));
+    const submittedIds = new Set(input.orderedOptionValueIds);
+    if (
+      submittedIds.size !== input.orderedOptionValueIds.length ||
+      input.orderedOptionValueIds.length !== current.items.length ||
+      !input.orderedOptionValueIds.every((valId) => currentIds.has(valId))
+    ) {
+      throw new AppError('VALIDATION_ERROR', 422, {
+        detail:
+          'orderedOptionValueIds must match all option value IDs in the set without duplicates',
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await Promise.all(
+        input.orderedOptionValueIds.map((optValId, idx) =>
+          tx.valueSetItem.update({
+            where: { valueSetId_optionValueId: { valueSetId: id, optionValueId: optValId } },
+            data: { position: idx },
+          }),
+        ),
+      );
+      await tx.valueSet.update({ where: { id }, data: { updatedAt: new Date() } });
+      await writeCatalogOutbox(tx, 'value_set', 'value_set.updated', id, {
+        id,
+        itemsReordered: input.orderedOptionValueIds,
+      });
+    });
+
+    const view = await this.get(id);
+    await this.record(actor, 'catalog.value_set_items_reordered', id, meta, {
+      after: {
+        orderedOptionValueIds: input.orderedOptionValueIds,
+      },
+    });
+    return view;
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
   private async rowOrThrow(id: string): Promise<ValueSetRow> {
@@ -185,11 +359,12 @@ export class ValueSetService {
     return row;
   }
 
-  /** Case-insensitive value-set name uniqueness. */
+  /** Case-insensitive value-set name uniqueness among live records. */
   private async assertNameFree(name: string, exceptId: string | null): Promise<void> {
     const clash = await this.prisma.valueSet.findFirst({
       where: {
         name: { equals: name, mode: 'insensitive' },
+        deletedAt: null,
         ...(exceptId ? { id: { not: exceptId } } : {}),
       },
       select: { id: true },
@@ -201,10 +376,6 @@ export class ValueSetService {
     }
   }
 
-  /** Best-effort code lookup for an audit-log snapshot — `addItem`/
-   * `removeItem` only ever existence-check an option value id (`count`),
-   * never fetch its own row, so there's nothing in scope to read a `code`
-   * from without this. */
   private async codeOf(optionValueId: string): Promise<string | null> {
     const row = await this.prisma.optionValue.findUnique({
       where: { id: optionValueId },
@@ -213,10 +384,18 @@ export class ValueSetService {
     return row?.code ?? null;
   }
 
-  private async assertOptionValuesExist(ids: string[]): Promise<void> {
-    const found = await this.prisma.optionValue.count({ where: { id: { in: ids } } });
-    if (found !== new Set(ids).size) {
+  private async assertOptionValuesBelongToType(ids: string[], optionTypeId: string): Promise<void> {
+    const found = await this.prisma.optionValue.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, optionTypeId: true },
+    });
+    if (found.length !== new Set(ids).size) {
       throw new AppError('VALIDATION_ERROR', 422, { detail: 'unknown option value in items' });
+    }
+    if (found.some((v) => v.optionTypeId !== optionTypeId)) {
+      throw new AppError('VALUE_SET_TYPE_MISMATCH', 422, {
+        detail: 'the value set contains values of another option type',
+      });
     }
   }
 
@@ -245,6 +424,7 @@ function toView(row: ValueSetRow): ValueSet {
   return {
     id: row.id,
     name: row.name,
+    optionTypeId: row.optionTypeId,
     items: [...row.items]
       .sort((a, b) => a.position - b.position)
       .map((i) => ({
@@ -254,6 +434,7 @@ function toView(row: ValueSetRow): ValueSet {
         label: i.optionValue.labelI18n as Record<string, string>,
         position: i.position,
       })),
+    deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

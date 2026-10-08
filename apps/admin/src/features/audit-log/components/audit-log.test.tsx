@@ -751,6 +751,23 @@ describe('AuditLog — Target column deep-links to the live record', () => {
     }
   });
 
+  it('a value_set row links to the Value Sets list with status=all and a highlight param', async () => {
+    mockedListAuditEvents.mockResolvedValueOnce({
+      events: [
+        event({ action: 'catalog.value_set.update', targetType: 'value_set', targetId: 'vs-1' }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
+    for (const text of await screen.findAllByText('value_set:vs-1')) {
+      expect(text.closest('a')).toHaveAttribute(
+        'href',
+        '/en/x7f2k9t3m1qp/catalog/value-sets?status=all&highlight=vs-1',
+      );
+    }
+  });
+
   it('a row with no targetType renders the em dash, not a link', async () => {
     mockedListAuditEvents.mockResolvedValueOnce({
       events: [event({ targetType: null, targetId: null })],

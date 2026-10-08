@@ -215,15 +215,35 @@ export async function upsertValueSet(
   ctx: SeedCtx,
   spec: { name: string; values: { typeCode: string; valueCode: string }[] },
 ): Promise<string> {
-  const vs = await prisma.valueSet.upsert({
+  const firstTypeCode = spec.values[0]?.typeCode;
+  if (!firstTypeCode) {
+    throw new Error(
+      `seed: value set "${spec.name}" must have at least one value to derive option type`,
+    );
+  }
+  const ot = ctx.optionType.get(firstTypeCode);
+  if (!ot) {
+    throw new Error(
+      `seed: option type "${firstTypeCode}" must be seeded before value set "${spec.name}"`,
+    );
+  }
+  const existing = await prisma.valueSet.findFirst({
     where: { name: spec.name },
-    update: {},
-    create: { name: spec.name },
+    select: { id: true },
   });
+  const vs = existing
+    ? await prisma.valueSet.update({
+        where: { id: existing.id },
+        data: { name: spec.name, optionTypeId: ot.id, deletedAt: null },
+      })
+    : await prisma.valueSet.create({
+        data: { name: spec.name, optionTypeId: ot.id },
+      });
+
   await prisma.valueSetItem.deleteMany({ where: { valueSetId: vs.id } });
   const ids = spec.values.map((ref) => {
-    const ot = ctx.optionType.get(ref.typeCode);
-    const id = ot?.valueIds[ref.valueCode];
+    const targetOt = ctx.optionType.get(ref.typeCode);
+    const id = targetOt?.valueIds[ref.valueCode];
     if (!id) {
       throw new Error(`seed: value "${ref.typeCode}/${ref.valueCode}" not seeded for value set`);
     }

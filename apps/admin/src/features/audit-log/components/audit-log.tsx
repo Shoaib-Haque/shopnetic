@@ -114,6 +114,9 @@ function targetHref(event: AuditEvent, locale: string, basePath: string): string
   if (event.targetType === 'option_type') {
     return `/${locale}/${basePath}/catalog/option-types?highlight=${encodeURIComponent(event.targetId)}`;
   }
+  if (event.targetType === 'value_set') {
+    return `/${locale}/${basePath}/catalog/value-sets?status=all&highlight=${encodeURIComponent(event.targetId)}`;
+  }
   if (event.targetType === 'account' && event.action.startsWith('identity.staff_')) {
     return `/${locale}/${basePath}/staff?highlight=${encodeURIComponent(event.targetId)}`;
   }

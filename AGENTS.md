@@ -276,6 +276,11 @@ When modifying or writing code, **strictly adhere** to the locked rules in `plan
 
 - **Temporary test artifacts & screenshots (owner's rule):** Never save screenshots, debug files, or scratch outputs in the OS root `/tmp`. Always store them inside the workspace's ignored local directory (`/var/www/html/idea/shopnetic/tmp/`) organized directory-wise by domain/feature (e.g., `tmp/catalog/categories/`, `tmp/auth/`). Before saving any screenshot or test artifact, always check if the target directory exists and create it (`mkdir -p` / `fs.mkdirSync(dir, { recursive: true })`) if needed.
 - **UI tests section in reports (owner's rule):** Always execute browser UI tests and include a dedicated "UI Tests" section with test steps, verified outcomes, and screenshot links (`tmp/**/*.png`) after implementing or updating UI features whenever applicable.
+- **Loading, Error & Network Resiliency Tests section in reports (owner's rule):** After the "UI Tests" section in completion reports, always include a dedicated "Loading, Error & Network Resiliency Tests" section. Use the established dev debug mechanisms (`apps/api/.env` or request headers) to verify:
+  1. _Loading / Timing (12-item UX matrix)_: Inject delay via `DEV_RESPONSE_DELAY_MS` / `DEV_RESPONSE_DELAY_ROUTES` (or `x-debug-delay: <ms>`) to verify initial skeleton (`ScrollLoadSkeleton`), instant skeleton reset on tab/filter change (no stale frozen rows), search debouncing (`useDebouncedSearch`), soft-delete undo toast countdowns, and spinner/disabled states on add/remove/reorder/save (double-click and double-submit prevention).
+  2. _Synthetic Server Faults_: Inject 500s via `DEV_FAULT_STATUS` / `DEV_FAULT_ROUTES` and test payload variants via `DEV_FAULT_BODY` (`envelope`, `malformed`, `empty`), or `x-debug-fault: <code>`, verifying that the UI degrades gracefully to localized error messages without crashing or blank screens.
+  3. _Network / Offline Failures_: Verify true offline disconnection behavior (DevTools offline throttling) triggers distinct `"errors.offline"` connection-guidance messaging rather than generic 500 copy.
+  4. _Cleanup_: Always restore delay and fault flags back to 0/empty in `.env` after completing test sweeps.
 
 ---
 
@@ -305,9 +310,11 @@ When modifying or writing code, **strictly adhere** to the locked rules in `plan
   - Audit log viewer (filtering by action/actor/date, JSON diff viewer, target deep-linking).
 - [x] **Catalog Governance (Admin & API - Phase 1 in progress):**
   - Category Management: Hierarchical tree view, drag-and-drop reordering, create/edit modal, soft-delete with undo, restore, breadcrumb pool, status tabs (active/archived/all), server-side token search.
+  - Category-Option Mapping: Category options dialog, configuring required/optional attributes per category, predefined/open/hybrid value sources, variant axis and price impact toggles, soft-delete with undo.
   - Brand Management: Brand list, create/edit modal, brand merge dialog (transfers aliases, soft-deletes source), aliases management, restricted brand toggle, soft-delete with undo, restore.
   - Option Types & Values: Global catalog list, create/edit modal, swatch/data type configurations, option values management, soft delete with undo.
-  - Deep-link highlighting: `useHighlightTarget` hook with `priority: 'high'` fetch across Category, Brand, Option Types, Staff.
+  - Value Sets Management: Value set list, create/edit modal scoped to a single option type, item staging and reordering, soft-delete with undo, restore, status tabs (active/archived/all), multi-word tokenized search, Audit Log deep-linking target navigation with first-paint spotlighting.
+  - Deep-link highlighting: `useHighlightTarget` hook with `priority: 'high'` fetch and immediate first-paint promotion across Category, Brand, Option Types, Value Sets, Staff.
 - [x] **Catalog Backend APIs (`apps/api/src/catalog/`):**
   - Endpoints & services implemented for: Categories, Brands, Option Types, Value Sets, Category Options, Products, Product Options, Variants, and Media Assets.
 - [x] **Background Worker Service (`apps/workers`):**
@@ -324,7 +331,6 @@ When modifying or writing code, **strictly adhere** to the locked rules in `plan
    - [ ] Product option configuration UI (selecting option types and offering subset values).
    - [ ] Variant matrix generator UI (generating SKUs from option axes, setting SKU code, GTIN, dimensions, weight).
    - [ ] Product media gallery UI (uploading images/videos, tagging media to specific option values for variant galleries).
-   - [ ] Category-Option mapping UI (configuring required/optional attributes per category).
 2. **Seller Portal (`apps/seller` - Currently a stub):**
    - [ ] Seller registration & shop profile setup.
    - [ ] Seller product management & catalog search.

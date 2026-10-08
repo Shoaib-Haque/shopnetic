@@ -337,13 +337,13 @@ export class CategoryOptionService {
     if (valueSetId === null) return;
 
     const set = await this.prisma.valueSet.findUnique({
-      where: { id: valueSetId },
-      include: { items: { include: { optionValue: { select: { optionTypeId: true } } } } },
+      where: { id: valueSetId, deletedAt: null },
+      select: { id: true, optionTypeId: true },
     });
     if (!set) {
       throw new AppError('CATEGORY_OPTION_INVALID', 422, { detail: 'value set not found' });
     }
-    if (set.items.some((i) => i.optionValue.optionTypeId !== optionTypeId)) {
+    if (set.optionTypeId !== optionTypeId) {
       throw new AppError('VALUE_SET_TYPE_MISMATCH', 422, {
         detail: 'the value set contains values of another option type',
       });

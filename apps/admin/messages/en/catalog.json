@@ -305,6 +305,77 @@
         }
       }
     },
+    "valueSets": {
+      "title": "Value sets",
+      "subtitle": "Managed subsets of option values (e.g. standard sizes or predefined specifications) scoped to a single option type.",
+      "new": "New value set",
+      "empty": "No value sets yet.",
+      "emptyArchived": "No archived value sets.",
+      "noMatch": "No value sets match your search.",
+      "searchPlaceholder": "Search value sets…",
+      "cols": {
+        "name": "Name",
+        "optionType": "Option type",
+        "items": "Values",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "filter": {
+        "active": "Live",
+        "archived": "Archived",
+        "all": "All"
+      },
+      "status": {
+        "active": "Active",
+        "archived": "Archived"
+      },
+      "edit": "Edit",
+      "delete": "Delete",
+      "restore": "Restore",
+      "view": "View",
+      "undo": "Undo",
+      "cancel": "Cancel",
+      "deleteConfirm": "Archive value set “{name}”?",
+      "deleteConfirmDetail": "This value set will be moved to the archive and can be restored anytime.",
+      "restoreTitle": "Restore value set?",
+      "restoreMessage": "“{name}” will be moved back to the live list.",
+      "editConflict": "This value set was changed elsewhere — the list has been refreshed. Reopen it to try again.",
+      "alreadyDeleted": "“{name}” was already deleted.",
+      "alreadyRestored": "“{name}” was already restored.",
+      "toast": {
+        "created": "Value set “{name}” created.",
+        "updated": "Value set “{name}” saved.",
+        "deleted": "Value set “{name}” archived.",
+        "restored": "Value set “{name}” restored.",
+        "inUse": "Cannot archive “{name}” because it is used by {count, plural, one {# category option} other {# category options}}."
+      },
+      "form": {
+        "createTitle": "New value set",
+        "editTitle": "Edit value set",
+        "viewTitle": "Value set (archived)",
+        "name": "Name",
+        "namePlaceholder": "e.g. Apparel sizes (S–XL)",
+        "optionType": "Option type",
+        "selectOptionType": "Select an option type…",
+        "optionTypeLockedHint": "Option type is locked after creation.",
+        "values": "Values",
+        "selectValue": "Choose a value to add…",
+        "addValue": "Add value",
+        "emptyValues": "No values in this set yet.",
+        "emptyValuesWarning": "A value set with no values will prevent selection when attached to a category.",
+        "allValuesAdded": "All available values for this option type have been added.",
+        "moveUp": "Move up",
+        "moveDown": "Move down",
+        "remove": "Remove",
+        "save": "Save",
+        "cancel": "Cancel",
+        "err": {
+          "required": "This field is required.",
+          "nameLong": "Keep the name to 120 characters or fewer.",
+          "optionTypeRequired": "Please select an option type."
+        }
+      }
+    },
     "errors": {
       "categorySlugTaken": "That slug is already in use by another category.",
       "categoryNameTaken": "Another category already has that name (names are case-insensitive).",
@@ -323,7 +394,11 @@
       "optionValueInUse": "This value is used by one or more products, variants, or media — deprecate it instead of removing it.",
       "categoryOptionInvalid": "The option configuration is invalid for this value source.",
       "categoryOptionInUse": "Cannot remove or change this option type because products in this category are currently using it.",
+      "valueSetNameTaken": "A value set with that name already exists (names are case-insensitive).",
+      "valueSetInUse": "Cannot archive this value set because it is referenced by one or more category options.",
       "valueSetTypeMismatch": "The selected value set contains values of another option type.",
+      "valueSetArchived": "That value set is archived — restore it first.",
+      "optionTypeArchived": "That value set’s option type is archived — restore the option type first.",
       "categoryOptionNotConfigured": "This option is not configured on the category.",
       "conflict": "That action conflicts with the current state — reload and try again.",
       "validation": "Please check the highlighted fields.",

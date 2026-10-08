@@ -4804,5 +4804,44 @@ compose file.
     - Added end-to-end integration tests in `apps/api/src/catalog/category-option.service.integration.test.ts` verifying that stale `expectedUpdatedAt` tokens yield 409 CONFLICT, fresh tokens succeed, and missing records with `expectedUpdatedAt` also 409.
     - Added unit test coverage in `apps/admin/src/features/catalog/categories/category-options-dialog.test.tsx` asserting `expectedUpdatedAt` transmission on edit and verifying 409 CONFLICT notification and data reload.
     - Full suite verified: 362/362 admin unit tests green, 152/152 API integration tests green, typecheck and linting clean across monorepo.
+- 2026-10-06 — End-to-End Value Sets Governance (Admin Phase 1, Step 2; ADR/plan/26 §2.1).
+  - Schema migration: Added `optionTypeId` foreign key (immutable relation to `OptionType`) and `deletedAt DateTime? @map("deleted_at")` to `model ValueSet`. Replaced global unique constraint on `name` with a hand-managed partial unique index (`lower(name) WHERE deleted_at IS NULL`) so archived names do not block reuse while preventing active duplicates. Added `@@index([deletedAt])` and `@@index([optionTypeId])`. Backfilled existing seed rows and updated seed factories (`factories.ts`). Hardened migration fallback to derive `option_type_id` from referencing `category_option`s, prune unreferenced empty shells, and fail loudly with `RAISE EXCEPTION` if any unresolved NULL remains, eliminating arbitrary/non-deterministic `LIMIT 1` assignments.
+  - Contracts & Error codes: Registered `OPTION_TYPE_ARCHIVED` and `VALUE_SET_ARCHIVED` in `@shopnetic/contracts` error codes catalog. Added `valueSetListStatusSchema`, `valueSetSchema`, `createValueSetRequestSchema`, `updateValueSetRequestSchema`, and `reorderValueSetItemsRequestSchema` (with unique IDs validation refinement) in `catalog.ts`.
+  - Backend API (`apps/api`):
+    - `ValueSetService` and `ValueSetController`: Added status filtering (`live`, `archived`, `all`), `optionTypeId` scoping, and search query `q`.
+    - Enforced strict single-type homogeneity on create and child item additions (`VALUE_SET_TYPE_MISMATCH`, 422), preventing cross-option-type contamination.
+    - Implemented optimistic concurrency control (`expectedUpdatedAt` & 409 `CONFLICT`), archived mutation guard (`VALUE_SET_ARCHIVED`, 409), and pristine diff comparison no-op update suppression on `update()`.
+    - Child mutations (`addItem`, `removeItem`, `reorderItems`) explicitly touch the parent `ValueSet.updatedAt` timestamp, ensuring multi-tab concurrency guards detect child modifications.
+    - Implemented item reorder endpoint (`POST /admin/v1/value-sets/:id/items/reorder`) updating positions within a single transaction with duplicate-id rejection.
+    - Implemented soft-delete with active Category Option dependency guard (`VALUE_SET_IN_USE`, 409).
+    - Implemented restore endpoint (`POST /admin/v1/value-sets/:id/restore`) with parent option type active verification (`OPTION_TYPE_ARCHIVED`, 409) and name collision check (`VALUE_SET_NAME_TAKEN`, 409).
+    - Simplified `CategoryOptionService.assertSourceAndSet` to validate option type compatibility via the first-class `optionTypeId` column and filter out archived sets (`deletedAt: null`).
+    - Real database integration tests: `value-set.service.integration.test.ts` (12 tests) covering full CRUD, single-type enforcement, concurrency control, child timestamp bumping, soft delete, restore, and reordering. Full API integration suite 164/164 green.
+  - Admin Back-Office UI (`apps/admin`):
+    - Activated `/catalog/value-sets` route in `nav-config.ts` (`soon: false`).
+    - Implemented `ValueSetList` (`value-set-list.tsx`) with Live / Archived / All status tabs, Option Type dropdown filter, debounced search (`/` shortcut), desktop table, mobile responsive card layout, 3-dots dropdown menu, and soft-delete undo toast (`useSoftDeleteWithUndo`).
+    - Implemented `ValueSetFormModal` (`value-set-form-modal.tsx`) supporting Create, Edit, and View (read-only for archived rows) modes. In Edit mode, `optionTypeId` is presented as an immutable locked badge. Includes scoped value selection, empty values warning banner, automatic clearing of staged values on option type switch in create mode, and atomic item reordering via Move Up / Move Down controls.
+    - Added comprehensive localized messages and error mappings in `catalog.json` and `error-copy.ts`.
+    - Unit test suites in `value-set-form-modal.test.tsx` (9 tests) and `value-set-list.test.tsx` (5 tests). Full admin test suite 376/376 green.
+    - Verified live in headless Chrome across desktop table, create modal, staged values, edit modal with locked type badge, soft-delete undo toast, archived tab, and mobile responsive card view.
+  - Fixed Value Sets' deep-link target appearing well after the rest of the list on
+    `?highlight=<id>` — the same connection-queueing root cause already diagnosed and
+    fixed for Category (2026-09-30 entry above). `ValueSetList` fires 4 distinct
+    fetches at mount (live option types, archived option types, the main list, and
+    the highlight-by-id fetch), doubled to 8 by React StrictMode in dev, over
+    Chrome's 6-connections-per-origin cap — the overflow queues for a free
+    connection regardless of fetch priority (`priority: 'high'` was already present
+    on `getValueSet`, and the render gate already correctly excluded `!highlighted`
+    from the loading check; neither alone was sufficient once the cap was hit, same
+    finding as Category's). Fixed in `value-set-list.tsx` by sequencing the
+    archived-option-types fetch to fire only after the live-option-types one
+    resolves, instead of both in the same `Promise.all` at mount — drops the initial
+    burst to 3 distinct fetches (6 doubled), right at the cap instead of over it.
+    Live-verified via `performance.getEntriesByType('resource')`: both StrictMode
+    invocations of the by-id fetch now land with `requestStart - startTime` ≈ 1ms
+    (no queuing); the two entries that still showed a queue gap were confirmed to be
+    Next.js's own RSC navigation prefetch requests (`_rsc` query param), not data
+    fetches. Full suite re-verified: 377/377 admin, typecheck/lint/format clean.
+
 
 

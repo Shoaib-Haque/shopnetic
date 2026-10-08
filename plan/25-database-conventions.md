@@ -115,8 +115,8 @@ exists.
 | `category` | Soft + reparent flow | Blocked while it has live child categories **or** live products; admin moves/reassigns first, then archive. Restore supported. |
 | `brand` | Soft; **merge** is the real "remove" | Blocked while live products reference it — use the merge tool (`26`), which relinks + adds an alias. Restore supported. |
 | `option_type` | Soft, additive-only in practice (`26`) | Blocked once a `category_option` or `product_option` uses it (deprecate instead). Restore supported. |
-| `option_value` | **Hard while unreferenced**, soft (`deprecated` status) once a `product_option_value` / `variant_option_value` / `value_set_item` points at it | Cannot remove a value a product/variant uses. |
-| `value_set`, `category_option` | **Hard** | `value_set` blocked while a `category_option` references it. `category_option` will block once a product in the category uses that axis (guard lands with `product_option` usage tracking). |
+| `value_set` | Soft (`deleted_at`), undo supported | Blocked while a live `category_option` references it. Partial unique index on `lower(name) WHERE deleted_at IS NULL`. Restore supported. |
+| `category_option` | **Hard** | `category_option` will block once a product in the category uses that axis (guard lands with `product_option` usage tracking). |
 | `product`, `variant` | Soft (`archived` / `deleted_at`) | Order lines hold snapshots; PDP can 410/redirect (`10` section 5). In a cart → `29` alerts the buyer. In an order → keep forever. Restore supported (re-validates slug). |
 | `media_asset` | **Hard** (DB row); object-storage blob GC'd later | No historical value once detached. |
 | `review`, `message`, `thread` | Soft (redact for T&S) | Moderation may redact content but keep the record |
@@ -156,10 +156,11 @@ in place yet — track these before relying on it:
   `P2002`; give them the same partial-index treatment as their restore flow lands.
 - Non-`category` catalog **name** uniqueness (case-insensitive `name.en` /
   `label.en` — `07` "Catalog naming / uniqueness") is still **app-level only**
-  (`assertNameFree` / `assertLabelFree`, small TOCTOU window). DB-level hardening
-  later: `citext` columns for the plain strings (`brand.name`, `value_set.name`),
+  (`assertNameFree` / `assertLabelFree`, small TOCTOU window) for `brand` and `option_type`;
+  `value_set` now has a DB-level partial unique index (`lower(name) WHERE deleted_at IS NULL`)
+  backing its app check. DB-level hardening later for others: `citext` for `brand.name`,
   and `lower((name_i18n->>'en'))` expression unique indexes for the JSON names.
-- `category` has a **cascade restore** endpoint (`POST …/:id/restore`); other
+- `category` and `value_set` have restore endpoints (`POST …/:id/restore`); other
   entities have no `restore` yet, and `outbox` events are written but not
   dispatched.
 - **Deferred** (need infra or other contexts, plan when they land): hard

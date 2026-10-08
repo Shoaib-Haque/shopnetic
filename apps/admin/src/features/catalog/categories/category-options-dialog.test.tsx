@@ -76,6 +76,7 @@ const colorOptionType: OptionType = {
 const sizeValueSet: ValueSet = {
   id: 'vs_sizes',
   name: 'Standard Sizes',
+  optionTypeId: 'ot_size',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   items: [

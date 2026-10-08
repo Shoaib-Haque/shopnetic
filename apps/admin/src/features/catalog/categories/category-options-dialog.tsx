@@ -39,6 +39,7 @@ import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import { listValueSets } from '@/features/catalog/value-sets/api';
+import { capForMessage } from '@/lib/format';
 import { deleteCategoryOption, listCategoryOptions, putCategoryOption } from './api';
 
 const selectCls =
@@ -162,7 +163,9 @@ export function CategoryOptionsDialog({
   const matchingValueSets = useMemo(() => {
     if (!selectedOptionTypeId) return [];
     return valueSets.filter(
-      (vs) => vs.items.length > 0 && vs.items.every((i) => i.optionTypeId === selectedOptionTypeId),
+      (vs) =>
+        vs.optionTypeId === selectedOptionTypeId ||
+        (!vs.optionTypeId && vs.items.some((i) => i.optionTypeId === selectedOptionTypeId)),
     );
   }, [valueSets, selectedOptionTypeId]);
 
@@ -413,11 +416,14 @@ export function CategoryOptionsDialog({
                       {unmappedOptionTypes.length === 0 && (
                         <option value="">{t('categories.optionsDialog.form.allMapped')}</option>
                       )}
-                      {unmappedOptionTypes.map((ot) => (
-                        <option key={ot.id} value={ot.id}>
-                          {ot.name['en'] ?? ot.code} (/{ot.code})
-                        </option>
-                      ))}
+                      {unmappedOptionTypes.map((ot) => {
+                        const label = `${ot.name['en'] ?? ot.code} (${ot.code})`;
+                        return (
+                          <option key={ot.id} value={ot.id} title={label}>
+                            {capForMessage(label, 48)}
+                          </option>
+                        );
+                      })}
                     </select>
                   ) : (
                     <div
@@ -494,8 +500,8 @@ export function CategoryOptionsDialog({
                     >
                       <option value="">{t('categories.optionsDialog.form.selectValueSet')}</option>
                       {matchingValueSets.map((vs) => (
-                        <option key={vs.id} value={vs.id}>
-                          {vs.name}
+                        <option key={vs.id} value={vs.id} title={vs.name}>
+                          {capForMessage(vs.name, 48)}
                         </option>
                       ))}
                     </select>

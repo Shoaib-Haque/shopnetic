@@ -161,7 +161,7 @@ variants:
 option_type            (id, code, name_i18n, data_type, has_swatch)
 option_value           (id, option_type_id, code, label_i18n, swatch_hex, swatch_image_key,
                         position, status)                     -- status: active|deprecated
-value_set              (id, name)                              -- e.g. "Apparel sizes"
+value_set              (id, option_type_id, name, deleted_at)  -- e.g. "Apparel sizes", scoped to an option_type
 value_set_item         (value_set_id, option_value_id, position)
 
 category_option        (category_id, option_type_id, applicability, is_variant_axis,

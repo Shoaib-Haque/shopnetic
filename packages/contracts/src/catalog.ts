@@ -334,6 +334,9 @@ export type UpdateOptionValueRequest = z.infer<typeof updateOptionValueRequestSc
 
 // ── Value sets (managed value lists — plan/26 section 2.1) ──────────────────────────
 
+export const valueSetListStatusSchema = z.enum(['active', 'archived', 'all']);
+export type ValueSetListStatus = z.infer<typeof valueSetListStatusSchema>;
+
 const valueSetNameSchema = z.string().trim().min(1).max(120);
 const positionField = z.number().int().min(0).max(100_000);
 
@@ -349,7 +352,9 @@ export type ValueSetItem = z.infer<typeof valueSetItemSchema>;
 export const valueSetSchema = z.object({
   id: z.string(),
   name: z.string(),
+  optionTypeId: z.string(),
   items: z.array(valueSetItemSchema),
+  deletedAt: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -362,15 +367,30 @@ const valueSetItemInputSchema = z.object({
 
 export const createValueSetRequestSchema = z.object({
   name: valueSetNameSchema,
+  optionTypeId: z.string().uuid(),
   items: z.array(valueSetItemInputSchema).max(1000).optional(),
 });
 export type CreateValueSetRequest = z.infer<typeof createValueSetRequestSchema>;
 
-export const updateValueSetRequestSchema = z.object({ name: valueSetNameSchema });
+export const updateValueSetRequestSchema = z.object({
+  name: valueSetNameSchema,
+  expectedUpdatedAt: z.string().optional(),
+});
 export type UpdateValueSetRequest = z.infer<typeof updateValueSetRequestSchema>;
 
 export const addValueSetItemRequestSchema = valueSetItemInputSchema;
 export type AddValueSetItemRequest = z.infer<typeof addValueSetItemRequestSchema>;
+
+export const reorderValueSetItemsRequestSchema = z.object({
+  orderedOptionValueIds: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(1000)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: 'orderedOptionValueIds must not contain duplicate IDs',
+    }),
+});
+export type ReorderValueSetItemsRequest = z.infer<typeof reorderValueSetItemsRequestSchema>;
 
 // ── Category options (per-category option config — plan/26 section 2.1) ─────────────
 
