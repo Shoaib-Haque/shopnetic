@@ -301,4 +301,20 @@ describe('ProductList', () => {
 
     expect(await screen.findByText('Product Variants')).toBeInTheDocument();
   });
+
+  it('opens manage media dialog from row menu', async () => {
+    const item = sampleProduct('p-1', 'Platform Hoodie');
+    mockedListProductsPage.mockResolvedValue({ products: [item], nextCursor: undefined });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Platform Hoodie')).not.toHaveLength(0);
+
+    openFirstRowMenu();
+
+    const mediaBtn = await screen.findByRole('menuitem', { name: 'Manage Media' });
+    fireEvent.click(mediaBtn);
+
+    expect(await screen.findByText('Product Media Gallery')).toBeInTheDocument();
+  });
 });

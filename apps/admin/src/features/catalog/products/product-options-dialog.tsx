@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Check, Layers, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { Check, Image as ImageIcon, Layers, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type {
   CategoryOption,
   OptionType,
@@ -214,11 +214,13 @@ export function ProductOptionsDialog({
   onOpenChange,
   product,
   onManageVariants,
+  onManageMedia,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   product: Product | null;
   onManageVariants?: (product: Product) => void;
+  onManageMedia?: (product: Product) => void;
 }) {
   const t = useTranslations('catalog');
   const [loading, setLoading] = useState(true);
@@ -658,7 +660,7 @@ export function ProductOptionsDialog({
           </ModalBody>
 
           <ModalFooter className="flex items-center justify-between">
-            <div>
+            <div className="flex items-center gap-2">
               {onManageVariants && product && (
                 <Button
                   type="button"
@@ -671,6 +673,20 @@ export function ProductOptionsDialog({
                 >
                   <Layers className="size-4" />
                   {t('products.options.proceedToVariants')}
+                </Button>
+              )}
+              {onManageMedia && product && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onManageMedia(product);
+                  }}
+                  className="gap-2"
+                >
+                  <ImageIcon className="size-4" />
+                  {t('products.mediaAction')}
                 </Button>
               )}
             </div>

@@ -1,14 +1,19 @@
 'use client';
 
 import type {
+  CreateMediaRequest,
   CreateProductRequest,
   CreateVariantRequest,
+  MediaAsset,
   Product,
   ProductListStatus,
   ProductOption,
   ProductOrigin,
+  PutMediaTagRequest,
   PutProductOptionRequest,
+  ReorderMediaRequest,
   SetProductOptionValuesRequest,
+  UpdateMediaRequest,
   UpdateProductRequest,
   UpdateVariantRequest,
   Variant,
@@ -131,5 +136,61 @@ export function updateVariant(
 export function deleteVariant(productId: string, id: string): Promise<void> {
   return adminApi<void>(`/products/${productId}/variants/${id}`, {
     method: 'DELETE',
+  });
+}
+
+// ── Product media (plan/26 §5) ──────────────────────────────────────────────
+
+export function listProductMedia(productId: string): Promise<MediaAsset[]> {
+  return adminApi<MediaAsset[]>(`/products/${productId}/media`);
+}
+
+export function createProductMedia(
+  productId: string,
+  body: CreateMediaRequest,
+): Promise<MediaAsset> {
+  return adminApi<MediaAsset>(`/products/${productId}/media`, {
+    method: 'POST',
+    body,
+  });
+}
+
+export function updateMedia(id: string, body: UpdateMediaRequest): Promise<MediaAsset> {
+  return adminApi<MediaAsset>(`/media/${id}`, {
+    method: 'PATCH',
+    body,
+  });
+}
+
+export function deleteMedia(id: string): Promise<void> {
+  return adminApi<void>(`/media/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function putMediaTag(
+  id: string,
+  optionTypeId: string,
+  body: PutMediaTagRequest,
+): Promise<MediaAsset> {
+  return adminApi<MediaAsset>(`/media/${id}/tags/${optionTypeId}`, {
+    method: 'PUT',
+    body,
+  });
+}
+
+export function deleteMediaTag(id: string, optionTypeId: string): Promise<void> {
+  return adminApi<void>(`/media/${id}/tags/${optionTypeId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function reorderProductMedia(
+  productId: string,
+  body: ReorderMediaRequest,
+): Promise<MediaAsset[]> {
+  return adminApi<MediaAsset[]>(`/products/${productId}/media/reorder`, {
+    method: 'PUT',
+    body,
   });
 }

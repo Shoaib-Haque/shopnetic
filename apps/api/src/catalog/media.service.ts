@@ -138,6 +138,58 @@ export class MediaService {
     });
   }
 
+  async reorder(
+    ownerType: MediaOwnerType,
+    ownerId: string,
+    assetIds: string[],
+    actor: Actor,
+    meta: RequestMeta,
+  ): Promise<MediaAsset[]> {
+    await this.assertOwner(ownerType, ownerId);
+
+    const uniqueIds = new Set(assetIds);
+    if (uniqueIds.size !== assetIds.length) {
+      throw new AppError('VALIDATION_ERROR', 422, {
+        detail: 'duplicate asset IDs in reorder request',
+      });
+    }
+
+    const existing = await this.prisma.mediaAsset.findMany({
+      where: { ownerType, ownerId, id: { in: assetIds } },
+      select: { id: true },
+    });
+    if (existing.length !== assetIds.length) {
+      throw new AppError('NOT_FOUND', 404, {
+        detail: 'one or more media assets not found or belong to another owner',
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < assetIds.length; i++) {
+        const id = assetIds[i];
+        if (!id) continue;
+        await tx.mediaAsset.update({
+          where: { id },
+          data: { position: i },
+        });
+      }
+      await writeCatalogOutbox(tx, 'media_asset', 'media.reordered', ownerId, {
+        ownerType,
+        ownerId,
+        count: assetIds.length,
+      });
+    });
+
+    await this.record(actor, 'catalog.media_reordered', ownerId, meta, {
+      after: {
+        count: assetIds.length,
+        assetIds,
+      },
+    });
+
+    return this.listForOwner(ownerType, ownerId);
+  }
+
   async putTag(
     id: string,
     optionTypeId: string,

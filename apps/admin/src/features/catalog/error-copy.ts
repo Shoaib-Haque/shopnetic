@@ -35,6 +35,7 @@ const CODE_TO_KEY: Record<string, string> = {
   PRODUCT_OPTION_VALUE_INVALID: 'errors.productOptionValueInvalid',
   VARIANT_COMBO_EXISTS: 'errors.variantComboExists',
   VARIANT_SELECTION_INVALID: 'errors.variantSelectionInvalid',
+  MEDIA_TAG_INVALID: 'errors.mediaTagInvalid',
   CONFLICT: 'errors.conflict',
   VALIDATION_ERROR: 'errors.validation',
   UNAUTHENTICATED: 'errors.unauthenticated',

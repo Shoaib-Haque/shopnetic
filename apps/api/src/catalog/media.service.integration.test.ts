@@ -3,6 +3,7 @@ import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import type { Actor } from '@shopnetic/auth';
 import { AuditService } from '../audit/audit.service.js';
 import { OptionTypeService } from './option-type.service.js';
+import { ProductOptionService } from './product-option.service.js';
 import { MediaService } from './media.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
@@ -82,6 +83,7 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     );
     await prisma.mediaAsset.deleteMany({ where: { ownerId: productId } }); // tags cascade
     await prisma.product.deleteMany({ where: { id: productId } });
+    await prisma.categoryOption.deleteMany({ where: { categoryId } });
     await prisma.optionType.deleteMany({ where: { code: { startsWith: `itest-md-${stamp}-` } } });
     await prisma.$executeRawUnsafe(
       `DELETE FROM catalog.category WHERE slug LIKE $1`,
@@ -219,5 +221,87 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     expect(events).toContain('media.deleted');
     const tagsLeft = await prisma.mediaOptionTag.count({ where: { mediaAssetId: a.id } });
     expect(tagsLeft).toBe(0);
+  });
+
+  it('reorders media assets transactionally and rejects duplicates or unknown IDs', async () => {
+    const m1 = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: s('order1.jpg'), position: 0 },
+      actor,
+      {},
+    );
+    const m2 = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: s('order2.jpg'), position: 1 },
+      actor,
+      {},
+    );
+    const m3 = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: s('order3.jpg'), position: 2 },
+      actor,
+      {},
+    );
+
+    // Rejects duplicate IDs
+    await expect(
+      media.reorder('product', productId, [m1.id, m1.id, m3.id], actor, {}),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+
+    // Rejects unknown ID
+    await expect(
+      media.reorder('product', productId, [m1.id, crypto.randomUUID(), m3.id], actor, {}),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    // Reverse order
+    const reordered = await media.reorder('product', productId, [m3.id, m2.id, m1.id], actor, {});
+    const positions = reordered
+      .filter((m) => [m1.id, m2.id, m3.id].includes(m.id))
+      .map((m) => ({ id: m.id, position: m.position }));
+    expect(positions).toEqual([
+      { id: m3.id, position: 0 },
+      { id: m2.id, position: 1 },
+      { id: m1.id, position: 2 },
+    ]);
+  });
+
+  it('cleans up dependent media option tags when an option type or value is removed', async () => {
+    const pr = prisma as PrismaService;
+    const audit = new AuditService(pr);
+    const productOptions = new ProductOptionService(pr, audit);
+
+    await prisma.categoryOption.upsert({
+      where: { categoryId_optionTypeId: { categoryId, optionTypeId: colorTypeId } },
+      update: { applicability: 'optional' },
+      create: { categoryId, optionTypeId: colorTypeId, applicability: 'optional' },
+    });
+    await productOptions.put(productId, colorTypeId, {}, actor, {});
+    await productOptions.setValues(
+      productId,
+      colorTypeId,
+      { values: [{ optionValueId: colorBlackId }] },
+      actor,
+      {},
+    );
+
+    const a = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: s('tag-cleanup.jpg') },
+      actor,
+      {},
+    );
+    await media.putTag(a.id, colorTypeId, colorBlackId, actor, {});
+    expect((await media.get(a.id)).tags).toHaveLength(1);
+
+    // Remove color option from product
+    await productOptions.remove(productId, colorTypeId, actor, {});
+
+    // Verify tag was cleaned up
+    const updated = await media.get(a.id);
+    expect(updated.tags).toHaveLength(0);
   });
 });

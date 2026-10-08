@@ -681,3 +681,9 @@ export type UpdateMediaRequest = z.infer<typeof updateMediaRequestSchema>;
 /** Upsert a tag on one axis: `PUT …/media/:id/tags/:optionTypeId`. */
 export const putMediaTagRequestSchema = z.object({ optionValueId: z.string().uuid() });
 export type PutMediaTagRequest = z.infer<typeof putMediaTagRequestSchema>;
+
+/** Atomic reordering of a product's media assets: `PUT …/products/:productId/media/reorder`. */
+export const reorderMediaRequestSchema = z.object({
+  mediaAssetIds: z.array(z.string().uuid()).min(1).max(500),
+});
+export type ReorderMediaRequest = z.infer<typeof reorderMediaRequestSchema>;

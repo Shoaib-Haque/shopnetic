@@ -16,10 +16,12 @@ import { Permission, type Actor } from '@shopnetic/auth';
 import {
   createMediaRequestSchema,
   putMediaTagRequestSchema,
+  reorderMediaRequestSchema,
   updateMediaRequestSchema,
   type CreateMediaRequest,
   type MediaAsset,
   type PutMediaTagRequest,
+  type ReorderMediaRequest,
   type UpdateMediaRequest,
 } from '@shopnetic/contracts';
 import { ok } from '../common/envelope.js';
@@ -34,6 +36,7 @@ import { MediaService } from './media.service.js';
 const createBody = new ZodBodyPipe(createMediaRequestSchema);
 const updateBody = new ZodBodyPipe(updateMediaRequestSchema);
 const tagBody = new ZodBodyPipe(putMediaTagRequestSchema);
+const reorderBody = new ZodBodyPipe(reorderMediaRequestSchema);
 
 type Envelope<T> = { data: T; meta: { requestId: string; count?: number } };
 
@@ -49,6 +52,24 @@ export class MediaController {
     @Param('productId') productId: string,
   ): Promise<Envelope<MediaAsset[]>> {
     const items = await this.media.listForOwner('product', productId);
+    const base = ok(req, items);
+    return { data: base.data, meta: { ...base.meta, count: items.length } };
+  }
+
+  @Put('products/:productId/media/reorder')
+  async reorderForProduct(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('productId') productId: string,
+    @Body(reorderBody) body: ReorderMediaRequest,
+  ): Promise<Envelope<MediaAsset[]>> {
+    const items = await this.media.reorder(
+      'product',
+      productId,
+      body.mediaAssetIds,
+      actor,
+      meta(req),
+    );
     const base = ok(req, items);
     return { data: base.data, meta: { ...base.meta, count: items.length } };
   }

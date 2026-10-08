@@ -49,6 +49,7 @@ import { listBrandsPage } from '@/features/catalog/brands/api';
 import { ProductFormModal } from './product-form-modal';
 import { ProductOptionsDialog } from './product-options-dialog';
 import { ProductVariantsDialog } from './product-variants-dialog';
+import { ProductMediaDialog } from './product-media-dialog';
 import { deleteProduct, getProduct, listProductsPage, restoreProduct } from './api';
 
 type Tab = ProductListStatus;
@@ -117,6 +118,7 @@ export function ProductList() {
   const [modal, setModal] = useState<ModalState>(null);
   const [optionsProduct, setOptionsProduct] = useState<Product | null>(null);
   const [variantsProduct, setVariantsProduct] = useState<Product | null>(null);
+  const [mediaProduct, setMediaProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
 
@@ -209,6 +211,8 @@ export function ProductList() {
       setOptionsProduct(effectiveHighlighted);
     } else if (action === 'variants') {
       setVariantsProduct(effectiveHighlighted);
+    } else if (action === 'media') {
+      setMediaProduct(effectiveHighlighted);
     }
   }, [effectiveHighlighted, searchParams]);
 
@@ -277,6 +281,9 @@ export function ProductList() {
             <DropdownMenuItem onSelect={() => setModal({ mode: 'view', product: p })}>
               {t('products.view')}
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setMediaProduct(p)}>
+              {t('products.mediaAction')}
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setRestoreTarget(p)}>
               {t('products.restore')}
             </DropdownMenuItem>
@@ -291,6 +298,9 @@ export function ProductList() {
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setVariantsProduct(p)}>
               {t('products.variantsAction')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setMediaProduct(p)}>
+              {t('products.mediaAction')}
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => void doDelete(p)}
@@ -309,6 +319,9 @@ export function ProductList() {
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setVariantsProduct(p)}>
               {t('products.variantsAction')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setMediaProduct(p)}>
+              {t('products.mediaAction')}
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => void doDelete(p)}
@@ -589,6 +602,10 @@ export function ProductList() {
           setOptionsProduct(null);
           setVariantsProduct(p);
         }}
+        onManageMedia={(p) => {
+          setOptionsProduct(null);
+          setMediaProduct(p);
+        }}
       />
 
       <ProductVariantsDialog
@@ -599,6 +616,27 @@ export function ProductList() {
         product={variantsProduct}
         onBackToOptions={(p) => {
           setVariantsProduct(null);
+          setOptionsProduct(p);
+        }}
+        onManageMedia={(p) => {
+          setVariantsProduct(null);
+          setMediaProduct(p);
+        }}
+      />
+
+      <ProductMediaDialog
+        open={mediaProduct !== null}
+        onOpenChange={(open) => {
+          if (!open) setMediaProduct(null);
+        }}
+        product={mediaProduct}
+        targetAssetId={searchParams.get('assetId')}
+        onManageVariants={(p) => {
+          setMediaProduct(null);
+          setVariantsProduct(p);
+        }}
+        onConfigureOptions={(p) => {
+          setMediaProduct(null);
           setOptionsProduct(p);
         }}
       />

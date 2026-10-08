@@ -8,6 +8,7 @@ import {
   Check,
   Edit2,
   Grid,
+  Image as ImageIcon,
   Layers,
   Plus,
   Trash2,
@@ -759,11 +760,13 @@ export function ProductVariantsDialog({
   onOpenChange,
   product,
   onBackToOptions,
+  onManageMedia,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   product: Product | null;
   onBackToOptions?: (product: Product) => void;
+  onManageMedia?: (product: Product) => void;
 }) {
   const t = useTranslations('catalog');
   const [loading, setLoading] = useState(true);
@@ -1090,7 +1093,7 @@ export function ProductVariantsDialog({
           </ModalBody>
 
           <ModalFooter className="flex items-center justify-between">
-            <div>
+            <div className="flex items-center gap-2">
               {onBackToOptions && product && (
                 <Button
                   type="button"
@@ -1103,6 +1106,20 @@ export function ProductVariantsDialog({
                 >
                   <ArrowLeft className="size-4" />
                   {t('products.variants.backToOptions')}
+                </Button>
+              )}
+              {onManageMedia && product && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onManageMedia(product);
+                  }}
+                  className="gap-2"
+                >
+                  <ImageIcon className="size-4" />
+                  {t('products.mediaAction')}
                 </Button>
               )}
             </div>

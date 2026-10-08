@@ -133,6 +133,20 @@ export class ProductOptionService {
             position: positionOf.get(optionValueId) ?? 0,
           })),
         });
+        await tx.mediaOptionTag.deleteMany({
+          where: {
+            optionTypeId,
+            mediaAsset: { ownerType: 'product', ownerId: productId },
+            optionValueId: { notIn: wanted },
+          },
+        });
+      } else {
+        await tx.mediaOptionTag.deleteMany({
+          where: {
+            optionTypeId,
+            mediaAsset: { ownerType: 'product', ownerId: productId },
+          },
+        });
       }
       await writeCatalogOutbox(tx, 'product', 'product.options_changed', productId, {
         productId,
@@ -182,6 +196,12 @@ export class ProductOptionService {
       if (count === 0) {
         throw new AppError('NOT_FOUND', 404, { detail: 'option not on this product' });
       }
+      await tx.mediaOptionTag.deleteMany({
+        where: {
+          optionTypeId,
+          mediaAsset: { ownerType: 'product', ownerId: productId },
+        },
+      });
       await writeCatalogOutbox(tx, 'product', 'product.options_changed', productId, {
         productId,
         optionTypeId,
