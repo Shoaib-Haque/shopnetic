@@ -329,34 +329,36 @@ export class BrandService {
 
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
     const current = await this.rowOrThrow(id);
-    // A plain remove is for a brand that's meant to be truly unused; unlike
-    // `merge()` (the preferred path when real products still reference it,
-    // since it relinks + preserves the name as an alias), this just cuts
-    // any remaining stragglers loose — plan/25 §2.3, plan/26 §brands:
-    // "never leave products pointing at a deleted brand id."
-    const relinked = await this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.product.updateMany({
-        where: { brandId: id, deletedAt: null },
-        data: { brandId: null },
+    const products = await this.prisma.product.count({
+      where: { brandId: id, deletedAt: null },
+    });
+    if (products > 0) {
+      throw new AppError('BRAND_HAS_PRODUCTS', 409, {
+        detail: `cannot archive brand while ${products} product(s) reference it; use the merge tool or reassign the products first`,
       });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
       await tx.brand.update({ where: { id }, data: { deletedAt: new Date() } });
-      await writeCatalogOutbox(tx, 'brand', 'brand.deleted', id, { id, productsRelinked: count });
-      return count;
+      await writeCatalogOutbox(tx, 'brand', 'brand.deleted', id, { id });
     });
     await this.record(actor, 'catalog.brand_deleted', id, meta, {
       before: toView(current),
-      reason:
-        relinked > 0
-          ? `soft delete (${relinked} product${relinked === 1 ? '' : 's'} relinked to no brand)`
-          : 'soft delete',
+      reason: 'soft delete',
     });
   }
 
   /** Restore an archived brand. Blocked when the freed name/slug was picked
    * up by a live row in the meantime (same reasoning as `category.restore`)
-   * — no subtree/cascade here, though: brand is flat. */
+   * — no subtree/cascade here, though: brand is flat. Also blocked if the
+   * brand was merged into another brand. */
   async restore(id: string, actor: Actor, meta: RequestMeta): Promise<Brand> {
     const current = await this.archivedRowOrThrow(id);
+    if (current.mergedIntoBrandId) {
+      throw new AppError('BRAND_MERGE_INVALID', 422, {
+        detail: 'cannot restore a brand that was merged into another brand',
+      });
+    }
     await this.assertSlugFree(current.slug, id);
     await this.assertNameFree(current.name, id);
 

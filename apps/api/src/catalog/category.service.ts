@@ -489,6 +489,15 @@ export class CategoryService {
       });
     }
 
+    const products = await this.prisma.product.count({
+      where: { categoryId: id, deletedAt: null },
+    });
+    if (products > 0) {
+      throw new AppError('CATEGORY_HAS_PRODUCTS', 409, {
+        detail: `cannot archive category while ${products} product(s) reference it; re-categorize or archive the products first`,
+      });
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.category.update({ where: { id }, data: { deletedAt: new Date() } });
       await writeCatalogOutbox(tx, 'category', 'category.deleted', id, { id });

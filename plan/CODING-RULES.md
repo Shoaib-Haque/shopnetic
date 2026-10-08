@@ -4842,6 +4842,13 @@ compose file.
     (no queuing); the two entries that still showed a queue gap were confirmed to be
     Next.js's own RSC navigation prefetch requests (`_rsc` query param), not data
     fetches. Full suite re-verified: 377/377 admin, typecheck/lint/format clean.
-
-
-
+- 2026-10-08 — Catalog Lifecycle, Product Guards & Corner Cases Architecture (`plan/32`, `plan/22` Q31/Q32 resolved).
+  - Formulated `plan/32-catalog-lifecycle-and-product-guards.md` defining the universal lifecycle invariants, 360-degree actor/system state matrix across Admin, Seller, Buyer, Cart (`plan/29`), and Orders (`plan/12`).
+  - Resolved Q32: Category archival with live products strictly blocked (`CATEGORY_HAS_PRODUCTS`, 409). Admin must re-categorize or archive products first.
+  - Resolved Q31: Brand restriction gated at submission/moderation (`pending_review`); draft forms do not crash. Existing approved products stay active unless revoked by sweep.
+  - Sibling rule: Brand archival with live products strictly blocked (`BRAND_HAS_PRODUCTS`, 409), guiding admin to the Brand Merge tool (`plan/26` §6).
+  - Sibling rule: Brand restore rejected if the brand was previously merged into another brand (`BRAND_MERGE_INVALID`, 422) since its identity was permanently absorbed.
+  - Added `CATEGORY_HAS_PRODUCTS` and `BRAND_HAS_PRODUCTS` to `@shopnetic/contracts` error codes catalog (`packages/contracts/src/error-codes.ts`).
+  - Implemented service-level guards in `CategoryService.remove()` (`apps/api/src/catalog/category.service.ts`) and `BrandService.remove()` / `BrandService.restore()` (`apps/api/src/catalog/brand.service.ts`).
+  - Added integration test coverage in `apps/api/src/catalog/category.service.integration.test.ts` (`CATEGORY_HAS_PRODUCTS` guard verified) and `apps/api/src/catalog/brand.service.integration.test.ts` (`BRAND_HAS_PRODUCTS` guard and merged restore rejection verified).
+  - Full suite verified: 37/37 catalog integration tests green, 9/9 product integration tests green, 377/377 admin unit tests green, typecheck and linting clean across monorepo.

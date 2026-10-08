@@ -50,6 +50,10 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
   afterAll(async () => {
     if (!prisma) return;
     await prisma.$executeRawUnsafe(
+      `DELETE FROM catalog.product WHERE category_id IN (SELECT id FROM catalog.category WHERE slug LIKE $1)`,
+      `itest-${stamp}-%`,
+    );
+    await prisma.$executeRawUnsafe(
       `DELETE FROM catalog.outbox WHERE aggregate_id IN (SELECT id::text FROM catalog.category WHERE slug LIKE $1)`,
       `itest-${stamp}-%`,
     );
@@ -297,6 +301,33 @@ describe.skipIf(!hasDb)('CategoryService (integration)', () => {
     // now the parent has no live children → delete works
     await svc.remove(p.id, actor, {});
     await expect(svc.get(p.id)).resolves.toMatchObject({ archivedAt: expect.any(String) });
+  });
+
+  it('blocks category deletion when live products reference it (CATEGORY_HAS_PRODUCTS)', async () => {
+    const cat = await svc.create(
+      { slug: s('cat-with-prod'), name: name('CatWithProd') },
+      actor,
+      {},
+    );
+    const prod = await prisma.product.create({
+      data: {
+        categoryId: cat.id,
+        titleI18n: { en: 'Test Product' },
+        slug: s('prod-under-cat'),
+      },
+    });
+
+    await expect(svc.remove(cat.id, actor, {})).rejects.toMatchObject({
+      code: 'CATEGORY_HAS_PRODUCTS',
+    });
+
+    // Archiving the product clears the blocker
+    await prisma.product.update({
+      where: { id: prod.id },
+      data: { deletedAt: new Date() },
+    });
+
+    await expect(svc.remove(cat.id, actor, {})).resolves.toBeUndefined();
   });
 
   it("create/update/remove/restore audit rows snapshot the parent's name, not just its id — the 2026-09-17 fix", async () => {

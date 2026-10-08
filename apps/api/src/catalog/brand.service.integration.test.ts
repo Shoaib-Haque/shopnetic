@@ -141,6 +141,11 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
       },
     );
 
+    // restoring a merged brand is blocked — its identity is permanently absorbed
+    await expect(svc.restore(source.id, actor, {})).rejects.toMatchObject({
+      code: 'BRAND_MERGE_INVALID',
+    });
+
     // the audit row snapshots the target's *name*, not just its id (2026-09-17
     // fix) — both in the structured `after` and in the free-text `reason`
     const event = await prisma.auditEvent.findFirstOrThrow({
@@ -344,28 +349,33 @@ describe.skipIf(!hasDb)('BrandService (integration)', () => {
     expect(ids).not.toContain(noMatch.id);
   });
 
-  it('remove() relinks any live products to no brand rather than leaving them dangling — the 2026-09-17 fix', async () => {
-    const b = await svc.create({ name: s('relink-host'), slug: s('relink-host') }, actor, {});
+  it('remove() blocks brand deletion when live products reference it (BRAND_HAS_PRODUCTS)', async () => {
+    const b = await svc.create({ name: s('block-host'), slug: s('block-host') }, actor, {});
     const p1 = await products.create(
-      { categoryId, title: t('Relink P1'), slug: s('relink-p1'), brandId: b.id },
+      { categoryId, title: t('Block P1'), slug: s('block-p1'), brandId: b.id },
       actor,
       {},
     );
     const p2 = await products.create(
-      { categoryId, title: t('Relink P2'), slug: s('relink-p2'), brandId: b.id },
+      { categoryId, title: t('Block P2'), slug: s('block-p2'), brandId: b.id },
       actor,
       {},
     );
 
-    await svc.remove(b.id, actor, {});
+    await expect(svc.remove(b.id, actor, {})).rejects.toMatchObject({
+      code: 'BRAND_HAS_PRODUCTS',
+    });
 
-    expect((await products.get(p1.id)).brandId).toBeNull();
-    expect((await products.get(p2.id)).brandId).toBeNull();
+    // Archiving the products clears the blocker
+    await products.remove(p1.id, actor, {});
+    await products.remove(p2.id, actor, {});
+
+    await expect(svc.remove(b.id, actor, {})).resolves.toBeUndefined();
 
     const event = await prisma.auditEvent.findFirstOrThrow({
       where: { action: 'catalog.brand_deleted', targetId: b.id },
     });
-    expect(event.reason).toBe('soft delete (2 products relinked to no brand)');
+    expect(event.reason).toBe('soft delete');
   });
 
   it('restore brings an archived brand back, blocked once a live row has taken its name/slug', async () => {
