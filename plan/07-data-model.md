@@ -47,8 +47,8 @@ raw-SQL migration.
 
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
-| `seller` | account_id, legal_name, type, country, status (`draft/in_review/approved/suspended/offboarding/closed`), commission_override_bps, reserve_bps | |
-| `shop` | seller_id, slug (unique), display_name, logo_url, banner_url, description, categories[], vacation_until | Public storefront. |
+| `seller` | account_id, legal_name, type, country, status (`draft/in_review/approved/suspended/offboarding/closed`), commission_override_bps, reserve_bps | Built. One per seller account. |
+| `shop` | seller_id, slug (unique), display_name, logo_url, banner_url, description, vacation_until | Built. Public storefront. |
 | `shop_policy` | shop_id, kind (`shipping/returns/cancellation/warranty`), body, version, effective_at | Versioned; feeds checkout & disputes. |
 | `kyc_document` | seller_id, kind, file_key, status, reviewed_by, reject_reason | |
 | `payout_account` | seller_id, provider_ref, last4, verification_status, verified_at | No raw bank numbers; provider tokenized. |
@@ -173,13 +173,13 @@ Price resolution for (seller, variant):
 
 | Entity | Key fields | Notes |
 |--------|-----------|-------|
-| `offer` | seller_id, variant_id, price_minor, sale_price_minor, sale_starts/ends, compare_at_minor, condition, handling_days, status, min_qty, max_qty, deleted_at | **Deferred** — needs the seller context (`seller_id`). A seller's sellable instance of a variant. Unique (seller_id, variant_id) where not deleted. |
+| `offer` | seller_id, variant_id, price_minor, sale_price_minor, sale_starts/ends, compare_at_minor, condition, handling_days, status, min_qty, max_qty, deleted_at | Built. A seller's sellable instance of a variant. Partial unique index on `(seller_id, variant_id) WHERE deleted_at IS NULL`. |
 | `offer_media` | see `media_asset` with `owner_type='offer'` | Seller-specific images/videos for their listing. |
-| `warehouse` | seller_id, name, address (jsonb) | |
-| `stock` | offer_id, warehouse_id, on_hand, reserved, safety_stock, backorder, restock_eta | Available = on_hand − reserved (invariant ≥ 0). Per offer = per seller per variant. |
+| `warehouse` | seller_id, name, is_default, address (jsonb), deleted_at | Built. Multi-warehouse per seller. |
+| `stock` | offer_id, warehouse_id, on_hand, reserved, safety_stock, backorder, restock_eta | Built. Available = on_hand − reserved (invariant ≥ 0). Per offer = per seller per variant per warehouse. |
 | `stock_reservation` | offer_id, cart_id/order_id, qty, expires_at, state (`held/committed/released`) | TTL holds during checkout. |
 | `stock_ledger` | offer_id, delta, reason, ref_type, ref_id | Auditable stock movements. |
-| `buybox` | variant_id, winning_offer_id, computed_at | Cached buy-box result (`11` section 7). |
+| `buybox` | variant_id, winning_offer_id, winning_seller_id, winning_seller_name, winning_price_minor, winning_currency, seller_count, min_price_minor, max_price_minor, computed_at | Built. Cached buy-box result (`11` section 7, `26` section 6). |
 
 ## Context: Cart (`cart`)
 

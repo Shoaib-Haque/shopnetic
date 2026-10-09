@@ -36,6 +36,14 @@ export type {
   MediaAsset,
   MediaOptionTag,
   CatalogOutbox,
+  Seller,
+  Shop,
+  SellerOutbox,
+  Warehouse,
+  Offer,
+  Stock,
+  Buybox,
+  InventoryOutbox,
 } from '@prisma/client';
 
 export {
@@ -56,6 +64,10 @@ export {
   MediaOwnerType,
   MediaKind,
   MediaAssetStatus,
+  SellerType,
+  SellerStatus,
+  OfferCondition,
+  OfferStatus,
 } from '@prisma/client';
 
 /**
@@ -63,4 +75,4 @@ export {
  * context as its models land (plan/07). Planned full set: identity, catalog,
  * inventory, orders, payments, seller, cart, promo, …
  */
-export const DATABASE_SCHEMAS = ['identity', 'catalog'] as const;
+export const DATABASE_SCHEMAS = ['identity', 'catalog', 'seller', 'inventory'] as const;

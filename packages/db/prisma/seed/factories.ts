@@ -379,8 +379,185 @@ export async function upsertProduct(
         optionValueId: s.optionValueId,
       })),
     });
+    ctx.variant.set(v.sku, variant.id);
   }
 
   ctx.product.set(spec.slug, p.id);
   return p.id;
+}
+
+// ── seller ──────────────────────────────────────────────────────────────────
+
+export async function upsertSeller(
+  prisma: PrismaClient,
+  ctx: SeedCtx,
+  spec: {
+    accountEmail: string;
+    legalName: string;
+    type?: 'individual' | 'business';
+    country?: string;
+    status?: 'draft' | 'in_review' | 'approved' | 'suspended' | 'offboarding' | 'closed';
+    shop: {
+      slug: string;
+      displayName: string;
+      description?: string;
+    };
+  },
+): Promise<string> {
+  const accountId = ctx.account.get(spec.accountEmail);
+  if (!accountId) {
+    throw new Error(`seed: account "${spec.accountEmail}" must be seeded before seller`);
+  }
+
+  const seller = await prisma.seller.upsert({
+    where: { accountId },
+    update: {
+      legalName: spec.legalName,
+      type: spec.type ?? 'business',
+      country: spec.country ?? 'US',
+      status: spec.status ?? 'approved',
+    },
+    create: {
+      accountId,
+      legalName: spec.legalName,
+      type: spec.type ?? 'business',
+      country: spec.country ?? 'US',
+      status: spec.status ?? 'approved',
+    },
+  });
+
+  await prisma.shop.upsert({
+    where: { sellerId: seller.id },
+    update: {
+      slug: spec.shop.slug,
+      displayName: spec.shop.displayName,
+      description: spec.shop.description ?? null,
+    },
+    create: {
+      sellerId: seller.id,
+      slug: spec.shop.slug,
+      displayName: spec.shop.displayName,
+      description: spec.shop.description ?? null,
+    },
+  });
+
+  ctx.seller.set(spec.shop.slug, seller.id);
+  return seller.id;
+}
+
+// ── inventory: warehouse & offer ────────────────────────────────────────────
+
+export async function upsertWarehouse(
+  prisma: PrismaClient,
+  ctx: SeedCtx,
+  spec: {
+    sellerSlug: string;
+    name: string;
+    isDefault?: boolean;
+    address: {
+      line1: string;
+      city: string;
+      state?: string;
+      postalCode: string;
+      country: string;
+    };
+  },
+): Promise<string> {
+  const sellerId = ctx.seller.get(spec.sellerSlug);
+  if (!sellerId) {
+    throw new Error(`seed: seller "${spec.sellerSlug}" must be seeded before warehouse`);
+  }
+
+  const existing = await prisma.warehouse.findFirst({
+    where: { sellerId, name: spec.name, deletedAt: null },
+  });
+
+  const warehouse = existing
+    ? await prisma.warehouse.update({
+        where: { id: existing.id },
+        data: {
+          isDefault: spec.isDefault ?? false,
+          address: spec.address,
+        },
+      })
+    : await prisma.warehouse.create({
+        data: {
+          sellerId,
+          name: spec.name,
+          isDefault: spec.isDefault ?? false,
+          address: spec.address,
+        },
+      });
+
+  ctx.warehouse.set(spec.name, warehouse.id);
+  return warehouse.id;
+}
+
+export async function upsertOffer(
+  prisma: PrismaClient,
+  ctx: SeedCtx,
+  spec: {
+    sellerSlug: string;
+    sku: string;
+    priceMinor: number;
+    currency: string;
+    salePriceMinor?: number;
+    condition?:
+      | 'new'
+      | 'refurbished_like_new'
+      | 'refurbished_good'
+      | 'used_like_new'
+      | 'used_good'
+      | 'used_fair';
+    status?: 'active' | 'paused' | 'out_of_stock' | 'under_review' | 'suppressed';
+    warehouseName?: string;
+    onHand?: number;
+  },
+): Promise<string> {
+  const sellerId = ctx.seller.get(spec.sellerSlug);
+  const variantId = ctx.variant.get(spec.sku);
+  if (!sellerId || !variantId) {
+    throw new Error(
+      `seed: seller "${spec.sellerSlug}" and variant "${spec.sku}" must be seeded before offer`,
+    );
+  }
+
+  const existing = await prisma.offer.findFirst({
+    where: { sellerId, variantId, deletedAt: null },
+  });
+
+  const offerData = {
+    priceMinor: BigInt(spec.priceMinor),
+    currency: spec.currency,
+    salePriceMinor: spec.salePriceMinor != null ? BigInt(spec.salePriceMinor) : null,
+    condition: spec.condition ?? 'new',
+    status: spec.status ?? 'active',
+  };
+
+  const offer = existing
+    ? await prisma.offer.update({
+        where: { id: existing.id },
+        data: offerData,
+      })
+    : await prisma.offer.create({
+        data: {
+          sellerId,
+          variantId,
+          ...offerData,
+        },
+      });
+
+  if (spec.warehouseName && spec.onHand != null) {
+    const warehouseId = ctx.warehouse.get(spec.warehouseName);
+    if (!warehouseId) {
+      throw new Error(`seed: warehouse "${spec.warehouseName}" must be seeded before stock`);
+    }
+    await prisma.stock.upsert({
+      where: { offerId_warehouseId: { offerId: offer.id, warehouseId } },
+      update: { onHand: spec.onHand },
+      create: { offerId: offer.id, warehouseId, onHand: spec.onHand },
+    });
+  }
+
+  return offer.id;
 }

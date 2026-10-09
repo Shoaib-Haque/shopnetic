@@ -52,6 +52,7 @@ const sampleProduct: Product = {
   basePriceMinor: '2999',
   currency: 'USD',
   spec: {},
+  proposedBySellerId: null,
   archivedAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -63,7 +64,10 @@ const sampleOptionTypes: OptionType[] = [
     code: 'color',
     name: { en: 'Color' },
     dataType: 'select',
+    hasSwatch: false,
     status: 'active',
+    archived: false,
+    values: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   },
@@ -71,11 +75,14 @@ const sampleOptionTypes: OptionType[] = [
 
 const sampleProductOptions: ProductOption[] = [
   {
+    productId: 'prod_1',
     optionTypeId: 'ot_color',
     optionTypeCode: 'color',
+    position: 0,
+    requiredValueId: null,
     values: [
-      { optionValueId: 'val_navy', code: 'navy' },
-      { optionValueId: 'val_black', code: 'black' },
+      { optionValueId: 'val_navy', code: 'navy', position: 0 },
+      { optionValueId: 'val_black', code: 'black', position: 1 },
     ],
   },
 ];

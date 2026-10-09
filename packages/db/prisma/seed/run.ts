@@ -8,12 +8,13 @@ import { createSeedCtx, type SeedCtx, type SeedLog } from './ctx.js';
 import type { SeedProfile } from './profile.js';
 import { seedDemoCatalog } from './demo/catalog.js';
 import { seedDemoIdentity } from './demo/identity.js';
+import { seedDemoInventory } from './demo/inventory.js';
 import { seedFixtureCatalog } from './fixtures/catalog/index.js';
 import { seedFixtureIdentity } from './fixtures/identity.js';
 
 type Domain = (prisma: PrismaClient, ctx: SeedCtx, log: SeedLog) => Promise<void>;
 
-const DEMO: Domain[] = [seedDemoIdentity, seedDemoCatalog];
+const DEMO: Domain[] = [seedDemoIdentity, seedDemoCatalog, seedDemoInventory];
 const FIXTURES: Domain[] = [seedFixtureIdentity, seedFixtureCatalog];
 
 export async function runSeedProfile(

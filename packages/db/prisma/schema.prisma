@@ -25,7 +25,7 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   extensions = [citext, ltree]
-  schemas    = ["identity", "catalog"]
+  schemas    = ["identity", "catalog", "seller", "inventory"]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -807,3 +807,210 @@ model MediaOptionTag {
   @@map("media_option_tag")
   @@schema("catalog")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Context: Seller  (plan/07 §"seller")
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Seller {
+  id                    String        @id @default(uuid(7)) @db.Uuid
+  accountId             String        @unique @map("account_id") @db.Uuid
+  legalName             String        @map("legal_name")
+  type                  SellerType    @default(business)
+  country               String        @db.Char(2)
+  status                SellerStatus  @default(draft)
+  commissionOverrideBps Int?          @map("commission_override_bps")
+  reserveBps            Int?          @map("reserve_bps")
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt             DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  shop                  Shop?
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("seller")
+  @@schema("seller")
+}
+
+enum SellerType {
+  individual
+  business
+
+  @@schema("seller")
+}
+
+enum SellerStatus {
+  draft
+  in_review
+  approved
+  suspended
+  offboarding
+  closed
+
+  @@schema("seller")
+}
+
+model Shop {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  sellerId      String    @unique @map("seller_id") @db.Uuid
+  seller        Seller    @relation(fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  slug          String    @unique
+  displayName   String    @map("display_name")
+  description   String?
+  logoUrl       String?   @map("logo_url")
+  bannerUrl     String?   @map("banner_url")
+  vacationUntil DateTime? @map("vacation_until") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([deletedAt])
+  @@map("shop")
+  @@schema("seller")
+}
+
+model SellerOutbox {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  headers       Json?
+  attempts      Int       @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@index([publishedAt])
+  @@map("outbox")
+  @@schema("seller")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Context: Inventory & Offers  (plan/07 §"inventory", plan/26 §6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Warehouse {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  sellerId  String    @map("seller_id") @db.Uuid
+  name      String
+  isDefault Boolean   @default(false) @map("is_default")
+  address   Json
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  stocks    Stock[]
+
+  @@index([sellerId])
+  @@index([deletedAt])
+  @@map("warehouse")
+  @@schema("inventory")
+}
+
+model Offer {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  sellerId       String         @map("seller_id") @db.Uuid
+  variantId      String         @map("variant_id") @db.Uuid
+  priceMinor     BigInt         @map("price_minor")
+  currency       String         @db.VarChar(3)
+  salePriceMinor BigInt?        @map("sale_price_minor")
+  saleStartsAt   DateTime?      @map("sale_starts_at") @db.Timestamptz(6)
+  saleEndsAt     DateTime?      @map("sale_ends_at") @db.Timestamptz(6)
+  compareAtMinor BigInt?        @map("compare_at_minor")
+  condition      OfferCondition @default(new)
+  conditionNotes String?        @map("condition_notes")
+  handlingDays   Int            @default(1) @map("handling_days")
+  status         OfferStatus    @default(active)
+  minQty         Int            @default(1) @map("min_qty")
+  maxQty         Int?           @map("max_qty")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  stocks         Stock[]
+
+  // Note: A partial unique index on (seller_id, variant_id) WHERE deleted_at IS NULL
+  // is maintained in migration SQL because Prisma cannot express partial indexes.
+  @@index([sellerId])
+  @@index([variantId, status])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("offer")
+  @@schema("inventory")
+}
+
+enum OfferCondition {
+  new
+  refurbished_like_new
+  refurbished_good
+  used_like_new
+  used_good
+  used_fair
+
+  @@schema("inventory")
+}
+
+enum OfferStatus {
+  active
+  paused
+  out_of_stock
+  under_review
+  suppressed
+
+  @@schema("inventory")
+}
+
+model Stock {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  offerId     String    @map("offer_id") @db.Uuid
+  offer       Offer     @relation(fields: [offerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  warehouseId String    @map("warehouse_id") @db.Uuid
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  onHand      Int       @default(0) @map("on_hand")
+  reserved    Int       @default(0)
+  safetyStock Int       @default(0) @map("safety_stock")
+  backorder   Boolean   @default(false)
+  restockEta  DateTime? @map("restock_eta") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([offerId, warehouseId])
+  @@index([warehouseId])
+  @@map("stock")
+  @@schema("inventory")
+}
+
+model Buybox {
+  variantId         String    @id @map("variant_id") @db.Uuid
+  winningOfferId    String?   @map("winning_offer_id") @db.Uuid
+  winningSellerId   String?   @map("winning_seller_id") @db.Uuid
+  winningSellerName String?   @map("winning_seller_name")
+  winningPriceMinor BigInt?   @map("winning_price_minor")
+  winningCurrency   String?   @map("winning_currency") @db.VarChar(3)
+  sellerCount       Int       @default(0) @map("seller_count")
+  minPriceMinor     BigInt?   @map("min_price_minor")
+  maxPriceMinor     BigInt?   @map("max_price_minor")
+  computedAt        DateTime  @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  @@index([winningOfferId])
+  @@map("buybox")
+  @@schema("inventory")
+}
+
+model InventoryOutbox {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  headers       Json?
+  attempts      Int       @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@index([publishedAt])
+  @@map("outbox")
+  @@schema("inventory")
+}
+

@@ -14,8 +14,14 @@ export interface SeedCtx {
   valueSet: Map<string, string>;
   /** product slug → id */
   product: Map<string, string>;
+  /** sku code → variant id */
+  variant: Map<string, string>;
   /** account email → id */
   account: Map<string, string>;
+  /** shop slug / seller handle → seller id */
+  seller: Map<string, string>;
+  /** warehouse name → warehouse id */
+  warehouse: Map<string, string>;
 }
 
 export function createSeedCtx(): SeedCtx {
@@ -25,7 +31,10 @@ export function createSeedCtx(): SeedCtx {
     optionType: new Map(),
     valueSet: new Map(),
     product: new Map(),
+    variant: new Map(),
     account: new Map(),
+    seller: new Map(),
+    warehouse: new Map(),
   };
 }
 
