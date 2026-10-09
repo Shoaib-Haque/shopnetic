@@ -60,6 +60,7 @@ export const stockLevelSchema = z.object({
   safetyStock: z.number().int().min(0),
   backorder: z.boolean(),
   restockEta: z.string().datetime().nullable(),
+  updatedAt: z.string().datetime().optional(),
 });
 export type StockLevel = z.infer<typeof stockLevelSchema>;
 
@@ -124,15 +125,22 @@ export const updateOfferRequestSchema = z.object({
   status: offerStatusSchema.optional(),
   minQty: z.number().int().min(1).optional(),
   maxQty: z.number().int().min(1).nullable().optional(),
+  expectedUpdatedAt: z.string().optional(),
 });
 export type UpdateOfferRequest = z.infer<typeof updateOfferRequestSchema>;
 
-export const updateStockRequestSchema = z.object({
-  onHand: z.number().int().min(0),
-  safetyStock: z.number().int().min(0).default(0),
-  backorder: z.boolean().default(false),
-  restockEta: z.string().datetime().nullable().optional(),
-});
+export const updateStockRequestSchema = z
+  .object({
+    onHand: z.number().int().min(0).optional(),
+    delta: z.number().int().optional(),
+    safetyStock: z.number().int().min(0).default(0),
+    backorder: z.boolean().default(false),
+    restockEta: z.string().datetime().nullable().optional(),
+    expectedUpdatedAt: z.string().optional(),
+  })
+  .refine((data) => data.onHand !== undefined || data.delta !== undefined, {
+    message: 'either onHand or delta must be provided',
+  });
 export type UpdateStockRequest = z.input<typeof updateStockRequestSchema>;
 
 export const buyboxSchema = z.object({

@@ -15,15 +15,16 @@ import {
   Trash2,
   Wand2,
 } from 'lucide-react';
-import type {
-  CategoryOption,
-  CreateVariantRequest,
-  OptionType,
-  Product,
-  ProductOption,
-  UpdateVariantRequest,
-  Variant,
-  VariantSelection,
+import {
+  computeComboSignature,
+  type CategoryOption,
+  type CreateVariantRequest,
+  type OptionType,
+  type Product,
+  type ProductOption,
+  type UpdateVariantRequest,
+  type Variant,
+  type VariantSelection,
 } from '@shopnetic/contracts';
 import {
   Button,
@@ -66,13 +67,6 @@ import {
 
 const selectCls =
   'h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
-
-function signatureOf(selections: VariantSelection[]): string {
-  return [...selections]
-    .sort((a, b) => a.optionTypeId.localeCompare(b.optionTypeId))
-    .map((s) => `${s.optionTypeId}:${s.optionValueId}`)
-    .join('|');
-}
 
 interface ComboOptionItem {
   optionTypeId: string;
@@ -190,7 +184,7 @@ function GeneratorModal({
         optionTypeId: it.optionTypeId,
         optionValueId: it.optionValueId,
       }));
-      const sig = signatureOf(sel);
+      const sig = computeComboSignature(sel);
       const skuParts = items.map((it) => it.valueCode.toUpperCase()).join('-');
       return {
         signature: sig,

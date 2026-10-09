@@ -462,7 +462,15 @@ export function ProductList() {
             <button
               key={tb}
               type="button"
-              onClick={() => setTab(tb)}
+              onClick={() => {
+                if (tab !== tb) {
+                  setTab(tb);
+                  setOriginFilter('all');
+                  setCategoryFilter('');
+                  setBrandFilter('');
+                  setQ('');
+                }
+              }}
               className={cn(
                 'rounded px-2.5 py-1 text-sm capitalize text-muted-foreground hover:text-foreground',
                 tab === tb && 'bg-muted font-medium text-foreground',

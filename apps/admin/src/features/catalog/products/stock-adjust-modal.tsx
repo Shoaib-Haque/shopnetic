@@ -115,11 +115,14 @@ export function StockAdjustModal({
       },
     }));
 
+    const existing = offer.stocks.find((s) => s.warehouseId === warehouse.id);
+
     const body: UpdateStockRequest = {
       onHand: Math.max(0, Math.floor(row.onHand || 0)),
       safetyStock: Math.max(0, Math.floor(row.safetyStock || 0)),
       backorder: row.backorder,
       restockEta: row.restockEta ? new Date(row.restockEta).toISOString() : null,
+      expectedUpdatedAt: existing?.updatedAt,
     };
 
     try {

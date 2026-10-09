@@ -101,6 +101,44 @@ const sizeOptionType: OptionType = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
+const colorOptionType: OptionType = {
+  id: 'ot_color',
+  code: 'color',
+  name: { en: 'Color' },
+  dataType: 'select',
+  hasSwatch: false,
+  status: 'active',
+  archived: false,
+  values: [
+    {
+      id: 'val_navy',
+      optionTypeId: 'ot_color',
+      code: 'navy',
+      label: { en: 'Navy' },
+      swatchHex: null,
+      swatchImageKey: null,
+      position: 0,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
+      id: 'val_black',
+      optionTypeId: 'ot_color',
+      code: 'black',
+      label: { en: 'Black' },
+      swatchHex: null,
+      swatchImageKey: null,
+      position: 1,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  ],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
 const categoryOptions: CategoryOption[] = [
   {
     categoryId: 'cat_1',
@@ -314,5 +352,85 @@ describe('ProductVariantsDialog', () => {
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onBackToOptions).toHaveBeenCalledWith(sampleProduct);
+  });
+
+  it('correctly identifies duplicate combinations across multiple options using pipe-delimited signatures', async () => {
+    const multiCategoryOptions: CategoryOption[] = [
+      {
+        categoryId: 'cat_1',
+        optionTypeId: 'ot_color',
+        optionTypeCode: 'color',
+        applicability: 'required',
+        isVariantAxis: true,
+        valueSource: 'open',
+        valueSetId: null,
+        priceImpact: false,
+        position: 0,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      categoryOptions[0]!,
+    ];
+
+    const multiProductOptions: ProductOption[] = [
+      {
+        productId: 'prod_1',
+        optionTypeId: 'ot_color',
+        optionTypeCode: 'color',
+        position: 0,
+        requiredValueId: null,
+        values: [
+          { optionValueId: 'val_navy', code: 'navy', position: 0 },
+          { optionValueId: 'val_black', code: 'black', position: 1 },
+        ],
+      },
+      productOptions[0]!,
+    ];
+
+    // Existing variant with sorted pipe-delimited comboSignature
+    const existingMultiVariant: Variant = {
+      id: 'var_existing',
+      productId: 'prod_1',
+      skuCode: 'NAVY-S',
+      gtin: null,
+      weightG: null,
+      dims: null,
+      comboSignature: 'ot_color:val_navy|ot_size:val_s',
+      status: 'active',
+      position: 0,
+      selections: [
+        { optionTypeId: 'ot_color', optionValueId: 'val_navy' },
+        { optionTypeId: 'ot_size', optionValueId: 'val_s' },
+      ],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListVariants.mockResolvedValue([existingMultiVariant]);
+    mockedListProductOptions.mockResolvedValue(multiProductOptions);
+    mockedListCategoryOptions.mockResolvedValue(multiCategoryOptions);
+    mockedListOptionTypesPage.mockResolvedValue({
+      optionTypes: [colorOptionType, sizeOptionType],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Variants' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Generate Variant Matrix')).toBeInTheDocument();
+    });
+
+    // 2 colors * 2 sizes = 4 total combinations.
+    // 1 already exists (matched via '|' delimiter) and 3 new available to generate.
+    expect(screen.getByText('1 already exist.')).toBeInTheDocument();
+    expect(screen.getByText('3 new available to generate.')).toBeInTheDocument();
   });
 });

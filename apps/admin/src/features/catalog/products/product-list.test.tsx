@@ -317,4 +317,50 @@ describe('ProductList', () => {
 
     expect(await screen.findByText('Product Media Gallery')).toBeInTheDocument();
   });
+
+  it('resets secondary filters and search query when switching status tabs', async () => {
+    const item = sampleProduct('p-1', 'Platform Hoodie');
+    mockedListProductsPage.mockResolvedValue({ products: [item], nextCursor: undefined });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Platform Hoodie')).not.toHaveLength(0);
+
+    // Enter search query
+    const searchInput = screen.getByPlaceholderText('Search products by title or slug… (/)');
+    fireEvent.change(searchInput, { target: { value: 'hoodie' } });
+    expect(searchInput).toHaveValue('hoodie');
+
+    // Change origin, category, and brand filters
+    const originSelect = screen.getByDisplayValue('All origins');
+    fireEvent.change(originSelect, { target: { value: '3p' } });
+    expect(originSelect).toHaveValue('3p');
+
+    const categorySelect = screen.getByDisplayValue('All categories');
+    fireEvent.change(categorySelect, { target: { value: 'cat-1' } });
+    expect(categorySelect).toHaveValue('cat-1');
+
+    const brandSelect = screen.getByDisplayValue('All brands');
+    fireEvent.change(brandSelect, { target: { value: 'brand-1' } });
+    expect(brandSelect).toHaveValue('brand-1');
+
+    // Switch to Archived tab
+    const archivedTab = screen.getByRole('button', { name: 'Archived' });
+    fireEvent.click(archivedTab);
+
+    // Verify secondary filters and search input reset
+    expect(searchInput).toHaveValue('');
+    expect(screen.getByDisplayValue('All origins')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('All categories')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('All brands')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(mockedListProductsPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'archived',
+          origin: 'all',
+        }),
+      );
+    });
+  });
 });

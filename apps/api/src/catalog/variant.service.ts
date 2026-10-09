@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { Actor } from '@shopnetic/auth';
-import type {
-  CreateVariantRequest,
-  UpdateVariantRequest,
-  Variant,
-  VariantSelection,
+import {
+  computeComboSignature,
+  type CreateVariantRequest,
+  type UpdateVariantRequest,
+  type Variant,
+  type VariantSelection,
 } from '@shopnetic/contracts';
 import { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -64,7 +65,10 @@ export class VariantService {
       product.categoryId,
       input.selections,
     );
-    const signature = signatureOf(selections);
+    if (input.gtin && !/^[0-9]{8,14}$/.test(input.gtin)) {
+      throw new AppError('VALIDATION_ERROR', 422, { detail: 'GTIN must be 8–14 digits' });
+    }
+    const signature = computeComboSignature(selections);
 
     const dupe = await this.prisma.variant.findFirst({
       where: { productId, comboSignature: signature },
@@ -137,6 +141,10 @@ export class VariantService {
       input.skuCode !== current.skuCode
     ) {
       await this.assertSkuFree(current.productId, input.skuCode, id);
+    }
+
+    if (input.gtin && !/^[0-9]{8,14}$/.test(input.gtin)) {
+      throw new AppError('VALIDATION_ERROR', 422, { detail: 'GTIN must be 8–14 digits' });
     }
 
     const data: Prisma.VariantUpdateInput = {};
@@ -316,13 +324,6 @@ export class VariantService {
       });
     }
   }
-}
-
-function signatureOf(selections: VariantSelection[]): string {
-  return [...selections]
-    .sort((a, b) => a.optionTypeId.localeCompare(b.optionTypeId))
-    .map((s) => `${s.optionTypeId}:${s.optionValueId}`)
-    .join('|');
 }
 
 function toView(row: VariantRow): Variant {

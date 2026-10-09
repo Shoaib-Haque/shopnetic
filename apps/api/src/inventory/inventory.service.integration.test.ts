@@ -28,6 +28,7 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
   let testVariantId: string;
   let warehouse1Id: string;
   let warehouse2Id: string;
+  let offer1Id: string;
 
   beforeAll(async () => {
     prisma = getPrismaClient();
@@ -249,6 +250,7 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
         staffActor,
         {},
       );
+      offer1Id = offer1.id;
 
       expect(offer1.sellerId).toBe(testSeller1Id);
       expect(offer1.priceMinor).toBe('2500');
@@ -409,6 +411,67 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
       const events = outboxEntries.map((e) => e.eventType);
       expect(events).toContain('offer.created');
       expect(events).toContain('offer.deleted');
+    });
+
+    it('enforces optimistic concurrency control on offer updates (expectedUpdatedAt)', async () => {
+      const current = await offerService.get(offer1Id);
+
+      // Stale timestamp should reject with CONFLICT (409)
+      await expect(
+        offerService.update(
+          offer1Id,
+          {
+            priceMinor: '2600',
+            expectedUpdatedAt: '2020-01-01T00:00:00.000Z',
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+      // Correct timestamp should succeed
+      const updated = await offerService.update(
+        offer1Id,
+        {
+          priceMinor: '2600',
+          expectedUpdatedAt: current.updatedAt,
+        },
+        staffActor,
+        {},
+      );
+      expect(updated.priceMinor).toBe('2600');
+    });
+
+    it('enforces optimistic concurrency control and atomic delta on stock updates', async () => {
+      const current = await offerService.get(offer1Id);
+      const stock = current.stocks[0]!;
+
+      // Stale stock expectedUpdatedAt should reject with CONFLICT (409)
+      await expect(
+        stockService.update(
+          offer1Id,
+          stock.warehouseId,
+          {
+            onHand: 20,
+            expectedUpdatedAt: '2020-01-01T00:00:00.000Z',
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+      // Atomic delta increment
+      const updatedStock = await stockService.update(
+        offer1Id,
+        stock.warehouseId,
+        {
+          delta: 5,
+          expectedUpdatedAt: stock.updatedAt,
+        },
+        staffActor,
+        {},
+      );
+      expect(updatedStock.onHand).toBe(stock.onHand + 5);
     });
   });
 });

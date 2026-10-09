@@ -56,10 +56,33 @@ export class StockService {
         where: { offerId_warehouseId: { offerId, warehouseId } },
       });
 
+      if (
+        data.expectedUpdatedAt !== undefined &&
+        existingStock &&
+        data.expectedUpdatedAt !== existingStock.updatedAt.toISOString()
+      ) {
+        throw new AppError('CONFLICT', 409, {
+          detail: 'the stock record has been modified by another request; reload and retry',
+        });
+      }
+
+      if (data.delta !== undefined && existingStock && existingStock.onHand + data.delta < 0) {
+        throw new AppError('STOCK_INSUFFICIENT', 422, {
+          detail: 'stock onHand cannot be negative',
+        });
+      }
+
+      const onHandUpdate =
+        data.delta !== undefined
+          ? { increment: data.delta }
+          : (data.onHand ?? existingStock?.onHand ?? 0);
+
+      const onHandCreate = data.delta !== undefined ? Math.max(0, data.delta) : (data.onHand ?? 0);
+
       const stock = await tx.stock.upsert({
         where: { offerId_warehouseId: { offerId, warehouseId } },
         update: {
-          onHand: data.onHand,
+          onHand: onHandUpdate,
           safetyStock: data.safetyStock,
           backorder: data.backorder,
           restockEta: data.restockEta ? new Date(data.restockEta) : null,
@@ -67,7 +90,7 @@ export class StockService {
         create: {
           offerId,
           warehouseId,
-          onHand: data.onHand,
+          onHand: onHandCreate,
           safetyStock: data.safetyStock,
           backorder: data.backorder,
           restockEta: data.restockEta ? new Date(data.restockEta) : null,
@@ -103,6 +126,7 @@ export class StockService {
       safetyStock: updated.stock.safetyStock,
       backorder: updated.stock.backorder,
       restockEta: updated.stock.restockEta ? updated.stock.restockEta.toISOString() : null,
+      updatedAt: updated.stock.updatedAt.toISOString(),
     };
   }
 }

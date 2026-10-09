@@ -28,7 +28,13 @@ export class BuyboxService {
   }
 
   async recalculate(variantId: string, tx?: Prisma.TransactionClient): Promise<Buybox> {
-    const client = tx ?? this.prisma;
+    if (!tx) {
+      return this.prisma.$transaction((innerTx) => this.recalculate(variantId, innerTx));
+    }
+    const client = tx;
+
+    // Serialize concurrent recalculations for this variant via transaction-scoped advisory lock
+    await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buybox:${variantId}`}))`;
 
     const offers = await client.offer.findMany({
       where: {

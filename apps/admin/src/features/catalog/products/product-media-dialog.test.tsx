@@ -352,4 +352,123 @@ describe('ProductMediaDialog', () => {
     fireEvent.click(optionsNavBtn);
     expect(onConfigureOptions).toHaveBeenCalledWith(sampleProduct);
   });
+
+  it('derives product cover for the first untagged asset and variant lead for the first asset per option value', async () => {
+    const multipleAssets: MediaAsset[] = [
+      {
+        id: 'media_cover',
+        ownerType: 'product',
+        ownerId: 'prod_1',
+        kind: 'image',
+        fileKey: 'products/cover-front.jpg',
+        posterKey: null,
+        width: 800,
+        height: 800,
+        durationS: null,
+        blurhash: null,
+        alt: { en: 'Front Cover' },
+        position: 0,
+        status: 'active',
+        tags: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'media_second_untagged',
+        ownerType: 'product',
+        ownerId: 'prod_1',
+        kind: 'image',
+        fileKey: 'products/second-front.jpg',
+        posterKey: null,
+        width: 800,
+        height: 800,
+        durationS: null,
+        blurhash: null,
+        alt: { en: 'Secondary Front' },
+        position: 1,
+        status: 'active',
+        tags: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'media_navy_lead',
+        ownerType: 'product',
+        ownerId: 'prod_1',
+        kind: 'image',
+        fileKey: 'products/navy-primary.jpg',
+        posterKey: null,
+        width: 800,
+        height: 800,
+        durationS: null,
+        blurhash: null,
+        alt: { en: 'Navy Primary' },
+        position: 2,
+        status: 'active',
+        tags: [
+          {
+            optionTypeId: 'ot_color',
+            optionTypeCode: 'color',
+            optionValueId: 'val_navy',
+            code: 'navy',
+          },
+        ],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'media_navy_secondary',
+        ownerType: 'product',
+        ownerId: 'prod_1',
+        kind: 'image',
+        fileKey: 'products/navy-detail.jpg',
+        posterKey: null,
+        width: 800,
+        height: 800,
+        durationS: null,
+        blurhash: null,
+        alt: { en: 'Navy Detail' },
+        position: 3,
+        status: 'active',
+        tags: [
+          {
+            optionTypeId: 'ot_color',
+            optionTypeCode: 'color',
+            optionValueId: 'val_navy',
+            code: 'navy',
+          },
+        ],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+
+    mockedListProductMedia.mockResolvedValue(multipleAssets);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    expect(await screen.findByText('Product Media Gallery')).toBeInTheDocument();
+
+    const coverCard = document.querySelector('[data-media-id="media_cover"]')!;
+    const secondUntaggedCard = document.querySelector('[data-media-id="media_second_untagged"]')!;
+    const navyLeadCard = document.querySelector('[data-media-id="media_navy_lead"]')!;
+    const navySecondaryCard = document.querySelector('[data-media-id="media_navy_secondary"]')!;
+
+    expect(coverCard).toBeInTheDocument();
+    expect(secondUntaggedCard).toBeInTheDocument();
+    expect(navyLeadCard).toBeInTheDocument();
+    expect(navySecondaryCard).toBeInTheDocument();
+
+    // First untagged has Product Cover; second untagged does NOT
+    expect(within(coverCard as HTMLElement).getByText('Product Cover')).toBeInTheDocument();
+    expect(
+      within(secondUntaggedCard as HTMLElement).queryByText('Product Cover'),
+    ).not.toBeInTheDocument();
+
+    // First Navy tagged has Variant Lead; second Navy tagged does NOT
+    expect(within(navyLeadCard as HTMLElement).getByText('Variant Lead')).toBeInTheDocument();
+    expect(
+      within(navySecondaryCard as HTMLElement).queryByText('Variant Lead'),
+    ).not.toBeInTheDocument();
+  });
 });

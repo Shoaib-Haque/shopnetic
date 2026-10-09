@@ -64,6 +64,7 @@ export class OfferService {
       safetyStock: s.safetyStock,
       backorder: s.backorder,
       restockEta: s.restockEta ? s.restockEta.toISOString() : null,
+      updatedAt: s.updatedAt.toISOString(),
     }));
 
     const totalOnHand = stocks.reduce((sum, s) => sum + s.onHand, 0);
@@ -342,6 +343,14 @@ export class OfferService {
     }
 
     assertCan(actor, Permission.OFFER_MANAGE, { sellerId: existing.sellerId });
+
+    if (data.expectedUpdatedAt !== undefined) {
+      if (data.expectedUpdatedAt !== existing.updatedAt.toISOString()) {
+        throw new AppError('CONFLICT', 409, {
+          detail: 'the offer has been modified by another request; reload and retry',
+        });
+      }
+    }
 
     if (data.priceMinor && BigInt(data.priceMinor) <= 0n) {
       throw new AppError('OFFER_PRICE_INVALID', 422, { detail: 'price must be positive' });

@@ -568,6 +568,20 @@ export const variantSchema = z.object({
 });
 export type Variant = z.infer<typeof variantSchema>;
 
+/**
+ * Computes a deterministic canonical signature for a set of variant option selections.
+ * Sorted by optionTypeId ascending, joined by '|'.
+ * SSoT shared by backend and frontend (plan/26 §4).
+ */
+export function computeComboSignature(
+  selections: ReadonlyArray<{ optionTypeId: string; optionValueId: string }>,
+): string {
+  return [...selections]
+    .sort((a, b) => a.optionTypeId.localeCompare(b.optionTypeId))
+    .map((s) => `${s.optionTypeId}:${s.optionValueId}`)
+    .join('|');
+}
+
 export const createVariantRequestSchema = z.object({
   skuCode: z.string().trim().min(1).max(64).nullish(),
   gtin: z
@@ -646,6 +660,34 @@ export const mediaAssetSchema = z.object({
   updatedAt: z.string(),
 });
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
+
+/**
+ * Product cover asset derivation per plan/26 §5:
+ * Lowest position untagged asset, or lowest position overall if all assets are tagged.
+ */
+export function deriveProductCoverMedia(assets: ReadonlyArray<MediaAsset>): MediaAsset | null {
+  if (assets.length === 0) return null;
+  const untagged = assets.filter((m) => m.tags.length === 0);
+  if (untagged.length > 0) return untagged[0] ?? null;
+  return assets[0] ?? null;
+}
+
+/**
+ * Variant lead photo derivation per plan/26 §5:
+ * For each unique optionValueId tag, the asset with the lowest position.
+ * Returns a Set of mediaAssetIds that serve as lead photos for at least one option value.
+ */
+export function deriveVariantLeadMediaMap(assets: ReadonlyArray<MediaAsset>): Map<string, string> {
+  const leadMap = new Map<string, string>();
+  for (const asset of assets) {
+    for (const tag of asset.tags) {
+      if (!leadMap.has(tag.optionValueId)) {
+        leadMap.set(tag.optionValueId, asset.id);
+      }
+    }
+  }
+  return leadMap;
+}
 
 const objectKeySchema = z.string().trim().min(1).max(1024);
 const pixelSchema = z.number().int().min(1).max(100_000);

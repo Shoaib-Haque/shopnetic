@@ -17,15 +17,17 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react';
-import type {
-  CreateMediaRequest,
-  MediaAsset,
-  MediaKind,
-  MediaStatus,
-  OptionType,
-  Product,
-  ProductOption,
-  UpdateMediaRequest,
+import {
+  deriveProductCoverMedia,
+  deriveVariantLeadMediaMap,
+  type CreateMediaRequest,
+  type MediaAsset,
+  type MediaKind,
+  type MediaStatus,
+  type OptionType,
+  type Product,
+  type ProductOption,
+  type UpdateMediaRequest,
 } from '@shopnetic/contracts';
 import {
   Button,
@@ -459,26 +461,13 @@ export function ProductMediaDialog({
     return map;
   }, [optionTypes]);
 
-  // Cover & Lead Image Analysis (per plan/26 §5)
-  // Product Cover = lowest position untagged asset (or lowest position overall if none untagged)
-  const productCoverId = useMemo(() => {
-    const untagged = mediaAssets.filter((m) => m.tags.length === 0);
-    if (untagged.length > 0) return untagged[0]?.id;
-    return mediaAssets[0]?.id;
-  }, [mediaAssets]);
+  // Cover & Lead Image Analysis (per plan/26 §5, centralized in contracts)
+  const productCoverId = useMemo(() => deriveProductCoverMedia(mediaAssets)?.id, [mediaAssets]);
 
-  // Variant Lead IDs = for each unique tag (optionValueId), the asset with lowest position
-  const variantLeadIds = useMemo(() => {
-    const leadMap = new Map<string, string>(); // optionValueId -> mediaAssetId
-    for (const asset of mediaAssets) {
-      for (const tag of asset.tags) {
-        if (!leadMap.has(tag.optionValueId)) {
-          leadMap.set(tag.optionValueId, asset.id);
-        }
-      }
-    }
-    return new Set(leadMap.values());
-  }, [mediaAssets]);
+  const variantLeadIds = useMemo(
+    () => new Set(deriveVariantLeadMediaMap(mediaAssets).values()),
+    [mediaAssets],
+  );
 
   // Filtered Assets
   const filteredAssets = useMemo(() => {

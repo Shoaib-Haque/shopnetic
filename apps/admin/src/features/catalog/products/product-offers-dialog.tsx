@@ -484,7 +484,12 @@ export function ProductOffersDialog({
                       <TableBody>
                         {activeOffers.map((offer) => {
                           const isWinner = offer.isBuyboxWinner;
-                          const hasSale = Boolean(offer.salePriceMinor);
+                          const now = new Date();
+                          const hasSale = Boolean(
+                            offer.salePriceMinor &&
+                              (!offer.saleStartsAt || new Date(offer.saleStartsAt) <= now) &&
+                              (!offer.saleEndsAt || new Date(offer.saleEndsAt) >= now),
+                          );
                           const isDeleting = deletingId === offer.id;
 
                           return (

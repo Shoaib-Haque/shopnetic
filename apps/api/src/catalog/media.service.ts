@@ -38,7 +38,7 @@ export class MediaService {
   }
 
   async listForOwner(ownerType: MediaOwnerType, ownerId: string): Promise<MediaAsset[]> {
-    await this.assertOwner(ownerType, ownerId);
+    await this.assertOwner(ownerType, ownerId, true);
     const rows = await this.prisma.mediaAsset.findMany({
       where: { ownerType, ownerId },
       include: withTags,
@@ -197,7 +197,7 @@ export class MediaService {
     actor: Actor,
     meta: RequestMeta,
   ): Promise<MediaAsset> {
-    await this.rowOrThrow(id);
+    const row = await this.rowOrThrow(id);
     const value = await this.prisma.optionValue.findFirst({
       where: { id: optionValueId, optionTypeId },
       select: { id: true, code: true, optionType: { select: { code: true } } },
@@ -206,6 +206,24 @@ export class MediaService {
       throw new AppError('MEDIA_TAG_INVALID', 422, {
         detail: 'value does not belong to this option type',
       });
+    }
+
+    if (row.ownerType === 'product') {
+      const configured = await this.prisma.productOptionValue.findUnique({
+        where: {
+          productId_optionTypeId_optionValueId: {
+            productId: row.ownerId,
+            optionTypeId,
+            optionValueId,
+          },
+        },
+        select: { optionValueId: true },
+      });
+      if (!configured) {
+        throw new AppError('MEDIA_TAG_INVALID', 422, {
+          detail: 'option value is not configured for this product',
+        });
+      }
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -272,14 +290,18 @@ export class MediaService {
     return row;
   }
 
-  private async assertOwner(ownerType: MediaOwnerType, ownerId: string): Promise<void> {
+  private async assertOwner(
+    ownerType: MediaOwnerType,
+    ownerId: string,
+    allowArchived = false,
+  ): Promise<void> {
     if (ownerType === 'offer') {
       throw new AppError('VALIDATION_ERROR', 422, {
         detail: 'offer-owned media is not supported until the inventory context exists',
       });
     }
     const product = await this.prisma.product.findFirst({
-      where: { id: ownerId, deletedAt: null },
+      where: { id: ownerId, ...(allowArchived ? {} : { deletedAt: null }) },
       select: { id: true },
     });
     if (!product) throw new AppError('NOT_FOUND', 404, { detail: 'product not found' });

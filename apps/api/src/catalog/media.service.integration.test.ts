@@ -11,6 +11,7 @@ const hasDb = Boolean(process.env['DATABASE_URL']);
 
 describe.skipIf(!hasDb)('MediaService (integration)', () => {
   let prisma: PrismaClient;
+  let optionTypes: OptionTypeService;
   let media: MediaService;
   let actor: Actor;
   const stamp = Date.now();
@@ -28,7 +29,7 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     prisma = getPrismaClient();
     const pr = prisma as PrismaService;
     const audit = new AuditService(pr);
-    const optionTypes = new OptionTypeService(pr, audit);
+    optionTypes = new OptionTypeService(pr, audit);
     media = new MediaService(pr, audit);
 
     const acc = await prisma.account.create({
@@ -70,6 +71,28 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     );
     sizeTypeId = size.id;
     sizeSId = size.values[0]!.id;
+
+    await prisma.productOption.create({
+      data: {
+        productId,
+        optionTypeId: colorTypeId,
+        position: 0,
+        values: {
+          create: [{ optionValueId: colorBlackId, position: 0 }],
+        },
+      },
+    });
+
+    await prisma.productOption.create({
+      data: {
+        productId,
+        optionTypeId: sizeTypeId,
+        position: 1,
+        values: {
+          create: [{ optionValueId: sizeSId, position: 0 }],
+        },
+      },
+    });
   });
 
   afterAll(async () => {
@@ -303,5 +326,60 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     // Verify tag was cleaned up
     const updated = await media.get(a.id);
     expect(updated.tags).toHaveLength(0);
+  });
+
+  it('rejects tagging an option value that is not configured for this product', async () => {
+    // Create an unconfigured option type and value
+    const otherType = await optionTypes.create(
+      { code: s('unconfig'), name: t('Unconfig'), values: [{ code: s('val1'), label: t('Val1') }] },
+      actor,
+      {},
+    );
+    const unconfigValId = otherType.values[0]!.id;
+
+    const a = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: s('tag-unconfig.jpg') },
+      actor,
+      {},
+    );
+
+    await expect(media.putTag(a.id, otherType.id, unconfigValId, actor, {})).rejects.toMatchObject({
+      code: 'MEDIA_TAG_INVALID',
+    });
+  });
+
+  it('allows listing media on an archived product, but rejects creating new media on it', async () => {
+    const archivedProd = await prisma.product.create({
+      data: {
+        slug: s('archived-prod'),
+        categoryId,
+        titleI18n: t('Archived Prod'),
+        status: 'archived',
+        deletedAt: new Date(),
+      },
+    });
+
+    const m = await prisma.mediaAsset.create({
+      data: {
+        ownerType: 'product',
+        ownerId: archivedProd.id,
+        kind: 'image',
+        fileKey: s('archived-img.jpg'),
+      },
+    });
+
+    // listForOwner should succeed on archived product
+    const list = await media.listForOwner('product', archivedProd.id);
+    expect(list.some((item) => item.id === m.id)).toBe(true);
+
+    // create should reject with NOT_FOUND on archived product
+    await expect(
+      media.create('product', archivedProd.id, { kind: 'image', fileKey: s('new.jpg') }, actor, {}),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    await prisma.mediaAsset.deleteMany({ where: { ownerId: archivedProd.id } });
+    await prisma.product.deleteMany({ where: { id: archivedProd.id } });
   });
 });

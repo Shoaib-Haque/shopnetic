@@ -208,6 +208,7 @@ export function OfferFormModal({
           status,
           minQty,
           maxQty: maxQty.trim() ? parseInt(maxQty, 10) : null,
+          expectedUpdatedAt: offer.updatedAt,
         };
 
         const updated = await updateOffer(offer.id, updateBody);

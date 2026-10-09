@@ -16,6 +16,8 @@ import {
   listSellers,
   listVariants,
   listWarehouses,
+  updateOffer,
+  updateStock,
 } from './api';
 import { ProductOffersDialog } from './product-offers-dialog';
 
@@ -30,6 +32,8 @@ vi.mock('./api', async () => {
     getVariantBuybox: vi.fn(),
     deleteOffer: vi.fn(),
     restoreOffer: vi.fn(),
+    updateOffer: vi.fn(),
+    updateStock: vi.fn(),
   };
 });
 
@@ -39,6 +43,8 @@ const mockedListSellers = vi.mocked(listSellers);
 const mockedListWarehouses = vi.mocked(listWarehouses);
 const mockedGetVariantBuybox = vi.mocked(getVariantBuybox);
 const mockedDeleteOffer = vi.mocked(deleteOffer);
+const mockedUpdateOffer = vi.mocked(updateOffer);
+const mockedUpdateStock = vi.mocked(updateStock);
 
 const sampleProduct: Product = {
   id: 'prod_1',
@@ -163,6 +169,7 @@ const sampleOffer: Offer = {
       safetyStock: 5,
       backorder: false,
       restockEta: null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
     },
   ],
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -322,6 +329,142 @@ describe('ProductOffersDialog', () => {
         ),
       ).toBeInTheDocument();
       expect(screen.queryByText('Add Offer')).not.toBeInTheDocument();
+    });
+  });
+
+  it('displays regular price without sale badge when promotional sale window is expired', async () => {
+    const expiredSaleOffer: Offer = {
+      ...sampleOffer,
+      priceMinor: '2499',
+      salePriceMinor: '1999',
+      saleStartsAt: '2020-01-01T00:00:00.000Z',
+      saleEndsAt: '2020-02-01T00:00:00.000Z',
+      isBuyboxWinner: false,
+    };
+    mockedListProductOffers.mockResolvedValue([expiredSaleOffer]);
+    mockedGetVariantBuybox.mockResolvedValue({
+      ...sampleBuybox,
+      winningPriceMinor: '2499',
+      minPriceMinor: '2499',
+      maxPriceMinor: '2499',
+    });
+
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('USD $24.99')).toBeInTheDocument();
+    });
+    // Sale price ($19.99) and Sale badge should not be present
+    expect(screen.queryByText('USD $19.99')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sale')).not.toBeInTheDocument();
+  });
+
+  it('displays regular price without sale badge when promotional sale window is in the future', async () => {
+    const futureSaleOffer: Offer = {
+      ...sampleOffer,
+      priceMinor: '2499',
+      salePriceMinor: '1999',
+      saleStartsAt: '2099-01-01T00:00:00.000Z',
+      saleEndsAt: '2099-02-01T00:00:00.000Z',
+      isBuyboxWinner: false,
+    };
+    mockedListProductOffers.mockResolvedValue([futureSaleOffer]);
+    mockedGetVariantBuybox.mockResolvedValue({
+      ...sampleBuybox,
+      winningPriceMinor: '2499',
+      minPriceMinor: '2499',
+      maxPriceMinor: '2499',
+    });
+
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('USD $24.99')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('USD $19.99')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sale')).not.toBeInTheDocument();
+  });
+
+  it('submits expectedUpdatedAt optimistic concurrency token when saving offer edits', async () => {
+    const updatedOffer: Offer = {
+      ...sampleOffer,
+      priceMinor: '2999',
+    };
+    mockedUpdateOffer.mockResolvedValue(updatedOffer);
+
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Edit Offer')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByLabelText('Edit Offer');
+    fireEvent.click(editBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Offer Listing')).toBeInTheDocument();
+    });
+
+    // Change list price
+    const priceInput = screen.getByDisplayValue('24.99');
+    fireEvent.change(priceInput, { target: { value: '29.99' } });
+
+    // Submit
+    const saveBtn = screen.getByRole('button', { name: 'Save Offer' });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mockedUpdateOffer).toHaveBeenCalledWith(
+        'offer_1',
+        expect.objectContaining({
+          expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+          priceMinor: '2999',
+        }),
+      );
+    });
+  });
+
+  it('submits expectedUpdatedAt optimistic concurrency token when saving warehouse stock adjustments', async () => {
+    mockedUpdateStock.mockResolvedValue({
+      id: 'stock_1',
+      warehouseId: 'wh_1',
+      warehouseName: 'Main Fulfillment Center',
+      onHand: 60,
+      reserved: 5,
+      available: 55,
+      safetyStock: 5,
+      backorder: false,
+      restockEta: null,
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    });
+
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Adjust Stock')).toBeInTheDocument();
+    });
+
+    const stockBtn = screen.getByLabelText('Adjust Stock');
+    fireEvent.click(stockBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Adjust Stock Levels — Acme Apparel')).toBeInTheDocument();
+      expect(screen.getByText('Main Fulfillment Center')).toBeInTheDocument();
+    });
+
+    // Save stock update
+    const updateStockBtn = screen.getByRole('button', { name: 'Update Stock' });
+    fireEvent.click(updateStockBtn);
+
+    await waitFor(() => {
+      expect(mockedUpdateStock).toHaveBeenCalledWith(
+        'offer_1',
+        'wh_1',
+        expect.objectContaining({
+          expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+          onHand: 50,
+        }),
+      );
     });
   });
 });
