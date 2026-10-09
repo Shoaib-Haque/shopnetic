@@ -41,25 +41,39 @@ export class BuyboxService {
       },
     });
 
-    const getEffectivePrice = (o: (typeof offers)[0]): bigint => o.salePriceMinor ?? o.priceMinor;
+    const now = new Date();
+    const getEffectivePrice = (o: (typeof offers)[0]): bigint => {
+      if (o.salePriceMinor != null) {
+        const started = !o.saleStartsAt || o.saleStartsAt <= now;
+        const notEnded = !o.saleEndsAt || o.saleEndsAt >= now;
+        if (started && notEnded) {
+          return o.salePriceMinor;
+        }
+      }
+      return o.priceMinor;
+    };
 
     const withAvailability = offers.map((o) => {
       const totalAvailable = o.stocks.reduce(
         (sum, s) => sum + Math.max(0, s.onHand - s.reserved),
         0,
       );
+      const allowsBackorder = o.stocks.some((s) => s.backorder);
       return {
         offer: o,
         effectivePrice: getEffectivePrice(o),
         totalAvailable,
+        allowsBackorder,
       };
     });
 
-    const inStockOffers = withAvailability.filter((item) => item.totalAvailable > 0);
+    const qualifyingOffers = withAvailability.filter(
+      (item) => item.totalAvailable > 0 || item.allowsBackorder,
+    );
 
-    // Candidates: in-stock active offers win the buybox.
-    // If no active offer is in-stock, there is no winning offer.
-    const sorted = [...inStockOffers].sort((a, b) => {
+    // Candidates: in-stock or backorder-tolerant active offers qualify for the buybox.
+    // If no active offer qualifies, there is no winning offer.
+    const sorted = [...qualifyingOffers].sort((a, b) => {
       if (a.effectivePrice < b.effectivePrice) return -1;
       if (a.effectivePrice > b.effectivePrice) return 1;
       // Secondary: higher total available

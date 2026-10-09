@@ -71,7 +71,7 @@ function signatureOf(selections: VariantSelection[]): string {
   return [...selections]
     .sort((a, b) => a.optionTypeId.localeCompare(b.optionTypeId))
     .map((s) => `${s.optionTypeId}:${s.optionValueId}`)
-    .join(';');
+    .join('|');
 }
 
 interface ComboOptionItem {
