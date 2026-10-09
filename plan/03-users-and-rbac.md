@@ -1,7 +1,14 @@
 # 03 — Users & RBAC
 
-Status: DRAFT
-Related: `16-security.md`, `06-features-admin.md`
+Status: IN PROGRESS (Phase 0 Implemented: Buyer Auth, Staff Auth & RBAC)
+Related: `16-security.md`, `06-features-admin.md`, `04-features-buyer.md`
+
+> **Build progress:**
+>
+> - **Buyer Auth (Phase 0 — Built):** Registration, verification email via Mailpit, login, refresh token rotation (`sn_rt`), logout, current account lookup. Tested in `apps/storefront` and `apps/api`. Detailed in `04-features-buyer.md`.
+> - **Staff Auth & RBAC (Phase 0 — Built):** Invite-only onboarding, mandatory TOTP MFA with recovery codes, staff session rotation (`sn_srt` / `sn_sat`), fine-grained RBAC (`packages/auth`), and append-only audit logs. Tested in `apps/admin` and `apps/api`. Detailed in `06-features-admin.md`.
+> - **Dual-Plane Separation (Phase 0 — Built):** Strict boundary between marketplace (`plane: marketplace`) and staff (`plane: staff`). Cross-plane token usage returns `401 Unauthorized`.
+> - **Seller Portal Auth (Phase 1 — In Progress):** Shared marketplace plane auth; seller onboarding & verification pending.
 
 Legend — in the tables below: **✅** = allowed / applies · **—** = not
 applicable / not allowed · **⚠️** = allowed with a caveat (noted in the row).
@@ -241,3 +248,78 @@ needs that security visibility even though it can't itself manage staff.
   use a separate address (or explicitly link with Super Admin approval).
 - Seller also buys from the marketplace → allowed; separate grants, cannot
   review/deal with own shop.
+
+---
+
+## 7. UI Tests Specification (Dual-Plane Authentication & RBAC Invariants)
+
+### Comprehensive Identity UI Test Suite (Sorted & Grouped)
+
+Verified in `apps/admin` (staff portal) and `apps/storefront` (buyer portal) against `apps/api` identity and auth modules. Cross-referenced with feature specs in [`plan/04`](file:///var/www/html/idea/shopnetic/plan/04-features-buyer.md#ui-tests-specification) (Buyer) and [`plan/06`](file:///var/www/html/idea/shopnetic/plan/06-features-admin.md#ui-tests-specification) (Staff & Sessions).
+
+```
+Group 1: Staff Onboarding, TOTP MFA Enrollment & Recovery Codes
+Group 2: Staff Session Management & Security Isolation
+Group 3: Buyer Authentication & Refresh Rotation
+Group 4: Dual-Plane Access Control & Guard Invariants
+Group 5: Network, Loading & Resiliency Tests
+```
+
+---
+
+#### Group 1: Staff Onboarding, TOTP MFA Enrollment & Recovery Codes
+
+| # | Test Scenario | Target Feature / Modal | Steps & User Interactions | Expected & Verified Outcome | Verification Artifact |
+|---|---|---|---|---|---|
+| **1.1** | Invite Acceptance Screen | Staff invite acceptance | Follow invitation URL (`/[locale]/x7f2k9t3m1qp/accept-invite?token=<token>`). | Renders password setup screen; validates complexity rules; activates staff account. | `tmp/admin/staff/07-admin-accept-invite.png` |
+| **1.2** | Mandatory TOTP MFA Enrollment | MFA onboarding | Initial login after invite acceptance. | Prompts TOTP QR code and setup secret; requires 6-digit TOTP code verification to proceed. | `tmp/admin/staff/05-totp-reset-dialog.png` |
+| **1.3** | Emergency Recovery Codes Display | Recovery codes view | Complete TOTP verification. | Renders 8 emergency single-use recovery codes; requires explicit acknowledgement checkbox to proceed. | `tmp/admin/staff/05-totp-reset-dialog.png` |
+| **1.4** | TOTP Login Challenge | Staff login screen | Enter valid email and password on `/x7f2k9t3m1qp/login`. | Triggers TOTP challenge step; entering valid authenticator code establishes session. | `tmp/admin/staff/06-admin-login-screen.png` |
+
+---
+
+#### Group 2: Staff Session Management & Security Isolation
+
+| # | Test Scenario | Target Feature / Modal | Steps & User Interactions | Expected & Verified Outcome | Verification Artifact |
+|---|---|---|---|---|---|
+| **2.1** | Active Sessions View | Session manager | View active sessions in staff sessions page (`/staff/sessions`). | Lists active device sessions with browser, OS, IP address, and "This device" marker. | `tmp/admin/staff/03-staff-sessions.png` |
+| **2.2** | Remote Session Revocation | Session revocation | Click "Log out" on an alternate device session. | Revokes session instantly via API; target device refresh cookie `sn_srt` is invalidated. | `tmp/admin/staff/03-staff-sessions.png` |
+| **2.3** | Revoke All Other Sessions | Bulk revocation | Click "Log out other devices". | Terminates all sessions except current active session; audit event logged. | `tmp/admin/staff/03-staff-sessions.png` |
+
+---
+
+#### Group 3: Buyer Authentication & Refresh Rotation
+
+| # | Test Scenario | Target Feature / Modal | Steps & User Interactions | Expected & Verified Outcome | Verification Artifact |
+|---|---|---|---|---|---|
+| **3.1** | Buyer Registration & Email Verification | Storefront register | Submit registration form with valid email and password (`/en/register`). | Account created; verification email dispatched to Mailpit; enumeration-safe response. | `tmp/storefront/auth/02-buyer-register.png` |
+| **3.2** | Buyer Login & Cookie Set | Storefront login | Submit valid credentials on `/en/login`. | Sets HTTP-only `sn_rt` cookie; UI reflects authenticated header state. | `tmp/storefront/auth/01-buyer-login.png` |
+| **3.3** | Email Verification Prompt | Verify email route | Follow verification redirect to `/en/verify-email?email=...`. | Displays email confirmation instructions with resend action cooldown. | `tmp/storefront/auth/03-buyer-verify-email.png` |
+
+---
+
+#### Group 4: Dual-Plane Access Control & Guard Invariants
+
+| # | Test Scenario | Target Feature / Modal | Steps & User Interactions | Expected & Verified Outcome | Verification Artifact |
+|---|---|---|---|---|---|
+| **4.1** | Storefront Cookie Blocked on Admin | Dual-plane guard | Access admin route segment while authenticated only as a buyer (`sn_rt` set). | Returns HTTP 401; redirects visitor to staff login screen (`/x7f2k9t3m1qp/login`). | `tmp/admin/staff/06-admin-login-screen.png` |
+| **4.2** | Obfuscated Base Path 404 Guard | Root path security | Navigate to unauthenticated base route segment `/en/` or `/en/admin`. | Returns HTTP 404 Not Found; reveals no administrative presence or login endpoints. | `tmp/admin/staff/08-admin-root-404.png` |
+| **4.3** | Signed-In Redirect Protection | `redirectIfSignedIn` | Navigate to `/x7f2k9t3m1qp/login` with active staff session. | Automatically redirects authenticated staff member to dashboard (`/catalog/categories`). | `tmp/admin/staff/01-staff-directory.png` |
+
+---
+
+#### Group 5: Network, Loading & Resiliency Tests
+
+| # | Test Scenario | Injection / Dev Condition | Expected & Verified Outcome | Verification Artifact |
+|---|---|---|---|---|
+| **5.1** | Initial Auth Form Skeletons | Inject 1500ms delay (`DEV_RESPONSE_DELAY_MS=1500`). | Auth card renders stable skeleton placeholders during initial mount without layout shift. | `tmp/admin/staff/06-admin-login-screen.png` |
+| **5.2** | Double-Submit Prevention | Inject 1500ms latency on login/verify POST. | Submit button disables with inline `Spinner`, preventing duplicate authentication attempts. | `tmp/admin/staff/06-admin-login-screen.png` |
+| **5.3** | Synthetic 500 Authentication Fault | Inject 500 status on auth endpoints. | Displays localized error banner without crashing client state; permits retry. | `tmp/admin/staff/06-admin-login-screen.png` |
+| **5.4** | Offline Disconnection Guidance | DevTools offline mode. | Displays `errors.offline` connection guidance banner. | `tmp/admin/staff/06-admin-login-screen.png` |
+
+---
+
+## Changelog
+
+- 2026-10-09 — Added Section 7 UI Tests Specification (Dual-Plane Authentication & RBAC Invariants) and Build progress summary.
+- 2026-08-31 — Initial draft.

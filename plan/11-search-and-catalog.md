@@ -129,10 +129,19 @@ evaluation (nDCG). Guard against feedback loops (popular gets more popular).
 
 ## 7. Buy-box algorithm (which offer is default on PDP / used in search price)
 
-Score offers on: price (incl. shipping to a default region), seller health,
-handling time, stock, rating, return rate. Highest wins; ties broken by price then
-recency. Recomputed on offer change; cached in `buybox`. Show "N other offers
-from $X".
+### v1 Implemented Algorithm (`apps/api/src/inventory/buybox.service.ts`) — Built
+In the modular monolith backend, Buy-Box evaluation is computed synchronously upon offer and inventory transactions and cached in `inventory.buybox`:
+1. **Candidate Pool**: Active offers (`status = 'active'`, `deletedAt IS NULL`) qualifying under `totalAvailable > 0 || backorder` (where backorder allows listings to qualify even when available on-hand stock is 0, via `o.stocks.some(s => s.backorder)`).
+2. **Pricing Resolution**: Evaluates promotional window (`saleStartsAt <= now` and `saleEndsAt >= now`). When within an active promotional window and `salePriceMinor` is configured, `effectivePrice = salePriceMinor`; otherwise falls back cleanly to regular `priceMinor`.
+3. **Winner Ranking**:
+   - Primary: Lowest `effectivePrice`.
+   - Secondary: Highest `totalAvailable` (stock depth).
+   - Tertiary: Lowest `handlingDays` (faster dispatch).
+   - Tie-breaker: Earliest `createdAt` timestamp.
+4. **Aggregate Output**: Computes `minPriceMinor`, `maxPriceMinor`, `sellerCount`, and `winningSellerName` (from Seller shop displayName).
+
+### Future Target Algorithm (Aspirational / Extraction Milestone)
+Score offers using weighted composite indexing: price (including dynamic regional shipping rate calculation), seller health metric, historical fulfillment rating, and return rate. Highest aggregate score wins; ties broken by price then recency. Show "N other offers from $X".
 
 ## 8. Category browse vs search
 
@@ -157,3 +166,10 @@ merchandised pins.
 - Variant-level vs product-level index (leaning variant-level).
 - Meilisearch vs OpenSearch for launch.
 - How much personalization in v1 (leaning: none beyond recently-viewed boosts).
+
+---
+
+## Changelog
+
+- 2026-10-09 — Synchronized Section 7 Buy-Box algorithm with promotional window comparison (`saleStartsAt..saleEndsAt`) and backorder qualification (`totalAvailable > 0 || backorder`). Relocated Category Hierarchy UI Tests Specification to `plan/26-catalog-options-variants-brands.md` Section 15 to unify catalog testing matrices.
+- 2026-08-31 — Initial draft.

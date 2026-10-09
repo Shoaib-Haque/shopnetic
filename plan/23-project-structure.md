@@ -1,7 +1,14 @@
 # 23 — Project / Directory Structure
 
-Status: DRAFT
+Status: IN PROGRESS (Phase 0 Monorepo Foundation & Admin Obfuscation Built)
 Related: `adr/0001-monorepo.md`, `17-infrastructure-devops.md`, `09-frontend-architecture.md`, `CODING-RULES.md` section C/section D
+
+> **Build progress:**
+>
+> - **Monorepo Foundation (Built):** pnpm workspaces + Turborepo pipeline, TypeScript 5.7+ strict mode, shared packages (`@shopnetic/contracts`, `@shopnetic/ui`, `@shopnetic/auth`, `@shopnetic/db`, `@shopnetic/i18n`, `@shopnetic/observability`, `@shopnetic/http-client`).
+> - **Admin Obfuscated Route Base (Built):** Base segment `apps/admin/src/app/[locale]/x7f2k9t3m1qp/` configured via `ADMIN_BASE_PATH`. Root `/[locale]` returns 404 Not Found to prevent discovery.
+> - **Session Navigation & Guard Invariants (Built):** `redirectIfSignedIn` shared helper protects public auth pages (`login`, `accept-invite`). Protected layout enforces active staff session and permission-based navigation.
+> - **BFF Route Proxy (Built):** Next.js App Router route handlers manage HTTP-only cookies (`sn_srt`, `sn_sat`, `sn_rt`) and proxy requests to NestJS API.
 
 Reconciles the founder's per-project `src/` layout (from a previous project) with
 the monorepo decision (ADR-0001). **The plan comes first**: we keep the monorepo,
@@ -225,7 +232,64 @@ Turborepo still gives one-command "run everything" from the root
 - One barrel (`index.ts`) per package boundary; none inside `features/` (avoids
   circular imports + bundle bloat).
 
+---
+
+## 6. UI Tests Specification (Admin Obfuscated Segment & BFF Invariants)
+
+### Comprehensive Obfuscated Segment UI Test Suite (Sorted & Grouped)
+
+Verified in `apps/admin` (port 3002) against BFF route handlers and `apps/api`.
+
+```
+Group 1: Route Obfuscation & Discovery Guards
+Group 2: Public Auth Navigation & Session Redirection
+Group 3: Protected Layout & Permission Guards
+Group 4: Network, Loading & Resiliency Tests
+```
+
+---
+
+#### Group 1: Route Obfuscation & Discovery Guards
+
+| # | Test Scenario | Target Feature / Modal | Steps & User Interactions | Expected & Verified Outcome | Verification Artifact |
+|---|---|---|---|---|---|
+| **1.1** | Unauthenticated Root 404 | Root locale route | Navigate to `http://localhost:3002/en` or `/en/admin`. | Renders standard Next.js 404 Not Found page; does not leak administrative presence or paths. | `tmp/admin/staff/08-admin-root-404.png` |
+| **1.2** | Obfuscated Base Route Resolution | Obfuscated segment | Navigate to `http://localhost:3002/en/x7f2k9t3m1qp/login`. | Resolves successfully (200 OK); renders staff portal authentication card. | `tmp/admin/staff/06-admin-login-screen.png` |
+| **1.3** | Invalid Base Segment 404 | Altered hash route | Navigate to `http://localhost:3002/en/x7f2k9t3m1qp-wrong/login`. | Returns 404 Not Found. | `tmp/admin/staff/08-admin-root-404.png` |
+
+---
+
+#### Group 2: Public Auth Navigation & Session Redirection
+
+| # | Test Scenario | Target Feature / Modal | Steps & User Interactions | Expected & Verified Outcome | Verification Artifact |
+|---|---|---|---|---|---|
+| **2.1** | Signed-In Redirect from Login | `redirectIfSignedIn` | Navigate to `/x7f2k9t3m1qp/login` while holding active `sn_srt` / `sn_sat` session. | Automatically redirects authenticated staff member to `/catalog/categories` dashboard. | `tmp/admin/staff/01-staff-directory.png` |
+| **2.2** | Signed-In Redirect from Accept Invite | `redirectIfSignedIn` | Navigate to `/x7f2k9t3m1qp/accept-invite?token=xyz` while signed in. | Automatically redirects visitor to dashboard instead of exposing invite form. | `tmp/admin/staff/01-staff-directory.png` |
+| **2.3** | Unauthenticated Protected Access Redirect | Protected layout | Clear cookies and navigate directly to `/x7f2k9t3m1qp/catalog/categories`. | Server redirects visitor to `/x7f2k9t3m1qp/login`. | `tmp/admin/staff/06-admin-login-screen.png` |
+
+---
+
+#### Group 3: Protected Layout & Permission Guards
+
+| # | Test Scenario | Target Feature / Modal | Steps & User Interactions | Expected & Verified Outcome | Verification Artifact |
+|---|---|---|---|---|---|
+| **3.1** | Navigation Rendering & Shell | Protected layout nav | Log in as staff administrator. | Left navigation renders accessible links (Dashboard, Categories, Brands, Options, Values, Products, Staff, Sessions, Audit). | `tmp/admin/staff/01-staff-directory.png` |
+| **3.2** | Protected Staff Invite Route | Staff permission guard | Access `/x7f2k9t3m1qp/staff/invite` with valid staff privileges. | Form renders invite role cards and inputs cleanly. | `tmp/admin/staff/02-invite-staff-form.png` |
+
+---
+
+#### Group 4: Network, Loading & Resiliency Tests
+
+| # | Test Scenario | Injection / Dev Condition | Expected & Verified Outcome | Verification Artifact |
+|---|---|---|---|---|
+| **4.1** | Initial Shell Mounting Skeleton | Inject 1500ms delay (`DEV_RESPONSE_DELAY_MS=1500`). | App layout shell renders header/sidebar skeleton placeholders without jump. | `tmp/admin/staff/06-admin-login-screen.png` |
+| **4.2** | BFF Proxy Error Envelope Handling | Inject 500 fault on upstream API. | BFF catches error and returns RFC-9457 error JSON envelope; UI renders localized error card. | `tmp/admin/staff/06-admin-login-screen.png` |
+| **4.3** | Offline Disconnection Guidance | DevTools offline mode. | Triggers `errors.offline` connection guidance banner. | `tmp/admin/staff/08-admin-root-404.png` |
+
+---
+
 ## Changelog
 
+- 2026-10-09 — Added Section 6 UI Tests Specification (Admin Obfuscated Segment & BFF Invariants) and Build progress summary.
 - 2026-08-31 — Initial draft. Adopts founder's `app`/`features` split + obfuscated
   admin segment inside the monorepo; per-app package.json/.env.example/README.

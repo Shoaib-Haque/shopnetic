@@ -17,14 +17,14 @@ Start at `00-vision-and-scope.md`, then `01-tech-stack.md` and
 | `01-tech-stack.md` | Chosen technologies + why each, rejected alternatives |
 | `02-architecture.md` | Service decomposition, communication, data ownership, deployment topology |
 | `03-users-and-rbac.md` | Actor list, role hierarchy, permission matrix, auth model |
-| `04-features-buyer.md` | Buyer / guest feature list, flows, edge cases |
+| `04-features-buyer.md` | Buyer / guest feature list, flows, edge cases, auth & onboarding UI tests specification |
 | `05-features-seller.md` | Seller feature list, onboarding, shop management, edge cases |
-| `06-features-admin.md` | Super Admin / Admin / Service Admin feature list |
+| `06-features-admin.md` | Super Admin / Admin / Service Admin feature list, staff/sessions/audit UI tests specification |
 | `07-data-model.md` | Core entities, relationships, per-service schema ownership, key invariants |
 | `08-api-design.md` | API style, versioning, pagination, error envelope, idempotency, auth headers |
 | `09-frontend-architecture.md` | Next.js app structure, rendering strategy, design system, state, forms |
 | `10-seo-strategy.md` | SSR/ISR rules, metadata, structured data, sitemaps, Core Web Vitals |
-| `11-search-and-catalog.md` | Catalog modeling, search engine, indexing pipeline, facets, ranking |
+| `11-search-and-catalog.md` | Catalog modeling, search engine, indexing pipeline, facets, category tree UI tests specification |
 | `12-cart-checkout-orders.md` | Cart model, checkout flow, order lifecycle, order-splitting, saga/compensation |
 | `13-payments-and-payouts.md` | Payment gateways, escrow, seller payouts, refunds, ledger |
 | `14-caching-strategy.md` | Cache layers, keys, TTLs, invalidation, stampede protection |
@@ -39,7 +39,7 @@ Start at `00-vision-and-scope.md`, then `01-tech-stack.md` and
 | `23-project-structure.md` | Monorepo + per-app `src/` layout (`app` thin, `features/`), obfuscated admin segment, per-app package.json/.env/README |
 | `24-i18n-localization.md` | Locale routing, message catalogs, localized error messages, localized content fields, `Intl` formatting |
 | `25-database-conventions.md` | Migration safety (expand/contract), soft vs hard delete + FK behavior, transaction rules |
-| `26-catalog-options-variants-brands.md` | Option types/values, per-product option config, variants/SKUs, per-variant price+stock, option-tagged media, brands + brand requests |
+| `26-catalog-options-variants-brands.md` | Option types/values, per-product option config, variants/SKUs, price+stock, media, brands, UI tests specification |
 | `27-merchandising-and-ranking.md` | Landing/category ordering, signal capture, blended multi-layer ranking, "also viewed"/"related" |
 | `28-page-loading-and-rendering.md` | Progressive PDP sections, optional-section hiding, hybrid pagination/infinite scroll, image/streaming strategy |
 | `29-cart-and-listing-change-alerts.md` | One-time "your cart changed" notices (price/stock/delisted) for returning buyers |

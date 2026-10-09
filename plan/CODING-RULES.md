@@ -682,7 +682,7 @@ the ADR/ticket. Delete commented-out code. No `TODO` without a ticket ref.
 `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:` … scoped
 (`feat(checkout): ...`). Small, reviewable commits. Green CI before merge.
 
-### J5. Keep the plan current
+### J5. Keep the plan current & maintain UI test specifications
 If the change alters, contradicts, or completes anything documented in `plan/` —
 a decision, an API contract, a data-model table, a flow, a status tag, or an
 open question in `22-risks-and-open-questions.md` — update that file in the
@@ -690,6 +690,16 @@ open question in `22-risks-and-open-questions.md` — update that file in the
 `plan/` disagree does not merge: `plan/` is the spec, and code that silently
 drifts from it is a bug even when it runs. If the plan is wrong, fix the plan in
 the PR — don't leave the contradiction for the next person to discover.
+
+**Feature-Level UI Tests in Plan Files**:
+Every feature and sub-feature living design document in `plan/*.md` that introduces
+or refines user-facing functionality (e.g. Catalog: categories, brands, option types,
+value sets, products, variants, media, offers/stock; Administration: staff, audit log;
+Storefront PDP, cart, checkout) **MUST maintain a dedicated "UI Tests Specification" section**.
+Tests within this section must be:
+1. **Sorted & Deduplicated**: Eliminating redundant test steps and maintaining clear scenario numbering.
+2. **Grouped into User Journeys**: Organized by functional capabilities (e.g., list views & filtering, entity creation modals, locked fields/invariants on edit, moderation workflows, soft deletion with undo countdown toasts, deep-linking).
+3. **Resiliency at the End**: Network throttling, synthetic server faults (500), latency injection, and offline recovery test cases must always be grouped at the very end of the matrix (Group 6).
 
 ### J6. Keep READMEs and `.env.example` true
 Every app and package has a `README.md` (what it is, how to run it, its env
@@ -975,7 +985,7 @@ compose file.
 - [ ] Tests at the right layer; invariants covered; regression test for any bug fixed.
 - [ ] Cache reads have invalidation; contract changes versioned.
 - [ ] Admin visibility/moderation + reporting hooks added if user-facing.
-- [ ] plan/ docs + ADR updated if a decision, contract, data model, flow, or open question changed (J5).
+- [ ] plan/ docs + ADR updated if a decision, contract, data model, flow, or open question changed; UI Tests Specification section added/updated in plan/*.md for user-facing features (J5).
 - [ ] README(s) + .env.example updated for any new/renamed env var, script, moved path, changed port, or new dep (J6).
 - [ ] Docs use "section N" (not `§`); any new shorthand symbol/code is legended at first use (J7).
 - [ ] New config goes through the validated env schema; behaviour/dev flags are safe-by-default, prod-rejected, test-inert, boot-logged (R).
@@ -4852,3 +4862,7 @@ compose file.
   - Implemented service-level guards in `CategoryService.remove()` (`apps/api/src/catalog/category.service.ts`) and `BrandService.remove()` / `BrandService.restore()` (`apps/api/src/catalog/brand.service.ts`).
   - Added integration test coverage in `apps/api/src/catalog/category.service.integration.test.ts` (`CATEGORY_HAS_PRODUCTS` guard verified) and `apps/api/src/catalog/brand.service.integration.test.ts` (`BRAND_HAS_PRODUCTS` guard and merged restore rejection verified).
   - Full suite verified: 37/37 catalog integration tests green, 9/9 product integration tests green, 377/377 admin unit tests green, typecheck and linting clean across monorepo.
+- 2026-10-09 — Standardized feature-level UI test specifications in living plan documents (J5).
+  - Every feature/sub-feature design document in `plan/*.md` that introduces or refines user-facing functionality must maintain a dedicated, sorted, and grouped "UI Tests Specification" section (with network, loading, and synthetic fault resiliency tests placed at the end).
+  - Codified into rule J5, PR checklist (Section K), and `AGENTS.md` (Section 6.I and 6.J).
+  - Initial implementation populated for Product and all its sub-features (Base Products, Options, Variants, Media, Offers & Stock, Resiliency) in `plan/26-catalog-options-variants-brands.md` Section 10.

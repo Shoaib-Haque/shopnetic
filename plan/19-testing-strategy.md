@@ -93,6 +93,8 @@ money/trust journeys. Every bug fixed gets a regression test.
 - Lighthouse-CI budget gate (`09` section 7) + `axe` on key pages; block merge on
   regression.
 - Contract: generated client types checked against current OpenAPI in CI.
+- **Feature-Level UI Test Specifications**: Each feature living design document in `plan/`
+  maintains a dedicated **UI Tests Specification** section (e.g., `26-catalog-options-variants-brands.md` Section 10 for Product Catalog, Options, Variants, Media, Offers & Stock) detailing end-to-end user journeys, modal interactions, optimistic updates, and network resiliency boundaries.
 
 ## 6. Non-functional test gates
 
