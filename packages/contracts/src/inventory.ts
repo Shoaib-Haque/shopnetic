@@ -151,6 +151,7 @@ export type Buybox = z.infer<typeof buyboxSchema>;
 
 export const listOffersQuerySchema = z.object({
   variantId: z.string().uuid().optional(),
+  productId: z.string().uuid().optional(),
   sellerId: z.string().uuid().optional(),
   status: z.enum(['active', 'all']).default('active'),
   cursor: z.string().uuid().optional(),

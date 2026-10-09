@@ -430,4 +430,61 @@ export class OfferService {
       after: updated,
     });
   }
+
+  async restore(id: string, actor: Actor, meta: RequestMeta): Promise<Offer> {
+    const existing = await this.prisma.offer.findUnique({
+      where: { id },
+      include: {
+        stocks: {
+          include: { warehouse: true },
+        },
+      },
+    });
+    if (!existing) {
+      throw new AppError('OFFER_NOT_FOUND', 404, { detail: `offer ${id} not found` });
+    }
+    if (!existing.deletedAt) {
+      return this.serialize(existing);
+    }
+
+    assertCan(actor, Permission.OFFER_MANAGE, { sellerId: existing.sellerId });
+
+    const activeExists = await this.prisma.offer.findFirst({
+      where: { sellerId: existing.sellerId, variantId: existing.variantId, deletedAt: null },
+    });
+    if (activeExists) {
+      throw new AppError('OFFER_ALREADY_EXISTS', 409, {
+        detail: `cannot restore offer: active offer already exists for seller and variant`,
+      });
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const offer = await tx.offer.update({
+        where: { id },
+        data: { deletedAt: null },
+        include: {
+          stocks: {
+            include: { warehouse: true },
+          },
+        },
+      });
+
+      await this.buybox.recalculate(existing.variantId, tx);
+
+      await writeInventoryOutbox(tx, 'offer', 'offer.restored', offer.id, {
+        offerId: offer.id,
+        sellerId: existing.sellerId,
+        variantId: existing.variantId,
+      });
+
+      return offer;
+    });
+
+    await this.record(actor, 'offer.restore', updated.id, meta, {
+      before: existing,
+      after: updated,
+    });
+
+    return this.serialize(updated);
+  }
 }

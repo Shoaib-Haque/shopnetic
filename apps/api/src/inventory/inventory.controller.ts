@@ -57,6 +57,7 @@ export class AdminOfferController {
   constructor(
     private readonly offers: OfferService,
     private readonly stock: StockService,
+    private readonly buybox: BuyboxService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -75,15 +76,34 @@ export class AdminOfferController {
     return defaultSeller.id;
   }
 
+  @Get('variants/:variantId/buybox')
+  async getVariantBuybox(
+    @Req() req: Request,
+    @Param('variantId') variantId: string,
+  ): Promise<Envelope<Buybox | null>> {
+    const res = await this.buybox.get(variantId);
+    return ok(req, res);
+  }
+
   @Get()
   async list(
     @Req() req: Request,
     @Query('variantId') variantId?: string,
+    @Query('productId') productId?: string,
     @Query('sellerId') sellerId?: string,
     @Query('status') status?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ): Promise<Envelope<Offer[]>> {
+    if (productId && !variantId) {
+      const items = await this.offers.listByProduct(productId);
+      const base = ok(req, items);
+      return {
+        data: base.data,
+        meta: { ...base.meta, count: items.length },
+      };
+    }
+
     const rawQuery: Record<string, unknown> = {};
     if (variantId) rawQuery.variantId = variantId;
     if (sellerId) rawQuery.sellerId = sellerId;
@@ -134,6 +154,15 @@ export class AdminOfferController {
     @Param('id') id: string,
   ): Promise<void> {
     await this.offers.remove(id, actor, meta(req));
+  }
+
+  @Post(':id/restore')
+  async restore(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+  ): Promise<Envelope<Offer>> {
+    return ok(req, await this.offers.restore(id, actor, meta(req)));
   }
 
   @Put(':id/stock/:warehouseId')

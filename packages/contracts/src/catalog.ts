@@ -453,6 +453,7 @@ export const currencySchema = z
   .trim()
   .toUpperCase()
   .regex(/^[A-Z]{3}$/, 'a 3-letter ISO-4217 code');
+export type Currency = z.infer<typeof currencySchema>;
 
 /** Non-negative integer minor units (cents). Carried as a string in views. */
 const priceMinorSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);

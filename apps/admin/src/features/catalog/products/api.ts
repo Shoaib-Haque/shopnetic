@@ -1,10 +1,14 @@
 'use client';
 
 import type {
+  Buybox,
   CreateMediaRequest,
+  CreateOfferRequest,
   CreateProductRequest,
   CreateVariantRequest,
+  CreateWarehouseRequest,
   MediaAsset,
+  Offer,
   Product,
   ProductListStatus,
   ProductOption,
@@ -12,11 +16,16 @@ import type {
   PutMediaTagRequest,
   PutProductOptionRequest,
   ReorderMediaRequest,
+  SellerWithShop,
   SetProductOptionValuesRequest,
+  StockLevel,
   UpdateMediaRequest,
+  UpdateOfferRequest,
   UpdateProductRequest,
+  UpdateStockRequest,
   UpdateVariantRequest,
   Variant,
+  Warehouse,
 } from '@shopnetic/contracts';
 import { adminApi } from '@/features/admin-api/client';
 
@@ -193,4 +202,58 @@ export function reorderProductMedia(
     method: 'PUT',
     body,
   });
+}
+
+// ── Offers & Inventory (plan/26 §6, plan/07) ────────────────────────────────
+
+export function listProductOffers(productId: string): Promise<Offer[]> {
+  return adminApi<Offer[]>(`/offers?productId=${productId}`);
+}
+
+export function listVariantOffers(variantId: string): Promise<Offer[]> {
+  return adminApi<Offer[]>(`/offers?variantId=${variantId}`);
+}
+
+export function getVariantBuybox(variantId: string): Promise<Buybox | null> {
+  return adminApi<Buybox | null>(`/offers/variants/${variantId}/buybox`);
+}
+
+export function createOffer(body: CreateOfferRequest): Promise<Offer> {
+  return adminApi<Offer>('/offers', { method: 'POST', body });
+}
+
+export function updateOffer(id: string, body: UpdateOfferRequest): Promise<Offer> {
+  return adminApi<Offer>(`/offers/${id}`, { method: 'PATCH', body });
+}
+
+export function deleteOffer(id: string): Promise<void> {
+  return adminApi<void>(`/offers/${id}`, { method: 'DELETE' });
+}
+
+export function restoreOffer(id: string): Promise<Offer> {
+  return adminApi<Offer>(`/offers/${id}/restore`, { method: 'POST' });
+}
+
+export function updateStock(
+  offerId: string,
+  warehouseId: string,
+  body: UpdateStockRequest,
+): Promise<StockLevel> {
+  return adminApi<StockLevel>(`/offers/${offerId}/stock/${warehouseId}`, {
+    method: 'PUT',
+    body,
+  });
+}
+
+export function listWarehouses(sellerId?: string): Promise<Warehouse[]> {
+  const qs = sellerId ? `?sellerId=${sellerId}` : '';
+  return adminApi<Warehouse[]>(`/warehouses${qs}`);
+}
+
+export function createWarehouse(body: CreateWarehouseRequest): Promise<Warehouse> {
+  return adminApi<Warehouse>('/warehouses', { method: 'POST', body });
+}
+
+export function listSellers(): Promise<SellerWithShop[]> {
+  return adminApi<SellerWithShop[]>('/sellers');
 }

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import {
   AlertTriangle,
   ArrowLeft,
+  Boxes,
   Check,
   Edit2,
   Grid,
@@ -47,6 +48,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@shopnetic/ui';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
@@ -761,12 +765,14 @@ export function ProductVariantsDialog({
   product,
   onBackToOptions,
   onManageMedia,
+  onManageOffers,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   product: Product | null;
   onBackToOptions?: (product: Product) => void;
   onManageMedia?: (product: Product) => void;
+  onManageOffers?: (product: Product, variantId?: string) => void;
 }) {
   const t = useTranslations('catalog');
   const [loading, setLoading] = useState(true);
@@ -1055,6 +1061,22 @@ export function ProductVariantsDialog({
                               </TableCell>
                               <TableCell className="text-right">
                                 <div className="flex items-center justify-end gap-1">
+                                  {onManageOffers && product && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => onManageOffers(product, v.id)}
+                                          aria-label={t('products.offersAction')}
+                                        >
+                                          <Boxes className="size-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>{t('products.offersAction')}</TooltipContent>
+                                    </Tooltip>
+                                  )}
                                   <Button
                                     type="button"
                                     variant="ghost"
@@ -1120,6 +1142,20 @@ export function ProductVariantsDialog({
                 >
                   <ImageIcon className="size-4" />
                   {t('products.mediaAction')}
+                </Button>
+              )}
+              {onManageOffers && product && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onManageOffers(product);
+                  }}
+                  className="gap-2"
+                >
+                  <Boxes className="size-4" />
+                  {t('products.offersAction')}
                 </Button>
               )}
             </div>
