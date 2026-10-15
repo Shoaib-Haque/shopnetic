@@ -1,21 +1,27 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { useForm, type Path } from 'react-hook-form';
+import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { isReservedSlug, type Brand, type Category, type Product } from '@shopnetic/contracts';
-import { Button, Field, Input, StatusBadge } from '@shopnetic/ui';
+import {
+  Button,
+  Field,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  StatusBadge,
+} from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
 import { slugify, slugifyLive } from '@/lib/slugify';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
-import { capForMessage } from '@/lib/format';
 import { createProduct, updateProduct } from './api';
-
-const selectCls =
-  'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)] disabled:cursor-not-allowed disabled:opacity-50';
 
 const textareaCls =
   'w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)] disabled:cursor-not-allowed disabled:opacity-50';
@@ -100,6 +106,7 @@ export function ProductFormModal({
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     setError,
@@ -323,21 +330,24 @@ export function ProductFormModal({
           htmlFor="product-category"
           error={fieldError('categoryId')}
         >
-          <select
-            id="product-category"
-            className={selectCls}
-            {...register('categoryId')}
-            disabled={isReadOnly}
-          >
-            <option value="" disabled>
-              {t('products.form.selectCategory')}
-            </option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {capForMessage(c.name.en || c.slug, 60)}
-              </option>
-            ))}
-          </select>
+          <Controller
+            control={control}
+            name="categoryId"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange} disabled={isReadOnly}>
+                <SelectTrigger id="product-category" invalid={Boolean(errors.categoryId)}>
+                  <SelectValue placeholder={t('products.form.selectCategory')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id} title={c.name.en || c.slug}>
+                      {c.name.en || c.slug}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </Field>
       ) : (
         <div className="flex flex-col gap-1">
@@ -355,19 +365,29 @@ export function ProductFormModal({
 
       {/* Brand selection */}
       <Field label={t('products.form.brand')} htmlFor="product-brand" error={fieldError('brandId')}>
-        <select
-          id="product-brand"
-          className={selectCls}
-          {...register('brandId')}
-          disabled={isReadOnly}
-        >
-          <option value="">{t('products.form.noBrand')}</option>
-          {brands.map((b) => (
-            <option key={b.id} value={b.id}>
-              {capForMessage(b.name, 60)}
-            </option>
-          ))}
-        </select>
+        <Controller
+          control={control}
+          name="brandId"
+          render={({ field }) => (
+            <Select
+              value={field.value || '__none__'}
+              onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+              disabled={isReadOnly}
+            >
+              <SelectTrigger id="product-brand" invalid={Boolean(errors.brandId)}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">{t('products.form.noBrand')}</SelectItem>
+                {brands.map((b) => (
+                  <SelectItem key={b.id} value={b.id} title={b.name}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
       </Field>
 
       {/* Title */}
@@ -485,16 +505,22 @@ export function ProductFormModal({
           htmlFor="product-status"
           error={fieldError('status')}
         >
-          <select
-            id="product-status"
-            className={selectCls}
-            {...register('status')}
-            disabled={isReadOnly}
-          >
-            <option value="draft">{t('products.status.draft')}</option>
-            <option value="pending">{t('products.status.pending')}</option>
-            <option value="active">{t('products.status.active')}</option>
-          </select>
+          <Controller
+            control={control}
+            name="status"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange} disabled={isReadOnly}>
+                <SelectTrigger id="product-status" invalid={Boolean(errors.status)}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">{t('products.status.draft')}</SelectItem>
+                  <SelectItem value="pending">{t('products.status.pending')}</SelectItem>
+                  <SelectItem value="active">{t('products.status.active')}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
         </Field>
       )}
     </FormModal>

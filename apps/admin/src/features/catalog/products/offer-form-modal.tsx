@@ -26,12 +26,16 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Spinner,
   notify,
 } from '@shopnetic/ui';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
-import { capForMessage } from '@/lib/format';
 import { createOffer, updateOffer } from './api';
 
 export interface OfferFormModalProps {
@@ -46,9 +50,6 @@ export interface OfferFormModalProps {
   onSaved: (saved: Offer) => void;
   onNewWarehouseRequested?: (sellerId: string) => void;
 }
-
-const selectCls =
-  'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)] disabled:cursor-not-allowed disabled:opacity-50';
 
 const CONDITIONS: OfferCondition[] = [
   'new',
@@ -272,36 +273,50 @@ export function OfferFormModal({
             {!isEditing ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label={t('products.offers.form.seller')}>
-                  <select
-                    value={sellerId}
-                    onChange={(e) => setSellerId(e.target.value)}
+                  <Select
+                    value={sellerId || '__none__'}
+                    onValueChange={(v) => setSellerId(v === '__none__' ? '' : v)}
                     disabled={submitting}
-                    className={selectCls}
                   >
-                    <option value="">{t('products.offers.form.selectSeller')}</option>
-                    {sellers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {capForMessage(s.shop?.displayName ?? s.id, 45)} (
-                        {s.type === 'business' ? '3P' : 'Seller'})
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__" disabled>
+                        {t('products.offers.form.selectSeller')}
+                      </SelectItem>
+                      {sellers.map((s) => {
+                        const label = `${s.shop?.displayName ?? s.id} (${s.type === 'business' ? '3P' : 'Seller'})`;
+                        return (
+                          <SelectItem key={s.id} value={s.id} title={label}>
+                            {label}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
                 </Field>
 
                 <Field label={t('products.offers.form.variant')}>
-                  <select
+                  <Select
                     value={variantId}
-                    onChange={(e) => setVariantId(e.target.value)}
+                    onValueChange={(v) => setVariantId(v)}
                     disabled={submitting}
-                    className={selectCls}
                   >
-                    {variants.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {capForMessage(v.skuCode || 'Variant', 45)}{' '}
-                        {v.status === 'inactive' ? '(inactive)' : ''}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {variants.map((v) => {
+                        const label = `${v.skuCode || 'Variant'} ${v.status === 'inactive' ? '(inactive)' : ''}`;
+                        return (
+                          <SelectItem key={v.id} value={v.id} title={label}>
+                            {label}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
                 </Field>
               </div>
             ) : (
@@ -382,18 +397,22 @@ export function OfferFormModal({
             {/* Condition & Notes */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Field label={t('products.offers.form.condition')}>
-                <select
+                <Select
                   value={condition}
-                  onChange={(e) => setCondition(e.target.value as OfferCondition)}
+                  onValueChange={(v) => setCondition(v as OfferCondition)}
                   disabled={submitting}
-                  className={selectCls}
                 >
-                  {CONDITIONS.map((c) => (
-                    <option key={c} value={c}>
-                      {t(`products.offers.condition.${c}`)}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CONDITIONS.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {t(`products.offers.condition.${c}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
 
               <div className="sm:col-span-2">
@@ -485,22 +504,31 @@ export function OfferFormModal({
                   </Field>
 
                   <Field label={t('products.offers.form.targetWarehouse')}>
-                    <select
-                      value={warehouseId}
-                      onChange={(e) => setWarehouseId(e.target.value)}
+                    <Select
+                      value={warehouseId || '__none__'}
+                      onValueChange={(v) => setWarehouseId(v === '__none__' ? '' : v)}
                       disabled={submitting || sellerWarehouses.length === 0}
-                      className={selectCls}
                     >
-                      {sellerWarehouses.length === 0 ? (
-                        <option value="">No warehouses found</option>
-                      ) : (
-                        sellerWarehouses.map((wh) => (
-                          <option key={wh.id} value={wh.id}>
-                            {capForMessage(wh.name, 45)} {wh.isDefault ? '(Default)' : ''}
-                          </option>
-                        ))
-                      )}
-                    </select>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sellerWarehouses.length === 0 ? (
+                          <SelectItem value="__none__" disabled>
+                            No warehouses found
+                          </SelectItem>
+                        ) : (
+                          sellerWarehouses.map((wh) => {
+                            const label = `${wh.name} ${wh.isDefault ? '(Default)' : ''}`;
+                            return (
+                              <SelectItem key={wh.id} value={wh.id} title={label}>
+                                {label}
+                              </SelectItem>
+                            );
+                          })
+                        )}
+                      </SelectContent>
+                    </Select>
                   </Field>
                 </div>
               </div>
@@ -509,15 +537,19 @@ export function OfferFormModal({
             {/* Listing Status (edit mode) */}
             {isEditing && (
               <Field label={t('products.offers.form.status')}>
-                <select
+                <Select
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as OfferStatus)}
+                  onValueChange={(v) => setStatus(v as OfferStatus)}
                   disabled={submitting}
-                  className={selectCls}
                 >
-                  <option value="active">Active (Available on storefront)</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active (Available on storefront)</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
             )}
           </ModalBody>

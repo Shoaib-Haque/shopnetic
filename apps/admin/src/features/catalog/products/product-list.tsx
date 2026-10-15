@@ -24,6 +24,11 @@ import {
   PopoverTrigger,
   ScrollToTopButton,
   SearchInput,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   StatusBadge,
   Table,
   TableBody,
@@ -87,9 +92,6 @@ function formatPrice(basePriceMinor: string | null, currency: string | null): st
   const val = (Number(basePriceMinor) / 100).toFixed(2);
   return currency ? `${currency} ${val}` : `$${val}`;
 }
-
-const selectFilterCls =
-  'h-9 rounded-md border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
 
 export function ProductList() {
   const t = useTranslations('catalog');
@@ -551,71 +553,84 @@ export function ProductList() {
               {/* Status */}
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('products.filter.statusLabel')}
-                <select
-                  value={tab}
-                  onChange={(e) => handleTabChange(e.target.value as Tab)}
-                  className={cn(selectFilterCls, 'w-full')}
-                >
-                  {TABS.map((tb) => (
-                    <option key={tb} value={tb}>
-                      {t(`products.filter.${tb}`)}
-                    </option>
-                  ))}
-                </select>
+                <Select value={tab} onValueChange={(v) => handleTabChange(v as Tab)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TABS.map((tb) => (
+                      <SelectItem key={tb} value={tb}>
+                        {t(`products.filter.${tb}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
 
               {/* Origin Filter */}
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('products.filter.originLabel')}
-                <select
+                <Select
                   value={originFilter}
-                  onChange={(e) => setOriginFilter(e.target.value as OriginFilter)}
-                  className={cn(selectFilterCls, 'w-full')}
+                  onValueChange={(v) => setOriginFilter(v as OriginFilter)}
                 >
-                  {ORIGIN_FILTERS.map((orig) => (
-                    <option key={orig} value={orig}>
-                      {orig === 'all'
-                        ? t('products.origin.all')
-                        : orig === '1p'
-                          ? t('products.origin.oneP')
-                          : t('products.origin.threeP')}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ORIGIN_FILTERS.map((orig) => (
+                      <SelectItem key={orig} value={orig}>
+                        {orig === 'all'
+                          ? t('products.origin.all')
+                          : orig === '1p'
+                            ? t('products.origin.oneP')
+                            : t('products.origin.threeP')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
 
               {/* Category Filter */}
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('products.filter.categoryLabel')}
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className={cn(selectFilterCls, 'w-full truncate')}
+                <Select
+                  value={categoryFilter || '__all__'}
+                  onValueChange={(v) => setCategoryFilter(v === '__all__' ? '' : v)}
                 >
-                  <option value="">{t('products.allCategories')}</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {capForMessage(c.name.en || c.slug, 50)}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">{t('products.allCategories')}</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id} title={c.name.en || c.slug}>
+                        {c.name.en || c.slug}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
 
               {/* Brand Filter */}
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('products.filter.brandLabel')}
-                <select
-                  value={brandFilter}
-                  onChange={(e) => setBrandFilter(e.target.value)}
-                  className={cn(selectFilterCls, 'w-full truncate')}
+                <Select
+                  value={brandFilter || '__all__'}
+                  onValueChange={(v) => setBrandFilter(v === '__all__' ? '' : v)}
                 >
-                  <option value="">{t('products.allBrands')}</option>
-                  {brands.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {capForMessage(b.name, 50)}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">{t('products.allBrands')}</SelectItem>
+                    {brands.map((b) => (
+                      <SelectItem key={b.id} value={b.id} title={b.name}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
 
               {/* Clear inside popover */}

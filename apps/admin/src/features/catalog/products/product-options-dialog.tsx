@@ -14,7 +14,6 @@ import type {
 import {
   Button,
   Checkbox,
-  cn,
   Modal,
   ModalBody,
   ModalContent,
@@ -23,6 +22,11 @@ import {
   ModalHeader,
   ModalTitle,
   notify,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Skeleton,
   Spinner,
   StatusBadge,
@@ -38,16 +42,12 @@ import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import { listValueSets } from '@/features/catalog/value-sets/api';
-import { capForMessage } from '@/lib/format';
 import {
   deleteProductOption,
   listProductOptions,
   putProductOption,
   setProductOptionValues,
 } from './api';
-
-const selectCls =
-  'h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 interface ValueSelectModalProps {
   open: boolean;
@@ -490,26 +490,35 @@ export function ProductOptionsDialog({
                 ) : availableToAdd.length > 0 ? (
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-lg border border-border bg-card p-3">
                     <div className="min-w-0 flex-1">
-                      <select
-                        value={selectedToAdd}
-                        onChange={(e) => setSelectedToAdd(e.target.value)}
+                      <Select
+                        value={selectedToAdd || '__none__'}
+                        onValueChange={(v) => setSelectedToAdd(v === '__none__' ? '' : v)}
                         disabled={adding}
-                        className={cn(selectCls, 'w-full truncate')}
-                        aria-label={t('products.options.selectOptionType')}
                       >
-                        <option value="">{t('products.options.selectOptionType')}</option>
-                        {availableToAdd.map((co) => {
-                          const name = optName(co.optionTypeId);
-                          const isReq = co.applicability === 'required';
-                          const isAxis = co.isVariantAxis;
-                          return (
-                            <option key={co.optionTypeId} value={co.optionTypeId}>
-                              {capForMessage(name, 40)} {isReq ? '★ (Required)' : ''}{' '}
-                              {isAxis ? '[Variant Axis]' : '[Info]'}
-                            </option>
-                          );
-                        })}
-                      </select>
+                        <SelectTrigger aria-label={t('products.options.selectOptionType')}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__" disabled>
+                            {t('products.options.selectOptionType')}
+                          </SelectItem>
+                          {availableToAdd.map((co) => {
+                            const name = optName(co.optionTypeId);
+                            const isReq = co.applicability === 'required';
+                            const isAxis = co.isVariantAxis;
+                            return (
+                              <SelectItem
+                                key={co.optionTypeId}
+                                value={co.optionTypeId}
+                                title={name}
+                              >
+                                {name} {isReq ? '★ (Required)' : ''}{' '}
+                                {isAxis ? '[Variant Axis]' : '[Info]'}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <Button
                       type="button"
@@ -624,26 +633,32 @@ export function ProductOptionsDialog({
                               </TableCell>
                               <TableCell>
                                 {po.values.length > 0 ? (
-                                  <select
-                                    value={po.requiredValueId ?? ''}
-                                    onChange={(e) =>
+                                  <Select
+                                    value={po.requiredValueId ?? '__none__'}
+                                    onValueChange={(v) =>
                                       handleSetRequiredValue(
                                         po.optionTypeId,
-                                        e.target.value || null,
+                                        v === '__none__' ? null : v,
                                       )
                                     }
-                                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs shadow-xs"
-                                    aria-label={t('products.options.requiredValue')}
                                   >
-                                    <option value="">
-                                      {t('products.options.noneRequiredValue')}
-                                    </option>
-                                    {po.values.map((v) => (
-                                      <option key={v.optionValueId} value={v.optionValueId}>
-                                        Only {capForMessage(v.code, 35)} (Skip picker)
-                                      </option>
-                                    ))}
-                                  </select>
+                                    <SelectTrigger
+                                      className="h-8 text-xs"
+                                      aria-label={t('products.options.requiredValue')}
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">
+                                        {t('products.options.noneRequiredValue')}
+                                      </SelectItem>
+                                      {po.values.map((v) => (
+                                        <SelectItem key={v.optionValueId} value={v.optionValueId}>
+                                          Only {v.code} (Skip picker)
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 ) : (
                                   <span className="text-xs text-muted-foreground">—</span>
                                 )}

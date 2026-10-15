@@ -39,6 +39,11 @@ import {
   ModalHeader,
   ModalTitle,
   notify,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Skeleton,
   Spinner,
   StatusBadge,
@@ -57,7 +62,6 @@ import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
-import { capForMessage } from '@/lib/format';
 import {
   createVariant,
   deleteVariant,
@@ -65,9 +69,6 @@ import {
   listVariants,
   updateVariant,
 } from './api';
-
-const selectCls =
-  'h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 interface ComboOptionItem {
   optionTypeId: string;
@@ -305,14 +306,18 @@ function GeneratorModal({
             </Field>
 
             <Field label={t('products.variants.matrix.defaultStatus')}>
-              <select
+              <Select
                 value={defaultStatus}
-                onChange={(e) => setDefaultStatus(e.target.value as 'active' | 'inactive')}
-                className={selectCls}
+                onValueChange={(v) => setDefaultStatus(v as 'active' | 'inactive')}
               >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
           </div>
 
@@ -637,27 +642,37 @@ function VariantFormModal({
                   const name = ot?.name.en || axis.optionTypeCode;
                   return (
                     <Field key={axis.optionTypeId} label={name}>
-                      <select
-                        value={manualSelections[axis.optionTypeId] ?? ''}
-                        onChange={(e) =>
+                      <Select
+                        value={manualSelections[axis.optionTypeId] || '__none__'}
+                        onValueChange={(v) =>
                           setManualSelections((prev) => ({
                             ...prev,
-                            [axis.optionTypeId]: e.target.value,
+                            [axis.optionTypeId]: v === '__none__' ? '' : v,
                           }))
                         }
-                        className={selectCls}
-                        required
                       >
-                        <option value="">Select a value…</option>
-                        {axis.values.map((v) => {
-                          const valObj = ot?.values.find((val) => val.id === v.optionValueId);
-                          return (
-                            <option key={v.optionValueId} value={v.optionValueId}>
-                              {capForMessage(valObj?.label.en ?? v.code, 40)}
-                            </option>
-                          );
-                        })}
-                      </select>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__" disabled>
+                            Select a value…
+                          </SelectItem>
+                          {axis.values.map((v) => {
+                            const valObj = ot?.values.find((val) => val.id === v.optionValueId);
+                            const label = valObj?.label.en ?? v.code;
+                            return (
+                              <SelectItem
+                                key={v.optionValueId}
+                                value={v.optionValueId}
+                                title={label}
+                              >
+                                {label}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
                     </Field>
                   );
                 })}

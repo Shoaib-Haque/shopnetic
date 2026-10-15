@@ -216,9 +216,8 @@ describe('ProductOptionsDialog', () => {
       expect(screen.getByRole('combobox', { name: 'Select an option axis…' })).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Select an option axis…' }), {
-      target: { value: 'ot_color' },
-    });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Select an option axis…' }));
+    fireEvent.click(screen.getByRole('option', { name: /Color/ }));
 
     const addBtn = screen.getByRole('button', { name: 'Add Option Axis' });
     expect(addBtn).toBeEnabled();
@@ -281,9 +280,8 @@ describe('ProductOptionsDialog', () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Single Value (Skip Picker)' }), {
-      target: { value: 'val_s' },
-    });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Single Value (Skip Picker)' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Only s (Skip picker)' }));
 
     await waitFor(() => {
       expect(mockedPutProductOption).toHaveBeenCalledWith('prod_1', 'ot_size', {

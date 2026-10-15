@@ -59,3 +59,13 @@ export {
   PopoverContent,
   type PopoverContentProps,
 } from './components/popover';
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+} from './components/select';

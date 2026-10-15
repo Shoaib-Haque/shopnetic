@@ -118,6 +118,15 @@ function openFiltersPopover(): void {
   fireEvent.click(trigger);
 }
 
+// Radix `Select` renders a `role="combobox"` trigger + a portalled listbox of
+// `role="option"` items, not a native `<select>` — `fireEvent.change` and
+// `getByDisplayValue` (both native-select-only APIs) no longer apply; open it
+// and click the option by its accessible name instead.
+function selectOption(comboboxName: string | RegExp, optionName: string | RegExp): void {
+  fireEvent.click(screen.getByRole('combobox', { name: comboboxName }));
+  fireEvent.click(screen.getByRole('option', { name: optionName }));
+}
+
 beforeEach(() => {
   mockSearchParams = new URLSearchParams();
   mockedListCategories.mockResolvedValue(mockCategories);
@@ -174,8 +183,7 @@ describe('ProductList', () => {
 
     openFiltersPopover();
 
-    const statusSelect = screen.getByLabelText('Status');
-    fireEvent.change(statusSelect, { target: { value: 'pending' } });
+    selectOption('Status', 'Pending Review');
 
     await waitFor(() => {
       expect(mockedListProductsPage).toHaveBeenCalledWith(
@@ -193,8 +201,7 @@ describe('ProductList', () => {
 
     openFiltersPopover();
 
-    const originSelect = screen.getByDisplayValue('All origins');
-    fireEvent.change(originSelect, { target: { value: '3p' } });
+    selectOption('Origin', '3P');
 
     await waitFor(() => {
       expect(mockedListProductsPage).toHaveBeenCalledWith(
@@ -355,27 +362,23 @@ describe('ProductList', () => {
     openFiltersPopover();
 
     // Change origin, category, and brand filters
-    const originSelect = screen.getByDisplayValue('All origins');
-    fireEvent.change(originSelect, { target: { value: '3p' } });
-    expect(originSelect).toHaveValue('3p');
+    selectOption('Origin', '3P');
+    expect(screen.getByRole('combobox', { name: 'Origin' })).toHaveTextContent('3P');
 
-    const categorySelect = screen.getByDisplayValue('All categories');
-    fireEvent.change(categorySelect, { target: { value: 'cat-1' } });
-    expect(categorySelect).toHaveValue('cat-1');
+    selectOption('Category', 'Apparel');
+    expect(screen.getByRole('combobox', { name: 'Category' })).toHaveTextContent('Apparel');
 
-    const brandSelect = screen.getByDisplayValue('All brands');
-    fireEvent.change(brandSelect, { target: { value: 'brand-1' } });
-    expect(brandSelect).toHaveValue('brand-1');
+    selectOption('Brand', 'Acme Corp');
+    expect(screen.getByRole('combobox', { name: 'Brand' })).toHaveTextContent('Acme Corp');
 
     // Switch status to Archived
-    const statusSelect = screen.getByLabelText('Status');
-    fireEvent.change(statusSelect, { target: { value: 'archived' } });
+    selectOption('Status', 'Archived');
 
     // Verify secondary filters and search input reset
     expect(searchInput).toHaveValue('');
-    expect(screen.getByDisplayValue('All origins')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('All categories')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('All brands')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Origin' })).toHaveTextContent('All origins');
+    expect(screen.getByRole('combobox', { name: 'Category' })).toHaveTextContent('All categories');
+    expect(screen.getByRole('combobox', { name: 'Brand' })).toHaveTextContent('All brands');
 
     await waitFor(() => {
       expect(mockedListProductsPage).toHaveBeenCalledWith(
@@ -397,8 +400,7 @@ describe('ProductList', () => {
 
     openFiltersPopover();
 
-    const originSelect = screen.getByDisplayValue('All origins');
-    fireEvent.change(originSelect, { target: { value: '3p' } });
+    selectOption('Origin', '3P');
 
     // When filters are active, there is a clear button outside and one inside the popover.
     // Query the clear button inside the popover:
@@ -406,7 +408,7 @@ describe('ProductList', () => {
     expect(clearBtn).not.toBeDisabled();
     fireEvent.click(clearBtn);
 
-    expect(screen.getByDisplayValue('All origins')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Origin' })).toHaveTextContent('All origins');
     expect(screen.getByRole('button', { name: 'Clear filters' })).toBeDisabled();
   });
 

@@ -41,6 +41,11 @@ import {
   ModalHeader,
   ModalTitle,
   notify,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Skeleton,
   Spinner,
   StatusBadge,
@@ -48,7 +53,6 @@ import {
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
-import { capForMessage } from '@/lib/format';
 import {
   createProductMedia,
   deleteMedia,
@@ -259,16 +263,18 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
 
             {/* Status (active / pending / rejected) */}
             <Field label={t('products.media.form.status')} htmlFor="media-status">
-              <select
-                id="media-status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as MediaStatus)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="active">{t('products.media.form.statusActive')}</option>
-                <option value="pending">{t('products.media.form.statusPending')}</option>
-                <option value="rejected">{t('products.media.form.statusRejected')}</option>
-              </select>
+              <Select value={status} onValueChange={(v) => setStatus(v as MediaStatus)}>
+                <SelectTrigger id="media-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">{t('products.media.form.statusActive')}</SelectItem>
+                  <SelectItem value="pending">{t('products.media.form.statusPending')}</SelectItem>
+                  <SelectItem value="rejected">
+                    {t('products.media.form.statusRejected')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
 
             {formError && (
@@ -934,23 +940,35 @@ export function ProductMediaDialog({
                                   >
                                     {otName}:
                                   </label>
-                                  <select
-                                    id={`tag-${asset.id}-${po.optionTypeId}`}
-                                    disabled={isArchived || isTaggingThis}
-                                    value={currentTag?.optionValueId ?? ''}
-                                    onChange={(e) =>
-                                      handleTagChange(asset.id, po.optionTypeId, e.target.value)
+                                  <Select
+                                    value={currentTag?.optionValueId || '__none__'}
+                                    onValueChange={(v) =>
+                                      handleTagChange(
+                                        asset.id,
+                                        po.optionTypeId,
+                                        v === '__none__' ? '' : v,
+                                      )
                                     }
-                                    className="h-7 w-full rounded border border-input bg-background px-1.5 text-[11px] shadow-xs"
-                                    aria-label={`Tag ${otName}`}
+                                    disabled={isArchived || isTaggingThis}
                                   >
-                                    <option value="">{t('products.media.untagged')}</option>
-                                    {po.values.map((v) => (
-                                      <option key={v.optionValueId} value={v.optionValueId}>
-                                        {capForMessage(v.code, 35)}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    <SelectTrigger
+                                      id={`tag-${asset.id}-${po.optionTypeId}`}
+                                      className="h-7 px-1.5 text-[11px]"
+                                      aria-label={`Tag ${otName}`}
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">
+                                        {t('products.media.untagged')}
+                                      </SelectItem>
+                                      {po.values.map((v) => (
+                                        <SelectItem key={v.optionValueId} value={v.optionValueId}>
+                                          {v.code}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                               );
                             })

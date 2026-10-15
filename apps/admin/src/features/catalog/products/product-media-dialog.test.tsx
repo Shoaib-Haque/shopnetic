@@ -263,7 +263,8 @@ describe('ProductMediaDialog', () => {
     await screen.findByText('Product Media Gallery');
 
     const colorSelect = screen.getAllByRole('combobox', { name: 'Tag Color' })[0]!;
-    fireEvent.change(colorSelect, { target: { value: 'val_navy' } });
+    fireEvent.click(colorSelect);
+    fireEvent.click(screen.getByRole('option', { name: 'navy' }));
 
     await waitFor(() => {
       expect(mockedPutMediaTag).toHaveBeenCalledWith('media_1', 'ot_color', {
@@ -280,7 +281,8 @@ describe('ProductMediaDialog', () => {
     await screen.findByText('Product Media Gallery');
 
     const colorSelect = screen.getAllByRole('combobox', { name: 'Tag Color' })[1]!;
-    fireEvent.change(colorSelect, { target: { value: '' } });
+    fireEvent.click(colorSelect);
+    fireEvent.click(screen.getByRole('option', { name: 'Untagged (All variants)' }));
 
     await waitFor(() => {
       expect(mockedDeleteMediaTag).toHaveBeenCalledWith('media_2', 'ot_color');
