@@ -389,20 +389,28 @@
       "undo": "Undo",
       "searchPlaceholder": "Search products by title or slug… (/)",
       "filter": {
+        "title": "Filters",
+        "clear": "Clear filters",
+        "statusLabel": "Status",
+        "originLabel": "Origin",
+        "categoryLabel": "Category",
+        "brandLabel": "Brand",
         "all": "All",
         "active": "Active",
         "pending": "Pending Review",
         "draft": "Draft",
         "archived": "Archived"
       },
+      "archivedCategory": "Archived category",
+      "archivedBrand": "Archived brand",
       "origin": {
         "all": "All origins",
-        "oneP": "In-House (1P)",
-        "threeP": "Vendor Proposed (3P)"
+        "oneP": "1P",
+        "threeP": "3P"
       },
       "originBadges": {
-        "oneP": "In-House (1P)",
-        "threeP": "Vendor Proposed (3P)"
+        "oneP": "1P",
+        "threeP": "3P"
       },
       "status": {
         "active": "Active",
@@ -510,6 +518,7 @@
         "saveValues": "Save Values",
         "close": "Close",
         "cancel": "Cancel",
+        "archivedOption": "Archived Option",
         "toast": {
           "optionAdded": "Option “{name}” added to product.",
           "optionUpdated": "Option “{name}” updated.",

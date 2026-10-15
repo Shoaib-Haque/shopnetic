@@ -3,6 +3,7 @@ import type { Actor } from '@shopnetic/auth';
 import {
   computeComboSignature,
   type CreateVariantRequest,
+  type LocalizedText,
   type UpdateVariantRequest,
   type Variant,
   type VariantSelection,
@@ -15,7 +16,17 @@ import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
-const withValues = { optionValues: true } satisfies Prisma.VariantInclude;
+const withValues = {
+  optionValues: {
+    include: {
+      optionValue: {
+        include: {
+          optionType: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.VariantInclude;
 type VariantRow = Prisma.VariantGetPayload<{ include: typeof withValues }>;
 
 /**
@@ -339,7 +350,15 @@ function toView(row: VariantRow): Variant {
     position: row.position,
     selections: [...row.optionValues]
       .sort((a, b) => a.optionTypeId.localeCompare(b.optionTypeId))
-      .map((v) => ({ optionTypeId: v.optionTypeId, optionValueId: v.optionValueId })),
+      .map((v) => ({
+        optionTypeId: v.optionTypeId,
+        optionValueId: v.optionValueId,
+        optionTypeCode: v.optionValue?.optionType?.code,
+        optionTypeName:
+          (v.optionValue?.optionType?.nameI18n as LocalizedText | undefined) ?? undefined,
+        optionValueCode: v.optionValue?.code,
+        optionValueLabel: (v.optionValue?.labelI18n as LocalizedText | undefined) ?? undefined,
+      })),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

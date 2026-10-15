@@ -295,6 +295,10 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     );
     expect(v.selections).toHaveLength(2);
     expect(v.comboSignature.length).toBeGreaterThan(0);
+    const sizeSel = v.selections.find((s) => s.optionTypeId === sizeTypeId);
+    expect(sizeSel?.optionTypeName?.en).toBeDefined();
+    expect(sizeSel?.optionTypeCode).toBeDefined();
+    expect(sizeSel?.optionValueCode).toBe(s('s'));
 
     await expect(
       variants.create(
@@ -423,6 +427,60 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     expect(events).toContain('product.options_changed');
     expect(events).toContain('product.deleted');
     expect(events).toContain('product.restored');
+  });
+
+  it('preserves pre-archive status on restore and prevents _previousStatus leak in spec', async () => {
+    // 1. Active product restores to active
+    const pActive = await products.create(
+      { categoryId: catOptionalId, title: t('Active Prod'), slug: s('active-prod') },
+      actor,
+      {},
+    );
+    await products.update(
+      pActive.id,
+      { status: 'active', expectedUpdatedAt: pActive.updatedAt },
+      actor,
+      {},
+    );
+    await products.remove(pActive.id, actor, {});
+
+    const archivedActive = await products.get(pActive.id);
+    expect(archivedActive.status).toBe('archived');
+    expect(archivedActive.spec).not.toHaveProperty('_previousStatus');
+
+    const restoredActive = await products.restore(pActive.id, actor, {});
+    expect(restoredActive.status).toBe('active');
+    expect(restoredActive.archivedAt).toBeNull();
+    expect(restoredActive.spec).not.toHaveProperty('_previousStatus');
+
+    // 2. Draft product restores to draft
+    const pDraft = await products.create(
+      { categoryId: catOptionalId, title: t('Draft Prod'), slug: s('draft-prod') },
+      actor,
+      {},
+    );
+    expect(pDraft.status).toBe('draft');
+    await products.remove(pDraft.id, actor, {});
+
+    const restoredDraft = await products.restore(pDraft.id, actor, {});
+    expect(restoredDraft.status).toBe('draft');
+    expect(restoredDraft.archivedAt).toBeNull();
+    expect(restoredDraft.spec).not.toHaveProperty('_previousStatus');
+
+    // 3. Legacy archived product (no _previousStatus recorded) falls back to active
+    const pLegacy = await products.create(
+      { categoryId: catOptionalId, title: t('Legacy Prod'), slug: s('legacy-prod') },
+      actor,
+      {},
+    );
+    await prisma.product.update({
+      where: { id: pLegacy.id },
+      data: { deletedAt: new Date(), status: 'archived', spec: {} },
+    });
+    const restoredLegacy = await products.restore(pLegacy.id, actor, {});
+    expect(restoredLegacy.status).toBe('active');
+    expect(restoredLegacy.archivedAt).toBeNull();
+    expect(restoredLegacy.spec).not.toHaveProperty('_previousStatus');
   });
 
   it('update rejects a stale expectedUpdatedAt (optimistic concurrency)', async () => {

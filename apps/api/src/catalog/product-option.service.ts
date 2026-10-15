@@ -14,7 +14,7 @@ import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
 const withDetail = {
-  optionType: { select: { code: true } },
+  optionType: { select: { code: true, nameI18n: true } },
   values: { include: { optionValue: { select: { code: true } } } },
 } satisfies Prisma.ProductOptionInclude;
 type ProductOptionRow = Prisma.ProductOptionGetPayload<{ include: typeof withDetail }>;
@@ -297,6 +297,7 @@ function toView(row: ProductOptionRow): ProductOption {
     productId: row.productId,
     optionTypeId: row.optionTypeId,
     optionTypeCode: row.optionType.code,
+    optionTypeName: row.optionType.nameI18n as Record<string, string>,
     position: row.position,
     requiredValueId: row.requiredValueId,
     values: [...row.values]

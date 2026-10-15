@@ -312,6 +312,22 @@ describe('ProductOffersDialog', () => {
     });
   });
 
+  it('opens Warehouse Form Modal when New Warehouse button is clicked', async () => {
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('New Warehouse')).toBeInTheDocument();
+    });
+
+    const whBtn = screen.getByText('New Warehouse');
+    fireEvent.click(whBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'New Warehouse' })).toBeInTheDocument();
+      expect(screen.getByText('Warehouse Name')).toBeInTheDocument();
+    });
+  });
+
   it('renders read-only notice when product is archived', async () => {
     const archivedProduct: Product = {
       ...sampleProduct,
@@ -466,5 +482,20 @@ describe('ProductOffersDialog', () => {
         }),
       );
     });
+  });
+
+  it('renders responsive structure with pr-12 header, variant tabs, and min-w-[680px] table container', async () => {
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Offers & Stock')).toBeInTheDocument();
+    });
+
+    const modalHeader = document.querySelector('[class*="pr-12"]');
+    expect(modalHeader).toBeInTheDocument();
+    const minWTable = document.querySelector('.min-w-\\[680px\\]');
+    expect(minWTable).toBeInTheDocument();
+    const overflowTabs = document.querySelector('.overflow-x-auto');
+    expect(overflowTabs).toBeInTheDocument();
   });
 });

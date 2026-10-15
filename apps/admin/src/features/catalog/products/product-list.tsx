@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { MoreHorizontal, Plus } from 'lucide-react';
+import { MoreHorizontal, Plus, SlidersHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type {
   Brand,
@@ -12,12 +12,16 @@ import type {
   ProductOrigin,
 } from '@shopnetic/contracts';
 import {
+  Button,
   cn,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   notify,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   ScrollToTopButton,
   SearchInput,
   StatusBadge,
@@ -132,9 +136,15 @@ export function ProductList() {
         if (!cancelled) setCategories(cats);
       })
       .catch(() => {});
-    listBrandsPage({ limit: 100 })
-      .then((bRes) => {
-        if (!cancelled) setBrands(bRes.brands);
+    Promise.all([listBrandsPage({ limit: 100 }), listBrandsPage({ archived: true, limit: 100 })])
+      .then(([liveRes, archRes]) => {
+        if (!cancelled) {
+          const map = new Map<string, Brand>();
+          for (const b of [...liveRes.brands, ...archRes.brands]) {
+            map.set(b.id, b);
+          }
+          setBrands(Array.from(map.values()));
+        }
       })
       .catch(() => {});
     return () => {
@@ -249,11 +259,51 @@ export function ProductList() {
       },
     });
 
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (tab !== 'active') count++;
+    if (originFilter !== 'all') count++;
+    if (categoryFilter) count++;
+    if (brandFilter) count++;
+    return count;
+  }, [tab, originFilter, categoryFilter, brandFilter]);
+  const filtersActive = activeFiltersCount > 0;
+
+  const handleTabChange = useCallback(
+    (newTab: Tab) => {
+      if (tab !== newTab) {
+        setTab(newTab);
+        setOriginFilter('all');
+        setCategoryFilter('');
+        setBrandFilter('');
+        setQ('');
+      }
+    },
+    [tab],
+  );
+
+  const clearFilters = useCallback(() => {
+    setTab('active');
+    setOriginFilter('all');
+    setCategoryFilter('');
+    setBrandFilter('');
+    setQ('');
+  }, []);
+
   function onSaved(action: 'created' | 'updated', p: Product): void {
     notify.saved(t(`products.toast.${action}`, { title: labelOf(p) }));
     if (action === 'updated') {
-      list.setItems((prev) => prev.map((x) => (x.id === p.id ? p : x)));
-      if (effectiveHighlighted?.id === p.id) setHighlighted(p);
+      const matchesStatus = tab === 'all' || p.status === tab;
+      if (!matchesStatus) {
+        list.setItems((prev) => prev.filter((x) => x.id !== p.id));
+      } else {
+        list.setItems((prev) => prev.map((x) => (x.id === p.id ? p : x)));
+        if (effectiveHighlighted?.id === p.id) {
+          setHighlighted(p);
+        }
+      }
     } else {
       resync();
     }
@@ -351,9 +401,10 @@ export function ProductList() {
 
   const desktopRow = (p: Product, opts?: { spotlight?: boolean }): ReactNode => {
     const cat = categoryMap.get(p.categoryId);
-    const catName = cat ? cat.name.en || cat.slug : p.categoryId;
+    const catName = cat ? cat.name.en || cat.slug : t('products.archivedCategory');
     const brand = p.brandId ? brandMap.get(p.brandId) : null;
-    const brandName = brand ? brand.name : p.brandId ? '—' : t('products.unbranded');
+    const brandName = p.brandId ? (brand ? brand.name : t('products.archivedBrand')) : '—';
+    const title = p.title?.en ?? p.slug;
 
     return (
       <TableRow
@@ -361,37 +412,54 @@ export function ProductList() {
         data-product-row={p.id}
         className={cn('scroll-my-24', opts?.spotlight && 'bg-primary/5')}
       >
-        <TableCell className="pl-3">
+        <TableCell className="pl-3 max-w-[240px]">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-foreground">{p.title?.en ?? p.slug}</span>
+              <span className="font-medium text-foreground truncate block" title={title}>
+                {title}
+              </span>
               {p.proposedBySellerId ? (
-                <StatusBadge tone="warning">{t('products.originBadges.threeP')}</StatusBadge>
+                <StatusBadge tone="warning" className="shrink-0">
+                  {t('products.originBadges.threeP')}
+                </StatusBadge>
               ) : (
-                <StatusBadge tone="neutral">{t('products.originBadges.oneP')}</StatusBadge>
+                <StatusBadge tone="neutral" className="shrink-0">
+                  {t('products.originBadges.oneP')}
+                </StatusBadge>
               )}
             </div>
-            <span className="text-xs text-muted-foreground">/{p.slug}</span>
+            <span className="text-xs text-muted-foreground truncate block" title={`/${p.slug}`}>
+              /{p.slug}
+            </span>
           </div>
         </TableCell>
-        <TableCell className="text-sm text-foreground">{catName}</TableCell>
-        <TableCell className="text-sm text-muted-foreground">{brandName}</TableCell>
-        <TableCell className="text-sm font-mono text-muted-foreground">
+        <TableCell className="text-sm text-foreground max-w-[160px]">
+          <span className="block truncate" title={catName}>
+            {catName}
+          </span>
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground max-w-[140px]">
+          <span className="block truncate" title={brandName}>
+            {brandName}
+          </span>
+        </TableCell>
+        <TableCell className="text-sm font-mono text-muted-foreground whitespace-nowrap tabular-nums min-w-[100px]">
           {formatPrice(p.basePriceMinor, p.currency)}
         </TableCell>
-        <TableCell>
+        <TableCell className="whitespace-nowrap">
           <StatusBadge tone={STATUS_TONE[p.status]}>{t(`products.status.${p.status}`)}</StatusBadge>
         </TableCell>
-        <TableCell>{rowMenu(p)}</TableCell>
+        <TableCell className="w-12 text-right">{rowMenu(p)}</TableCell>
       </TableRow>
     );
   };
 
   const mobileCard = (p: Product, opts?: { spotlight?: boolean }): ReactNode => {
     const cat = categoryMap.get(p.categoryId);
-    const catName = cat ? cat.name.en || cat.slug : p.categoryId;
+    const catName = cat ? cat.name.en || cat.slug : t('products.archivedCategory');
     const brand = p.brandId ? brandMap.get(p.brandId) : null;
-    const brandName = brand ? brand.name : p.brandId ? '—' : t('products.unbranded');
+    const brandName = p.brandId ? (brand ? brand.name : t('products.archivedBrand')) : '—';
+    const title = p.title?.en ?? p.slug;
 
     return (
       <li
@@ -399,24 +467,33 @@ export function ProductList() {
         data-product-row={p.id}
         className={cn('flex items-start gap-3 px-3 py-3', opts?.spotlight && 'bg-primary/5')}
       >
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-foreground">{p.title?.en ?? p.slug}</span>
-            {p.proposedBySellerId ? (
-              <StatusBadge tone="warning">{t('products.originBadges.threeP')}</StatusBadge>
-            ) : (
-              <StatusBadge tone="neutral">{t('products.originBadges.oneP')}</StatusBadge>
-            )}
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="font-medium text-foreground truncate min-w-0" title={title}>
+              {title}
+            </span>
+            <StatusBadge
+              tone={p.proposedBySellerId ? 'warning' : 'neutral'}
+              className="shrink-0 text-[11px]"
+            >
+              {p.proposedBySellerId
+                ? t('products.originBadges.threeP')
+                : t('products.originBadges.oneP')}
+            </StatusBadge>
           </div>
-          <p className="text-xs text-muted-foreground">/{p.slug}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>{catName}</span>
-            <span>•</span>
-            <span>{brandName}</span>
-            <span>•</span>
-            <span className="font-mono">{formatPrice(p.basePriceMinor, p.currency)}</span>
-          </div>
-          <div className="mt-1.5">
+          <p className="text-xs text-muted-foreground truncate" title={`/${p.slug}`}>
+            /{p.slug}
+          </p>
+          <p className="text-xs text-muted-foreground truncate" title={catName}>
+            {catName}
+          </p>
+          <p className="text-xs text-muted-foreground truncate" title={brandName}>
+            Brand: {brandName}
+          </p>
+          <p className="text-xs font-mono text-muted-foreground whitespace-nowrap tabular-nums">
+            Base Price: {formatPrice(p.basePriceMinor, p.currency)}
+          </p>
+          <div className="pt-1">
             <StatusBadge tone={STATUS_TONE[p.status]}>
               {t(`products.status.${p.status}`)}
             </StatusBadge>
@@ -444,7 +521,7 @@ export function ProductList() {
         }
       />
 
-      {/* Search, tabs, and filters bar */}
+      {/* Search and Grouped Popover Filters bar */}
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <SearchInput
           ref={searchRef}
@@ -456,75 +533,112 @@ export function ProductList() {
           className="w-full max-w-xs"
         />
 
-        {/* Status Tabs */}
-        <div className="inline-flex rounded-md border border-border p-0.5">
-          {TABS.map((tb) => (
-            <button
-              key={tb}
-              type="button"
-              onClick={() => {
-                if (tab !== tb) {
-                  setTab(tb);
-                  setOriginFilter('all');
-                  setCategoryFilter('');
-                  setBrandFilter('');
-                  setQ('');
-                }
-              }}
-              className={cn(
-                'rounded px-2.5 py-1 text-sm capitalize text-muted-foreground hover:text-foreground',
-                tab === tb && 'bg-muted font-medium text-foreground',
+        <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="gap-1.5">
+              <SlidersHorizontal className="size-4" aria-hidden />
+              <span>{t('products.filter.title')}</span>
+              {activeFiltersCount > 0 && (
+                <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.2 text-xs font-semibold text-primary">
+                  {activeFiltersCount}
+                </span>
               )}
-            >
-              {t(`products.filter.${tb}`)}
-            </button>
-          ))}
-        </div>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent closeLabel={tCommon('actions.close')} align="start" className="w-80">
+            <h3 className="mb-3 pr-6 text-sm font-semibold">{t('products.filter.title')}</h3>
+            <div className="flex flex-col gap-3">
+              {/* Status */}
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('products.filter.statusLabel')}
+                <select
+                  value={tab}
+                  onChange={(e) => handleTabChange(e.target.value as Tab)}
+                  className={cn(selectFilterCls, 'w-full')}
+                >
+                  {TABS.map((tb) => (
+                    <option key={tb} value={tb}>
+                      {t(`products.filter.${tb}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-        {/* Origin Filter */}
-        <select
-          value={originFilter}
-          onChange={(e) => setOriginFilter(e.target.value as OriginFilter)}
-          className={selectFilterCls}
-        >
-          {ORIGIN_FILTERS.map((orig) => (
-            <option key={orig} value={orig}>
-              {orig === 'all'
-                ? t('products.origin.all')
-                : orig === '1p'
-                  ? t('products.origin.oneP')
-                  : t('products.origin.threeP')}
-            </option>
-          ))}
-        </select>
+              {/* Origin Filter */}
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('products.filter.originLabel')}
+                <select
+                  value={originFilter}
+                  onChange={(e) => setOriginFilter(e.target.value as OriginFilter)}
+                  className={cn(selectFilterCls, 'w-full')}
+                >
+                  {ORIGIN_FILTERS.map((orig) => (
+                    <option key={orig} value={orig}>
+                      {orig === 'all'
+                        ? t('products.origin.all')
+                        : orig === '1p'
+                          ? t('products.origin.oneP')
+                          : t('products.origin.threeP')}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-        {/* Category Filter */}
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className={selectFilterCls}
-        >
-          <option value="">{t('products.allCategories')}</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name.en || c.slug}
-            </option>
-          ))}
-        </select>
+              {/* Category Filter */}
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('products.filter.categoryLabel')}
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className={cn(selectFilterCls, 'w-full truncate')}
+                >
+                  <option value="">{t('products.allCategories')}</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {capForMessage(c.name.en || c.slug, 50)}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-        {/* Brand Filter */}
-        <select
-          value={brandFilter}
-          onChange={(e) => setBrandFilter(e.target.value)}
-          className={selectFilterCls}
-        >
-          <option value="">{t('products.allBrands')}</option>
-          {brands.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
+              {/* Brand Filter */}
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('products.filter.brandLabel')}
+                <select
+                  value={brandFilter}
+                  onChange={(e) => setBrandFilter(e.target.value)}
+                  className={cn(selectFilterCls, 'w-full truncate')}
+                >
+                  <option value="">{t('products.allBrands')}</option>
+                  {brands.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {capForMessage(b.name, 50)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {/* Clear inside popover */}
+              <div className="pt-2 border-t border-border flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={clearFilters}
+                  disabled={!filtersActive}
+                >
+                  {t('products.filter.clear')}
+                </Button>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {filtersActive && (
+          <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+            {t('products.filter.clear')}
+          </Button>
+        )}
       </div>
 
       {list.loadError && list.items.length === 0 ? (
@@ -543,16 +657,18 @@ export function ProductList() {
       ) : (
         <>
           {/* Desktop Table View */}
-          <div className="hidden rounded-md border border-border md:block">
-            <Table>
+          <div className="hidden rounded-md border border-border overflow-x-auto xl:block">
+            <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="pl-3">{t('products.cols.title')}</TableHead>
-                  <TableHead>{t('products.cols.category')}</TableHead>
-                  <TableHead>{t('products.cols.brand')}</TableHead>
-                  <TableHead>{t('products.cols.price')}</TableHead>
-                  <TableHead>{t('products.cols.status')}</TableHead>
-                  <TableHead className="w-12">{t('products.cols.actions')}</TableHead>
+                  <TableHead className="pl-3 max-w-[240px]">{t('products.cols.title')}</TableHead>
+                  <TableHead className="max-w-[160px]">{t('products.cols.category')}</TableHead>
+                  <TableHead className="max-w-[140px]">{t('products.cols.brand')}</TableHead>
+                  <TableHead className="whitespace-nowrap min-w-[100px]">
+                    {t('products.cols.price')}
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap">{t('products.cols.status')}</TableHead>
+                  <TableHead className="w-12 text-right">{t('products.cols.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -565,7 +681,7 @@ export function ProductList() {
           </div>
 
           {/* Mobile Card List View */}
-          <ul className="divide-y divide-border rounded-md border border-border md:hidden">
+          <ul className="divide-y divide-border rounded-md border border-border xl:hidden">
             {effectiveHighlighted && mobileCard(effectiveHighlighted, { spotlight: true })}
             {list.items.filter((p) => p.id !== effectiveHighlighted?.id).map((p) => mobileCard(p))}
           </ul>

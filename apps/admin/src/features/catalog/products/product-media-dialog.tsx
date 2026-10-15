@@ -48,6 +48,7 @@ import {
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
+import { capForMessage } from '@/lib/format';
 import {
   createProductMedia,
   deleteMedia,
@@ -165,16 +166,16 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-md">
-        <form onSubmit={handleSubmit}>
-          <ModalHeader>
+      <ModalContent className="max-w-md max-h-[85vh] flex flex-col">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <ModalHeader className="shrink-0 border-b border-border pb-4">
             <ModalTitle>
               {isEdit ? t('products.media.form.editTitle') : t('products.media.form.addTitle')}
             </ModalTitle>
             <ModalDescription>{t('products.media.dialogSubtitle')}</ModalDescription>
           </ModalHeader>
 
-          <ModalBody className="space-y-4">
+          <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
             {/* Kind Selector */}
             {!isEdit && (
               <Field label={t('products.media.form.kind')} htmlFor="media-kind">
@@ -277,7 +278,7 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
             )}
           </ModalBody>
 
-          <ModalFooter>
+          <ModalFooter className="shrink-0 border-t border-border pt-3">
             <Button
               type="button"
               variant="outline"
@@ -418,15 +419,21 @@ export function ProductMediaDialog({
     setLoadError(null);
     setActionError(null);
     try {
-      const [mediaList, optList, otPage] = await Promise.all([
+      const [mediaList, optList, otLive, otArch] = await Promise.all([
         listProductMedia(pId),
         listProductOptions(pId),
         listOptionTypesPage({ limit: 100 }),
+        listOptionTypesPage({ archived: true, limit: 100 }).catch(() => ({ optionTypes: [] })),
       ]);
       if (mounted.current && product.id === pId) {
         setMediaAssets(mediaList);
         setProductOptions(optList);
-        setOptionTypes(otPage.optionTypes);
+        const map = new Map<string, OptionType>();
+        for (const ot of otLive.optionTypes) map.set(ot.id, ot);
+        for (const ot of otArch.optionTypes) {
+          if (!map.has(ot.id)) map.set(ot.id, ot);
+        }
+        setOptionTypes(Array.from(map.values()));
       }
     } catch (e) {
       if (mounted.current && product.id === pId) {
@@ -578,7 +585,8 @@ export function ProductMediaDialog({
     setTaggingId(assetId);
     setActionError(null);
     const ot = optionTypeMap.get(optionTypeId);
-    const otName = ot?.name.en ?? optionTypeId;
+    const po = productOptions.find((p) => p.optionTypeId === optionTypeId);
+    const otName = ot?.name.en ?? po?.optionTypeName?.en ?? po?.optionTypeCode ?? 'Option';
 
     try {
       if (!optionValueId) {
@@ -608,11 +616,21 @@ export function ProductMediaDialog({
   return (
     <>
       <Modal open={open} onOpenChange={onOpenChange}>
-        <ModalContent className="max-w-4xl max-h-[90vh] flex flex-col">
-          <ModalHeader>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <ModalTitle>{t('products.media.dialogTitle')}</ModalTitle>
+        <ModalContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <ModalHeader className="shrink-0 pr-10">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <ModalTitle className="flex flex-wrap items-center gap-2">
+                  <span>{t('products.media.dialogTitle')}</span>
+                  {product && (
+                    <span
+                      className="max-w-xs sm:max-w-sm truncate text-sm font-normal text-muted-foreground"
+                      title={product.title?.en ?? product.slug}
+                    >
+                      — {product.title?.en ?? product.slug}
+                    </span>
+                  )}
+                </ModalTitle>
                 <ModalDescription>
                   {isArchived
                     ? t('products.media.dialogSubtitleArchived')
@@ -624,7 +642,7 @@ export function ProductMediaDialog({
                   type="button"
                   size="sm"
                   onClick={() => setFormModalState({ open: true, asset: null })}
-                  className="gap-1.5 shrink-0"
+                  className="w-full sm:w-auto gap-1.5 shrink-0"
                 >
                   <Plus className="size-4" />
                   {t('products.media.addMedia')}
@@ -633,13 +651,13 @@ export function ProductMediaDialog({
             </div>
 
             {/* Filter Tabs */}
-            <div className="mt-3 flex items-center gap-1.5 border-b border-border pb-2">
+            <div className="mt-3 flex items-center gap-1.5 border-b border-border pb-2 overflow-x-auto scrollbar-none">
               <Button
                 type="button"
                 variant={activeFilter === 'all' ? 'primary' : 'ghost'}
                 size="sm"
                 onClick={() => setActiveFilter('all')}
-                className="h-7 text-xs"
+                className="h-7 text-xs shrink-0 whitespace-nowrap"
               >
                 {t('products.media.filterAll', { count: mediaAssets.length })}
               </Button>
@@ -648,7 +666,7 @@ export function ProductMediaDialog({
                 variant={activeFilter === 'general' ? 'primary' : 'ghost'}
                 size="sm"
                 onClick={() => setActiveFilter('general')}
-                className="h-7 text-xs"
+                className="h-7 text-xs shrink-0 whitespace-nowrap"
               >
                 {t('products.media.filterGeneral', { count: generalCount })}
               </Button>
@@ -657,14 +675,14 @@ export function ProductMediaDialog({
                 variant={activeFilter === 'variant' ? 'primary' : 'ghost'}
                 size="sm"
                 onClick={() => setActiveFilter('variant')}
-                className="h-7 text-xs"
+                className="h-7 text-xs shrink-0 whitespace-nowrap"
               >
                 {t('products.media.filterVariant', { count: variantCount })}
               </Button>
             </div>
           </ModalHeader>
 
-          <ModalBody className="flex-1 overflow-y-auto space-y-4 py-3">
+          <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-3">
             {actionError && (
               <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm font-medium text-destructive">
                 {actionError}
@@ -897,7 +915,11 @@ export function ProductMediaDialog({
                           ) : (
                             productOptions.map((po) => {
                               const ot = optionTypeMap.get(po.optionTypeId);
-                              const otName = ot?.name.en ?? po.optionTypeCode;
+                              const otName =
+                                ot?.name.en ??
+                                po.optionTypeName?.en ??
+                                po.optionTypeCode ??
+                                'Option';
                               const currentTag = asset.tags.find(
                                 (tg) => tg.optionTypeId === po.optionTypeId,
                               );
@@ -925,7 +947,7 @@ export function ProductMediaDialog({
                                     <option value="">{t('products.media.untagged')}</option>
                                     {po.values.map((v) => (
                                       <option key={v.optionValueId} value={v.optionValueId}>
-                                        {v.code}
+                                        {capForMessage(v.code, 35)}
                                       </option>
                                     ))}
                                   </select>
@@ -942,8 +964,8 @@ export function ProductMediaDialog({
             )}
           </ModalBody>
 
-          <ModalFooter className="flex items-center justify-between border-t border-border pt-3">
-            <div className="flex items-center gap-2">
+          <ModalFooter className="shrink-0 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between border-t border-border pt-3 gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               {onManageVariants && product && (
                 <Button
                   type="button"
@@ -953,7 +975,7 @@ export function ProductMediaDialog({
                     onOpenChange(false);
                     onManageVariants(product);
                   }}
-                  className="gap-1.5"
+                  className="w-full sm:w-auto gap-1.5"
                 >
                   <ArrowLeft className="size-4" />
                   {t('products.media.backToVariants')}
@@ -968,14 +990,20 @@ export function ProductMediaDialog({
                     onOpenChange(false);
                     onConfigureOptions(product);
                   }}
-                  className="gap-1.5"
+                  className="w-full sm:w-auto gap-1.5"
                 >
                   <ArrowLeft className="size-4" />
                   {t('products.media.backToOptions')}
                 </Button>
               )}
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => onOpenChange(false)}
+            >
               {t('products.media.close')}
             </Button>
           </ModalFooter>

@@ -471,4 +471,17 @@ describe('ProductMediaDialog', () => {
       within(navySecondaryCard as HTMLElement).queryByText('Variant Lead'),
     ).not.toBeInTheDocument();
   });
+
+  it('renders responsive structure with pr-10 header and overflow-x-auto filter tabs', async () => {
+    mockedListProductMedia.mockResolvedValue([]);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    expect(await screen.findByText('Product Media Gallery')).toBeInTheDocument();
+
+    const modalHeader = document.querySelector('[class*="pr-10"]');
+    expect(modalHeader).toBeInTheDocument();
+    const filterTabsContainer = document.querySelector('.overflow-x-auto');
+    expect(filterTabsContainer).toBeInTheDocument();
+  });
 });

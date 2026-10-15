@@ -4,7 +4,7 @@ import type { Brand, Category, Product } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
 import { listCategories } from '@/features/catalog/categories/api';
 import { listBrandsPage } from '@/features/catalog/brands/api';
-import { deleteProduct, getProduct, listProductsPage, restoreProduct } from './api';
+import { deleteProduct, getProduct, listProductsPage, restoreProduct, updateProduct } from './api';
 import { ProductList } from './product-list';
 
 vi.mock('@/features/catalog/categories/api', () => ({
@@ -22,6 +22,13 @@ vi.mock('./api', () => ({
   restoreProduct: vi.fn(),
   createProduct: vi.fn(),
   updateProduct: vi.fn(),
+  listProductOptions: vi.fn().mockResolvedValue([]),
+  listVariants: vi.fn().mockResolvedValue([]),
+  listProductMedia: vi.fn().mockResolvedValue([]),
+  listProductOffers: vi.fn().mockResolvedValue([]),
+  listSellers: vi.fn().mockResolvedValue([]),
+  listWarehouses: vi.fn().mockResolvedValue([]),
+  getVariantBuybox: vi.fn().mockResolvedValue(null),
 }));
 
 let mockSearchParams = new URLSearchParams();
@@ -44,6 +51,7 @@ const mockedListProductsPage = vi.mocked(listProductsPage);
 const mockedGetProduct = vi.mocked(getProduct);
 const mockedDeleteProduct = vi.mocked(deleteProduct);
 const mockedRestoreProduct = vi.mocked(restoreProduct);
+const mockedUpdateProduct = vi.mocked(updateProduct);
 
 const mockCategories: Category[] = [
   {
@@ -105,6 +113,11 @@ function openFirstRowMenu(): void {
   fireEvent.keyDown(trigger, { key: 'Enter' });
 }
 
+function openFiltersPopover(): void {
+  const trigger = screen.getByRole('button', { name: /Filters/i });
+  fireEvent.click(trigger);
+}
+
 beforeEach(() => {
   mockSearchParams = new URLSearchParams();
   mockedListCategories.mockResolvedValue(mockCategories);
@@ -136,8 +149,12 @@ describe('ProductList', () => {
     expect(screen.getAllByText('Vendor Sneakers')).not.toHaveLength(0);
 
     // Badges
-    expect(screen.getAllByText('In-House (1P)').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Vendor Proposed (3P)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('1P').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('3P').length).toBeGreaterThan(0);
+
+    // Mobile card labeled rows
+    expect(screen.getAllByText(/^Brand:/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^Base Price:/).length).toBeGreaterThan(0);
   });
 
   it('shows empty message when no products match', async () => {
@@ -155,8 +172,10 @@ describe('ProductList', () => {
 
     await screen.findByText('No products yet.');
 
-    const pendingTab = screen.getByRole('button', { name: 'Pending Review' });
-    fireEvent.click(pendingTab);
+    openFiltersPopover();
+
+    const statusSelect = screen.getByLabelText('Status');
+    fireEvent.change(statusSelect, { target: { value: 'pending' } });
 
     await waitFor(() => {
       expect(mockedListProductsPage).toHaveBeenCalledWith(
@@ -171,6 +190,8 @@ describe('ProductList', () => {
     renderAdmin(<ProductList />);
 
     await screen.findByText('No products yet.');
+
+    openFiltersPopover();
 
     const originSelect = screen.getByDisplayValue('All origins');
     fireEvent.change(originSelect, { target: { value: '3p' } });
@@ -331,6 +352,8 @@ describe('ProductList', () => {
     fireEvent.change(searchInput, { target: { value: 'hoodie' } });
     expect(searchInput).toHaveValue('hoodie');
 
+    openFiltersPopover();
+
     // Change origin, category, and brand filters
     const originSelect = screen.getByDisplayValue('All origins');
     fireEvent.change(originSelect, { target: { value: '3p' } });
@@ -344,9 +367,9 @@ describe('ProductList', () => {
     fireEvent.change(brandSelect, { target: { value: 'brand-1' } });
     expect(brandSelect).toHaveValue('brand-1');
 
-    // Switch to Archived tab
-    const archivedTab = screen.getByRole('button', { name: 'Archived' });
-    fireEvent.click(archivedTab);
+    // Switch status to Archived
+    const statusSelect = screen.getByLabelText('Status');
+    fireEvent.change(statusSelect, { target: { value: 'archived' } });
 
     // Verify secondary filters and search input reset
     expect(searchInput).toHaveValue('');
@@ -362,5 +385,139 @@ describe('ProductList', () => {
         }),
       );
     });
+  });
+
+  it('clears all filters when clicking Clear filters inside popover', async () => {
+    const item = sampleProduct('p-1', 'Platform Hoodie');
+    mockedListProductsPage.mockResolvedValue({ products: [item], nextCursor: undefined });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Platform Hoodie')).not.toHaveLength(0);
+
+    openFiltersPopover();
+
+    const originSelect = screen.getByDisplayValue('All origins');
+    fireEvent.change(originSelect, { target: { value: '3p' } });
+
+    // When filters are active, there is a clear button outside and one inside the popover.
+    // Query the clear button inside the popover:
+    const clearBtn = screen.getAllByRole('button', { name: 'Clear filters' })[0]!;
+    expect(clearBtn).not.toBeDisabled();
+    fireEvent.click(clearBtn);
+
+    expect(screen.getByDisplayValue('All origins')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeDisabled();
+  });
+
+  it('renders em-dash for unbranded product and fallback for archived category and brand', async () => {
+    mockedListProductsPage.mockResolvedValueOnce({
+      products: [
+        sampleProduct('p-unbranded', 'Raw Shirt', {
+          brandId: null,
+          categoryId: 'cat-nonexistent',
+          basePriceMinor: '1999',
+          currency: 'USD',
+        }),
+        sampleProduct('p-archived-brand', 'Vintage Jacket', {
+          brandId: 'brand-archived-123',
+          categoryId: 'cat-1',
+          basePriceMinor: '4999',
+          currency: 'USD',
+        }),
+      ],
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Raw Shirt')).not.toHaveLength(0);
+    expect(screen.getAllByText('Vintage Jacket')).not.toHaveLength(0);
+    // Unbranded shows em-dash '—'
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    // Nonexistent / archived category shows 'Archived category'
+    expect(screen.getAllByText('Archived category').length).toBeGreaterThan(0);
+    // Nonexistent / archived brand shows 'Archived brand' (never '—')
+    expect(screen.getAllByText('Archived brand').length).toBeGreaterThan(0);
+    // Single line base price formatted
+    expect(screen.getAllByText(/19\.99/).length).toBeGreaterThan(0);
+  });
+
+  it('removes approved vendor proposal from pending list view after successful review', async () => {
+    const validCatId = '22222222-2222-2222-2222-222222222222';
+    mockedListCategories.mockResolvedValue([{ ...mockCategories[0]!, id: validCatId }]);
+    const pendingItem = sampleProduct('p-pending', 'Vendor Proposal', {
+      categoryId: validCatId,
+      brandId: null,
+      status: 'pending',
+      proposedBySellerId: 'seller-abc',
+    });
+    mockSearchParams = new URLSearchParams('tab=pending');
+    mockedListProductsPage.mockResolvedValue({ products: [pendingItem], nextCursor: undefined });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Vendor Proposal')).not.toHaveLength(0);
+
+    openFirstRowMenu();
+
+    const reviewMenuItem = await screen.findByRole('menuitem', { name: 'Review proposal' });
+    fireEvent.click(reviewMenuItem);
+
+    const approveBtn = await screen.findByRole('button', { name: 'Approve & Publish' });
+    const approvedProduct = { ...pendingItem, status: 'active' as const };
+    mockedUpdateProduct.mockResolvedValueOnce(approvedProduct);
+
+    fireEvent.click(approveBtn);
+
+    // Product was approved -> status is now 'active', so it no longer matches the 'pending' tab filter
+    // and is immediately removed from the pending list
+    await waitFor(() => {
+      expect(mockedUpdateProduct).toHaveBeenCalledWith(
+        'p-pending',
+        expect.objectContaining({ status: 'active' }),
+      );
+      expect(screen.queryByText('Vendor Proposal')).not.toBeInTheDocument();
+    });
+  });
+
+  it('opens view details modal for archived product from row menu', async () => {
+    const validCatId = mockCategories[0]!.id;
+    const archivedItem = sampleProduct('p-archived', 'Archived Hoodie', {
+      categoryId: validCatId,
+      status: 'archived',
+      archivedAt: '2026-02-01T00:00:00.000Z',
+    });
+    mockSearchParams = new URLSearchParams('tab=archived');
+    mockedListProductsPage.mockResolvedValue({ products: [archivedItem], nextCursor: undefined });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Archived Hoodie')).not.toHaveLength(0);
+
+    openFirstRowMenu();
+
+    const viewMenuItem = await screen.findByRole('menuitem', { name: 'View details' });
+    fireEvent.click(viewMenuItem);
+
+    expect(await screen.findByText('Product details (Archived)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+  });
+
+  it('opens offers & stock dialog from row menu', async () => {
+    const item = sampleProduct('p-1', 'Platform Hoodie');
+    mockedListProductsPage.mockResolvedValue({ products: [item], nextCursor: undefined });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Platform Hoodie')).not.toHaveLength(0);
+
+    openFirstRowMenu();
+
+    const offersBtn = await screen.findByRole('menuitem', { name: 'Offers & Stock' });
+    fireEvent.click(offersBtn);
+
+    expect(await screen.findByText('Offers & Stock')).toBeInTheDocument();
   });
 });

@@ -355,4 +355,36 @@ describe('ProductOptionsDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onManageVariants).toHaveBeenCalledWith(sampleProduct);
   });
+
+  it('resolves archived option type name from optionTypeName and renders responsive structure', async () => {
+    const archivedPo: ProductOption = {
+      productId: 'prod_1',
+      optionTypeId: 'ot_archived_fabric',
+      optionTypeCode: 'fabric',
+      optionTypeName: { en: 'Fabric' },
+      position: 0,
+      requiredValueId: null,
+      values: [{ optionValueId: 'val_cotton', code: 'cotton', position: 0 }],
+    };
+    mockedListProductOptions.mockResolvedValue([archivedPo]);
+    mockedListOptionTypesPage.mockResolvedValue({
+      optionTypes: [],
+      nextCursor: undefined,
+    });
+    mockedListCategoryOptions.mockResolvedValue([]);
+
+    renderAdmin(
+      <ProductOptionsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Fabric (Archived)')).toBeInTheDocument();
+      expect(screen.getByText('/fabric')).toBeInTheDocument();
+    });
+
+    const modalHeader = document.querySelector('[class*="pr-10"]');
+    expect(modalHeader).toBeInTheDocument();
+    const minWTable = document.querySelector('.min-w-\\[640px\\]');
+    expect(minWTable).toBeInTheDocument();
+  });
 });

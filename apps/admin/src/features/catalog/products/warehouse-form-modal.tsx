@@ -108,16 +108,16 @@ export function WarehouseFormModal({
         onOpenChange(v);
       }}
     >
-      <ModalContent className="max-w-lg">
-        <form onSubmit={handleSubmit}>
-          <ModalHeader>
+      <ModalContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <ModalHeader className="shrink-0 border-b border-border pb-4">
             <ModalTitle>{t('products.offers.warehouseModal.title')}</ModalTitle>
             <ModalDescription>
               {t('products.offers.warehouseModal.subtitle', { seller: sellerName })}
             </ModalDescription>
           </ModalHeader>
 
-          <ModalBody className="space-y-4">
+          <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
             {error && (
               <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
                 {error}
@@ -204,7 +204,7 @@ export function WarehouseFormModal({
             </div>
           </ModalBody>
 
-          <ModalFooter>
+          <ModalFooter className="shrink-0 border-t border-border pt-3">
             <Button
               type="button"
               variant="outline"

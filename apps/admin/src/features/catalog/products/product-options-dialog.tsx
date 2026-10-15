@@ -14,6 +14,7 @@ import type {
 import {
   Button,
   Checkbox,
+  cn,
   Modal,
   ModalBody,
   ModalContent,
@@ -37,6 +38,7 @@ import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import { listValueSets } from '@/features/catalog/value-sets/api';
+import { capForMessage } from '@/lib/format';
 import {
   deleteProductOption,
   listProductOptions,
@@ -120,15 +122,15 @@ function ValueSelectModal({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-lg">
-        <ModalHeader>
+      <ModalContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <ModalHeader className="shrink-0 border-b border-border pb-4">
           <ModalTitle>{t('products.options.selectValuesTitle')}</ModalTitle>
           <ModalDescription>
             {t('products.options.selectValuesHint', { name: optName })}
           </ModalDescription>
         </ModalHeader>
 
-        <ModalBody className="space-y-4">
+        <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
           {categoryOption?.valueSource === 'predefined' && valueSet && (
             <div className="rounded-md bg-muted/60 p-2 text-xs text-muted-foreground">
               {t('products.options.predefinedValues')}:{' '}
@@ -190,7 +192,7 @@ function ValueSelectModal({
           {error && <p className="text-sm font-medium text-destructive">{error}</p>}
         </ModalBody>
 
-        <ModalFooter>
+        <ModalFooter className="shrink-0 border-t border-border pt-3">
           <Button
             type="button"
             variant="outline"
@@ -258,16 +260,22 @@ export function ProductOptionsDialog({
     setLoadError(null);
     setActionError(null);
     try {
-      const [pOpts, cOpts, otPage, vsList] = await Promise.all([
+      const [pOpts, cOpts, otLive, otArch, vsList] = await Promise.all([
         listProductOptions(pId),
         listCategoryOptions(cId),
         listOptionTypesPage({ limit: 100 }),
+        listOptionTypesPage({ archived: true, limit: 100 }).catch(() => ({ optionTypes: [] })),
         listValueSets(),
       ]);
       if (mounted.current && product.id === pId) {
         setProductOptions(pOpts);
         setCategoryOptions(cOpts);
-        setOptionTypes(otPage.optionTypes);
+        const map = new Map<string, OptionType>();
+        for (const ot of otLive.optionTypes) map.set(ot.id, ot);
+        for (const ot of otArch.optionTypes) {
+          if (!map.has(ot.id)) map.set(ot.id, ot);
+        }
+        setOptionTypes(Array.from(map.values()));
         setValueSets(vsList);
       }
     } catch (e) {
@@ -405,7 +413,12 @@ export function ProductOptionsDialog({
 
   const optName = (optionTypeId: string): string => {
     const ot = optionTypeMap.get(optionTypeId);
-    return ot?.name.en || ot?.code || optionTypeId;
+    if (ot?.name.en) return ot.name.en;
+    if (ot?.code) return ot.code;
+    const po = productOptions.find((p) => p.optionTypeId === optionTypeId);
+    if (po?.optionTypeName?.en) return `${po.optionTypeName.en} (Archived)`;
+    if (po?.optionTypeCode) return `${po.optionTypeCode} (Archived)`;
+    return t('products.options.archivedOption');
   };
 
   const targetPo = productOptions.find((po) => po.optionTypeId === valueSelectTarget);
@@ -416,13 +429,16 @@ export function ProductOptionsDialog({
   return (
     <>
       <Modal open={open} onOpenChange={onOpenChange}>
-        <ModalContent className="max-w-4xl">
-          <ModalHeader>
-            <ModalTitle className="flex items-center gap-2">
-              <SlidersHorizontal className="size-5 text-primary" aria-hidden />
+        <ModalContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <ModalHeader className="shrink-0 border-b border-border pb-4 pr-10">
+            <ModalTitle className="flex flex-wrap items-center gap-2">
+              <SlidersHorizontal className="size-5 text-primary shrink-0" aria-hidden />
               <span>{t('products.options.dialogTitle')}</span>
               {product && (
-                <span className="text-sm font-normal text-muted-foreground">
+                <span
+                  className="max-w-xs sm:max-w-sm truncate text-sm font-normal text-muted-foreground"
+                  title={product.title?.en ?? product.slug}
+                >
                   — {product.title?.en ?? product.slug}
                 </span>
               )}
@@ -430,7 +446,7 @@ export function ProductOptionsDialog({
             <ModalDescription>{t('products.options.dialogSubtitle')}</ModalDescription>
           </ModalHeader>
 
-          <ModalBody className="space-y-5">
+          <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-5 py-4">
             {loading ? (
               <div className="space-y-3 py-4">
                 <Skeleton className="h-10 w-full" />
@@ -472,13 +488,13 @@ export function ProductOptionsDialog({
                     {t('products.options.noCategoryOptionsConfigured')}
                   </div>
                 ) : availableToAdd.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
-                    <div className="min-w-64 flex-1">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-lg border border-border bg-card p-3">
+                    <div className="min-w-0 flex-1">
                       <select
                         value={selectedToAdd}
                         onChange={(e) => setSelectedToAdd(e.target.value)}
                         disabled={adding}
-                        className={selectCls}
+                        className={cn(selectCls, 'w-full truncate')}
                         aria-label={t('products.options.selectOptionType')}
                       >
                         <option value="">{t('products.options.selectOptionType')}</option>
@@ -488,7 +504,7 @@ export function ProductOptionsDialog({
                           const isAxis = co.isVariantAxis;
                           return (
                             <option key={co.optionTypeId} value={co.optionTypeId}>
-                              {name} {isReq ? '★ (Required)' : ''}{' '}
+                              {capForMessage(name, 40)} {isReq ? '★ (Required)' : ''}{' '}
                               {isAxis ? '[Variant Axis]' : '[Info]'}
                             </option>
                           );
@@ -499,6 +515,7 @@ export function ProductOptionsDialog({
                       type="button"
                       disabled={!selectedToAdd || adding}
                       onClick={handleAddOption}
+                      className="w-full sm:w-auto shrink-0"
                     >
                       {adding ? <Spinner className="size-4" /> : <Plus className="size-4" />}
                       {t('products.options.addOption')}
@@ -523,7 +540,7 @@ export function ProductOptionsDialog({
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-border">
-                    <Table>
+                    <Table className="min-w-[640px]">
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-48">Option Axis</TableHead>
@@ -623,7 +640,7 @@ export function ProductOptionsDialog({
                                     </option>
                                     {po.values.map((v) => (
                                       <option key={v.optionValueId} value={v.optionValueId}>
-                                        Only {v.code} (Skip picker)
+                                        Only {capForMessage(v.code, 35)} (Skip picker)
                                       </option>
                                     ))}
                                   </select>
@@ -659,8 +676,8 @@ export function ProductOptionsDialog({
             )}
           </ModalBody>
 
-          <ModalFooter className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <ModalFooter className="shrink-0 border-t border-border pt-3 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               {onManageVariants && product && (
                 <Button
                   type="button"
@@ -669,7 +686,7 @@ export function ProductOptionsDialog({
                     onOpenChange(false);
                     onManageVariants(product);
                   }}
-                  className="gap-2"
+                  className="w-full sm:w-auto gap-2"
                 >
                   <Layers className="size-4" />
                   {t('products.options.proceedToVariants')}
@@ -683,14 +700,19 @@ export function ProductOptionsDialog({
                     onOpenChange(false);
                     onManageMedia(product);
                   }}
-                  className="gap-2"
+                  className="w-full sm:w-auto gap-2"
                 >
                   <ImageIcon className="size-4" />
                   {t('products.mediaAction')}
                 </Button>
               )}
             </div>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => onOpenChange(false)}
+            >
               {t('products.options.close')}
             </Button>
           </ModalFooter>

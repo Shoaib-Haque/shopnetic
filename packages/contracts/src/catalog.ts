@@ -519,6 +519,7 @@ export const productOptionSchema = z.object({
   productId: z.string(),
   optionTypeId: z.string(),
   optionTypeCode: z.string(),
+  optionTypeName: localizedTextSchema.optional(),
   position: z.number().int(),
   requiredValueId: z.string().nullable(),
   values: z.array(productOptionValueRefSchema),
@@ -547,6 +548,10 @@ export type VariantStatus = z.infer<typeof variantStatusSchema>;
 export const variantSelectionSchema = z.object({
   optionTypeId: z.string(),
   optionValueId: z.string(),
+  optionTypeCode: z.string().optional(),
+  optionTypeName: localizedTextSchema.optional(),
+  optionValueCode: z.string().optional(),
+  optionValueLabel: localizedTextSchema.optional(),
 });
 export type VariantSelection = z.infer<typeof variantSelectionSchema>;
 

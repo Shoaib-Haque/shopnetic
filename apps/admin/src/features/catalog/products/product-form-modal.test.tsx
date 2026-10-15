@@ -219,11 +219,39 @@ describe('ProductFormModal', () => {
       />,
     );
 
+    const titleInput = screen.getByLabelText(/Title/i);
+    fireEvent.change(titleInput, { target: { value: 'Conflicted Title' } });
+
     const saveBtn = screen.getByRole('button', { name: 'Save' });
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
       expect(onConflict).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('closes modal without calling updateProduct when saving unchanged product in edit mode', async () => {
+    const onOpenChange = vi.fn();
+    const product = sampleProduct();
+
+    renderAdmin(
+      <ProductFormModal
+        open
+        onOpenChange={onOpenChange}
+        mode="edit"
+        product={product}
+        categories={mockCategories}
+        brands={mockBrands}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    const saveBtn = screen.getByRole('button', { name: 'Save' });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(mockedUpdateProduct).not.toHaveBeenCalled();
     });
   });
 
@@ -329,5 +357,43 @@ describe('ProductFormModal', () => {
     expect(screen.getByText('Product details (Archived)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+  });
+
+  it('prompts to confirm discarding unsaved changes when closing a dirty form', async () => {
+    const onOpenChange = vi.fn();
+
+    renderAdmin(
+      <ProductFormModal
+        open
+        onOpenChange={onOpenChange}
+        mode="create"
+        categories={mockCategories}
+        brands={mockBrands}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    // Form starts clean; modify a field to make it dirty
+    const titleInput = screen.getByLabelText(/Title/i);
+    fireEvent.change(titleInput, { target: { value: 'Dirty Draft Title' } });
+
+    // Click Cancel button in footer
+    const cancelBtn = screen
+      .getAllByRole('button', { name: 'Cancel' })
+      .find((b) => b.textContent === 'Cancel')!;
+    fireEvent.click(cancelBtn);
+
+    // Discard confirmation dialog should appear; onOpenChange should NOT be called yet
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(await screen.findByText('Discard changes?')).toBeInTheDocument();
+    expect(
+      screen.getByText('You have unsaved changes. If you close now, they will be lost.'),
+    ).toBeInTheDocument();
+
+    // Confirm discard
+    const discardBtn = screen.getByRole('button', { name: 'Discard' });
+    fireEvent.click(discardBtn);
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

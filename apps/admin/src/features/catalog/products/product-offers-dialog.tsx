@@ -263,13 +263,21 @@ export function ProductOffersDialog({
   return (
     <>
       <Modal open={open} onOpenChange={onOpenChange}>
-        <ModalContent className="max-w-4xl max-h-[92vh] flex flex-col p-0">
+        <ModalContent className="max-w-4xl max-h-[85vh] flex flex-col p-0">
           {/* Header */}
-          <ModalHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
-            <div className="flex items-start justify-between gap-4">
+          <ModalHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0 pr-12">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <ModalTitle>{t('products.offers.dialogTitle')}</ModalTitle>
+                  {product && (
+                    <span
+                      className="max-w-xs sm:max-w-sm truncate text-sm font-normal text-muted-foreground"
+                      title={product.title?.en ?? product.slug}
+                    >
+                      — {product.title?.en ?? product.slug}
+                    </span>
+                  )}
                   {isArchived && (
                     <StatusBadge tone="neutral" className="text-xs">
                       Archived
@@ -284,13 +292,13 @@ export function ProductOffersDialog({
               </div>
 
               {!isArchived && (
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => openNewWarehouseModal()}
-                    className="gap-1.5"
+                    className="w-full sm:w-auto gap-1.5"
                   >
                     <Building2 className="size-3.5" />
                     {t('products.offers.addWarehouse')}
@@ -299,7 +307,7 @@ export function ProductOffersDialog({
                     type="button"
                     size="sm"
                     onClick={() => setOfferFormState({ open: true, offer: null })}
-                    className="gap-1.5"
+                    className="w-full sm:w-auto gap-1.5"
                   >
                     <Plus className="size-3.5" />
                     {t('products.offers.createOffer')}
@@ -319,7 +327,7 @@ export function ProductOffersDialog({
                       key={v.id}
                       type="button"
                       onClick={() => setSelectedVariantId(v.id)}
-                      className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                      className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-all shrink-0 whitespace-nowrap ${
                         isSelected
                           ? 'bg-primary text-primary-foreground shadow-sm'
                           : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -343,7 +351,7 @@ export function ProductOffersDialog({
           </ModalHeader>
 
           {/* Body */}
-          <ModalBody className="flex-1 overflow-y-auto p-6 space-y-6">
+          <ModalBody className="min-h-0 flex-1 overflow-y-auto p-6 space-y-6">
             {loading ? (
               <div className="space-y-4">
                 <Skeleton className="h-24 w-full rounded-xl" />
@@ -460,8 +468,8 @@ export function ProductOffersDialog({
                     )}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-border overflow-hidden">
-                    <Table>
+                  <div className="rounded-xl border border-border overflow-x-auto">
+                    <Table className="min-w-[680px]">
                       <TableHeader>
                         <TableRow>
                           <TableHead>{t('products.offers.table.seller')}</TableHead>
@@ -678,7 +686,7 @@ export function ProductOffersDialog({
           </ModalBody>
 
           {/* Footer */}
-          <ModalFooter className="px-6 py-4 border-t border-border shrink-0 flex items-center justify-between">
+          <ModalFooter className="px-6 py-4 border-t border-border shrink-0 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2">
             <div>
               {onBackToVariants && product && (
                 <Button
@@ -689,7 +697,7 @@ export function ProductOffersDialog({
                     onOpenChange(false);
                     onBackToVariants(product);
                   }}
-                  className="gap-1.5"
+                  className="w-full sm:w-auto gap-1.5"
                 >
                   <ArrowLeft className="size-3.5" />
                   {t('products.variants.dialogTitle')}
@@ -697,7 +705,12 @@ export function ProductOffersDialog({
               )}
             </div>
 
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => onOpenChange(false)}
+            >
               Close
             </Button>
           </ModalFooter>

@@ -11,6 +11,7 @@ import { FormModal } from '@/components/crud/form-modal';
 import { slugify, slugifyLive } from '@/lib/slugify';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
+import { capForMessage } from '@/lib/format';
 import { createProduct, updateProduct } from './api';
 
 const selectCls =
@@ -200,6 +201,10 @@ export function ProductFormModal({
   }
 
   async function onSubmit(values: FormValues): Promise<void> {
+    if (mode === 'edit' && !isDirty) {
+      onOpenChange(false);
+      return;
+    }
     const status = mode === 'review' ? 'active' : values.status;
     setSubmittingAction(mode === 'review' ? 'approve' : 'save');
     try {
@@ -329,7 +334,7 @@ export function ProductFormModal({
             </option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name.en || c.slug}
+                {capForMessage(c.name.en || c.slug, 60)}
               </option>
             ))}
           </select>
@@ -359,7 +364,7 @@ export function ProductFormModal({
           <option value="">{t('products.form.noBrand')}</option>
           {brands.map((b) => (
             <option key={b.id} value={b.id}>
-              {b.name}
+              {capForMessage(b.name, 60)}
             </option>
           ))}
         </select>

@@ -255,10 +255,15 @@ export class ProductService {
 
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
     const current = await this.rowOrThrow(id);
+    const currentSpec = (current.spec as Record<string, unknown>) ?? {};
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({
         where: { id },
-        data: { deletedAt: new Date(), status: 'archived' },
+        data: {
+          deletedAt: new Date(),
+          status: 'archived',
+          spec: { ...currentSpec, _previousStatus: current.status } as Prisma.InputJsonValue,
+        },
       });
       await writeCatalogOutbox(tx, 'product', 'product.deleted', id, { id });
     });
@@ -309,12 +314,24 @@ export class ProductService {
 
     await this.assertSlugFree(current.slug, id);
 
+    const currentSpec = { ...((current.spec as Record<string, unknown>) ?? {}) };
+    const prevStatus = currentSpec._previousStatus as Product['status'] | undefined;
+    delete currentSpec._previousStatus;
+
+    const nextStatus =
+      prevStatus && prevStatus !== 'archived'
+        ? prevStatus
+        : current.status === 'archived'
+          ? 'active'
+          : current.status;
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const row = await tx.product.update({
         where: { id },
         data: {
           deletedAt: null,
-          status: current.status === 'archived' ? 'draft' : current.status,
+          status: nextStatus,
+          spec: currentSpec as Prisma.InputJsonValue,
         },
       });
       await writeCatalogOutbox(tx, 'product', 'product.restored', id, { id });
@@ -423,6 +440,9 @@ function assertPriceCoherent(priceMinor: number | null, currency: string | null)
 }
 
 function toView(row: ProductRow): Product {
+  const spec = { ...((row.spec as Record<string, unknown>) ?? {}) };
+  delete spec['_previousStatus'];
+
   return {
     id: row.id,
     categoryId: row.categoryId,
@@ -433,7 +453,7 @@ function toView(row: ProductRow): Product {
     status: row.status,
     basePriceMinor: row.basePriceMinor === null ? null : row.basePriceMinor.toString(),
     currency: row.currency,
-    spec: (row.spec as Record<string, unknown>) ?? {},
+    spec,
     proposedBySellerId: row.proposedBySellerId,
     archivedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),

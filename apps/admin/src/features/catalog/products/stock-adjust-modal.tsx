@@ -156,14 +156,27 @@ export function StockAdjustModal({
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <ModalHeader className="shrink-0 border-b border-border pb-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <ModalTitle>
                 {t('products.offers.stockModal.title', { seller: offer.sellerName })}
               </ModalTitle>
               <ModalDescription className="mt-1">
                 {t('products.offers.stockModal.subtitle')}
               </ModalDescription>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-mono font-medium text-foreground">{offer.skuCode}</span>
+                <span>•</span>
+                <span className="capitalize">
+                  {t(`products.offers.condition.${offer.condition}`)}
+                </span>
+                <span>•</span>
+                <span>
+                  Total Available:{' '}
+                  <strong className="text-foreground">{offer.totalAvailable}</strong> (
+                  {offer.totalOnHand} on hand)
+                </span>
+              </div>
             </div>
             {onNewWarehouseRequested && (
               <Button
@@ -171,26 +184,16 @@ export function StockAdjustModal({
                 variant="outline"
                 size="sm"
                 onClick={onNewWarehouseRequested}
-                className="gap-1.5 shrink-0"
+                className="gap-1.5 w-full sm:w-auto shrink-0"
               >
                 <Plus className="size-3.5" />
                 {t('products.offers.stockModal.addWarehouse')}
               </Button>
             )}
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-mono font-medium text-foreground">{offer.skuCode}</span>
-            <span>•</span>
-            <span className="capitalize">{t(`products.offers.condition.${offer.condition}`)}</span>
-            <span>•</span>
-            <span>
-              Total Available: <strong className="text-foreground">{offer.totalAvailable}</strong> (
-              {offer.totalOnHand} on hand)
-            </span>
-          </div>
         </ModalHeader>
 
-        <ModalBody className="flex-1 overflow-y-auto space-y-4 py-4">
+        <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
           {warehouses.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border py-10 text-center">
               <Building2 className="mx-auto size-8 text-muted-foreground/60" aria-hidden />

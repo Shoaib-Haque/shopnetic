@@ -57,6 +57,7 @@ import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
+import { capForMessage } from '@/lib/format';
 import {
   createVariant,
   deleteVariant,
@@ -262,8 +263,8 @@ function GeneratorModal({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-2xl">
-        <ModalHeader>
+      <ModalContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <ModalHeader className="shrink-0 border-b border-border pb-4">
           <ModalTitle className="flex items-center gap-2">
             <Wand2 className="size-5 text-primary" aria-hidden />
             <span>{t('products.variants.matrix.title')}</span>
@@ -271,7 +272,7 @@ function GeneratorModal({
           <ModalDescription>{t('products.variants.matrix.description')}</ModalDescription>
         </ModalHeader>
 
-        <ModalBody className="space-y-4">
+        <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
           <div className="rounded-lg border border-border bg-card p-3 text-sm">
             <p className="font-medium text-foreground">
               {t('products.variants.matrix.totalCombos', { total })}
@@ -386,7 +387,7 @@ function GeneratorModal({
           )}
         </ModalBody>
 
-        <ModalFooter>
+        <ModalFooter className="shrink-0 border-t border-border pt-3">
           <Button
             type="button"
             variant="outline"
@@ -567,9 +568,9 @@ function VariantFormModal({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-lg">
-        <form onSubmit={handleSave}>
-          <ModalHeader>
+      <ModalContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
+          <ModalHeader className="shrink-0 border-b border-border pb-4">
             <ModalTitle>
               {isEdit
                 ? t('products.variants.form.editTitle')
@@ -582,7 +583,7 @@ function VariantFormModal({
             </ModalDescription>
           </ModalHeader>
 
-          <ModalBody className="space-y-4">
+          <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
             {/* Selections section */}
             {isEdit && variant ? (
               <div className="rounded-md bg-muted/50 p-2.5">
@@ -596,13 +597,30 @@ function VariantFormModal({
                     variant.selections.map((sel) => {
                       const ot = optionTypeMap.get(sel.optionTypeId);
                       const ov = ot?.values.find((v) => v.id === sel.optionValueId);
+                      const po = productOptions.find((p) => p.optionTypeId === sel.optionTypeId);
+                      const pv = po?.values.find((v) => v.optionValueId === sel.optionValueId);
+
+                      const typeName =
+                        sel.optionTypeName?.en ||
+                        sel.optionTypeCode ||
+                        ot?.name.en ||
+                        po?.optionTypeName?.en ||
+                        po?.optionTypeCode ||
+                        'Option';
+                      const valLabel =
+                        sel.optionValueLabel?.en ||
+                        sel.optionValueCode ||
+                        ov?.label.en ||
+                        ov?.code ||
+                        pv?.code ||
+                        '—';
+
                       return (
                         <span
                           key={sel.optionTypeId}
                           className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
                         >
-                          {ot?.name.en ?? sel.optionTypeId}:{' '}
-                          {ov?.label.en ?? ov?.code ?? sel.optionValueId}
+                          {typeName}: {valLabel}
                         </span>
                       );
                     })
@@ -635,7 +653,7 @@ function VariantFormModal({
                           const valObj = ot?.values.find((val) => val.id === v.optionValueId);
                           return (
                             <option key={v.optionValueId} value={v.optionValueId}>
-                              {valObj?.label.en ?? v.code}
+                              {capForMessage(valObj?.label.en ?? v.code, 40)}
                             </option>
                           );
                         })}
@@ -731,7 +749,7 @@ function VariantFormModal({
             )}
           </ModalBody>
 
-          <ModalFooter>
+          <ModalFooter className="shrink-0 border-t border-border pt-3">
             <Button
               type="button"
               variant="outline"
@@ -804,17 +822,23 @@ export function ProductVariantsDialog({
     setLoadError(null);
     setActionError(null);
     try {
-      const [vars, pOpts, cOpts, otPage] = await Promise.all([
+      const [vars, pOpts, cOpts, otLive, otArch] = await Promise.all([
         listVariants(pId),
         listProductOptions(pId),
         listCategoryOptions(cId),
         listOptionTypesPage({ limit: 100 }),
+        listOptionTypesPage({ archived: true, limit: 100 }).catch(() => ({ optionTypes: [] })),
       ]);
       if (mounted.current && product.id === pId) {
         setVariants(vars);
         setProductOptions(pOpts);
         setCategoryOptions(cOpts);
-        setOptionTypes(otPage.optionTypes);
+        const map = new Map<string, OptionType>();
+        for (const ot of otLive.optionTypes) map.set(ot.id, ot);
+        for (const ot of otArch.optionTypes) {
+          if (!map.has(ot.id)) map.set(ot.id, ot);
+        }
+        setOptionTypes(Array.from(map.values()));
       }
     } catch (e) {
       if (mounted.current && product.id === pId) {
@@ -884,15 +908,18 @@ export function ProductVariantsDialog({
   return (
     <>
       <Modal open={open} onOpenChange={onOpenChange}>
-        <ModalContent className="max-w-5xl">
-          <ModalHeader>
-            <div className="flex flex-wrap items-center justify-between gap-3">
+        <ModalContent className="max-w-5xl max-h-[85vh] flex flex-col">
+          <ModalHeader className="shrink-0 border-b border-border pb-4 pr-10">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <ModalTitle className="flex items-center gap-2">
-                  <Layers className="size-5 text-primary" aria-hidden />
+                <ModalTitle className="flex flex-wrap items-center gap-2">
+                  <Layers className="size-5 text-primary shrink-0" aria-hidden />
                   <span>{t('products.variants.dialogTitle')}</span>
                   {product && (
-                    <span className="text-sm font-normal text-muted-foreground">
+                    <span
+                      className="max-w-xs sm:max-w-sm truncate text-sm font-normal text-muted-foreground"
+                      title={product.title?.en ?? product.slug}
+                    >
                       — {product.title?.en ?? product.slug}
                     </span>
                   )}
@@ -900,13 +927,14 @@ export function ProductVariantsDialog({
                 <ModalDescription>{t('products.variants.dialogSubtitle')}</ModalDescription>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => setGeneratorOpen(true)}
                   disabled={loading}
+                  className="w-full sm:w-auto"
                 >
                   <Wand2 className="size-4" />
                   {t('products.variants.generate')}
@@ -916,6 +944,7 @@ export function ProductVariantsDialog({
                   size="sm"
                   onClick={() => setFormModalState({ open: true, variant: null })}
                   disabled={loading}
+                  className="w-full sm:w-auto"
                 >
                   <Plus className="size-4" />
                   {t('products.variants.createSingle')}
@@ -924,7 +953,7 @@ export function ProductVariantsDialog({
             </div>
           </ModalHeader>
 
-          <ModalBody className="space-y-4">
+          <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
             {loading ? (
               <div className="space-y-3 py-4">
                 <Skeleton className="h-10 w-full" />
@@ -984,7 +1013,7 @@ export function ProductVariantsDialog({
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-border">
-                    <Table>
+                    <Table className="min-w-[700px]">
                       <TableHeader>
                         <TableRow>
                           <TableHead>{t('products.variants.table.combination')}</TableHead>
@@ -1023,13 +1052,34 @@ export function ProductVariantsDialog({
                                       const ov = ot?.values.find(
                                         (val) => val.id === sel.optionValueId,
                                       );
+                                      const po = productOptions.find(
+                                        (p) => p.optionTypeId === sel.optionTypeId,
+                                      );
+                                      const pv = po?.values.find(
+                                        (val) => val.optionValueId === sel.optionValueId,
+                                      );
+
+                                      const typeName =
+                                        sel.optionTypeName?.en ||
+                                        sel.optionTypeCode ||
+                                        ot?.name.en ||
+                                        po?.optionTypeName?.en ||
+                                        po?.optionTypeCode ||
+                                        'Option';
+                                      const valLabel =
+                                        sel.optionValueLabel?.en ||
+                                        sel.optionValueCode ||
+                                        ov?.label.en ||
+                                        ov?.code ||
+                                        pv?.code ||
+                                        '—';
+
                                       return (
                                         <span
                                           key={sel.optionTypeId}
                                           className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
                                         >
-                                          {ot?.name.en ?? sel.optionTypeId}:{' '}
-                                          {ov?.label.en ?? ov?.code ?? sel.optionValueId}
+                                          {typeName}: {valLabel}
                                         </span>
                                       );
                                     })
@@ -1108,8 +1158,8 @@ export function ProductVariantsDialog({
             )}
           </ModalBody>
 
-          <ModalFooter className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <ModalFooter className="shrink-0 border-t border-border pt-3 flex flex-row flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-row flex-wrap items-center gap-2">
               {onBackToOptions && product && (
                 <Button
                   type="button"

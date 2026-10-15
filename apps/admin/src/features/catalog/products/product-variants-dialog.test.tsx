@@ -433,4 +433,48 @@ describe('ProductVariantsDialog', () => {
     expect(screen.getByText('1 already exist.')).toBeInTheDocument();
     expect(screen.getByText('3 new available to generate.')).toBeInTheDocument();
   });
+
+  it('renders responsive structure with pr-10 header and min-w-[700px] table container', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Product Variants')).toBeInTheDocument();
+    });
+
+    const modalHeader = document.querySelector('[class*="pr-10"]');
+    expect(modalHeader).toBeInTheDocument();
+    const minWTable = document.querySelector('.min-w-\\[700px\\]');
+    expect(minWTable).toBeInTheDocument();
+    const footer = document.querySelector('[class*="flex-row flex-wrap"]');
+    expect(footer).toBeInTheDocument();
+  });
+
+  it('resolves combination names from denormalized selections without raw UUIDs', async () => {
+    const variantWithDenorm: Variant = {
+      ...sampleVariant,
+      id: 'var_denorm',
+      selections: [
+        {
+          optionTypeId: '01a0b3eb-6700-7e53-88a0-df297e164d68',
+          optionValueId: '01a0b3eb-6702-7f33-92d1-873ff3bef30b',
+          optionTypeName: { en: 'Material' },
+          optionTypeCode: 'material',
+          optionValueLabel: { en: 'Cotton' },
+          optionValueCode: 'cotton',
+        },
+      ],
+    };
+    mockedListVariants.mockResolvedValueOnce([variantWithDenorm]);
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Material: Cotton')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/01a0b3eb-6700/)).not.toBeInTheDocument();
+  });
 });

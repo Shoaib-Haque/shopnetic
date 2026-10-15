@@ -31,6 +31,7 @@ import {
 } from '@shopnetic/ui';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
+import { capForMessage } from '@/lib/format';
 import { createOffer, updateOffer } from './api';
 
 export interface OfferFormModalProps {
@@ -247,8 +248,8 @@ export function OfferFormModal({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-xl max-h-[90vh] flex flex-col">
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+      <ModalContent className="max-w-xl max-h-[85vh] flex flex-col">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <ModalHeader className="shrink-0 border-b border-border pb-4">
             <ModalTitle>
               {isEditing ? t('products.offers.form.editTitle') : t('products.offers.form.addTitle')}
@@ -260,7 +261,7 @@ export function OfferFormModal({
             </ModalDescription>
           </ModalHeader>
 
-          <ModalBody className="flex-1 overflow-y-auto space-y-4 py-4">
+          <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
             {error && (
               <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
                 {error}
@@ -280,7 +281,8 @@ export function OfferFormModal({
                     <option value="">{t('products.offers.form.selectSeller')}</option>
                     {sellers.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.shop?.displayName ?? s.id} ({s.type === 'business' ? '3P' : 'Seller'})
+                        {capForMessage(s.shop?.displayName ?? s.id, 45)} (
+                        {s.type === 'business' ? '3P' : 'Seller'})
                       </option>
                     ))}
                   </select>
@@ -295,7 +297,8 @@ export function OfferFormModal({
                   >
                     {variants.map((v) => (
                       <option key={v.id} value={v.id}>
-                        {v.skuCode || 'Variant'} {v.status === 'inactive' ? '(inactive)' : ''}
+                        {capForMessage(v.skuCode || 'Variant', 45)}{' '}
+                        {v.status === 'inactive' ? '(inactive)' : ''}
                       </option>
                     ))}
                   </select>
@@ -493,7 +496,7 @@ export function OfferFormModal({
                       ) : (
                         sellerWarehouses.map((wh) => (
                           <option key={wh.id} value={wh.id}>
-                            {wh.name} {wh.isDefault ? '(Default)' : ''}
+                            {capForMessage(wh.name, 45)} {wh.isDefault ? '(Default)' : ''}
                           </option>
                         ))
                       )}
