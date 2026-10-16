@@ -6,9 +6,18 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { isReservedSlug, type Category } from '@shopnetic/contracts';
-import { cn, Field, Input, Switch } from '@shopnetic/ui';
+import {
+  cn,
+  Field,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Switch,
+} from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
-import { capForMessage } from '@/lib/format';
 import { slugify, slugifyLive } from '@/lib/slugify';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
@@ -58,11 +67,6 @@ const FIELD_FOR_CODE: Record<string, Path<FormValues>> = {
 };
 
 const norm = (s: string): string => s.trim().toLowerCase();
-
-/** Cap a `<select>` option label — the open dropdown's width isn't CSS-bounded.
- * G7's *other* sub-rule (64, not the dialog/toast default of 60) — see
- * `capForMessage`'s own doc comment. */
-const clip = (s: string, max = 64): string => capForMessage(s, max);
 
 /** collapse whitespace runs (incl. pasted newlines / tabs) to single spaces. */
 const collapseWs = (s: string): string => s.replace(/\s+/g, ' ').trim();
@@ -239,9 +243,6 @@ export function CategoryFormModal({
     }
   }
 
-  const selectCls =
-    'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
-
   // Text fields sanitise typed *and* pasted input in place: the slug is
   // live-slugified (blur trims a dangling "-"), the name has whitespace / pasted
   // newlines collapsed on blur. `e.currentTarget.value` is rewritten before RHF
@@ -313,20 +314,37 @@ export function CategoryFormModal({
         htmlFor="cat-parent"
         error={fieldError('parentId')}
       >
-        <select
-          id="cat-parent"
-          disabled={readOnly}
-          className={cn(selectCls, errors.parentId && 'border-destructive')}
-          {...register('parentId')}
-        >
-          <option value="">{t('categories.form.parentNone')}</option>
-          {parentOptions.map((c) => (
-            <option key={c.id} value={c.id}>
-              {'  '.repeat(Math.max(0, c.depth - 1))}
-              {clip(c.name['en'] ?? c.slug)}
-            </option>
-          ))}
-        </select>
+        <Controller
+          control={control}
+          name="parentId"
+          render={({ field }) => (
+            <Select
+              value={field.value || '__none__'}
+              onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+              disabled={readOnly}
+            >
+              <SelectTrigger id="cat-parent" invalid={Boolean(errors.parentId)}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">{t('categories.form.parentNone')}</SelectItem>
+                {parentOptions.map((c) => {
+                  const label = c.name['en'] ?? c.slug;
+                  return (
+                    <SelectItem
+                      key={c.id}
+                      value={c.id}
+                      title={label}
+                      style={{ paddingLeft: `${8 + Math.max(0, c.depth - 1) * 14}px` }}
+                    >
+                      {label}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          )}
+        />
       </Field>
 
       <Field label={t('categories.form.name')} htmlFor="cat-name" error={fieldError('nameEn')}>
@@ -432,16 +450,22 @@ export function CategoryFormModal({
         htmlFor="cat-brand"
         error={fieldError('brandRequirement')}
       >
-        <select
-          id="cat-brand"
-          disabled={readOnly}
-          className={cn(selectCls, errors.brandRequirement && 'border-destructive')}
-          {...register('brandRequirement')}
-        >
-          <option value="optional">{t('categories.form.brandOptional')}</option>
-          <option value="required">{t('categories.form.brandRequired')}</option>
-          <option value="none">{t('categories.form.brandNone')}</option>
-        </select>
+        <Controller
+          control={control}
+          name="brandRequirement"
+          render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange} disabled={readOnly}>
+              <SelectTrigger id="cat-brand" invalid={Boolean(errors.brandRequirement)}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="optional">{t('categories.form.brandOptional')}</SelectItem>
+                <SelectItem value="required">{t('categories.form.brandRequired')}</SelectItem>
+                <SelectItem value="none">{t('categories.form.brandNone')}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        />
       </Field>
 
       {formError !== null && <p className="text-sm text-destructive">{formError}</p>}

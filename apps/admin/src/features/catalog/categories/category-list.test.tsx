@@ -351,7 +351,8 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     const dialog = within(await screen.findByRole('dialog'));
     await dialog.findByText('New category');
 
-    expect(await dialog.findByRole('option', { name: 'Alpha' })).toBeInTheDocument();
+    fireEvent.click(dialog.getByRole('combobox', { name: 'Parent' }));
+    expect(screen.getByRole('option', { name: 'Alpha' })).toBeInTheDocument();
   });
 
   it('the flat view resolves an ancestor breadcrumb even when the ancestor is not on the current page — the 2026-09-18 fix', async () => {
@@ -416,8 +417,10 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'View' }));
     await screen.findByText('Category (archived)');
 
-    expect(screen.getByLabelText('Parent')).toHaveValue('arch-parent');
-    expect(screen.getByRole('option', { name: 'ArchParent' })).toBeInTheDocument();
+    // View mode disables the trigger — a disabled Select can't be opened to
+    // inspect its option list the way a disabled native <select> still could,
+    // so the meaningful check here is what's actually visibly displayed.
+    expect(screen.getByRole('combobox', { name: 'Parent' })).toHaveTextContent('ArchParent');
   });
 
   it('a search query is answered server-side, not filtered client-side over the tree’s rows', async () => {

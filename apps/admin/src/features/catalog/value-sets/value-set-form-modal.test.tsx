@@ -33,6 +33,11 @@ const mockedAddValueSetItem = vi.mocked(addValueSetItem);
 const mockedRemoveValueSetItem = vi.mocked(removeValueSetItem);
 const mockedReorderValueSetItems = vi.mocked(reorderValueSetItems);
 
+function selectOption(comboboxName: string | RegExp, optionName: string | RegExp): void {
+  fireEvent.click(screen.getByRole('combobox', { name: comboboxName }));
+  fireEvent.click(screen.getByRole('option', { name: optionName }));
+}
+
 const mockOptionType: OptionType = {
   id: '11111111-1111-1111-1111-111111111111',
   code: 'size',
@@ -139,15 +144,10 @@ describe('ValueSetFormModal — create', () => {
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Standard sizes' },
     });
-    fireEvent.change(screen.getByLabelText('Option type'), {
-      target: { value: mockOptionType.id },
-    });
+    selectOption('Option type', /Size/);
 
     // Option values are now available in the picker dropdown
-    const valueSelect = screen.getByLabelText('Choose a value to add…');
-    fireEvent.change(valueSelect, {
-      target: { value: '22222222-2222-2222-2222-222222222221' },
-    });
+    selectOption('Choose a value to add…', /Small/);
     fireEvent.click(screen.getByRole('button', { name: 'Add value' }));
 
     expect(screen.getByText('Small')).toBeInTheDocument();
@@ -184,9 +184,7 @@ describe('ValueSetFormModal — create', () => {
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Standard sizes' },
     });
-    fireEvent.change(screen.getByLabelText('Option type'), {
-      target: { value: mockOptionType.id },
-    });
+    selectOption('Option type', /Size/);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(
@@ -229,23 +227,16 @@ describe('ValueSetFormModal — create', () => {
     );
 
     // Pick first option type (Size)
-    fireEvent.change(screen.getByLabelText('Option type'), {
-      target: { value: mockOptionType.id },
-    });
+    selectOption('Option type', /Size/);
 
     // Add a size value
-    const valueSelect = screen.getByLabelText('Choose a value to add…');
-    fireEvent.change(valueSelect, {
-      target: { value: '22222222-2222-2222-2222-222222222221' },
-    });
+    selectOption('Choose a value to add…', /Small/);
     fireEvent.click(screen.getByRole('button', { name: 'Add value' }));
 
     expect(screen.getByText('Small')).toBeInTheDocument();
 
     // Now switch to Color
-    fireEvent.change(screen.getByLabelText('Option type'), {
-      target: { value: secondOptionType.id },
-    });
+    selectOption('Option type', /Color/);
 
     // Staged size item 'Small' should be cleared
     expect(screen.queryByText('Small')).not.toBeInTheDocument();
@@ -316,10 +307,7 @@ describe('ValueSetFormModal — edit', () => {
       />,
     );
 
-    const valueSelect = screen.getByRole('combobox');
-    fireEvent.change(valueSelect, {
-      target: { value: '22222222-2222-2222-2222-222222222223' },
-    });
+    selectOption('Choose a value to add…', /Large/);
     fireEvent.click(screen.getByRole('button', { name: 'Add value' }));
 
     await waitFor(() => expect(mockedAddValueSetItem).toHaveBeenCalledTimes(1));

@@ -14,6 +14,11 @@ import {
   notify,
   ScrollToTopButton,
   SearchInput,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   StatusBadge,
   Table,
   TableBody,
@@ -339,17 +344,24 @@ export function OptionTypeList() {
           ))}
         </div>
         {tab === 'live' && (
-          <select
+          <Select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as OptionStatus | 'all')}
-            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]"
+            onValueChange={(v) => setStatusFilter(v as OptionStatus | 'all')}
           >
-            {STATUS_FILTERS.map((s) => (
-              <option key={s} value={s}>
-                {t(`optionTypes.statusFilter.${s}`)}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              className="h-9 w-[150px]"
+              aria-label={`${t('optionTypes.title')}: ${t(`optionTypes.statusFilter.${statusFilter}`)}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_FILTERS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {t(`optionTypes.statusFilter.${s}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 

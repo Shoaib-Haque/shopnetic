@@ -32,6 +32,14 @@ const mockedDeleteCategoryOption = vi.mocked(deleteCategoryOption);
 const mockedListOptionTypesPage = vi.mocked(listOptionTypesPage);
 const mockedListValueSets = vi.mocked(listValueSets);
 
+// Radix `Select` renders a `role="combobox"` trigger + a portalled listbox of
+// `role="option"` items, not a native `<select>` — open it and click the
+// option by its accessible name instead of `fireEvent.change`.
+function selectOption(comboboxName: string | RegExp, optionName: string | RegExp): void {
+  fireEvent.click(screen.getByRole('combobox', { name: comboboxName }));
+  fireEvent.click(screen.getByRole('option', { name: optionName }));
+}
+
 const sampleCategory: Category = {
   id: 'cat_1',
   slug: 'clothing',
@@ -222,8 +230,7 @@ describe('CategoryOptionsDialog', () => {
     await screen.findByText('Map new option type');
 
     // Change value source to predefined
-    const sourceSelect = screen.getByLabelText('Value source');
-    fireEvent.change(sourceSelect, { target: { value: 'predefined' } });
+    selectOption('Value source', 'Predefined (strictly restricted to a value set)');
 
     // Try to save without selecting a value set
     const saveButton = screen.getByRole('button', { name: 'Save mapping' });
@@ -235,8 +242,7 @@ describe('CategoryOptionsDialog', () => {
     expect(mockedPutCategoryOption).not.toHaveBeenCalled();
 
     // Now select a valid value set and submit
-    const vsSelect = screen.getByLabelText('Value set');
-    fireEvent.change(vsSelect, { target: { value: 'vs_sizes' } });
+    selectOption('Value set', 'Standard Sizes');
 
     mockedPutCategoryOption.mockResolvedValueOnce({
       ...mappedSizeOption,
@@ -277,8 +283,7 @@ describe('CategoryOptionsDialog', () => {
     expect(await screen.findByText('Edit mapping: Size')).toBeInTheDocument();
 
     // Change applicability to optional
-    const appSelect = screen.getByLabelText('Applicability');
-    fireEvent.change(appSelect, { target: { value: 'optional' } });
+    selectOption('Applicability', 'Optional');
 
     // Save
     const saveButton = screen.getByRole('button', { name: 'Save mapping' });
@@ -477,8 +482,7 @@ describe('CategoryOptionsDialog', () => {
     expect(await screen.findByText('Edit mapping: Size')).toBeInTheDocument();
 
     // Change applicability to optional
-    const appSelect = screen.getByLabelText('Applicability');
-    fireEvent.change(appSelect, { target: { value: 'optional' } });
+    selectOption('Applicability', 'Optional');
 
     // Save
     const saveButton = screen.getByRole('button', { name: 'Save mapping' });

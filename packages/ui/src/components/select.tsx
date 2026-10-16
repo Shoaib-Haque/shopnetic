@@ -59,7 +59,7 @@ export const SelectContent = forwardRef<
         position={position}
         sideOffset={sideOffset}
         className={cn(
-          'sn-popover z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden',
+          'sn-popover z-[60] max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden',
           'rounded-md border border-border bg-background text-sm shadow-md',
           position === 'popper' &&
             'w-[var(--radix-select-trigger-width)] max-w-[min(28rem,calc(100vw_-_2rem))]',
@@ -87,23 +87,16 @@ export const SelectItem = forwardRef<
     <RSelect.Item
       ref={ref}
       className={cn(
-        'relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 outline-none',
-        'truncate data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm outline-none',
+        'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         'data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
         'hover:bg-primary/80 hover:text-primary-foreground',
+        'focus:bg-primary/80 focus:text-primary-foreground',
         'data-[highlighted]:bg-primary/80 data-[highlighted]:text-primary-foreground',
         className,
       )}
       {...props}
     >
-      {/* Radix's `ItemText` deliberately drops `className`/`style` (its
-       * content is also portaled verbatim into the trigger's `SelectValue`,
-       * so Radix won't let per-item styles leak there) — and being an
-       * unstyled direct child of this flex row, it'd be the flex item that
-       * won't shrink (flex's `min-width: auto` default) regardless. Put our
-       * own flex item *around* it instead, so `min-w-0`/`truncate` land on
-       * something Radix can't strip, with `ItemText` reduced to plain inline
-       * content inside it. */}
       <span className="min-w-0 flex-1 truncate">
         <RSelect.ItemText>{children}</RSelect.ItemText>
       </span>

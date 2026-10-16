@@ -579,6 +579,7 @@ Group 6: Network, Loading & Resiliency Tests (CDP Interception & .env Latency)
 | **5.13** | Zero-Stock Backorder-Tolerant Winner | Backorder Buy-Box selection | Competing offer has 0 available on-hand stock but allows backorders (`Stock.backorder = true`) at lowest price. | Algorithm qualifies the listing under `totalAvailable > 0 || backorder` (evaluating `o.stocks.some(s => s.backorder)`); offer wins the Buy-Box with a "Backorder Available" badge. | `tmp/catalog/products/offers/02-offers-variant-buybox-competing.png` |
 | **5.14** | Offer & Warehouse Stock Optimistic Concurrency Control (OCC) | `OfferFormModal` / `StockAdjustModal` | Submit an offer or warehouse stock level update concurrently with another admin modification. | Both `OfferFormModal` and `StockAdjustModal` supply the `expectedUpdatedAt` ISO timestamp; API intercepts stale edits and triggers `409 CONFLICT` optimistic concurrency error without silent overwrites. | `tmp/catalog/products/offers/03-create-offer-modal.png` & `04-stock-adjust-modal.png` |
 | **5.15** | Responsive Stock Modal Header Layout | `StockAdjustModal` | Open stock adjustment modal on mobile viewport (<768px). | Modal header stacks title, description, and head metadata (SKU • condition • Total Available) first, with the "+ Add warehouse" action button positioned below metadata across full width, preventing overlap or squeezed titles. | `tmp/catalog/products/offers/04-stock-adjust-modal.png` |
+| **5.16** | Warehouse Auto-Selection & Fallback Placeholder | `OfferFormModal` | Open offer creation modal for seller with warehouses vs without warehouses. | If seller has one warehouse, auto-selects it; if multiple, prompts selection; if zero warehouses, select trigger is disabled showing placeholder *"No warehouses found"* with helper text. | `tmp/catalog/products/offers/ui-offer-warehouse-autoselected.png` & `ui-offer-warehouse-dropdown.png` |
 
 ---
 
@@ -623,6 +624,7 @@ Group 5: Network, Loading & Resiliency Tests
 | **1.2** | Multi-Word Debounced Search | Brand search bar | Type query (e.g. "FX Live Brand 50"). | Debounces 250ms, queries API, filters table results to matching brand rows. | `tmp/catalog/brands/02-brands-search-results.png` |
 | **1.3** | Deep-Link Targeting | `useHighlightTarget` | Navigate to `/catalog/brands?highlight=<brandId>`. | Issues high-priority fetch, pins target brand to very top of table with spotlight highlight tint (`bg-primary/5`), and avoids duplicate row display. | `tmp/catalog/brands/03-brands-deep-link-target.png` |
 | **1.4** | Mobile Responsive Layout | Mobile breakpoint | Emulate mobile viewport (390×844). | Table converts to stacked card layout with badges, aliases, and accessible action menu. | `tmp/catalog/brands/11-brands-mobile-cards.png` |
+| **1.5** | Radix Select Status Filter with Base Brand Color Highlight | `BrandList` status filter | Click status filter Radix Select dropdown ("All statuses"). | Floating menu mounts at elevated z-index; selected option highlights in base brand color with white text, and hover state uses a subtle lighter tint without check icons. | `tmp/catalog/brands/ui-brand-status-filter-select.png` |
 
 ---
 
@@ -693,6 +695,7 @@ Group 5: Network, Loading & Resiliency Tests
 | **1.1** | Option Types Directory Overview | `OptionTypeList` (`/catalog/option-types`) | Navigate to `/catalog/option-types` on desktop. | Displays table with Code, Name, Data Type badge (`select`, `swatch`, `text`, `number`, `bool`), Swatch flag, Values count pill, and actions menu. | `tmp/catalog/option-types/01-option-types-desktop-list.png` |
 | **1.2** | Deep-Link Targeting | `useHighlightTarget` | Navigate to `?highlight=<optionTypeId>`. | Pinned to top of table with spotlight highlight tint; avoids duplication when full page finishes loading. | `tmp/catalog/option-types/02-option-types-deep-link-target.png` |
 | **1.3** | Mobile Responsive Card Layout | Mobile breakpoint | Emulate mobile screen (390×844). | Transforms to responsive card layout with values count and accessible actions. | `tmp/catalog/option-types/09-option-types-mobile-cards.png` |
+| **1.4** | Radix Select Status Filter with Base Color Styling | `OptionTypeList` status filter | Open status filter dropdown on option types page. | Renders styled Radix Select with base brand background and white text on selected status and lighter tint on hover. | `tmp/catalog/option-types/ui-option-types-status-filter.png` |
 
 ---
 
@@ -703,6 +706,7 @@ Group 5: Network, Loading & Resiliency Tests
 | **2.1** | Create Option Type Modal | `OptionTypeFormModal` (Create) | Click **"+ New option type"** button. | Opens modal with Code, Name, Data Type selector (`select`, `swatch`, `text`, `number`, `bool`), and Has Swatch toggle. | `tmp/catalog/option-types/03-option-types-create-modal-open.png` |
 | **2.2** | Swatch Configuration | Swatch data type | Select `swatch` data type and enable "Has swatch" switch. | Displays color swatch preview helper explaining that values will support color swatches with hex codes. | `tmp/catalog/option-types/04-option-types-swatch-config.png` |
 | **2.3** | Edit Option Type Modal | `OptionTypeFormModal` (Edit) | Click "Edit" in row menu. | Prepopulates fields; Data Type is rendered immutable (locked) to protect existing variants; checks `expectedUpdatedAt`. | `tmp/catalog/option-types/05-option-types-edit-modal-locked.png` |
+| **2.4** | Elevated Radix Select Data Type Picker | `OptionTypeFormModal` (Data type select) | Open "+ New option type" modal and trigger Data Type select. | SelectContent renders at elevated `z-[60]` over dialog backdrop (`z-50`) without z-index clipping; selected item highlights in base background with white text. | `tmp/catalog/option-types/ui-option-type-form-datatype-select.png` |
 
 ---
 
@@ -760,6 +764,7 @@ Group 4: Network, Connection Cap & Resiliency Tests
 | **1.3** | Filter Dropdown Capped Height | Option type filter dropdown | Click option type dropdown filter. | Dropdown list is scrollable and capped (`max-h-60`) to prevent viewport overflow. | `tmp/catalog/value-sets/11-filter-dropdown-capped.png` |
 | **1.4** | Deep-Link Spotlight Immediate Paint | `useHighlightTarget` | Navigate to `?highlight=<valueSetId>`. | Target item is spotlighted at top of list with amber tint on first paint with zero connection queue lag (`requestStart - startTime ≈ 1ms`). | `tmp/catalog/value-sets/09-deep-link-spotlight-immediate.png` |
 | **1.5** | Mobile Responsive Card View | Mobile breakpoint | Emulate mobile viewport (390×844). | Table converts to responsive card view with pill chips and accessible action menu. | `tmp/catalog/value-sets/08-value-sets-mobile-cards.png` |
+| **1.6** | Standardized Radix Select Option Type Filter | `ValueSetList` filter | Open Option Type filter on value sets list. | Dropdown displays capped scrollable list of option types with Radix Select semantics, base background with white text on selected option, and no dummy disabled items. | `tmp/catalog/value-sets/ui-value-sets-filter-select.png` |
 
 ---
 
@@ -774,6 +779,7 @@ Group 4: Network, Connection Cap & Resiliency Tests
 | **2.5** | Edit Value Set & Immutable Type | `ValueSetFormModal` (Edit) | Click "Edit" in row menu. | Opens modal; Option Type is rendered as an immutable locked badge; name and staged items remain editable. | `tmp/catalog/value-sets/05-value-sets-edit-modal-reorder.png` |
 | **2.6** | Atomic Staged Items Reordering | Move Up / Move Down buttons | Click Move Up/Down on a staged value item. | Values swap positions atomically; display order persists on save. | `tmp/catalog/value-sets/05-value-sets-edit-modal-reorder.png` |
 | **2.7** | Capped Modal Values Container | Modal scroll container | Open value set with >20 values. | Staged values container scrolls cleanly with capped max height (`max-h-60`). | `tmp/catalog/value-sets/12-modal-values-capped.png` |
+| **2.8** | Elevated Radix Select & Values Picker State | `ValueSetFormModal` | Open value set form and click Option Type select or pick available values. | Option Type Radix Select mounts cleanly over modal at `z-[60]`; values picker displays informative placeholder when all values are staged. | `tmp/catalog/value-sets/ui-value-set-form-optiontype-select.png` & `ui-value-set-form-values-picker.png` |
 
 ---
 
@@ -832,6 +838,7 @@ Group 4: Network, Loading & Resiliency Tests
 | **2.2** | Map Predefined Value Set | Value source select | Select `predefined` value source. | Value Set dropdown activates; pick assigned Value Set (e.g. "Apparel Sizes"); saves mapping. | `tmp/catalog/categories/category-options-mapped-table.png` |
 | **2.3** | Variant Axis & Price Impact Flags | Variant axis switches | Toggle "Variant Axis" (forms buyable SKU) and "Price Impact" (prompts per-variant pricing). | Badges reflect on mapped options table row ("Variant Axis", "Price Impact"). | `tmp/catalog/categories/ui-category-options-mapped-table.png` |
 | **2.4** | Edit Existing Option Mapping | Edit mapping modal | Click "Edit" on a mapped category option row. | Prepopulates form; Option Type is locked; checks `expectedUpdatedAt` concurrency token on save. | `tmp/catalog/categories/03-category-options-edit-form.png` |
+| **2.5** | Standardized Radix Selects Without Fake Disabled Items | `CategoryOptionsDialog` mapping form | Trigger Option Type, Applicability, or Value Source selects. | All dropdowns use standardized Radix UI Select components at `h-9` without unselectable `__none__` dummy items; triggers display genuine placeholders. | `tmp/catalog/categories/ui-category-options-clean-select.png` |
 
 ---
 
@@ -940,6 +947,7 @@ Group 6: Network, Loading & Resiliency Tests
 
 ## Changelog
 
+- 2026-10-15 — Updated UI Tests Specifications (Sections 10, 11, 12, 13, 14) for unified Radix Select architecture across Catalog domain: elevated SelectContent (z-[60]), solid base background with white text on selected item, lighter tint on hover without ticks, removal of synthetic `__none__` dummy items, automatic single-warehouse selection with empty state fallbacks in offer creation, and complete test verification sweep across Brands, Option Types, Value Sets, Categories, and Products.
 - 2026-10-15 — Updated Section 10 UI Tests Specification with backend-denormalized variant combination option names and labels (eliminating raw UUID fallbacks), row-wise mobile footer button wrapping in ProductVariantsDialog, responsive StockAdjustModal header layout, concise 1P/3P origin badges, labeled mobile card rows (eliminating ambiguous bullet chains), and capForMessage string truncation across dynamic select dropdowns.
 - 2026-10-15 — Updated Section 10 UI Tests Specification with Grouped Popover Filters, Clear filters action, reactive pending review list removal, clean no-op edit save bypass, pre-archive status restoration, text truncation tooltips, single-line tabular prices, small viewport (<1200px) responsive card views, and refreshed dedicated verification screenshots (12-products-filters-popover-open, 13-products-status-filter-reset, 14-products-cell-truncation-and-price, 15-products-archived-reference-names).
 - 2026-10-09 — Added Section 15 (Category Hierarchy & Tree Management) UI Tests Specification relocated from plan/11; synchronized Section 10 Buy-Box and variant delimiter invariants; updated Sections 11 (Brands), 12 (Option Types), 13 (Value Sets), and 14 (Category Options) UI Tests Specifications; updated build progress for Inventory & Buy-Box features.

@@ -640,24 +640,22 @@ function VariantFormModal({
                 {variantAxes.map((axis) => {
                   const ot = optionTypeMap.get(axis.optionTypeId);
                   const name = ot?.name.en || axis.optionTypeCode;
+                  const fieldId = `manual-axis-${axis.optionTypeId}`;
                   return (
-                    <Field key={axis.optionTypeId} label={name}>
+                    <Field key={axis.optionTypeId} label={name} htmlFor={fieldId}>
                       <Select
-                        value={manualSelections[axis.optionTypeId] || '__none__'}
+                        value={manualSelections[axis.optionTypeId] ?? ''}
                         onValueChange={(v) =>
                           setManualSelections((prev) => ({
                             ...prev,
-                            [axis.optionTypeId]: v === '__none__' ? '' : v,
+                            [axis.optionTypeId]: v,
                           }))
                         }
                       >
-                        <SelectTrigger>
-                          <SelectValue />
+                        <SelectTrigger id={fieldId} aria-label={name}>
+                          <SelectValue placeholder="Select a value…" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__" disabled>
-                            Select a value…
-                          </SelectItem>
                           {axis.values.map((v) => {
                             const valObj = ot?.values.find((val) => val.id === v.optionValueId);
                             const label = valObj?.label.en ?? v.code;

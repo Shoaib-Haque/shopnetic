@@ -220,7 +220,8 @@ describe('OptionTypeList', () => {
     renderAdmin(<OptionTypeList />);
     await screen.findByText('No option types yet.');
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'active' } });
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', { name: 'Active' }));
     await waitFor(() =>
       expect(mockedAdminApi).toHaveBeenLastCalledWith('/option-types?status=active&limit=30', {
         raw: true,

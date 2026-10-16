@@ -81,7 +81,8 @@ describe('CategoryFormModal — create', () => {
     fireEvent.change(screen.getByLabelText('Name (English)'), {
       target: { value: 'New Category' },
     });
-    fireEvent.change(screen.getByLabelText('Parent'), { target: { value: 'parent1' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Parent' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Parent' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(mockedCreateCategory).toHaveBeenCalledTimes(1));

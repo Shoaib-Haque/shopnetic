@@ -6,7 +6,18 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { isReservedSlug, type Brand } from '@shopnetic/contracts';
-import { cn, Field, Input, notify, Spinner, Switch } from '@shopnetic/ui';
+import {
+  Field,
+  Input,
+  notify,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Spinner,
+  Switch,
+} from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
 import { slugify, slugifyLive } from '@/lib/slugify';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -275,9 +286,6 @@ export function BrandFormModal({
     }
   }
 
-  const selectCls =
-    'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
-
   const nameField = register('name');
   const slugField = register('slug');
   const displayNameField = register('displayNameEn');
@@ -361,15 +369,22 @@ export function BrandFormModal({
       </Field>
 
       <Field label={t('brands.form.status')} htmlFor="brand-status" error={fieldError('status')}>
-        <select
-          id="brand-status"
-          className={cn(selectCls, errors.status && 'border-destructive')}
-          {...register('status')}
-        >
-          <option value="active">{t('brands.status.active')}</option>
-          <option value="pending">{t('brands.status.pending')}</option>
-          <option value="rejected">{t('brands.status.rejected')}</option>
-        </select>
+        <Controller
+          control={control}
+          name="status"
+          render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger id="brand-status" invalid={Boolean(errors.status)}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">{t('brands.status.active')}</SelectItem>
+                <SelectItem value="pending">{t('brands.status.pending')}</SelectItem>
+                <SelectItem value="rejected">{t('brands.status.rejected')}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        />
       </Field>
 
       <label className="flex items-start gap-2 text-sm">

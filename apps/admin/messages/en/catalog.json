@@ -739,6 +739,7 @@
           "initialStockHint": "Units immediately on hand in warehouse.",
           "targetWarehouse": "Fulfillment Warehouse",
           "selectWarehouse": "Select warehouse…",
+          "noWarehouses": "No warehouses found",
           "status": "Listing Status",
           "save": "Save Offer",
           "create": "Create Offer",

@@ -14,6 +14,11 @@ import {
   notify,
   ScrollToTopButton,
   SearchInput,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   StatusBadge,
   Table,
   TableBody,
@@ -123,6 +128,10 @@ export function ValueSetList() {
 
   const liveOptionTypes = useMemo(() => optionTypes.filter((ot) => !ot.archived), [optionTypes]);
   const optionTypeMap = useMemo(() => new Map(optionTypes.map((ot) => [ot.id, ot])), [optionTypes]);
+  const selectedOptionTypeLabel = useMemo(() => {
+    const ot = optionTypeFilter ? optionTypeMap.get(optionTypeFilter) : undefined;
+    return ot ? `${ot.name['en'] ?? ot.code} (${ot.code})` : 'All';
+  }, [optionTypeFilter, optionTypeMap]);
 
   const mounted = useRef(true);
   useEffect(() => {
@@ -418,21 +427,28 @@ export function ValueSetList() {
         </div>
 
         {liveOptionTypes.length > 0 && (
-          <select
-            value={optionTypeFilter}
-            onChange={(e) => setOptionTypeFilter(e.target.value)}
-            className="h-9 w-44 sm:w-56 truncate rounded-md border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]"
+          <Select
+            value={optionTypeFilter || '__all__'}
+            onValueChange={(v) => setOptionTypeFilter(v === '__all__' ? '' : v)}
           >
-            <option value="">{t('optionTypes.title')}: All</option>
-            {liveOptionTypes.map((ot) => {
-              const label = `${ot.name['en'] ?? ot.code} (${ot.code})`;
-              return (
-                <option key={ot.id} value={ot.id} title={label}>
-                  {capForMessage(label, 48)}
-                </option>
-              );
-            })}
-          </select>
+            <SelectTrigger
+              className="h-9 w-44 sm:w-56"
+              aria-label={`${t('optionTypes.title')}: ${selectedOptionTypeLabel}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">{t('optionTypes.title')}: All</SelectItem>
+              {liveOptionTypes.map((ot) => {
+                const label = `${ot.name['en'] ?? ot.code} (${ot.code})`;
+                return (
+                  <SelectItem key={ot.id} value={ot.id} title={label}>
+                    {label}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         )}
       </div>
 

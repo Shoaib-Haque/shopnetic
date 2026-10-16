@@ -23,6 +23,11 @@ import {
   ModalHeader,
   ModalTitle,
   notify,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Skeleton,
   Spinner,
   StatusBadge,
@@ -39,11 +44,7 @@ import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import { listValueSets } from '@/features/catalog/value-sets/api';
-import { capForMessage } from '@/lib/format';
 import { deleteCategoryOption, listCategoryOptions, putCategoryOption } from './api';
-
-const selectCls =
-  'h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 type EditState = { mode: 'create' } | { mode: 'edit'; optionTypeId: string } | null;
 
@@ -404,27 +405,34 @@ export function CategoryOptionsDialog({
                   htmlFor="co-option-type"
                 >
                   {editState.mode === 'create' ? (
-                    <select
-                      id="co-option-type"
-                      className={selectCls}
+                    <Select
                       value={selectedOptionTypeId}
-                      onChange={(e) => {
-                        setSelectedOptionTypeId(e.target.value);
+                      onValueChange={(v) => {
+                        setSelectedOptionTypeId(v);
                         setValueSetId('');
                       }}
+                      disabled={unmappedOptionTypes.length === 0}
                     >
-                      {unmappedOptionTypes.length === 0 && (
-                        <option value="">{t('categories.optionsDialog.form.allMapped')}</option>
-                      )}
-                      {unmappedOptionTypes.map((ot) => {
-                        const label = `${ot.name['en'] ?? ot.code} (${ot.code})`;
-                        return (
-                          <option key={ot.id} value={ot.id} title={label}>
-                            {capForMessage(label, 48)}
-                          </option>
-                        );
-                      })}
-                    </select>
+                      <SelectTrigger id="co-option-type" className="h-9">
+                        <SelectValue
+                          placeholder={
+                            unmappedOptionTypes.length === 0
+                              ? t('categories.optionsDialog.form.allMapped')
+                              : t('categories.optionsDialog.form.selectOptionType')
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {unmappedOptionTypes.map((ot) => {
+                          const label = `${ot.name['en'] ?? ot.code} (${ot.code})`;
+                          return (
+                            <SelectItem key={ot.id} value={ot.id} title={label}>
+                              {label}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
                   ) : (
                     <div
                       className="flex h-9 min-w-0 items-center rounded-md border border-muted bg-muted/30 px-3 text-sm text-foreground"
@@ -446,19 +454,22 @@ export function CategoryOptionsDialog({
                   htmlFor="co-applicability"
                   hint={t('categories.optionsDialog.form.applicabilityHint')}
                 >
-                  <select
-                    id="co-applicability"
-                    className={selectCls}
+                  <Select
                     value={applicability}
-                    onChange={(e) => setApplicability(e.target.value as OptionApplicability)}
+                    onValueChange={(v) => setApplicability(v as OptionApplicability)}
                   >
-                    <option value="optional">
-                      {t('categories.optionsDialog.applicability.optional')}
-                    </option>
-                    <option value="required">
-                      {t('categories.optionsDialog.applicability.required')}
-                    </option>
-                  </select>
+                    <SelectTrigger id="co-applicability" className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="optional">
+                        {t('categories.optionsDialog.applicability.optional')}
+                      </SelectItem>
+                      <SelectItem value="required">
+                        {t('categories.optionsDialog.applicability.required')}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </Field>
 
                 {/* Value Source */}
@@ -467,44 +478,48 @@ export function CategoryOptionsDialog({
                   htmlFor="co-source"
                   hint={t('categories.optionsDialog.form.valueSourceHint')}
                 >
-                  <select
-                    id="co-source"
-                    className={selectCls}
+                  <Select
                     value={valueSource}
-                    onChange={(e) => {
-                      const next = e.target.value as ValueSource;
+                    onValueChange={(v) => {
+                      const next = v as ValueSource;
                       setValueSource(next);
                       if (next === 'open') setValueSetId('');
                     }}
                   >
-                    <option value="open">
-                      {t('categories.optionsDialog.form.valueSourceOpen')}
-                    </option>
-                    <option value="predefined">
-                      {t('categories.optionsDialog.form.valueSourcePredefined')}
-                    </option>
-                    <option value="hybrid">
-                      {t('categories.optionsDialog.form.valueSourceHybrid')}
-                    </option>
-                  </select>
+                    <SelectTrigger id="co-source" className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="open">
+                        {t('categories.optionsDialog.form.valueSourceOpen')}
+                      </SelectItem>
+                      <SelectItem value="predefined">
+                        {t('categories.optionsDialog.form.valueSourcePredefined')}
+                      </SelectItem>
+                      <SelectItem value="hybrid">
+                        {t('categories.optionsDialog.form.valueSourceHybrid')}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </Field>
 
                 {/* Value Set (if predefined/hybrid) */}
                 {valueSource !== 'open' && (
                   <Field label={t('categories.optionsDialog.form.valueSet')} htmlFor="co-value-set">
-                    <select
-                      id="co-value-set"
-                      className={selectCls}
-                      value={valueSetId}
-                      onChange={(e) => setValueSetId(e.target.value)}
-                    >
-                      <option value="">{t('categories.optionsDialog.form.selectValueSet')}</option>
-                      {matchingValueSets.map((vs) => (
-                        <option key={vs.id} value={vs.id} title={vs.name}>
-                          {capForMessage(vs.name, 48)}
-                        </option>
-                      ))}
-                    </select>
+                    <Select value={valueSetId} onValueChange={setValueSetId}>
+                      <SelectTrigger id="co-value-set" className="h-9">
+                        <SelectValue
+                          placeholder={t('categories.optionsDialog.form.selectValueSet')}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {matchingValueSets.map((vs) => (
+                          <SelectItem key={vs.id} value={vs.id} title={vs.name}>
+                            {vs.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {matchingValueSets.length === 0 && (
                       <p className="mt-1 text-xs text-amber-600 dark:text-amber-500">
                         {t('categories.optionsDialog.form.noMatchingValueSets')}

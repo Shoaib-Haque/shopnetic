@@ -14,6 +14,11 @@ import {
   notify,
   ScrollToTopButton,
   SearchInput,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   StatusBadge,
   Table,
   TableBody,
@@ -375,17 +380,24 @@ export function BrandList() {
           ))}
         </div>
         {tab === 'live' && (
-          <select
+          <Select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as BrandStatus | 'all')}
-            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]"
+            onValueChange={(v) => setStatusFilter(v as BrandStatus | 'all')}
           >
-            {STATUS_FILTERS.map((s) => (
-              <option key={s} value={s}>
-                {t(`brands.statusFilter.${s}`)}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              className="h-9 w-[150px]"
+              aria-label={`${t('brands.title')}: ${t(`brands.statusFilter.${statusFilter}`)}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_FILTERS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {t(`brands.statusFilter.${s}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 

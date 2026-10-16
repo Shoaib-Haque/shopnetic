@@ -416,7 +416,8 @@ describe('BrandList', () => {
     renderAdmin(<BrandList />);
     await screen.findAllByText('Acme');
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'pending' } });
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', { name: 'Pending' }));
     await screen.findAllByText('Acme');
 
     fireEvent.click(screen.getByRole('button', { name: 'Archived' }));

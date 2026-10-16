@@ -491,17 +491,14 @@ export function ProductOptionsDialog({
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-lg border border-border bg-card p-3">
                     <div className="min-w-0 flex-1">
                       <Select
-                        value={selectedToAdd || '__none__'}
-                        onValueChange={(v) => setSelectedToAdd(v === '__none__' ? '' : v)}
+                        value={selectedToAdd}
+                        onValueChange={setSelectedToAdd}
                         disabled={adding}
                       >
                         <SelectTrigger aria-label={t('products.options.selectOptionType')}>
-                          <SelectValue />
+                          <SelectValue placeholder={t('products.options.selectOptionType')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__" disabled>
-                            {t('products.options.selectOptionType')}
-                          </SelectItem>
                           {availableToAdd.map((co) => {
                             const name = optName(co.optionTypeId);
                             const isReq = co.applicability === 'required';

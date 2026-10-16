@@ -1,18 +1,27 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useForm, type Path, type Resolver } from 'react-hook-form';
+import { Controller, useForm, type Path, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { AlertTriangle, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { OptionType, ValueSet, ValueSetItem } from '@shopnetic/contracts';
-import { Button, cn, Field, Input, Spinner } from '@shopnetic/ui';
+import {
+  Button,
+  Field,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Spinner,
+} from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { getOptionType, listOptionTypesPage } from '@/features/catalog/option-types/api';
-import { capForMessage } from '@/lib/format';
 import {
   addValueSetItem,
   createValueSet,
@@ -21,9 +30,6 @@ import {
   reorderValueSetItems,
   updateValueSet,
 } from './api';
-
-const selectCls =
-  'h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 const formSchema = z.object({
   name: z
@@ -87,6 +93,7 @@ export function ValueSetFormModal({
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     watch,
@@ -409,22 +416,31 @@ export function ValueSetFormModal({
           hint={mode === 'edit' ? t('valueSets.form.optionTypeLockedHint') : undefined}
         >
           {mode === 'create' ? (
-            <select
-              id="value-set-option-type"
-              {...register('optionTypeId')}
-              disabled={loadingOptionTypes || isSubmitting}
-              className={cn(selectCls, 'truncate')}
-            >
-              <option value="">{t('valueSets.form.selectOptionType')}</option>
-              {optionTypes.map((ot) => {
-                const label = `${ot.name['en'] ?? ot.code} (${ot.code})`;
-                return (
-                  <option key={ot.id} value={ot.id} title={label}>
-                    {capForMessage(label, 48)}
-                  </option>
-                );
-              })}
-            </select>
+            <Controller
+              control={control}
+              name="optionTypeId"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  disabled={loadingOptionTypes || isSubmitting}
+                >
+                  <SelectTrigger id="value-set-option-type" invalid={Boolean(errors.optionTypeId)}>
+                    <SelectValue placeholder={t('valueSets.form.selectOptionType')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {optionTypes.map((ot) => {
+                      const label = `${ot.name['en'] ?? ot.code} (${ot.code})`;
+                      return (
+                        <SelectItem key={ot.id} value={ot.id} title={label}>
+                          {label}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           ) : (
             <>
               <input type="hidden" {...register('optionTypeId')} />
@@ -460,32 +476,39 @@ export function ValueSetFormModal({
           {!isReadOnly && watchedOptionTypeId && (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <select
-                  id="value-set-select-value"
-                  aria-label={t('valueSets.form.selectValue')}
+                <Select
                   value={selectedValueIdToAdd}
-                  onChange={(e) => setSelectedValueIdToAdd(e.target.value)}
+                  onValueChange={setSelectedValueIdToAdd}
                   disabled={
                     loadingOptionTypeDetails ||
                     availableOptionValues.length === 0 ||
                     itemActionInProgress !== null
                   }
-                  className={cn(selectCls, 'min-w-0 flex-1 truncate')}
                 >
-                  <option value="">
-                    {availableOptionValues.length === 0
-                      ? t('valueSets.form.allValuesAdded')
-                      : t('valueSets.form.selectValue')}
-                  </option>
-                  {availableOptionValues.map((v) => {
-                    const label = `${v.label['en'] ?? v.code} (${v.code})`;
-                    return (
-                      <option key={v.id} value={v.id} title={label}>
-                        {capForMessage(label, 48)}
-                      </option>
-                    );
-                  })}
-                </select>
+                  <SelectTrigger
+                    id="value-set-select-value"
+                    className="min-w-0 flex-1"
+                    aria-label={t('valueSets.form.selectValue')}
+                  >
+                    <SelectValue
+                      placeholder={
+                        availableOptionValues.length === 0
+                          ? t('valueSets.form.allValuesAdded')
+                          : t('valueSets.form.selectValue')
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableOptionValues.map((v) => {
+                      const label = `${v.label['en'] ?? v.code} (${v.code})`;
+                      return (
+                        <SelectItem key={v.id} value={v.id} title={label}>
+                          {label}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   size="sm"

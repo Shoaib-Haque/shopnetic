@@ -166,9 +166,14 @@ export function OfferFormModal({
 
   // Auto-select default warehouse when seller changes
   useEffect(() => {
-    if (sellerWarehouses.length > 0 && !warehouseId) {
-      const def = sellerWarehouses.find((w) => w.isDefault) ?? sellerWarehouses[0];
-      if (def) setWarehouseId(def.id);
+    if (sellerWarehouses.length > 0) {
+      const exists = sellerWarehouses.some((w) => w.id === warehouseId);
+      if (!exists) {
+        const def = sellerWarehouses.find((w) => w.isDefault) ?? sellerWarehouses[0];
+        setWarehouseId(def ? def.id : '');
+      }
+    } else {
+      setWarehouseId('');
     }
   }, [sellerWarehouses, warehouseId]);
 
@@ -272,19 +277,12 @@ export function OfferFormModal({
             {/* Seller & Variant selection */}
             {!isEditing ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field label={t('products.offers.form.seller')}>
-                  <Select
-                    value={sellerId || '__none__'}
-                    onValueChange={(v) => setSellerId(v === '__none__' ? '' : v)}
-                    disabled={submitting}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
+                <Field label={t('products.offers.form.seller')} htmlFor="offer-seller">
+                  <Select value={sellerId} onValueChange={setSellerId} disabled={submitting}>
+                    <SelectTrigger id="offer-seller">
+                      <SelectValue placeholder={t('products.offers.form.selectSeller')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__" disabled>
-                        {t('products.offers.form.selectSeller')}
-                      </SelectItem>
                       {sellers.map((s) => {
                         const label = `${s.shop?.displayName ?? s.id} (${s.type === 'business' ? '3P' : 'Seller'})`;
                         return (
@@ -297,13 +295,13 @@ export function OfferFormModal({
                   </Select>
                 </Field>
 
-                <Field label={t('products.offers.form.variant')}>
+                <Field label={t('products.offers.form.variant')} htmlFor="offer-variant">
                   <Select
                     value={variantId}
                     onValueChange={(v) => setVariantId(v)}
                     disabled={submitting}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="offer-variant">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -396,13 +394,13 @@ export function OfferFormModal({
 
             {/* Condition & Notes */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Field label={t('products.offers.form.condition')}>
+              <Field label={t('products.offers.form.condition')} htmlFor="offer-condition">
                 <Select
                   value={condition}
                   onValueChange={(v) => setCondition(v as OfferCondition)}
                   disabled={submitting}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="offer-condition">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -503,30 +501,33 @@ export function OfferFormModal({
                     />
                   </Field>
 
-                  <Field label={t('products.offers.form.targetWarehouse')}>
+                  <Field
+                    label={t('products.offers.form.targetWarehouse')}
+                    htmlFor="offer-target-warehouse"
+                  >
                     <Select
-                      value={warehouseId || '__none__'}
-                      onValueChange={(v) => setWarehouseId(v === '__none__' ? '' : v)}
+                      value={warehouseId}
+                      onValueChange={setWarehouseId}
                       disabled={submitting || sellerWarehouses.length === 0}
                     >
-                      <SelectTrigger>
-                        <SelectValue />
+                      <SelectTrigger id="offer-target-warehouse">
+                        <SelectValue
+                          placeholder={
+                            sellerWarehouses.length === 0
+                              ? t('products.offers.form.noWarehouses')
+                              : t('products.offers.form.selectWarehouse')
+                          }
+                        />
                       </SelectTrigger>
                       <SelectContent>
-                        {sellerWarehouses.length === 0 ? (
-                          <SelectItem value="__none__" disabled>
-                            No warehouses found
-                          </SelectItem>
-                        ) : (
-                          sellerWarehouses.map((wh) => {
-                            const label = `${wh.name} ${wh.isDefault ? '(Default)' : ''}`;
-                            return (
-                              <SelectItem key={wh.id} value={wh.id} title={label}>
-                                {label}
-                              </SelectItem>
-                            );
-                          })
-                        )}
+                        {sellerWarehouses.map((wh) => {
+                          const label = `${wh.name} ${wh.isDefault ? '(Default)' : ''}`;
+                          return (
+                            <SelectItem key={wh.id} value={wh.id} title={label}>
+                              {label}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </Field>
@@ -536,13 +537,13 @@ export function OfferFormModal({
 
             {/* Listing Status (edit mode) */}
             {isEditing && (
-              <Field label={t('products.offers.form.status')}>
+              <Field label={t('products.offers.form.status')} htmlFor="offer-status">
                 <Select
                   value={status}
                   onValueChange={(v) => setStatus(v as OfferStatus)}
                   disabled={submitting}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="offer-status">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

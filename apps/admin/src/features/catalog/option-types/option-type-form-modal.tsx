@@ -7,7 +7,19 @@ import { z } from 'zod';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { OptionDataType, OptionStatus, OptionType, OptionValue } from '@shopnetic/contracts';
-import { Field, Input, notify, Spinner, StatusBadge, Switch } from '@shopnetic/ui';
+import {
+  Field,
+  Input,
+  notify,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Spinner,
+  StatusBadge,
+  Switch,
+} from '@shopnetic/ui';
 import { FormModal } from '@/components/crud/form-modal';
 import { slugify, slugifyLive } from '@/lib/slugify';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -328,9 +340,6 @@ export function OptionTypeFormModal({
     }
   }
 
-  const selectCls =
-    'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
-
   const codeField = register('code');
   const nameField = register('name');
 
@@ -401,13 +410,24 @@ export function OptionTypeFormModal({
       </Field>
 
       <Field label={t('optionTypes.form.dataType')} htmlFor="option-type-data-type">
-        <select id="option-type-data-type" className={selectCls} {...register('dataType')}>
-          {DATA_TYPES.map((dt) => (
-            <option key={dt} value={dt}>
-              {t(`optionTypes.dataType.${dt}`)}
-            </option>
-          ))}
-        </select>
+        <Controller
+          control={control}
+          name="dataType"
+          render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger id="option-type-data-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DATA_TYPES.map((dt) => (
+                  <SelectItem key={dt} value={dt}>
+                    {t(`optionTypes.dataType.${dt}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
       </Field>
 
       <label className="flex items-start gap-2 text-sm">
@@ -434,10 +454,21 @@ export function OptionTypeFormModal({
 
       {mode === 'edit' && (
         <Field label={t('optionTypes.form.status')} htmlFor="option-type-status">
-          <select id="option-type-status" className={selectCls} {...register('status')}>
-            <option value="active">{t('optionTypes.status.active')}</option>
-            <option value="deprecated">{t('optionTypes.status.deprecated')}</option>
-          </select>
+          <Controller
+            control={control}
+            name="status"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger id="option-type-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">{t('optionTypes.status.active')}</SelectItem>
+                  <SelectItem value="deprecated">{t('optionTypes.status.deprecated')}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
         </Field>
       )}
 
