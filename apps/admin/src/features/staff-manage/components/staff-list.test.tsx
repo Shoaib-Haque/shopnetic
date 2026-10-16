@@ -275,7 +275,8 @@ describe('StaffList', () => {
     openRowMenu(tableRowFor(target.email));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Change role' }));
 
-    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'SUPER_ADMIN' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Role' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Super Admin' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('Role updated for target@example.com.')).toBeInTheDocument();
@@ -540,7 +541,8 @@ describe('StaffList — deep link from Audit Log (?highlight=accountId) — fetc
 
     openRowMenu(tableRowFor(target.email));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Change role' }));
-    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'SUPER_ADMIN' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Role' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Super Admin' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('Role updated for later@example.com.')).toBeInTheDocument();

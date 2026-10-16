@@ -24,6 +24,11 @@ import {
   TooltipContent,
   TooltipTrigger,
   cn,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
 import {
@@ -55,9 +60,6 @@ function openDatePicker(e: MouseEvent<HTMLInputElement>): void {
   const el = e.currentTarget;
   if (typeof el.showPicker === 'function') el.showPicker();
 }
-
-const SELECT_CLASSNAME =
-  'flex h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
 
 const DOMAINS: Array<AuditDomain | 'all'> = ['all', 'catalog', 'identity'];
 
@@ -244,32 +246,40 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
             <div className="flex flex-col gap-4">
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('filter.domain.label')}
-                <select
+                <Select
                   value={domain}
-                  onChange={(e) => setDomain(e.target.value as AuditDomain | 'all')}
-                  className={SELECT_CLASSNAME}
+                  onValueChange={(val) => setDomain(val as AuditDomain | 'all')}
                 >
-                  {DOMAINS.map((d) => (
-                    <option key={d} value={d}>
-                      {t(`filter.domain.${d}`)}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label={t('filter.domain.label')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DOMAINS.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {t(`filter.domain.${d}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('filter.targetType')}
-                <select
-                  value={targetType}
-                  onChange={(e) => setTargetType(e.target.value)}
-                  className={SELECT_CLASSNAME}
+                <Select
+                  value={targetType || '__all__'}
+                  onValueChange={(val) => setTargetType(val === '__all__' ? '' : val)}
                 >
-                  <option value="">{t('filter.targetTypeAll')}</option>
-                  {TARGET_TYPES.map((tt) => (
-                    <option key={tt} value={tt}>
-                      {tt}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label={t('filter.targetType')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">{t('filter.targetTypeAll')}</SelectItem>
+                    {TARGET_TYPES.map((tt) => (
+                      <SelectItem key={tt} value={tt}>
+                        {tt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('filter.from')}

@@ -1,21 +1,29 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import {
   staffInviteCreateRequestSchema,
   type StaffInviteCreateRequest,
 } from '@shopnetic/contracts';
-import { Button, Field, Input, notify } from '@shopnetic/ui';
+import {
+  Button,
+  Field,
+  Input,
+  notify,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
 import { postJson } from '@/features/staff-auth/submit';
 import { staffErrorKey, extractErrorCode } from '@/features/staff-auth/error-copy';
 
 const ROLES: StaffInviteCreateRequest['role'][] = ['SERVICE_ADMIN', 'ADMIN', 'SUPER_ADMIN'];
-const selectCls =
-  'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
 
 export function InviteStaffForm() {
   const t = useTranslations('staff');
@@ -23,6 +31,7 @@ export function InviteStaffForm() {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
@@ -65,13 +74,24 @@ export function InviteStaffForm() {
           />
         </Field>
         <Field label={t('invite.roleLabel')} htmlFor="invite-role">
-          <select id="invite-role" className={selectCls} {...register('role')}>
-            {ROLES.map((role) => (
-              <option key={role} value={role}>
-                {t(`invite.roles.${role}`)}
-              </option>
-            ))}
-          </select>
+          <Controller
+            control={control}
+            name="role"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger id="invite-role" aria-label={t('invite.roleLabel')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {t(`invite.roles.${role}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </Field>
         {formError ? (
           <p className="text-sm text-destructive" role="alert">

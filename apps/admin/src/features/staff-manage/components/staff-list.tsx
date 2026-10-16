@@ -25,6 +25,11 @@ import {
   TooltipContent,
   TooltipTrigger,
   notify,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   type StatusTone,
 } from '@shopnetic/ui';
 import { PageHeader } from '@/components/crud/page-header';
@@ -58,8 +63,6 @@ const STATUS_TONE: Record<StaffAccount['status'], StatusTone> = {
   disabled: 'danger',
   anonymized: 'neutral',
 };
-const selectCls =
-  'h-10 w-full truncate rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]';
 
 /** A confirm-style action (activate / reset-totp / deprovision) — same shape,
  * different copy + call, so one piece of state and one dialog covers all
@@ -452,18 +455,18 @@ export function StaffList({ currentEmail }: { currentEmail: string }) {
         }}
       >
         <Field label={t('manage.cols.role')} htmlFor="staff-role-choice">
-          <select
-            id="staff-role-choice"
-            className={selectCls}
-            value={roleChoice}
-            onChange={(e) => setRoleChoice(e.target.value as StaffRole)}
-          >
-            {ROLES.map((role) => (
-              <option key={role} value={role}>
-                {t(`invite.roles.${role}`)}
-              </option>
-            ))}
-          </select>
+          <Select value={roleChoice} onValueChange={(val) => setRoleChoice(val as StaffRole)}>
+            <SelectTrigger id="staff-role-choice" aria-label={t('manage.cols.role')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ROLES.map((role) => (
+                <SelectItem key={role} value={role}>
+                  {t(`invite.roles.${role}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
       </FormModal>
 

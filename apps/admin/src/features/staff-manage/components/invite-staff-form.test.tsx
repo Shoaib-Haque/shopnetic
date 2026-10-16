@@ -36,7 +36,8 @@ describe('InviteStaffForm', () => {
 
     renderAdmin(<InviteStaffForm />);
     fillEmail('new-admin@example.com');
-    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'SUPER_ADMIN' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Role' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Super Admin' }));
     fireEvent.click(screen.getByRole('button', { name: 'Send invite' }));
 
     expect(await screen.findByText('Invite sent to new-admin@example.com.')).toBeInTheDocument();
@@ -46,7 +47,7 @@ describe('InviteStaffForm', () => {
     });
     expect(screen.getByLabelText('Email')).toHaveValue('');
     // the role choice is kept across a reset — only the one-shot email clears
-    expect(screen.getByLabelText('Role')).toHaveValue('SUPER_ADMIN');
+    expect(screen.getByRole('combobox', { name: 'Role' })).toHaveTextContent('Super Admin');
   });
 
   it('email already taken → shows that specific copy, not the generic one', async () => {

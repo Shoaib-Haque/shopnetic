@@ -402,7 +402,8 @@ describe('AuditLog — filter bar', () => {
     await screen.findAllByText('identity.staff_activated');
 
     openFiltersPanel();
-    fireEvent.change(await screen.findByLabelText('Domain'), { target: { value: 'catalog' } });
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Domain' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Catalog' }));
 
     await screen.findByText('Clear filters');
     expect(mockedListAuditEvents).toHaveBeenLastCalledWith({ domain: 'catalog', limit: 30 });
@@ -417,9 +418,8 @@ describe('AuditLog — filter bar', () => {
     await screen.findAllByText('identity.staff_activated');
 
     openFiltersPanel();
-    fireEvent.change(await screen.findByLabelText('Target type'), {
-      target: { value: 'category' },
-    });
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Target type' }));
+    fireEvent.click(screen.getByRole('option', { name: 'category' }));
 
     await screen.findByText('Clear filters');
     expect(mockedListAuditEvents).toHaveBeenLastCalledWith({
@@ -479,8 +479,10 @@ describe('AuditLog — filter bar', () => {
     expect(screen.queryByText('Clear filters')).not.toBeInTheDocument();
 
     openFiltersPanel();
-    fireEvent.change(await screen.findByLabelText('Domain'), { target: { value: 'identity' } });
-    fireEvent.change(screen.getByLabelText('Target type'), { target: { value: 'account' } });
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Domain' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Identity' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Target type' }));
+    fireEvent.click(screen.getByRole('option', { name: 'account' }));
     await screen.findByText('Clear filters');
     await waitFor(() =>
       expect(mockedListAuditEvents).toHaveBeenLastCalledWith({
@@ -492,7 +494,7 @@ describe('AuditLog — filter bar', () => {
 
     fireEvent.click(screen.getByText('Clear filters'));
     expect(screen.queryByText('Clear filters')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Domain')).toHaveValue('all');
+    expect(screen.getByRole('combobox', { name: 'Domain' })).toHaveTextContent('All');
     await waitFor(() => expect(mockedListAuditEvents).toHaveBeenLastCalledWith({ limit: 30 }));
   });
 });
@@ -521,8 +523,8 @@ describe('AuditLog — filters sync to the URL', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
-    expect(await screen.findByLabelText('Domain')).toHaveValue('catalog');
-    expect(screen.getByLabelText('Target type')).toHaveValue('category');
+    expect(await screen.findByRole('combobox', { name: 'Domain' })).toHaveTextContent('Catalog');
+    expect(screen.getByRole('combobox', { name: 'Target type' })).toHaveTextContent('category');
     expect(screen.getByLabelText('From')).toHaveValue('2026-09-01');
     expect(screen.getByLabelText('To')).toHaveValue('2026-09-16');
   });
@@ -535,7 +537,7 @@ describe('AuditLog — filters sync to the URL', () => {
     await screen.findAllByText('identity.staff_activated');
     fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
 
-    expect(await screen.findByLabelText('Domain')).toHaveValue('all');
+    expect(await screen.findByRole('combobox', { name: 'Domain' })).toHaveTextContent('All');
   });
 
   it('changing a filter replaces the URL (not push, so refining a filter never piles up history)', async () => {
@@ -548,7 +550,8 @@ describe('AuditLog — filters sync to the URL', () => {
     routerReplace.mockClear(); // drop the mount-time no-op replace
 
     fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
-    fireEvent.change(await screen.findByLabelText('Domain'), { target: { value: 'identity' } });
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Domain' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Identity' }));
 
     await waitFor(() =>
       expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?domain=identity`, {

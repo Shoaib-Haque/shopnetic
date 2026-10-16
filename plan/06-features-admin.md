@@ -133,9 +133,9 @@ Group 4: Network, Loading & Resiliency Tests
 | # | Test Scenario | Target Feature / Modal | Steps & User Interactions | Expected & Verified Outcome | Verification Artifact |
 |---|---|---|---|---|---|
 | **1.1** | Staff Directory & Roles | `StaffList` (`/staff`) | Navigate to `/x7f2k9t3m1qp/staff` as Super Admin. | Displays staff table with Avatar, Name, Email, Role badge (`SUPER_ADMIN`, `ADMIN`, `SERVICE_ADMIN`), Status (`ACTIVE` / `SUSPENDED`), and 3-dots actions menu. | `tmp/admin/staff/01-staff-directory.png` |
-| **1.2** | Invite Staff Member Form | `InviteStaffForm` (`/staff/invite`) | Navigate to `/staff/invite` or click Invite. | Opens form with Email input, Role radio selector (`Admin`, `Service Admin`), and Submit button. | `tmp/admin/staff/02-invite-staff-form.png` |
+| **1.2** | Invite Staff Member Form | `InviteStaffForm` (`/staff/invite`) | Navigate to `/staff/invite` or click Invite. | Opens form with Email input, Role Radix Select dropdown (`SERVICE_ADMIN`, `ADMIN`, `SUPER_ADMIN`), and Submit button. | `tmp/admin/staff/02-invite-staff-form.png` |
 | **1.3** | Accept Invite Screen | Invite acceptance | Follow invite link in Mailpit email to `/accept-invite?token=...`. | Opens password setup form followed by mandatory TOTP enrollment (QR code + secret key + 8 recovery codes). | `tmp/admin/staff/07-admin-accept-invite.png` |
-| **1.4** | Staff Row Actions Menu | Action dropdown | Click 3-dots action menu on a staff row. | Displays actions: "Change role", "Unlock" / "Reactivate", "Reset authenticator", "Deprovision". | `tmp/admin/staff/04-staff-row-actions.png` |
+| **1.4** | Staff Row Actions Menu | Action dropdown | Click 3-dots action menu on a staff row. | Displays actions: "Change role" (with standardized Radix Select), "Unlock" / "Reactivate", "Reset authenticator", "Deprovision". | `tmp/admin/staff/04-staff-row-actions.png` |
 | **1.5** | TOTP Reset Confirmation | Staff security action | Select "Reset authenticator" for a staff member enrolled with TOTP. | Confirmation dialog opens displaying reset consequences warning; confirming resets TOTP secret in DB. | `tmp/admin/staff/05-totp-reset-dialog.png` |
 | **1.6** | Staff Directory Search Filter | Staff search input | Enter search query in staff search box. | Table filters dynamically to matching staff accounts by email address. | `tmp/admin/staff/10-staff-search-filter.png` |
 | **1.7** | Self-Deprovisioning Guard | Self-action guard | Super Admin inspects actions menu on their own account row. | "Change role" and "Deprovision" options are disabled to prevent lockout of the active Super Admin. | `tmp/admin/staff/04-staff-row-actions.png` |
@@ -158,7 +158,7 @@ Group 4: Network, Loading & Resiliency Tests
 | # | Test Scenario | Target Feature / Modal | Steps & User Interactions | Expected & Verified Outcome | Verification Artifact |
 |---|---|---|---|---|---|
 | **3.1** | Audit Events Table | `AuditLogView` (`/audit-log`) | Navigate to `/x7f2k9t3m1qp/audit-log`. | Displays chronological table with Timestamp, Actor, Action (`CATEGORY_UPDATE`, `STAFF_INVITE`, `BRAND_MERGE`), Target, and IP. | `tmp/admin/audit-log/01-audit-log-table.png` |
-| **3.2** | Filter Popover with URL Synchronization | Audit filters popover | Click Filters trigger to open popover; configure Domain, Target type, and date bounds. | Popover renders cleanly; table filters instantly; filter parameters persist in URL query. | `tmp/admin/audit-log/02-audit-filters-open.png` |
+| **3.2** | Filter Popover with URL Synchronization | Audit filters popover | Click Filters trigger to open popover; configure Domain and Target type using Radix Select, and date bounds. | Popover renders cleanly; Domain & Target type dropdowns use standardized Radix Select with primary background and white text on selected; table filters instantly; filter parameters persist in URL query. | `tmp/admin/audit-log/02-audit-filters-open.png` |
 | **3.3** | Expanded Before/After Diff | Audit detail row | Click chevron detail toggle on an audit event with diff data. | Expands detail section displaying `changed` fields with red strikethrough for previous values and green for new values. | `tmp/admin/audit-log/03-audit-diff-expanded.png` |
 | **3.4** | Audit Multi-Word Search | Audit search bar | Enter search term (e.g. "category") in search input. | Dynamically filters audit log entries matching actor, target, or action name. | `tmp/admin/audit-log/04-audit-search-filter.png` |
 | **3.5** | Mobile Responsive Cards | Mobile breakpoint | View audit log at 390×844 mobile viewport. | Adapts to stacked card layout with expandable detail panels. | `tmp/admin/audit-log/05-audit-mobile-cards.png` |
@@ -178,5 +178,6 @@ Group 4: Network, Loading & Resiliency Tests
 
 ## Changelog
 
+- 2026-10-16 — Completed standardized `@radix-ui/react-select` migration across Administration (Staff & Audit Log): converted native selects in `StaffList` role change modal, `InviteStaffForm` role picker (via `react-hook-form` `Controller`), and `AuditLog` domain/target-type filters (with clean `'__all__'` empty-value mapping); elevated `z-[60]` floating content; full test suite passing with 0 warnings.
 - 2026-10-09 — Added UI Tests Specification (Staff, Sessions & Audit Log) covering staff management lifecycle, session revocation, audit log viewer with URL query sync, and resiliency.
 - 2026-08-31 — Initial draft.
