@@ -11,11 +11,21 @@ import { seedDemoIdentity } from './demo/identity.js';
 import { seedDemoInventory } from './demo/inventory.js';
 import { seedFixtureCatalog } from './fixtures/catalog/index.js';
 import { seedFixtureIdentity } from './fixtures/identity.js';
+import { seedFixtureInventory } from './fixtures/inventory.js';
+import { seedFixtureSellers } from './fixtures/sellers.js';
 
 type Domain = (prisma: PrismaClient, ctx: SeedCtx, log: SeedLog) => Promise<void>;
 
 const DEMO: Domain[] = [seedDemoIdentity, seedDemoCatalog, seedDemoInventory];
-const FIXTURES: Domain[] = [seedFixtureIdentity, seedFixtureCatalog];
+// `seedFixtureSellers` runs before `seedFixtureCatalog` — fixture products
+// reference 3P seller shop slugs for origin-filter coverage. `seedFixtureInventory`
+// runs after — it needs the fixture products' variants to exist first.
+const FIXTURES: Domain[] = [
+  seedFixtureIdentity,
+  seedFixtureSellers,
+  seedFixtureCatalog,
+  seedFixtureInventory,
+];
 
 export async function runSeedProfile(
   prisma: PrismaClient,

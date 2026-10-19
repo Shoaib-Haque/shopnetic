@@ -4,7 +4,7 @@
  */
 import type { PrismaClient } from '../../../src/index.js';
 import type { SeedCtx, SeedLog } from '../ctx.js';
-import { upsertOffer, upsertSeller, upsertWarehouse } from '../factories.js';
+import { recomputeBuyboxes, upsertOffer, upsertSeller, upsertWarehouse } from '../factories.js';
 
 export async function seedDemoInventory(
   prisma: PrismaClient,
@@ -165,75 +165,7 @@ export async function seedDemoInventory(
   });
 
   // ── 4. Buybox calculation for all seeded variants ──────────────────────────
-  for (const [, variantId] of ctx.variant.entries()) {
-    const offers = await prisma.offer.findMany({
-      where: { variantId, status: 'active', deletedAt: null },
-      include: {
-        stocks: true,
-      },
-    });
-
-    if (offers.length === 0) continue;
-
-    // Filter in-stock offers (available > 0)
-    const inStockOffers = offers.filter((o) => {
-      const available = o.stocks.reduce((acc, s) => acc + Math.max(0, s.onHand - s.reserved), 0);
-      return available > 0;
-    });
-
-    // Effective price: salePriceMinor ?? priceMinor
-    const getEffectivePrice = (o: (typeof offers)[0]): bigint => o.salePriceMinor ?? o.priceMinor;
-
-    const candidates = inStockOffers.length > 0 ? inStockOffers : offers;
-    const sorted = [...candidates].sort((a, b) => {
-      const priceA = getEffectivePrice(a);
-      const priceB = getEffectivePrice(b);
-      if (priceA < priceB) return -1;
-      if (priceA > priceB) return 1;
-      return 0;
-    });
-
-    const winningOffer = sorted[0];
-    const prices = offers.map(getEffectivePrice);
-    const minPrice = prices.reduce((min, p) => (p < min ? p : min), prices[0]!);
-    const maxPrice = prices.reduce((max, p) => (p > max ? p : max), prices[0]!);
-
-    let winningSellerName: string | null = null;
-    if (winningOffer) {
-      const seller = await prisma.seller.findUnique({
-        where: { id: winningOffer.sellerId },
-        include: { shop: true },
-      });
-      winningSellerName = seller?.shop?.displayName ?? seller?.legalName ?? null;
-    }
-
-    await prisma.buybox.upsert({
-      where: { variantId },
-      update: {
-        winningOfferId: winningOffer?.id ?? null,
-        winningSellerId: winningOffer?.sellerId ?? null,
-        winningSellerName,
-        winningPriceMinor: winningOffer ? getEffectivePrice(winningOffer) : null,
-        winningCurrency: winningOffer?.currency ?? null,
-        sellerCount: new Set(offers.map((o) => o.sellerId)).size,
-        minPriceMinor: minPrice,
-        maxPriceMinor: maxPrice,
-        computedAt: new Date(),
-      },
-      create: {
-        variantId,
-        winningOfferId: winningOffer?.id ?? null,
-        winningSellerId: winningOffer?.sellerId ?? null,
-        winningSellerName,
-        winningPriceMinor: winningOffer ? getEffectivePrice(winningOffer) : null,
-        winningCurrency: winningOffer?.currency ?? null,
-        sellerCount: new Set(offers.map((o) => o.sellerId)).size,
-        minPriceMinor: minPrice,
-        maxPriceMinor: maxPrice,
-        computedAt: new Date(),
-      },
-    });
-  }
+  await recomputeBuyboxes(prisma, ctx);
 
   log.info(
     { sellers: ctx.seller.size, warehouses: ctx.warehouse.size },

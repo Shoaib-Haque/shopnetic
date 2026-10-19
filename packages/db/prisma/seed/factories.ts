@@ -213,7 +213,7 @@ export async function upsertOptionType(
 export async function upsertValueSet(
   prisma: PrismaClient,
   ctx: SeedCtx,
-  spec: { name: string; values: { typeCode: string; valueCode: string }[] },
+  spec: { name: string; values: { typeCode: string; valueCode: string }[]; archived?: boolean },
 ): Promise<string> {
   const firstTypeCode = spec.values[0]?.typeCode;
   if (!firstTypeCode) {
@@ -227,6 +227,7 @@ export async function upsertValueSet(
       `seed: option type "${firstTypeCode}" must be seeded before value set "${spec.name}"`,
     );
   }
+  const deletedAt = spec.archived ? new Date() : null;
   const existing = await prisma.valueSet.findFirst({
     where: { name: spec.name },
     select: { id: true },
@@ -234,10 +235,10 @@ export async function upsertValueSet(
   const vs = existing
     ? await prisma.valueSet.update({
         where: { id: existing.id },
-        data: { name: spec.name, optionTypeId: ot.id, deletedAt: null },
+        data: { name: spec.name, optionTypeId: ot.id, deletedAt },
       })
     : await prisma.valueSet.create({
-        data: { name: spec.name, optionTypeId: ot.id },
+        data: { name: spec.name, optionTypeId: ot.id, deletedAt },
       });
 
   await prisma.valueSetItem.deleteMany({ where: { valueSetId: vs.id } });
@@ -307,6 +308,10 @@ export async function upsertProduct(
     status: 'draft' | 'pending' | 'active' | 'archived';
     basePriceMinor?: number;
     currency?: string;
+    /** Shop slug of the 3P seller who proposed this listing. Omitted = 1P
+     * (admin-created) — the admin product list's origin filter reads
+     * `proposed_by_seller_id IS NULL` for `1p`, not-null for `3p`. */
+    proposedBySellerSlug?: string;
     options?: { typeCode: string; valueCodes: string[] }[];
     variants?: { sku: string; select: { typeCode: string; valueCode: string }[] }[];
   },
@@ -316,6 +321,16 @@ export async function upsertProduct(
   if (!category || !brandId) {
     throw new Error(`seed: product "${spec.slug}" needs category + brand seeded first`);
   }
+  let proposedBySellerId: string | null = null;
+  if (spec.proposedBySellerSlug) {
+    const sellerId = ctx.seller.get(spec.proposedBySellerSlug);
+    if (!sellerId) {
+      throw new Error(
+        `seed: seller "${spec.proposedBySellerSlug}" must be seeded before product "${spec.slug}"`,
+      );
+    }
+    proposedBySellerId = sellerId;
+  }
 
   const base = {
     categoryId: category.id,
@@ -324,6 +339,7 @@ export async function upsertProduct(
     status: spec.status,
     basePriceMinor: spec.basePriceMinor != null ? BigInt(spec.basePriceMinor) : null,
     currency: spec.currency ?? null,
+    proposedBySellerId,
   };
   const p = await prisma.product.upsert({
     where: { slug: spec.slug },
@@ -560,4 +576,125 @@ export async function upsertOffer(
   }
 
   return offer.id;
+}
+
+/** Recomputes the `Buybox` row for every variant seeded so far (idempotent —
+ * safe to call again after a later seeder adds more offers). Shared by
+ * `demo/inventory.ts` and `fixtures/inventory.ts` so the winner-selection
+ * logic (effective price = sale price if set, else list price; ties broken
+ * by insertion order) lives in exactly one place. */
+export async function recomputeBuyboxes(prisma: PrismaClient, ctx: SeedCtx): Promise<void> {
+  for (const [, variantId] of ctx.variant.entries()) {
+    const offers = await prisma.offer.findMany({
+      where: { variantId, status: 'active', deletedAt: null },
+      include: { stocks: true },
+    });
+
+    if (offers.length === 0) continue;
+
+    const inStockOffers = offers.filter((o) => {
+      const available = o.stocks.reduce((acc, s) => acc + Math.max(0, s.onHand - s.reserved), 0);
+      return available > 0;
+    });
+
+    const getEffectivePrice = (o: (typeof offers)[0]): bigint => o.salePriceMinor ?? o.priceMinor;
+
+    const candidates = inStockOffers.length > 0 ? inStockOffers : offers;
+    const sorted = [...candidates].sort((a, b) => {
+      const priceA = getEffectivePrice(a);
+      const priceB = getEffectivePrice(b);
+      if (priceA < priceB) return -1;
+      if (priceA > priceB) return 1;
+      return 0;
+    });
+
+    const winningOffer = sorted[0];
+    const prices = offers.map(getEffectivePrice);
+    const minPrice = prices.reduce((min, p) => (p < min ? p : min), prices[0]!);
+    const maxPrice = prices.reduce((max, p) => (p > max ? p : max), prices[0]!);
+
+    let winningSellerName: string | null = null;
+    if (winningOffer) {
+      const seller = await prisma.seller.findUnique({
+        where: { id: winningOffer.sellerId },
+        include: { shop: true },
+      });
+      winningSellerName = seller?.shop?.displayName ?? seller?.legalName ?? null;
+    }
+
+    await prisma.buybox.upsert({
+      where: { variantId },
+      update: {
+        winningOfferId: winningOffer?.id ?? null,
+        winningSellerId: winningOffer?.sellerId ?? null,
+        winningSellerName,
+        winningPriceMinor: winningOffer ? getEffectivePrice(winningOffer) : null,
+        winningCurrency: winningOffer?.currency ?? null,
+        sellerCount: new Set(offers.map((o) => o.sellerId)).size,
+        minPriceMinor: minPrice,
+        maxPriceMinor: maxPrice,
+        computedAt: new Date(),
+      },
+      create: {
+        variantId,
+        winningOfferId: winningOffer?.id ?? null,
+        winningSellerId: winningOffer?.sellerId ?? null,
+        winningSellerName,
+        winningPriceMinor: winningOffer ? getEffectivePrice(winningOffer) : null,
+        winningCurrency: winningOffer?.currency ?? null,
+        sellerCount: new Set(offers.map((o) => o.sellerId)).size,
+        minPriceMinor: minPrice,
+        maxPriceMinor: maxPrice,
+        computedAt: new Date(),
+      },
+    });
+  }
+}
+
+// ── catalog: media ──────────────────────────────────────────────────────────
+
+export async function upsertMediaAsset(
+  prisma: PrismaClient,
+  ctx: SeedCtx,
+  spec: {
+    productSlug: string;
+    kind?: 'image' | 'video';
+    fileKey: string;
+    posterKey?: string;
+    width?: number;
+    height?: number;
+    durationS?: number;
+    alt?: string;
+    position?: number;
+    status?: 'pending' | 'active' | 'rejected';
+  },
+): Promise<string> {
+  const ownerId = ctx.product.get(spec.productSlug);
+  if (!ownerId) {
+    throw new Error(`seed: product "${spec.productSlug}" must be seeded before its media`);
+  }
+
+  const data = {
+    ownerType: 'product' as const,
+    ownerId,
+    kind: spec.kind ?? 'image',
+    fileKey: spec.fileKey,
+    posterKey: spec.posterKey ?? null,
+    width: spec.width ?? null,
+    height: spec.height ?? null,
+    durationS: spec.durationS ?? null,
+    position: spec.position ?? 0,
+    status: spec.status ?? 'active',
+    ...(spec.alt ? { altI18n: en(spec.alt) } : {}),
+  };
+
+  const existing = await prisma.mediaAsset.findFirst({
+    where: { ownerType: 'product', ownerId, fileKey: spec.fileKey },
+    select: { id: true },
+  });
+  const asset = existing
+    ? await prisma.mediaAsset.update({ where: { id: existing.id }, data })
+    : await prisma.mediaAsset.create({ data });
+
+  return asset.id;
 }

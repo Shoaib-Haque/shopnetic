@@ -289,6 +289,21 @@ Rules:
   `option_value.swatch_hex` / `swatch_image_key` (a tiny representative image),
   set by admin for predefined values, by seller (pending normalization) for
   `open` values.
+- **`file_key` today vs. later**: the S3/MinIO signed-upload pipeline (`01`
+  section "File/media", Phase 1 "Media & Storage Pipeline" in `AGENTS.md`)
+  isn't built yet, so there's nowhere to upload a file to. Until it lands,
+  `file_key` holds a directly-renderable URL instead of an object-storage
+  key — the admin's media dialog already renders it as a plain `<img src>`, so
+  either shape works with no component change. Dev/CI seed data
+  (`packages/db/prisma/seed/fixtures/seed-media.ts`) uses real, openly-licensed
+  product photos served as static files from `apps/api/public/seed-media/`
+  (wired via `app.useStaticAssets()` in `apps/api/src/main.ts`, dev-only) —
+  the API's own origin, not any one app's `public/`, so admin, storefront,
+  and seller can all render the same URL without a per-app copy. Migrating
+  to the real pipeline later = upload those files (or re-fetch the
+  originals — sources are documented in `seed-media.ts`) to the object store
+  and swap the paths in that one file; `fixtures/inventory.ts` only ever
+  references photos by category key, never by raw path.
 
 ### Who does what
 

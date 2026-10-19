@@ -45,3 +45,6 @@ tmp/
 **/AGENTS.md
 !/AGENTS.md
 apps/*/CLAUDE.md
+
+# product images
+apps/api/public

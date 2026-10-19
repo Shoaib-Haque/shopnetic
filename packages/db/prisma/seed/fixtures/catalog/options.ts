@@ -248,4 +248,35 @@ export async function seedFixtureOptions(prisma: PrismaClient, ctx: SeedCtx): Pr
       valueCode,
     })),
   });
+  await upsertValueSet(prisma, ctx, {
+    name: 'All 38 colours',
+    values: Object.keys(COLORS).map((valueCode) => ({ typeCode: 'color', valueCode })),
+  });
+  await upsertValueSet(prisma, ctx, {
+    name: 'FX Ultra Long Value Set Name Used To Exercise Truncation Wherever It Appears In The List, Modal Title, And Picker Dropdown Across The Admin',
+    values: [{ typeCode: 'fx-material', valueCode: 'cotton' }],
+  });
+  await upsertValueSet(prisma, ctx, {
+    name: 'Single-item set',
+    values: [{ typeCode: 'fx-single', valueCode: 'only' }],
+  });
+
+  // ── volume: many live value sets (UI-test data — pagination + the
+  // predefined-value-source picker in Category Options, ~70 live value sets
+  // total) ───────────────────────────────────────────────────────────────────
+  for (let i = 1; i <= 66; i++) {
+    await upsertValueSet(prisma, ctx, {
+      name: `FX Live Value Set ${i}`,
+      values: [{ typeCode: 'fx-material', valueCode: MATERIALS[i % MATERIALS.length]! }],
+    });
+  }
+
+  // ── volume: archived value sets (UI-test data — Archived/All tabs) ────────
+  for (let i = 1; i <= 12; i++) {
+    await upsertValueSet(prisma, ctx, {
+      name: `FX Archived Value Set ${i}`,
+      values: [{ typeCode: 'fx-material', valueCode: MATERIALS[i % MATERIALS.length]! }],
+      archived: true,
+    });
+  }
 }

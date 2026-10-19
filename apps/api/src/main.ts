@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { join } from 'node:path';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
@@ -56,6 +57,18 @@ async function bootstrap(): Promise<void> {
   if (env.NODE_ENV === 'development') {
     app.use(devResponseDelay(env));
     app.use(devFaultInject(env));
+    // Dev/CI seed media only (`fixtures/seed-media.ts`) — there's no S3/MinIO
+    // upload pipeline yet, so seeded MediaAsset rows point here as a single
+    // origin every app (admin/storefront/seller) can render an <img> from
+    // without a BFF hop. Never wired outside development; the real pipeline
+    // replaces this file-for-file (`26-catalog-options-variants-brands.md`
+    // section 5). `setHeaders` overrides helmet's default
+    // `Cross-Origin-Resource-Policy: same-origin` for just these files —
+    // otherwise every app's <img> load of it is cross-origin (different
+    // port) and the browser blocks it despite the 200 response.
+    app.useStaticAssets(join(process.cwd(), 'public'), {
+      setHeaders: (res) => res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'),
+    });
   }
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
