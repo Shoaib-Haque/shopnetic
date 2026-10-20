@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Buybox } from '@shopnetic/contracts';
+import { currencySchema, type Buybox } from '@shopnetic/contracts';
 import type { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -19,7 +19,7 @@ export class BuyboxService {
       winningSellerId: row.winningSellerId,
       winningSellerName: row.winningSellerName,
       winningPriceMinor: row.winningPriceMinor != null ? row.winningPriceMinor.toString() : null,
-      winningCurrency: row.winningCurrency,
+      winningCurrency: row.winningCurrency ? currencySchema.parse(row.winningCurrency) : null,
       sellerCount: row.sellerCount,
       minPriceMinor: row.minPriceMinor != null ? row.minPriceMinor.toString() : null,
       maxPriceMinor: row.maxPriceMinor != null ? row.maxPriceMinor.toString() : null,
@@ -141,7 +141,9 @@ export class BuyboxService {
       winningSellerName: updated.winningSellerName,
       winningPriceMinor:
         updated.winningPriceMinor != null ? updated.winningPriceMinor.toString() : null,
-      winningCurrency: updated.winningCurrency,
+      winningCurrency: updated.winningCurrency
+        ? currencySchema.parse(updated.winningCurrency)
+        : null,
       sellerCount: updated.sellerCount,
       minPriceMinor: updated.minPriceMinor != null ? updated.minPriceMinor.toString() : null,
       maxPriceMinor: updated.maxPriceMinor != null ? updated.maxPriceMinor.toString() : null,

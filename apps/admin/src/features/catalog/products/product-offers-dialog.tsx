@@ -14,14 +14,15 @@ import {
   Trash2,
   Trophy,
 } from 'lucide-react';
-import type {
-  Buybox,
-  Offer,
-  Product,
-  SellerWithShop,
-  StockLevel,
-  Variant,
-  Warehouse,
+import {
+  type Buybox,
+  type Offer,
+  type Product,
+  type SellerWithShop,
+  type StockLevel,
+  type Variant,
+  type Warehouse,
+  formatMoney,
 } from '@shopnetic/contracts';
 import {
   Button,
@@ -68,12 +69,6 @@ export interface ProductOffersDialogProps {
   product: Product | null;
   initialVariantId?: string | null;
   onBackToVariants?: (product: Product) => void;
-}
-
-function formatMoney(minor: string | null | undefined, currency: string = 'USD'): string {
-  if (!minor) return '—';
-  const val = (Number(minor) / 100).toFixed(2);
-  return `${currency} $${val}`;
 }
 
 export function ProductOffersDialog({

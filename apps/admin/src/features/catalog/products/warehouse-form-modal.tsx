@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Controller, useForm, type Path } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import type { CreateWarehouseRequest, Warehouse } from '@shopnetic/contracts';
 import {
   Button,
@@ -15,7 +18,6 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
-  Spinner,
   notify,
 } from '@shopnetic/ui';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -30,6 +32,26 @@ export interface WarehouseFormModalProps {
   onCreated: (warehouse: Warehouse) => void;
 }
 
+const warehouseFormSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'products.offers.warehouseModal.err.nameRequired')
+    .max(100, 'products.offers.warehouseModal.err.nameLong'),
+  isDefault: z.boolean(),
+  line1: z.string().trim().min(1, 'products.offers.warehouseModal.err.line1Required'),
+  line2: z.string().trim().optional().or(z.literal('')),
+  city: z.string().trim().min(1, 'products.offers.warehouseModal.err.cityRequired'),
+  state: z.string().trim().optional().or(z.literal('')),
+  postalCode: z.string().trim().min(1, 'products.offers.warehouseModal.err.postalCodeRequired'),
+  country: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]{2}$/, 'products.offers.warehouseModal.err.countryFormat'),
+});
+
+type WarehouseFormValues = z.infer<typeof warehouseFormSchema>;
+
 export function WarehouseFormModal({
   open,
   onOpenChange,
@@ -38,52 +60,64 @@ export function WarehouseFormModal({
   onCreated,
 }: WarehouseFormModalProps) {
   const t = useTranslations('catalog');
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const [name, setName] = useState('');
-  const [isDefault, setIsDefault] = useState(false);
-  const [line1, setLine1] = useState('');
-  const [line2, setLine2] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [postalCode, setPostalCode] = useState('');
-  const [country, setCountry] = useState('US');
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<WarehouseFormValues>({
+    resolver: zodResolver(warehouseFormSchema),
+    defaultValues: {
+      name: '',
+      isDefault: false,
+      line1: '',
+      line2: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      country: 'US',
+    },
+  });
 
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  function fieldError(field: Path<WarehouseFormValues>): string | undefined {
+    const err = errors[field];
+    if (!err) return undefined;
+    return err.message?.startsWith('products.') ? t(err.message) : err.message;
+  }
 
-  const resetForm = () => {
-    setName('');
-    setIsDefault(false);
-    setLine1('');
-    setLine2('');
-    setCity('');
-    setState('');
-    setPostalCode('');
-    setCountry('US');
-    setError(null);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !line1.trim() || !city.trim() || !postalCode.trim() || !country.trim()) {
-      setError(t('errors.validation'));
-      return;
+  useEffect(() => {
+    if (!open) {
+      reset({
+        name: '',
+        isDefault: false,
+        line1: '',
+        line2: '',
+        city: '',
+        state: '',
+        postalCode: '',
+        country: 'US',
+      });
+      setServerError(null);
     }
+  }, [open, reset]);
 
-    setSubmitting(true);
-    setError(null);
+  const onValidSubmit = async (data: WarehouseFormValues) => {
+    setServerError(null);
 
     const body: CreateWarehouseRequest = {
       sellerId,
-      name: name.trim(),
-      isDefault,
+      name: data.name.trim(),
+      isDefault: data.isDefault,
       address: {
-        line1: line1.trim(),
-        line2: line2.trim() || undefined,
-        city: city.trim(),
-        state: state.trim() || undefined,
-        postalCode: postalCode.trim(),
-        country: country.trim().toUpperCase(),
+        line1: data.line1.trim(),
+        line2: data.line2?.trim() || undefined,
+        city: data.city.trim(),
+        state: data.state?.trim() || undefined,
+        postalCode: data.postalCode.trim(),
+        country: data.country.trim().toUpperCase(),
       },
     };
 
@@ -91,12 +125,10 @@ export function WarehouseFormModal({
       const created = await createWarehouse(body);
       notify.saved(t('products.offers.toast.warehouseCreated', { name: created.name }));
       onCreated(created);
-      resetForm();
+      reset();
       onOpenChange(false);
     } catch (err) {
-      setError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
-    } finally {
-      setSubmitting(false);
+      setServerError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
     }
   };
 
@@ -104,12 +136,12 @@ export function WarehouseFormModal({
     <Modal
       open={open}
       onOpenChange={(v) => {
-        if (!v) resetForm();
+        if (!v) reset();
         onOpenChange(v);
       }}
     >
       <ModalContent className="max-w-lg max-h-[85vh] flex flex-col">
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={handleSubmit(onValidSubmit)} className="flex min-h-0 flex-1 flex-col">
           <ModalHeader className="shrink-0 border-b border-border pb-4">
             <ModalTitle>{t('products.offers.warehouseModal.title')}</ModalTitle>
             <ModalDescription>
@@ -118,27 +150,38 @@ export function WarehouseFormModal({
           </ModalHeader>
 
           <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
-            {error && (
+            {serverError && (
               <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
-                {error}
+                {serverError}
               </div>
             )}
 
-            <Field label={t('products.offers.warehouseModal.name')}>
+            <Field
+              label={t('products.offers.warehouseModal.name')}
+              htmlFor="wh-name"
+              error={fieldError('name')}
+            >
               <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                id="wh-name"
+                {...register('name')}
                 placeholder={t('products.offers.warehouseModal.namePlaceholder')}
-                disabled={submitting}
+                disabled={isSubmitting}
+                invalid={Boolean(errors.name)}
               />
             </Field>
 
             <div className="flex items-center gap-2 pt-1">
-              <Checkbox
-                id="wh-default"
-                checked={isDefault}
-                onCheckedChange={(checked) => setIsDefault(Boolean(checked))}
-                disabled={submitting}
+              <Controller
+                control={control}
+                name="isDefault"
+                render={({ field }) => (
+                  <Checkbox
+                    id="wh-default"
+                    checked={field.value}
+                    onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                    disabled={isSubmitting}
+                  />
+                )}
               />
               <label
                 htmlFor="wh-default"
@@ -149,55 +192,85 @@ export function WarehouseFormModal({
             </div>
 
             <div className="space-y-3 pt-2">
-              <Field label={t('products.offers.warehouseModal.line1')}>
+              <Field
+                label={t('products.offers.warehouseModal.line1')}
+                htmlFor="wh-line1"
+                error={fieldError('line1')}
+              >
                 <Input
-                  value={line1}
-                  onChange={(e) => setLine1(e.target.value)}
+                  id="wh-line1"
+                  {...register('line1')}
                   placeholder={t('products.offers.warehouseModal.line1Placeholder')}
-                  disabled={submitting}
+                  disabled={isSubmitting}
+                  invalid={Boolean(errors.line1)}
                 />
               </Field>
 
-              <Field label={t('products.offers.warehouseModal.line2')}>
+              <Field
+                label={t('products.offers.warehouseModal.line2')}
+                htmlFor="wh-line2"
+                error={fieldError('line2')}
+              >
                 <Input
-                  value={line2}
-                  onChange={(e) => setLine2(e.target.value)}
+                  id="wh-line2"
+                  {...register('line2')}
                   placeholder={t('products.offers.warehouseModal.line2Placeholder')}
-                  disabled={submitting}
+                  disabled={isSubmitting}
+                  invalid={Boolean(errors.line2)}
                 />
               </Field>
 
               <div className="grid grid-cols-2 gap-3">
-                <Field label={t('products.offers.warehouseModal.city')}>
+                <Field
+                  label={t('products.offers.warehouseModal.city')}
+                  htmlFor="wh-city"
+                  error={fieldError('city')}
+                >
                   <Input
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    disabled={submitting}
+                    id="wh-city"
+                    {...register('city')}
+                    disabled={isSubmitting}
+                    invalid={Boolean(errors.city)}
                   />
                 </Field>
-                <Field label={t('products.offers.warehouseModal.state')}>
+                <Field
+                  label={t('products.offers.warehouseModal.state')}
+                  htmlFor="wh-state"
+                  error={fieldError('state')}
+                >
                   <Input
-                    value={state}
-                    onChange={(e) => setState(e.target.value)}
-                    disabled={submitting}
+                    id="wh-state"
+                    {...register('state')}
+                    disabled={isSubmitting}
+                    invalid={Boolean(errors.state)}
                   />
                 </Field>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <Field label={t('products.offers.warehouseModal.postalCode')}>
+                <Field
+                  label={t('products.offers.warehouseModal.postalCode')}
+                  htmlFor="wh-postal-code"
+                  error={fieldError('postalCode')}
+                >
                   <Input
-                    value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    disabled={submitting}
+                    id="wh-postal-code"
+                    {...register('postalCode')}
+                    disabled={isSubmitting}
+                    invalid={Boolean(errors.postalCode)}
                   />
                 </Field>
-                <Field label={t('products.offers.warehouseModal.country')}>
+                <Field
+                  label={t('products.offers.warehouseModal.country')}
+                  htmlFor="wh-country"
+                  error={fieldError('country')}
+                >
                   <Input
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value.toUpperCase())}
+                    id="wh-country"
+                    {...register('country')}
                     maxLength={2}
-                    disabled={submitting}
+                    disabled={isSubmitting}
+                    invalid={Boolean(errors.country)}
                   />
                 </Field>
               </div>
@@ -208,23 +281,23 @@ export function WarehouseFormModal({
             <Button
               type="button"
               variant="outline"
-              disabled={submitting}
+              size="sm"
+              disabled={isSubmitting}
               onClick={() => {
-                resetForm();
+                reset();
                 onOpenChange(false);
               }}
             >
               {t('products.offers.warehouseModal.cancel')}
             </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? (
-                <>
-                  <Spinner className="size-4" />
-                  <span>{t('products.offers.warehouseModal.save')}</span>
-                </>
-              ) : (
-                <span>{t('products.offers.warehouseModal.save')}</span>
-              )}
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={isSubmitting}
+              disabled={isSubmitting}
+            >
+              {t('products.offers.warehouseModal.save')}
             </Button>
           </ModalFooter>
         </form>

@@ -316,6 +316,36 @@ describe('ProductVariantsDialog', () => {
     });
   });
 
+  it('validates GTIN inline and blocks submission if invalid', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit variant' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit variant' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Variant')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('123456789012')).toBeInTheDocument();
+    });
+
+    // Set invalid GTIN (too short, not 8-14 digits)
+    fireEvent.change(screen.getByDisplayValue('123456789012'), {
+      target: { value: '123' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Variant' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('8 to 14 numeric digits (UPC, EAN, or ISBN).')).toBeInTheDocument();
+    });
+
+    expect(mockedUpdateVariant).not.toHaveBeenCalled();
+  });
+
   it('deletes a variant', async () => {
     mockedDeleteVariant.mockResolvedValue(undefined);
     mockedListVariants.mockResolvedValueOnce([sampleVariant]).mockResolvedValue([]);

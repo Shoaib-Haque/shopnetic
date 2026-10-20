@@ -6,6 +6,7 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
+import { ZodError } from 'zod';
 import type { Request, Response } from 'express';
 import type { ApiError, ErrorCode } from '@shopnetic/contracts';
 import { AppError } from './app-error.js';
@@ -74,6 +75,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ...(exception.detail !== undefined ? { detail: exception.detail } : {}),
         ...(exception.fields !== undefined ? { fields: exception.fields } : {}),
         ...(exception.headers !== undefined ? { headers: exception.headers } : {}),
+      };
+    }
+
+    if (exception instanceof ZodError) {
+      return {
+        status: 422,
+        code: 'VALIDATION_ERROR',
+        title: titleFor(422),
+        detail: 'request failed schema validation',
+        fields: exception.issues.map((issue) => ({
+          field: issue.path.join('.') || '(body)',
+          rule: issue.code,
+          message: `errors.field.${issue.code}`,
+        })),
       };
     }
 

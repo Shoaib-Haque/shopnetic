@@ -5,7 +5,17 @@ import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
-import { isReservedSlug, type Brand, type Category, type Product } from '@shopnetic/contracts';
+import {
+  isReservedSlug,
+  type Brand,
+  type Category,
+  type Product,
+  currencySchema,
+  decimalToMinor,
+  minorToDecimal,
+  getCurrencyExponent,
+  normalizeCurrency,
+} from '@shopnetic/contracts';
 import {
   Button,
   Field,
@@ -21,40 +31,53 @@ import { FormModal } from '@/components/crud/form-modal';
 import { slugify, slugifyLive } from '@/lib/slugify';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
+import {
+  SUPPORTED_CURRENCIES,
+  decimalKeyDownHandler,
+  decimalPasteHandler,
+  sanitizeDecimalString,
+} from '@/lib/numeric-input';
 import { createProduct, updateProduct } from './api';
 
 const textareaCls =
   'w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)] disabled:cursor-not-allowed disabled:opacity-50';
 
-const formSchema = z.object({
-  titleEn: z
-    .string()
-    .trim()
-    .min(1, 'products.form.err.titleRequired')
-    .max(200, 'products.form.err.titleLong'),
-  slug: z
-    .string()
-    .trim()
-    .max(80, 'products.form.err.slugLong')
-    .refine((s) => s === '' || /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s), 'products.form.err.slugFormat')
-    .refine((s) => !isReservedSlug(s), 'products.form.err.slugFormat'),
-  categoryId: z.string().uuid('products.form.err.categoryRequired'),
-  brandId: z.string().uuid().or(z.literal('')).nullable(),
-  descriptionEn: z.string().trim(),
-  status: z.enum(['draft', 'pending', 'active', 'archived']),
-  basePrice: z
-    .string()
-    .trim()
-    .refine(
-      (v) => v === '' || (/^\d+(\.\d{1,2})?$/.test(v) && parseFloat(v) >= 0),
-      'products.form.err.priceInvalid',
-    ),
-  currency: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .refine((v) => v === '' || /^[A-Z]{3}$/.test(v), 'products.form.err.currencyInvalid'),
-});
+const formSchema = z
+  .object({
+    titleEn: z
+      .string()
+      .trim()
+      .min(1, 'products.form.err.titleRequired')
+      .max(200, 'products.form.err.titleLong'),
+    slug: z
+      .string()
+      .trim()
+      .max(80, 'products.form.err.slugLong')
+      .refine(
+        (s) => s === '' || /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s),
+        'products.form.err.slugFormat',
+      )
+      .refine((s) => !isReservedSlug(s), 'products.form.err.slugFormat'),
+    categoryId: z.string().uuid('products.form.err.categoryRequired'),
+    brandId: z.string().uuid().or(z.literal('')).nullable(),
+    descriptionEn: z.string().trim(),
+    status: z.enum(['draft', 'pending', 'active', 'archived']),
+    basePrice: z.string().trim(),
+    currency: currencySchema.optional().or(z.literal('')),
+  })
+  .superRefine((data, ctx) => {
+    if (data.basePrice !== '') {
+      const exponent = getCurrencyExponent(data.currency || 'USD');
+      const regex = exponent === 0 ? /^\d+$/ : new RegExp(`^\\d+(\\.\\d{1,${exponent}})?$`);
+      if (!regex.test(data.basePrice) || parseFloat(data.basePrice) < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'products.form.err.priceInvalid',
+          path: ['basePrice'],
+        });
+      }
+    }
+  });
 type FormValues = z.infer<typeof formSchema>;
 
 const EMPTY: FormValues = {
@@ -114,6 +137,7 @@ export function ProductFormModal({
     setError,
     setValue,
     getValues,
+    watch,
     trigger,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<FormValues>({
@@ -135,8 +159,10 @@ export function ProductFormModal({
         brandId: product.brandId ?? '',
         descriptionEn: product.description?.en ?? '',
         status: product.status,
-        basePrice: product.basePriceMinor ? (Number(product.basePriceMinor) / 100).toFixed(2) : '',
-        currency: product.currency ?? 'USD',
+        basePrice: product.basePriceMinor
+          ? minorToDecimal(product.basePriceMinor, product.currency)
+          : '',
+        currency: normalizeCurrency(product.currency, 'USD'),
       });
     } else {
       reset({
@@ -161,7 +187,7 @@ export function ProductFormModal({
       if (mode === 'create') {
         const slug = values.slug ? values.slug : slugify(values.titleEn);
         const basePriceMinor = values.basePrice
-          ? Math.round(parseFloat(values.basePrice) * 100)
+          ? Number(decimalToMinor(values.basePrice, values.currency || 'USD'))
           : null;
         const p = await createProduct({
           categoryId: values.categoryId,
@@ -178,7 +204,7 @@ export function ProductFormModal({
         onSaved('created', p);
       } else if (product) {
         const basePriceMinor = values.basePrice
-          ? Math.round(parseFloat(values.basePrice) * 100)
+          ? Number(decimalToMinor(values.basePrice, values.currency || 'USD'))
           : null;
         const p = await updateProduct(product.id, {
           brandId: values.brandId ? values.brandId : null,
@@ -240,7 +266,19 @@ export function ProductFormModal({
   const slugField = register('slug');
   const descField = register('descriptionEn');
   const priceField = register('basePrice');
-  const currencyField = register('currency');
+  const watchCurrency = watch('currency') || 'USD';
+  const currencyExponent = getCurrencyExponent(watchCurrency);
+
+  // Auto-sanitize basePrice when currency changes
+  useEffect(() => {
+    const bp = getValues('basePrice');
+    if (bp) {
+      const sanitized = sanitizeDecimalString(bp, currencyExponent);
+      if (sanitized !== bp) {
+        setValue('basePrice', sanitized, { shouldValidate: true });
+      }
+    }
+  }, [watchCurrency, currencyExponent, getValues, setValue]);
 
   const selectedCat = categories.find(
     (c) => c.id === (product?.categoryId ?? getValues('categoryId')),
@@ -478,6 +516,14 @@ export function ProductFormModal({
             invalid={Boolean(errors.basePrice)}
             disabled={isReadOnly}
             {...priceField}
+            onKeyDown={(e) => decimalKeyDownHandler(e, currencyExponent)}
+            onPaste={(e) =>
+              decimalPasteHandler(
+                e,
+                (val) => setValue('basePrice', val, { shouldValidate: true, shouldDirty: true }),
+                currencyExponent,
+              )
+            }
           />
         </Field>
         <Field
@@ -485,17 +531,23 @@ export function ProductFormModal({
           htmlFor="product-currency"
           error={fieldError('currency')}
         >
-          <Input
-            id="product-currency"
-            maxLength={3}
-            invalid={Boolean(errors.currency)}
-            disabled={isReadOnly}
-            {...currencyField}
-            onBlur={(e) => {
-              e.currentTarget.value = e.currentTarget.value.trim().toUpperCase();
-              void currencyField.onChange(e);
-              void currencyField.onBlur(e);
-            }}
+          <Controller
+            control={control}
+            name="currency"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange} disabled={isReadOnly}>
+                <SelectTrigger id="product-currency" invalid={Boolean(errors.currency)}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUPPORTED_CURRENCIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           />
         </Field>
       </div>

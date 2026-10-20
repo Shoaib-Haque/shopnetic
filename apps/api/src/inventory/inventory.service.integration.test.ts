@@ -280,6 +280,105 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
         ),
       ).rejects.toMatchObject({ code: 'OFFER_ALREADY_EXISTS' });
     });
+
+    it('rejects offer if salePriceMinor >= priceMinor', async () => {
+      await expect(
+        offerService.create(
+          testSeller2Id,
+          {
+            variantId: testVariantId,
+            priceMinor: '2000',
+            salePriceMinor: '2500',
+            currency: 'USD',
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'OFFER_SALE_PRICE_INVALID' });
+    });
+
+    it('rejects offer if saleEndsAt <= saleStartsAt', async () => {
+      await expect(
+        offerService.create(
+          testSeller2Id,
+          {
+            variantId: testVariantId,
+            priceMinor: '2000',
+            currency: 'USD',
+            saleStartsAt: '2026-12-01T00:00:00.000Z',
+            saleEndsAt: '2026-11-01T00:00:00.000Z',
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'OFFER_SALE_DATES_INVALID' });
+    });
+
+    it('rejects offer if maxQty < minQty', async () => {
+      await expect(
+        offerService.create(
+          testSeller2Id,
+          {
+            variantId: testVariantId,
+            priceMinor: '2000',
+            currency: 'USD',
+            minQty: 5,
+            maxQty: 2,
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'OFFER_ORDER_LIMITS_INVALID' });
+    });
+
+    it('rejects offer if initialStock > 0 and warehouseId is missing', async () => {
+      await expect(
+        offerService.create(
+          testSeller2Id,
+          {
+            variantId: testVariantId,
+            priceMinor: '2000',
+            currency: 'USD',
+            initialStock: 10,
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'OFFER_WAREHOUSE_REQUIRED' });
+    });
+
+    it('rejects offer if warehouseId belongs to a different seller', async () => {
+      // warehouse1 belongs to seller 1, attempting to create offer for seller 2 using warehouse1
+      await expect(
+        offerService.create(
+          testSeller2Id,
+          {
+            variantId: testVariantId,
+            priceMinor: '2000',
+            currency: 'USD',
+            initialStock: 10,
+            warehouseId: warehouse1Id,
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'WAREHOUSE_NOT_FOUND', status: 404 });
+    });
+
+    it('rejects offer with unsupported currency code', async () => {
+      await expect(
+        offerService.create(
+          testSeller2Id,
+          {
+            variantId: testVariantId,
+            priceMinor: '2000',
+            currency: 'ZZZ' as never,
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toThrow();
+    });
   });
 
   describe('Buybox competition & stock changes', () => {
@@ -440,6 +539,83 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
         {},
       );
       expect(updated.priceMinor).toBe('2600');
+    });
+
+    it('rejects offer update if salePriceMinor >= effective priceMinor', async () => {
+      // offer1 currently has priceMinor 2600
+      await expect(
+        offerService.update(
+          offer1Id,
+          {
+            salePriceMinor: '3000',
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'OFFER_SALE_PRICE_INVALID' });
+    });
+
+    it('rejects offer update if saleEndsAt <= effective saleStartsAt', async () => {
+      // First update valid saleStartsAt
+      const withStart = await offerService.update(
+        offer1Id,
+        {
+          saleStartsAt: '2026-12-01T00:00:00.000Z',
+        },
+        staffActor,
+        {},
+      );
+      expect(withStart.saleStartsAt).toBe('2026-12-01T00:00:00.000Z');
+
+      // Attempting to set saleEndsAt before existing saleStartsAt must fail with OFFER_SALE_DATES_INVALID
+      await expect(
+        offerService.update(
+          offer1Id,
+          {
+            saleEndsAt: '2026-11-01T00:00:00.000Z',
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'OFFER_SALE_DATES_INVALID' });
+    });
+
+    it('rejects offer update if maxQty < effective minQty', async () => {
+      // Set minQty to 10
+      await offerService.update(
+        offer1Id,
+        {
+          minQty: 10,
+        },
+        staffActor,
+        {},
+      );
+
+      // Attempting to set maxQty to 3 < 10 must fail with OFFER_ORDER_LIMITS_INVALID
+      await expect(
+        offerService.update(
+          offer1Id,
+          {
+            maxQty: 3,
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'OFFER_ORDER_LIMITS_INVALID' });
+    });
+
+    it('rejects offer update with mutually conflicting salePriceMinor and priceMinor in single payload', async () => {
+      await expect(
+        offerService.update(
+          offer1Id,
+          {
+            priceMinor: '2000',
+            salePriceMinor: '2500',
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'OFFER_SALE_PRICE_INVALID' });
     });
 
     it('enforces optimistic concurrency control and atomic delta on stock updates', async () => {

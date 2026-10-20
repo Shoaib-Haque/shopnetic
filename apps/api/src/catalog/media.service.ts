@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { Actor } from '@shopnetic/auth';
-import type {
-  CreateMediaRequest,
-  MediaAsset,
-  MediaOwnerType,
-  UpdateMediaRequest,
+import {
+  createMediaRequestSchema,
+  updateMediaRequestSchema,
+  type CreateMediaRequest,
+  type MediaAsset,
+  type MediaOwnerType,
+  type UpdateMediaRequest,
 } from '@shopnetic/contracts';
 import { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -58,10 +60,22 @@ export class MediaService {
     actor: Actor,
     meta: RequestMeta,
   ): Promise<MediaAsset> {
+    const parseRes = createMediaRequestSchema.safeParse(input);
+    if (!parseRes.success) {
+      throw AppError.validation(
+        parseRes.error.issues.map((issue) => ({
+          field: issue.path.join('.') || '(body)',
+          rule: issue.code,
+          message: `errors.field.${issue.code}`,
+        })),
+        'media input failed schema validation',
+      );
+    }
+    const valid = parseRes.data;
     await this.assertOwner(ownerType, ownerId);
 
     const created = await this.prisma.$transaction(async (tx) => {
-      let position = input.position;
+      let position = valid.position;
       if (position === undefined) {
         const last = await tx.mediaAsset.findFirst({
           where: { ownerType, ownerId },
@@ -75,16 +89,16 @@ export class MediaService {
         data: {
           ownerType,
           ownerId,
-          kind: input.kind,
-          fileKey: input.fileKey,
+          kind: valid.kind,
+          fileKey: valid.fileKey,
           position,
-          ...(input.posterKey != null ? { posterKey: input.posterKey } : {}),
-          ...(input.width != null ? { width: input.width } : {}),
-          ...(input.height != null ? { height: input.height } : {}),
-          ...(input.durationS != null ? { durationS: input.durationS } : {}),
-          ...(input.blurhash != null ? { blurhash: input.blurhash } : {}),
-          ...(input.alt ? { altI18n: input.alt } : {}),
-          ...(input.status ? { status: input.status } : {}),
+          ...(valid.posterKey != null ? { posterKey: valid.posterKey } : {}),
+          ...(valid.width != null ? { width: valid.width } : {}),
+          ...(valid.height != null ? { height: valid.height } : {}),
+          ...(valid.durationS != null ? { durationS: valid.durationS } : {}),
+          ...(valid.blurhash != null ? { blurhash: valid.blurhash } : {}),
+          ...(valid.alt ? { altI18n: valid.alt } : {}),
+          ...(valid.status ? { status: valid.status } : {}),
         },
         include: withTags,
       });
@@ -107,11 +121,23 @@ export class MediaService {
     actor: Actor,
     meta: RequestMeta,
   ): Promise<MediaAsset> {
+    const parseRes = updateMediaRequestSchema.safeParse(input);
+    if (!parseRes.success) {
+      throw AppError.validation(
+        parseRes.error.issues.map((issue) => ({
+          field: issue.path.join('.') || '(body)',
+          rule: issue.code,
+          message: `errors.field.${issue.code}`,
+        })),
+        'media input failed schema validation',
+      );
+    }
+    const valid = parseRes.data;
     const current = await this.rowOrThrow(id);
 
     if (
-      input.expectedUpdatedAt !== undefined &&
-      input.expectedUpdatedAt !== current.updatedAt.toISOString()
+      valid.expectedUpdatedAt !== undefined &&
+      valid.expectedUpdatedAt !== current.updatedAt.toISOString()
     ) {
       throw new AppError('CONFLICT', 409, {
         detail: 'media asset was modified concurrently; reload and try again',
@@ -119,15 +145,15 @@ export class MediaService {
     }
 
     const data: Prisma.MediaAssetUpdateInput = {};
-    if (input.fileKey !== undefined) data.fileKey = input.fileKey;
-    if (input.posterKey !== undefined) data.posterKey = input.posterKey;
-    if (input.width !== undefined) data.width = input.width;
-    if (input.height !== undefined) data.height = input.height;
-    if (input.durationS !== undefined) data.durationS = input.durationS;
-    if (input.blurhash !== undefined) data.blurhash = input.blurhash;
-    if (input.alt !== undefined) data.altI18n = input.alt === null ? Prisma.DbNull : input.alt;
-    if (input.position !== undefined) data.position = input.position;
-    if (input.status !== undefined) data.status = input.status;
+    if (valid.fileKey !== undefined) data.fileKey = valid.fileKey;
+    if (valid.posterKey !== undefined) data.posterKey = valid.posterKey;
+    if (valid.width !== undefined) data.width = valid.width;
+    if (valid.height !== undefined) data.height = valid.height;
+    if (valid.durationS !== undefined) data.durationS = valid.durationS;
+    if (valid.blurhash !== undefined) data.blurhash = valid.blurhash;
+    if (valid.alt !== undefined) data.altI18n = valid.alt === null ? Prisma.DbNull : valid.alt;
+    if (valid.position !== undefined) data.position = valid.position;
+    if (valid.status !== undefined) data.status = valid.status;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.mediaAsset.update({ where: { id }, data });

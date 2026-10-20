@@ -10,6 +10,7 @@ import type {
 } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
 import {
+  createOffer,
   deleteOffer,
   getVariantBuybox,
   listProductOffers,
@@ -25,6 +26,7 @@ vi.mock('./api', async () => {
   const actual = await vi.importActual<typeof import('./api')>('./api');
   return {
     ...actual,
+    createOffer: vi.fn(),
     listVariants: vi.fn(),
     listProductOffers: vi.fn(),
     listSellers: vi.fn(),
@@ -36,6 +38,8 @@ vi.mock('./api', async () => {
     updateStock: vi.fn(),
   };
 });
+
+const mockedCreateOffer = vi.mocked(createOffer);
 
 const mockedListVariants = vi.mocked(listVariants);
 const mockedListProductOffers = vi.mocked(listProductOffers);
@@ -214,7 +218,7 @@ describe('ProductOffersDialog', () => {
       expect(screen.getByText('Current Buy-Box Winner')).toBeInTheDocument();
     });
     expect(screen.getAllByText('Acme Apparel').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('USD $19.99').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('$19.99').length).toBeGreaterThanOrEqual(1);
   });
 
   it('displays empty buybox state when variant has no winner', async () => {
@@ -269,7 +273,7 @@ describe('ProductOffersDialog', () => {
     renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
 
     await waitFor(() => {
-      expect(screen.getByText('USD $19.99')).toBeInTheDocument();
+      expect(screen.getByText('$19.99')).toBeInTheDocument();
     });
 
     const deleteBtn = screen.getByLabelText('Delete Offer');
@@ -294,6 +298,138 @@ describe('ProductOffersDialog', () => {
       expect(screen.getByText('Create Seller Offer')).toBeInTheDocument();
       expect(screen.getByText('List Price (USD)')).toBeInTheDocument();
     });
+  });
+
+  it('validates offer form fields inline (e.g. sale price >= price) and blocks submit', async () => {
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Offer')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add Offer'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Create Seller Offer')).toBeInTheDocument();
+    });
+
+    // Enter list price 20.00 and sale price 25.00 (greater than list price)
+    const priceInput = screen.getByPlaceholderText('e.g. 29.99');
+    fireEvent.change(priceInput, { target: { value: '20.00' } });
+
+    const salePriceInput = screen.getByPlaceholderText('e.g. 24.99 (optional)');
+    fireEvent.change(salePriceInput, { target: { value: '25.00' } });
+
+    // Click submit
+    const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Sale price must be strictly less than list price.'),
+      ).toBeInTheDocument();
+    });
+
+    expect(mockedCreateOffer).not.toHaveBeenCalled();
+  });
+
+  it('validates sale end date must be after sale start date', async () => {
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Offer')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add Offer'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Create Seller Offer')).toBeInTheDocument();
+    });
+
+    // Enter list price
+    const priceInput = screen.getByPlaceholderText('e.g. 29.99');
+    fireEvent.change(priceInput, { target: { value: '20.00' } });
+
+    // Set invalid sale dates (end before start)
+    const startsAtInput = screen.getByLabelText('Sale Starts');
+    const endsAtInput = screen.getByLabelText('Sale Ends');
+    fireEvent.change(startsAtInput, { target: { value: '2026-12-01T10:00' } });
+    fireEvent.change(endsAtInput, { target: { value: '2026-11-01T10:00' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Sale end date must be after the start date.')).toBeInTheDocument();
+    });
+
+    expect(mockedCreateOffer).not.toHaveBeenCalled();
+  });
+
+  it('validates max quantity cannot be less than min quantity', async () => {
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Offer')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add Offer'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Create Seller Offer')).toBeInTheDocument();
+    });
+
+    const priceInput = screen.getByPlaceholderText('e.g. 29.99');
+    fireEvent.change(priceInput, { target: { value: '20.00' } });
+
+    const minQtyInput = screen.getByLabelText('Min Order Qty');
+    const maxQtyInput = screen.getByLabelText('Max Order Qty (optional)');
+    fireEvent.change(minQtyInput, { target: { value: '5' } });
+    fireEvent.change(maxQtyInput, { target: { value: '2' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Maximum quantity cannot be less than minimum quantity.'),
+      ).toBeInTheDocument();
+    });
+
+    expect(mockedCreateOffer).not.toHaveBeenCalled();
+  });
+
+  it('validates warehouse is required when setting initial stock without warehouses', async () => {
+    mockedListWarehouses.mockResolvedValueOnce([]);
+
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Offer')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add Offer'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Create Seller Offer')).toBeInTheDocument();
+    });
+
+    const priceInput = screen.getByPlaceholderText('e.g. 29.99');
+    fireEvent.change(priceInput, { target: { value: '20.00' } });
+
+    const initialStockInput = screen.getByLabelText('Initial Stock');
+    fireEvent.change(initialStockInput, { target: { value: '15' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Warehouse is required when setting initial stock.'),
+      ).toBeInTheDocument();
+    });
+
+    expect(mockedCreateOffer).not.toHaveBeenCalled();
   });
 
   it('opens Stock Adjust Modal when Adjust Stock button is clicked', async () => {
@@ -368,10 +504,10 @@ describe('ProductOffersDialog', () => {
     renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
 
     await waitFor(() => {
-      expect(screen.getByText('USD $24.99')).toBeInTheDocument();
+      expect(screen.getAllByText('$24.99').length).toBeGreaterThan(0);
     });
     // Sale price ($19.99) and Sale badge should not be present
-    expect(screen.queryByText('USD $19.99')).not.toBeInTheDocument();
+    expect(screen.queryByText('$19.99')).not.toBeInTheDocument();
     expect(screen.queryByText('Sale')).not.toBeInTheDocument();
   });
 
@@ -395,9 +531,9 @@ describe('ProductOffersDialog', () => {
     renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
 
     await waitFor(() => {
-      expect(screen.getByText('USD $24.99')).toBeInTheDocument();
+      expect(screen.getAllByText('$24.99').length).toBeGreaterThan(0);
     });
-    expect(screen.queryByText('USD $19.99')).not.toBeInTheDocument();
+    expect(screen.queryByText('$19.99')).not.toBeInTheDocument();
     expect(screen.queryByText('Sale')).not.toBeInTheDocument();
   });
 
@@ -482,6 +618,32 @@ describe('ProductOffersDialog', () => {
         }),
       );
     });
+  });
+
+  it('validates stock adjustment fields inline and blocks update if invalid', async () => {
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Adjust Stock')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('Adjust Stock'));
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('50')).toBeInTheDocument();
+    });
+
+    const onHandInput = screen.getByDisplayValue('50');
+    fireEvent.change(onHandInput, { target: { value: '' } });
+
+    const updateStockBtn = screen.getByRole('button', { name: 'Update Stock' });
+    fireEvent.click(updateStockBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Enter a valid non-negative integer.')).toBeInTheDocument();
+    });
+
+    expect(mockedUpdateStock).not.toHaveBeenCalled();
   });
 
   it('renders responsive structure with pr-12 header, variant tabs, and min-w-[680px] table container', async () => {

@@ -228,6 +228,94 @@ describe('ProductMediaDialog', () => {
     });
   });
 
+  it('validates required fields inline (fileKey and video posterKey) and blocks submit', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const addBtn = screen.getByRole('button', { name: 'Add Media' });
+    fireEvent.click(addBtn);
+
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const submitBtn = screen.getByRole('button', { name: 'Add Media' });
+    // Click submit with empty fileKey
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('File key or URL is required.')).toBeInTheDocument();
+    });
+    expect(mockedCreateProductMedia).not.toHaveBeenCalled();
+
+    // Fill fileKey and switch to Video kind
+    const fileKeyInput = screen.getByPlaceholderText(/products\/antigravity-tee-navy\.jpg/i);
+    fireEvent.change(fileKeyInput, { target: { value: 'products/video.mp4' } });
+
+    const videoKindBtn = screen.getByRole('button', { name: /video/i });
+    fireEvent.click(videoKindBtn);
+
+    // Click submit without posterKey
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Videos require a poster thumbnail URL for gallery preview.'),
+      ).toBeInTheDocument();
+    });
+    expect(mockedCreateProductMedia).not.toHaveBeenCalled();
+
+    // Now fill posterKey and test duration boundary (0 is invalid: >= 1 required)
+    const posterInput = screen.getByPlaceholderText(/products\/video-poster\.jpg/i);
+    fireEvent.change(posterInput, { target: { value: 'products/poster.jpg' } });
+
+    const durationInput = screen.getByPlaceholderText('e.g. 45');
+    fireEvent.change(durationInput, { target: { value: '0' } });
+
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Duration must be a positive number of seconds/i),
+      ).toBeInTheDocument();
+    });
+    expect(mockedCreateProductMedia).not.toHaveBeenCalled();
+
+    // Now enter valid duration (120s) and verify successful submit
+    fireEvent.change(durationInput, { target: { value: '120' } });
+    mockedCreateProductMedia.mockResolvedValueOnce({
+      id: 'media_new',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/video.mp4',
+      posterKey: 'products/poster.jpg',
+      width: null,
+      height: null,
+      durationS: 120,
+      blurhash: null,
+      alt: null,
+      position: 1,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockedCreateProductMedia).toHaveBeenCalledWith(
+        'prod_1',
+        expect.objectContaining({
+          kind: 'video',
+          fileKey: 'products/video.mp4',
+          posterKey: 'products/poster.jpg',
+          durationS: 120,
+        }),
+      );
+    });
+  });
+
   it('handles reordering moving asset left/right', async () => {
     mockedReorderProductMedia.mockResolvedValue([sampleAssets[1]!, sampleAssets[0]!]);
 

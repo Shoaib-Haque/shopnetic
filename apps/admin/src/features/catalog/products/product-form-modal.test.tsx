@@ -396,4 +396,31 @@ describe('ProductFormModal', () => {
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it('auto-sanitizes decimal fractions when switching currency to zero-decimal JPY', async () => {
+    renderAdmin(
+      <ProductFormModal
+        open
+        onOpenChange={vi.fn()}
+        mode="create"
+        categories={mockCategories}
+        brands={mockBrands}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    const priceInput = screen.getByLabelText(/Base price/i);
+    fireEvent.change(priceInput, { target: { value: '150.75' } });
+    expect(priceInput).toHaveValue('150.75');
+
+    // Change currency to JPY via Radix Select
+    const currencyCombobox = screen.getByRole('combobox', { name: /Currency/i });
+    fireEvent.click(currencyCombobox);
+    fireEvent.click(screen.getByRole('option', { name: /JPY/i }));
+
+    // Base price should be automatically sanitized to '150' without decimals
+    await waitFor(() => {
+      expect(priceInput).toHaveValue('150');
+    });
+  });
 });

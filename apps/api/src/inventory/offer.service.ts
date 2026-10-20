@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { assertCan, Permission, type Actor } from '@shopnetic/auth';
 import {
   createOfferRequestSchema,
+  currencySchema,
+  updateOfferRequestSchema,
   type CreateOfferRequest,
   type ListOffersQuery,
   type Offer,
@@ -79,7 +81,7 @@ export class OfferService {
       variantId: offer.variantId,
       skuCode: variant?.skuCode ?? '',
       priceMinor: offer.priceMinor.toString(),
-      currency: offer.currency,
+      currency: currencySchema.parse(offer.currency),
       salePriceMinor: offer.salePriceMinor != null ? offer.salePriceMinor.toString() : null,
       saleStartsAt: offer.saleStartsAt ? offer.saleStartsAt.toISOString() : null,
       saleEndsAt: offer.saleEndsAt ? offer.saleEndsAt.toISOString() : null,
@@ -232,6 +234,44 @@ export class OfferService {
     }
 
     const salePriceMinor = data.salePriceMinor ? BigInt(data.salePriceMinor) : null;
+    if (salePriceMinor !== null && salePriceMinor >= priceMinor) {
+      throw new AppError('OFFER_SALE_PRICE_INVALID', 422, {
+        detail: 'sale price must be less than list price',
+      });
+    }
+
+    if (data.saleStartsAt && data.saleEndsAt) {
+      if (new Date(data.saleEndsAt) <= new Date(data.saleStartsAt)) {
+        throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
+          detail: 'sale end date must be after sale start date',
+        });
+      }
+    }
+
+    if (data.maxQty !== undefined && data.maxQty !== null) {
+      if (data.maxQty < data.minQty) {
+        throw new AppError('OFFER_ORDER_LIMITS_INVALID', 422, {
+          detail: 'max order quantity must be greater than or equal to minimum order quantity',
+        });
+      }
+    }
+
+    if (data.initialStock > 0) {
+      if (!data.warehouseId) {
+        throw new AppError('OFFER_WAREHOUSE_REQUIRED', 422, {
+          detail: 'warehouseId is required when initial stock is greater than 0',
+        });
+      }
+      const warehouse = await this.prisma.warehouse.findFirst({
+        where: { id: data.warehouseId, sellerId, deletedAt: null },
+      });
+      if (!warehouse) {
+        throw new AppError('WAREHOUSE_NOT_FOUND', 404, {
+          detail: `warehouse ${data.warehouseId} not found for seller ${sellerId}`,
+        });
+      }
+    }
+
     const compareAtMinor = data.compareAtMinor ? BigInt(data.compareAtMinor) : null;
 
     const created = await this.prisma.$transaction(async (tx) => {
@@ -254,44 +294,11 @@ export class OfferService {
         },
       });
 
-      if (data.initialStock > 0) {
-        let warehouseId = data.warehouseId;
-        if (!warehouseId) {
-          const defaultWarehouse = await tx.warehouse.findFirst({
-            where: { sellerId, isDefault: true, deletedAt: null },
-          });
-          if (defaultWarehouse) {
-            warehouseId = defaultWarehouse.id;
-          } else {
-            const anyWarehouse = await tx.warehouse.findFirst({
-              where: { sellerId, deletedAt: null },
-            });
-            if (anyWarehouse) {
-              warehouseId = anyWarehouse.id;
-            } else {
-              const createdWh = await tx.warehouse.create({
-                data: {
-                  sellerId,
-                  name: 'Default Warehouse',
-                  isDefault: true,
-                  address: {
-                    line1: '1 Main St',
-                    city: 'Austin',
-                    state: 'TX',
-                    postalCode: '78701',
-                    country: 'US',
-                  },
-                },
-              });
-              warehouseId = createdWh.id;
-            }
-          }
-        }
-
+      if (data.initialStock > 0 && data.warehouseId) {
         await tx.stock.create({
           data: {
             offerId: offer.id,
-            warehouseId,
+            warehouseId: data.warehouseId,
             onHand: data.initialStock,
           },
         });
@@ -326,10 +333,11 @@ export class OfferService {
 
   async update(
     id: string,
-    data: UpdateOfferRequest,
+    raw: UpdateOfferRequest,
     actor: Actor,
     meta: RequestMeta,
   ): Promise<Offer> {
+    const data = updateOfferRequestSchema.parse(raw);
     const existing = await this.prisma.offer.findUnique({
       where: { id },
       include: {
@@ -352,8 +360,50 @@ export class OfferService {
       }
     }
 
-    if (data.priceMinor && BigInt(data.priceMinor) <= 0n) {
+    const effectivePriceMinor = data.priceMinor ? BigInt(data.priceMinor) : existing.priceMinor;
+    if (data.priceMinor && effectivePriceMinor <= 0n) {
       throw new AppError('OFFER_PRICE_INVALID', 422, { detail: 'price must be positive' });
+    }
+
+    const effectiveSalePriceMinor =
+      data.salePriceMinor !== undefined
+        ? data.salePriceMinor
+          ? BigInt(data.salePriceMinor)
+          : null
+        : existing.salePriceMinor;
+
+    if (effectiveSalePriceMinor !== null && effectiveSalePriceMinor >= effectivePriceMinor) {
+      throw new AppError('OFFER_SALE_PRICE_INVALID', 422, {
+        detail: 'sale price must be less than list price',
+      });
+    }
+
+    const effectiveStartsAt =
+      data.saleStartsAt !== undefined
+        ? data.saleStartsAt
+          ? new Date(data.saleStartsAt)
+          : null
+        : existing.saleStartsAt;
+    const effectiveEndsAt =
+      data.saleEndsAt !== undefined
+        ? data.saleEndsAt
+          ? new Date(data.saleEndsAt)
+          : null
+        : existing.saleEndsAt;
+
+    if (effectiveStartsAt && effectiveEndsAt && effectiveEndsAt <= effectiveStartsAt) {
+      throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
+        detail: 'sale end date must be after sale start date',
+      });
+    }
+
+    const effectiveMinQty = data.minQty !== undefined ? data.minQty : existing.minQty;
+    const effectiveMaxQty = data.maxQty !== undefined ? data.maxQty : existing.maxQty;
+
+    if (effectiveMaxQty !== null && effectiveMaxQty < effectiveMinQty) {
+      throw new AppError('OFFER_ORDER_LIMITS_INVALID', 422, {
+        detail: 'max order quantity must be greater than or equal to minimum order quantity',
+      });
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {

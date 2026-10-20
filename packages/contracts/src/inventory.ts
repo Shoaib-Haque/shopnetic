@@ -115,9 +115,9 @@ export const createOfferRequestSchema = z.object({
   condition: offerConditionSchema.default('new'),
   conditionNotes: z.string().trim().max(500).optional(),
   handlingDays: z.number().int().min(0).max(30).default(1),
-  minQty: z.number().int().min(1).default(1),
-  maxQty: z.number().int().min(1).optional(),
-  initialStock: z.number().int().min(0).default(0),
+  minQty: z.number().int().min(1).max(999999).default(1),
+  maxQty: z.number().int().min(1).max(999999).optional(),
+  initialStock: z.number().int().min(0).max(999999).default(0),
   warehouseId: z.string().uuid().optional(),
 });
 export type CreateOfferRequest = z.input<typeof createOfferRequestSchema>;
@@ -133,8 +133,8 @@ export const updateOfferRequestSchema = z.object({
   conditionNotes: z.string().trim().max(500).nullable().optional(),
   handlingDays: z.number().int().min(0).max(30).optional(),
   status: offerStatusSchema.optional(),
-  minQty: z.number().int().min(1).optional(),
-  maxQty: z.number().int().min(1).nullable().optional(),
+  minQty: z.number().int().min(1).max(999999).optional(),
+  maxQty: z.number().int().min(1).max(999999).nullable().optional(),
   expectedUpdatedAt: z.string().optional(),
 });
 export type UpdateOfferRequest = z.infer<typeof updateOfferRequestSchema>;

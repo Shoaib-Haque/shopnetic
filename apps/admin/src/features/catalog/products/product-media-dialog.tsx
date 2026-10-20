@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Controller, useForm, type Path } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
   AlertTriangle,
   ArrowLeft,
-  Check,
   ChevronLeft,
   ChevronRight,
   Edit2,
@@ -22,8 +24,6 @@ import {
   deriveVariantLeadMediaMap,
   type CreateMediaRequest,
   type MediaAsset,
-  type MediaKind,
-  type MediaStatus,
   type OptionType,
   type Product,
   type ProductOption,
@@ -52,6 +52,7 @@ import {
 } from '@shopnetic/ui';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
+import { integerKeyDownHandler, integerPasteHandler } from '@/lib/numeric-input';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import {
   createProductMedia,
@@ -74,74 +75,119 @@ interface MediaFormModalProps {
   onSaved: (asset: MediaAsset) => void;
 }
 
+const mediaFormSchema = z
+  .object({
+    kind: z.enum(['image', 'video']),
+    fileKey: z.string().trim().min(1, 'products.media.form.err.fileKeyRequired'),
+    posterKey: z.string().trim().optional().or(z.literal('')),
+    alt: z.string().trim().optional().or(z.literal('')),
+    durationS: z
+      .string()
+      .trim()
+      .refine(
+        (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 86400),
+        'products.media.form.err.durationInvalid',
+      )
+      .optional()
+      .or(z.literal('')),
+    status: z.enum(['active', 'pending', 'rejected']),
+  })
+  .superRefine((data, ctx) => {
+    if (data.kind === 'video' && (!data.posterKey || !data.posterKey.trim())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'products.media.form.err.posterKeyRequired',
+        path: ['posterKey'],
+      });
+    }
+  });
+
+type MediaFormValues = z.infer<typeof mediaFormSchema>;
+
 function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: MediaFormModalProps) {
   const t = useTranslations('catalog');
   const isEdit = asset !== null;
 
-  const [kind, setKind] = useState<MediaKind>('image');
-  const [fileKey, setFileKey] = useState('');
-  const [posterKey, setPosterKey] = useState('');
-  const [alt, setAlt] = useState('');
-  const [durationS, setDurationS] = useState('');
-  const [status, setStatus] = useState<MediaStatus>('active');
-
-  const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    setValue,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<MediaFormValues>({
+    resolver: zodResolver(mediaFormSchema),
+    defaultValues: {
+      kind: 'image',
+      fileKey: '',
+      posterKey: '',
+      alt: '',
+      durationS: '',
+      status: 'active',
+    },
+  });
+
+  const selectedKind = watch('kind');
+
+  function fieldError(field: Path<MediaFormValues>): string | undefined {
+    const err = errors[field];
+    if (!err) return undefined;
+    return err.message?.startsWith('products.') ? t(err.message) : err.message;
+  }
 
   useEffect(() => {
     if (!open) {
-      setKind('image');
-      setFileKey('');
-      setPosterKey('');
-      setAlt('');
-      setDurationS('');
-      setStatus('active');
+      reset({
+        kind: 'image',
+        fileKey: '',
+        posterKey: '',
+        alt: '',
+        durationS: '',
+        status: 'active',
+      });
       setFormError(null);
       return;
     }
 
     if (asset) {
-      setKind(asset.kind);
-      setFileKey(asset.fileKey);
-      setPosterKey(asset.posterKey ?? '');
-      setAlt(asset.alt?.en ?? '');
-      setDurationS(asset.durationS != null ? String(asset.durationS) : '');
-      setStatus(asset.status);
+      reset({
+        kind: asset.kind,
+        fileKey: asset.fileKey,
+        posterKey: asset.posterKey ?? '',
+        alt: asset.alt?.en ?? '',
+        durationS: asset.durationS != null ? String(asset.durationS) : '',
+        status: asset.status,
+      });
     } else {
-      setKind('image');
-      setFileKey('');
-      setPosterKey('');
-      setAlt('');
-      setDurationS('');
-      setStatus('active'); // Defaults straight to active for staff
+      reset({
+        kind: 'image',
+        fileKey: '',
+        posterKey: '',
+        alt: '',
+        durationS: '',
+        status: 'active',
+      });
     }
-  }, [open, asset]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanFileKey = fileKey.trim();
-    if (!cleanFileKey) {
-      setFormError(t('products.media.form.err.fileKeyRequired'));
-      return;
-    }
-
-    const cleanPosterKey = posterKey.trim();
-    if (kind === 'video' && !cleanPosterKey) {
-      setFormError(t('products.media.form.err.posterKeyRequired'));
-      return;
-    }
-
-    setSaving(true);
     setFormError(null);
+  }, [open, asset, reset]);
+
+  const onValidSubmit = async (data: MediaFormValues) => {
+    setFormError(null);
+
+    const cleanFileKey = data.fileKey.trim();
+    const cleanPosterKey = data.posterKey?.trim() || '';
 
     try {
       if (isEdit && asset) {
         const req: UpdateMediaRequest = {
           fileKey: cleanFileKey,
           posterKey: cleanPosterKey || null,
-          alt: alt.trim() ? { en: alt.trim() } : null,
-          durationS: durationS ? Number(durationS) : null,
-          status,
+          alt: data.alt?.trim() ? { en: data.alt.trim() } : null,
+          durationS: data.durationS ? Number(data.durationS) : null,
+          status: data.status,
           expectedUpdatedAt: asset.updatedAt,
         };
         const updated = await updateMedia(asset.id, req);
@@ -150,12 +196,12 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
         onOpenChange(false);
       } else {
         const req: CreateMediaRequest = {
-          kind,
+          kind: data.kind,
           fileKey: cleanFileKey,
           posterKey: cleanPosterKey || null,
-          alt: alt.trim() ? { en: alt.trim() } : undefined,
-          durationS: durationS ? Number(durationS) : undefined,
-          status,
+          alt: data.alt?.trim() ? { en: data.alt.trim() } : undefined,
+          durationS: data.durationS ? Number(data.durationS) : undefined,
+          status: data.status,
         };
         const created = await createProductMedia(productId, req);
         onSaved(created);
@@ -164,15 +210,13 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
       }
     } catch (err) {
       setFormError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
-    } finally {
-      setSaving(false);
     }
   };
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-md max-h-[85vh] flex flex-col">
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={handleSubmit(onValidSubmit)} className="flex min-h-0 flex-1 flex-col">
           <ModalHeader className="shrink-0 border-b border-border pb-4">
             <ModalTitle>
               {isEdit ? t('products.media.form.editTitle') : t('products.media.form.addTitle')}
@@ -187,9 +231,9 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
                 <div className="flex gap-2">
                   <Button
                     type="button"
-                    variant={kind === 'image' ? 'primary' : 'outline'}
+                    variant={selectedKind === 'image' ? 'primary' : 'outline'}
                     size="sm"
-                    onClick={() => setKind('image')}
+                    onClick={() => setValue('kind', 'image', { shouldValidate: true })}
                     className="flex-1 gap-1.5"
                   >
                     <ImageIcon className="size-4" />
@@ -197,9 +241,9 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
                   </Button>
                   <Button
                     type="button"
-                    variant={kind === 'video' ? 'primary' : 'outline'}
+                    variant={selectedKind === 'video' ? 'primary' : 'outline'}
                     size="sm"
-                    onClick={() => setKind('video')}
+                    onClick={() => setValue('kind', 'video', { shouldValidate: true })}
                     className="flex-1 gap-1.5"
                   >
                     <Film className="size-4" />
@@ -210,72 +254,99 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
             )}
 
             {/* File Key / URL */}
-            <Field label={t('products.media.form.fileKey')} htmlFor="media-file-key">
+            <Field
+              label={t('products.media.form.fileKey')}
+              htmlFor="media-file-key"
+              error={fieldError('fileKey')}
+            >
               <Input
                 id="media-file-key"
-                value={fileKey}
-                onChange={(e) => setFileKey(e.target.value)}
+                {...register('fileKey')}
                 placeholder={t('products.media.form.fileKeyPlaceholder')}
-                required
+                invalid={Boolean(errors.fileKey)}
               />
             </Field>
 
             {/* Poster Key (Videos only) */}
-            {kind === 'video' && (
+            {selectedKind === 'video' && (
               <Field
                 label={t('products.media.form.posterKey')}
                 htmlFor="media-poster-key"
                 hint={t('products.media.form.posterKeyHint')}
+                error={fieldError('posterKey')}
               >
                 <Input
                   id="media-poster-key"
-                  value={posterKey}
-                  onChange={(e) => setPosterKey(e.target.value)}
+                  {...register('posterKey')}
                   placeholder={t('products.media.form.posterKeyPlaceholder')}
-                  required
+                  invalid={Boolean(errors.posterKey)}
                 />
               </Field>
             )}
 
             {/* Alt Text */}
-            <Field label={t('products.media.form.alt')} htmlFor="media-alt">
+            <Field
+              label={t('products.media.form.alt')}
+              htmlFor="media-alt"
+              error={fieldError('alt')}
+            >
               <Input
                 id="media-alt"
-                value={alt}
-                onChange={(e) => setAlt(e.target.value)}
+                {...register('alt')}
                 placeholder={t('products.media.form.altPlaceholder')}
+                invalid={Boolean(errors.alt)}
               />
             </Field>
 
             {/* Duration (Videos only) */}
-            {kind === 'video' && (
-              <Field label={t('products.media.form.durationS')} htmlFor="media-duration">
+            {selectedKind === 'video' && (
+              <Field
+                label={t('products.media.form.durationS')}
+                htmlFor="media-duration"
+                error={fieldError('durationS')}
+              >
                 <Input
                   id="media-duration"
                   type="number"
                   min="1"
                   max="86400"
-                  value={durationS}
-                  onChange={(e) => setDurationS(e.target.value)}
+                  {...register('durationS')}
                   placeholder={t('products.media.form.durationPlaceholder')}
+                  invalid={Boolean(errors.durationS)}
+                  onKeyDown={integerKeyDownHandler}
+                  onPaste={(e) =>
+                    integerPasteHandler(e, (val) =>
+                      setValue('durationS', val, { shouldValidate: true, shouldDirty: true }),
+                    )
+                  }
                 />
               </Field>
             )}
 
             {/* Status (active / pending / rejected) */}
             <Field label={t('products.media.form.status')} htmlFor="media-status">
-              <Select value={status} onValueChange={(v) => setStatus(v as MediaStatus)}>
-                <SelectTrigger id="media-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">{t('products.media.form.statusActive')}</SelectItem>
-                  <SelectItem value="pending">{t('products.media.form.statusPending')}</SelectItem>
-                  <SelectItem value="rejected">
-                    {t('products.media.form.statusRejected')}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <Controller
+                control={control}
+                name="status"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="media-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">
+                        {t('products.media.form.statusActive')}
+                      </SelectItem>
+                      <SelectItem value="pending">
+                        {t('products.media.form.statusPending')}
+                      </SelectItem>
+                      <SelectItem value="rejected">
+                        {t('products.media.form.statusRejected')}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </Field>
 
             {formError && (
@@ -289,13 +360,19 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
             <Button
               type="button"
               variant="outline"
-              disabled={saving}
+              size="sm"
+              disabled={isSubmitting}
               onClick={() => onOpenChange(false)}
             >
               {t('products.media.form.cancel')}
             </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? <Spinner className="size-4" /> : <Check className="size-4" />}
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={isSubmitting}
+              disabled={isSubmitting}
+            >
               {isEdit ? t('products.media.form.save') : t('products.media.form.add')}
             </Button>
           </ModalFooter>

@@ -448,12 +448,8 @@ export type ProductListStatus = z.infer<typeof productListStatusSchema>;
 export const productOriginSchema = z.enum(['all', '1p', '3p']);
 export type ProductOrigin = z.infer<typeof productOriginSchema>;
 
-export const currencySchema = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .regex(/^[A-Z]{3}$/, 'a 3-letter ISO-4217 code');
-export type Currency = z.infer<typeof currencySchema>;
+import { currencySchema, type Currency } from './currency.js';
+export { currencySchema, type Currency };
 
 /** Non-negative integer minor units (cents). Carried as a string in views. */
 const priceMinorSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -707,7 +703,7 @@ export const createMediaRequestSchema = z.object({
   posterKey: objectKeySchema.nullish(),
   width: pixelSchema.nullish(),
   height: pixelSchema.nullish(),
-  durationS: z.number().int().min(0).max(86_400).nullish(),
+  durationS: z.number().int().min(1).max(86_400).nullish(),
   blurhash: z.string().trim().max(128).nullish(),
   alt: localizedTextSchema.optional(),
   position: positionField.optional(),
@@ -721,7 +717,7 @@ export const updateMediaRequestSchema = z
     posterKey: objectKeySchema.nullable(),
     width: pixelSchema.nullable(),
     height: pixelSchema.nullable(),
-    durationS: z.number().int().min(0).max(86_400).nullable(),
+    durationS: z.number().int().min(1).max(86_400).nullable(),
     blurhash: z.string().trim().max(128).nullable(),
     alt: localizedTextSchema.nullable(),
     position: positionField,

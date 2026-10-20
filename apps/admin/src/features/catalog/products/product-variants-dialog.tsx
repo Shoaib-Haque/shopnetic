@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Controller, useForm, type Path } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
   AlertTriangle,
   ArrowLeft,
   Boxes,
-  Check,
   Edit2,
   Grid,
   Image as ImageIcon,
@@ -60,6 +62,7 @@ import {
 } from '@shopnetic/ui';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
+import { integerKeyDownHandler, integerPasteHandler } from '@/lib/numeric-input';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
@@ -441,6 +444,60 @@ interface VariantFormModalProps {
   onSaved: (variant: Variant) => void;
 }
 
+const variantFormSchema = z.object({
+  skuCode: z
+    .string()
+    .trim()
+    .max(80, 'products.variants.form.err.skuLong')
+    .optional()
+    .or(z.literal('')),
+  gtin: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || /^[0-9]{8,14}$/.test(v), 'products.variants.form.gtinHint')
+    .optional()
+    .or(z.literal('')),
+  weightG: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 0),
+      'products.variants.form.err.weightInvalid',
+    )
+    .optional()
+    .or(z.literal('')),
+  length: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 0),
+      'products.variants.form.err.dimensionInvalid',
+    )
+    .optional()
+    .or(z.literal('')),
+  width: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 0),
+      'products.variants.form.err.dimensionInvalid',
+    )
+    .optional()
+    .or(z.literal('')),
+  height: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 0),
+      'products.variants.form.err.dimensionInvalid',
+    )
+    .optional()
+    .or(z.literal('')),
+  status: z.enum(['active', 'inactive']),
+});
+
+type VariantFormValues = z.infer<typeof variantFormSchema>;
+
 function VariantFormModal({
   open,
   onOpenChange,
@@ -452,22 +509,38 @@ function VariantFormModal({
   onSaved,
 }: VariantFormModalProps) {
   const t = useTranslations('catalog');
-  const [skuCode, setSkuCode] = useState('');
-  const [gtin, setGtin] = useState('');
-  const [weightG, setWeightG] = useState('');
-  const [length, setLength] = useState('');
-  const [width, setWidth] = useState('');
-  const [height, setHeight] = useState('');
-  const [status, setStatus] = useState<'active' | 'inactive'>('active');
-
-  // Manual selections state (when creating a single variant)
   const [manualSelections, setManualSelections] = useState<Record<string, string>>({});
-
-  const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const isEdit = variant !== null;
+
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    setError,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<VariantFormValues>({
+    resolver: zodResolver(variantFormSchema),
+    defaultValues: {
+      skuCode: '',
+      gtin: '',
+      weightG: '',
+      length: '',
+      width: '',
+      height: '',
+      status: 'active',
+    },
+  });
+
+  function fieldError(field: Path<VariantFormValues>): string | undefined {
+    const err = errors[field];
+    if (!err) return undefined;
+    return err.message?.startsWith('products.') ? t(err.message) : err.message;
+  }
 
   const categoryOptionMap = useMemo(() => {
     const map = new Map<string, CategoryOption>();
@@ -484,60 +557,55 @@ function VariantFormModal({
 
   useEffect(() => {
     if (variant) {
-      setSkuCode(variant.skuCode ?? '');
-      setGtin(variant.gtin ?? '');
-      setWeightG(variant.weightG != null ? String(variant.weightG) : '');
       const d = variant.dims as { length?: number; width?: number; height?: number } | null;
-      setLength(d?.length != null ? String(d.length) : '');
-      setWidth(d?.width != null ? String(d.width) : '');
-      setHeight(d?.height != null ? String(d.height) : '');
-      setStatus(variant.status);
+      reset({
+        skuCode: variant.skuCode ?? '',
+        gtin: variant.gtin ?? '',
+        weightG: variant.weightG != null ? String(variant.weightG) : '',
+        length: d?.length != null ? String(d.length) : '',
+        width: d?.width != null ? String(d.width) : '',
+        height: d?.height != null ? String(d.height) : '',
+        status: variant.status,
+      });
       setFormError(null);
       setErrorCode(null);
     } else {
-      setSkuCode('');
-      setGtin('');
-      setWeightG('');
-      setLength('');
-      setWidth('');
-      setHeight('');
-      setStatus('active');
+      reset({
+        skuCode: '',
+        gtin: '',
+        weightG: '',
+        length: '',
+        width: '',
+        height: '',
+        status: 'active',
+      });
       setManualSelections({});
       setFormError(null);
       setErrorCode(null);
     }
-  }, [variant, open]);
+  }, [variant, open, reset]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
+  const onSubmit = async (values: VariantFormValues) => {
     setFormError(null);
-
-    // Validate GTIN if provided
-    const cleanGtin = gtin.trim();
-    if (cleanGtin && !/^[0-9]{8,14}$/.test(cleanGtin)) {
-      setFormError(t('products.variants.form.gtinHint'));
-      setSaving(false);
-      return;
-    }
+    setErrorCode(null);
 
     const dimsObj =
-      length || width || height
+      values.length || values.width || values.height
         ? {
-            ...(length ? { length: Number(length) } : {}),
-            ...(width ? { width: Number(width) } : {}),
-            ...(height ? { height: Number(height) } : {}),
+            ...(values.length ? { length: Number(values.length) } : {}),
+            ...(values.width ? { width: Number(values.width) } : {}),
+            ...(values.height ? { height: Number(values.height) } : {}),
           }
         : null;
 
     try {
       if (isEdit && variant) {
         const req: UpdateVariantRequest = {
-          skuCode: skuCode.trim() || null,
-          gtin: cleanGtin || null,
-          weightG: weightG ? Number(weightG) : null,
+          skuCode: values.skuCode?.trim() || null,
+          gtin: values.gtin?.trim() || null,
+          weightG: values.weightG ? Number(values.weightG) : null,
           dims: dimsObj,
-          status,
+          status: values.status,
           expectedUpdatedAt: variant.updatedAt,
         };
         const updated = await updateVariant(product.id, variant.id, req);
@@ -545,7 +613,6 @@ function VariantFormModal({
         notify.saved(t('products.variants.toast.updated'));
         onOpenChange(false);
       } else {
-        // Build selections
         const selections: VariantSelection[] = variantAxes.map((axis) => ({
           optionTypeId: axis.optionTypeId,
           optionValueId: manualSelections[axis.optionTypeId] ?? '',
@@ -553,17 +620,16 @@ function VariantFormModal({
 
         if (selections.some((s) => !s.optionValueId)) {
           setFormError(t('products.variants.form.selectValues'));
-          setSaving(false);
           return;
         }
 
         const req: CreateVariantRequest = {
           selections,
-          skuCode: skuCode.trim() || null,
-          gtin: cleanGtin || null,
-          weightG: weightG ? Number(weightG) : null,
+          skuCode: values.skuCode?.trim() || null,
+          gtin: values.gtin?.trim() || null,
+          weightG: values.weightG ? Number(values.weightG) : null,
           dims: dimsObj,
-          status,
+          status: values.status,
         };
         const created = await createVariant(product.id, req);
         onSaved(created);
@@ -573,16 +639,18 @@ function VariantFormModal({
     } catch (err) {
       const code = err instanceof AdminApiError ? err.code : undefined;
       setErrorCode(code ?? null);
-      setFormError(t(catalogErrorKey(code)));
-    } finally {
-      setSaving(false);
+      if (code === 'VARIANT_SKU_TAKEN' || code === 'SKU_TAKEN') {
+        setError('skuCode', { type: 'server', message: t(catalogErrorKey(code)) });
+      } else {
+        setFormError(t(catalogErrorKey(code)));
+      }
     }
   };
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-lg max-h-[85vh] flex flex-col">
-        <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
           <ModalHeader className="shrink-0 border-b border-border pb-4">
             <ModalTitle>
               {isEdit
@@ -692,60 +760,109 @@ function VariantFormModal({
 
             {/* SKU and GTIN */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={t('products.variants.form.sku')}>
+              <Field
+                label={t('products.variants.form.sku')}
+                htmlFor="variant-sku"
+                error={fieldError('skuCode')}
+              >
                 <Input
-                  value={skuCode}
-                  onChange={(e) => setSkuCode(e.target.value)}
+                  id="variant-sku"
+                  {...register('skuCode')}
                   placeholder={t('products.variants.form.skuPlaceholder')}
+                  invalid={Boolean(errors.skuCode)}
                 />
               </Field>
 
               <Field
                 label={t('products.variants.form.gtin')}
+                htmlFor="variant-gtin"
                 hint={t('products.variants.form.gtinHint')}
+                error={fieldError('gtin')}
               >
                 <Input
-                  value={gtin}
-                  onChange={(e) => setGtin(e.target.value)}
+                  id="variant-gtin"
+                  {...register('gtin')}
                   placeholder={t('products.variants.form.gtinPlaceholder')}
+                  invalid={Boolean(errors.gtin)}
+                  onKeyDown={integerKeyDownHandler}
+                  onPaste={(e) =>
+                    integerPasteHandler(e, (val) =>
+                      setValue('gtin', val, { shouldValidate: true, shouldDirty: true }),
+                    )
+                  }
                 />
               </Field>
             </div>
 
             {/* Weight and Dimensions */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label={t('products.variants.form.weightG')}>
+              <Field
+                label={t('products.variants.form.weightG')}
+                htmlFor="variant-weight"
+                error={fieldError('weightG')}
+              >
                 <Input
+                  id="variant-weight"
                   type="number"
                   min="0"
-                  value={weightG}
-                  onChange={(e) => setWeightG(e.target.value)}
+                  {...register('weightG')}
                   placeholder={t('products.variants.form.weightPlaceholder')}
+                  invalid={Boolean(errors.weightG)}
+                  onKeyDown={integerKeyDownHandler}
+                  onPaste={(e) =>
+                    integerPasteHandler(e, (val) =>
+                      setValue('weightG', val, { shouldValidate: true, shouldDirty: true }),
+                    )
+                  }
                 />
               </Field>
 
-              <Field label={t('products.variants.form.dimensions')}>
+              <Field
+                label={t('products.variants.form.dimensions')}
+                error={fieldError('length') || fieldError('width') || fieldError('height')}
+              >
                 <div className="grid grid-cols-3 gap-1.5">
                   <Input
                     type="number"
                     min="0"
                     placeholder="L"
-                    value={length}
-                    onChange={(e) => setLength(e.target.value)}
+                    aria-label={t('products.variants.form.length')}
+                    {...register('length')}
+                    invalid={Boolean(errors.length)}
+                    onKeyDown={integerKeyDownHandler}
+                    onPaste={(e) =>
+                      integerPasteHandler(e, (val) =>
+                        setValue('length', val, { shouldValidate: true, shouldDirty: true }),
+                      )
+                    }
                   />
                   <Input
                     type="number"
                     min="0"
                     placeholder="W"
-                    value={width}
-                    onChange={(e) => setWidth(e.target.value)}
+                    aria-label={t('products.variants.form.width')}
+                    {...register('width')}
+                    invalid={Boolean(errors.width)}
+                    onKeyDown={integerKeyDownHandler}
+                    onPaste={(e) =>
+                      integerPasteHandler(e, (val) =>
+                        setValue('width', val, { shouldValidate: true, shouldDirty: true }),
+                      )
+                    }
                   />
                   <Input
                     type="number"
                     min="0"
                     placeholder="H"
-                    value={height}
-                    onChange={(e) => setHeight(e.target.value)}
+                    aria-label={t('products.variants.form.height')}
+                    {...register('height')}
+                    invalid={Boolean(errors.height)}
+                    onKeyDown={integerKeyDownHandler}
+                    onPaste={(e) =>
+                      integerPasteHandler(e, (val) =>
+                        setValue('height', val, { shouldValidate: true, shouldDirty: true }),
+                      )
+                    }
                   />
                 </div>
               </Field>
@@ -761,10 +878,16 @@ function VariantFormModal({
                   Inactive variants cannot be purchased on storefront.
                 </p>
               </div>
-              <Switch
-                checked={status === 'active'}
-                onCheckedChange={(c) => setStatus(c ? 'active' : 'inactive')}
-                aria-label={t('products.variants.form.active')}
+              <Controller
+                control={control}
+                name="status"
+                render={({ field }) => (
+                  <Switch
+                    checked={field.value === 'active'}
+                    onCheckedChange={(c) => field.onChange(c ? 'active' : 'inactive')}
+                    aria-label={t('products.variants.form.active')}
+                  />
+                )}
               />
             </div>
 
@@ -779,13 +902,19 @@ function VariantFormModal({
             <Button
               type="button"
               variant="outline"
-              disabled={saving}
+              size="sm"
               onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}
             >
               {t('products.variants.form.cancel')}
             </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? <Spinner className="size-4" /> : <Check className="size-4" />}
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={isSubmitting}
+              disabled={isSubmitting}
+            >
               {isEdit ? t('products.variants.form.save') : t('products.variants.form.create')}
             </Button>
           </ModalFooter>

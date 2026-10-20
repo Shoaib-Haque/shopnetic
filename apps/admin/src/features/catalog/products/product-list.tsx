@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useSearchParams } from 'next/navigation';
 import { MoreHorizontal, Plus, SlidersHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import type {
-  Brand,
-  Category,
-  Product,
-  ProductListStatus,
-  ProductOrigin,
+import {
+  type Brand,
+  type Category,
+  type Product,
+  type ProductListStatus,
+  type ProductOrigin,
+  formatMoney,
 } from '@shopnetic/contracts';
 import {
   Button,
@@ -89,8 +90,7 @@ const STATUS_TONE: Record<Product['status'], StatusTone> = {
 
 function formatPrice(basePriceMinor: string | null, currency: string | null): string {
   if (!basePriceMinor) return '—';
-  const val = (Number(basePriceMinor) / 100).toFixed(2);
-  return currency ? `${currency} ${val}` : `$${val}`;
+  return formatMoney(basePriceMinor, currency ?? 'USD');
 }
 
 export function ProductList() {

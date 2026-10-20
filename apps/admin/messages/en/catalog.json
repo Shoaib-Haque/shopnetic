@@ -486,8 +486,7 @@
           "categoryRequired": "Please select a category.",
           "slugFormat": "Lowercase letters, digits, and single hyphens only.",
           "slugLong": "Keep slug to 80 characters or fewer.",
-          "priceInvalid": "Enter a valid non-negative number.",
-          "currencyInvalid": "Enter a 3-letter currency code (e.g. USD)."
+          "priceInvalid": "Enter a valid non-negative number."
         }
       },
       "options": {
@@ -580,7 +579,11 @@
           "save": "Save Variant",
           "create": "Create Variant",
           "cancel": "Cancel",
-          "close": "Close"
+          "err": {
+            "skuLong": "SKU code cannot exceed 80 characters.",
+            "weightInvalid": "Weight must be a non-negative whole number.",
+            "dimensionInvalid": "Dimensions must be non-negative whole numbers."
+          }
         },
         "deleteConfirmTitle": "Delete variant?",
         "deleteConfirmMessage": "Are you sure you want to delete this variant? Any existing offers or cart links will be affected.",
@@ -658,7 +661,8 @@
           "cancel": "Cancel",
           "err": {
             "fileKeyRequired": "File key or URL is required.",
-            "posterKeyRequired": "Videos require a poster thumbnail URL for gallery preview."
+            "posterKeyRequired": "Videos require a poster thumbnail URL for gallery preview.",
+            "durationInvalid": "Duration must be a positive number of seconds (1–86,400)."
           }
         }
       },
@@ -753,7 +757,15 @@
           "err": {
             "priceRequired": "A valid positive price is required.",
             "sellerRequired": "Please select a seller.",
-            "variantRequired": "Please select a variant."
+            "variantRequired": "Please select a variant.",
+            "salePriceGtePrice": "Sale price must be strictly less than list price.",
+            "saleEndBeforeStart": "Sale end date must be after the start date.",
+            "handlingDaysInvalid": "Handling days must be between 0 and 30.",
+            "minQtyInvalid": "Minimum order quantity must be at least 1.",
+            "maxQtyInvalid": "Maximum order quantity must be at least 1.",
+            "maxLessThanMin": "Maximum quantity cannot be less than minimum quantity.",
+            "initialStockInvalid": "Initial stock cannot be negative.",
+            "warehouseRequired": "Warehouse is required when setting initial stock."
           }
         },
         "stockModal": {
@@ -773,7 +785,11 @@
           "save": "Update Stock",
           "cancel": "Cancel",
           "emptyWarehouses": "No warehouses configured for this seller yet.",
-          "addWarehouse": "Add Warehouse"
+          "addWarehouse": "Add Warehouse",
+          "err": {
+            "onHandInvalid": "Enter a valid non-negative integer.",
+            "safetyStockInvalid": "Enter a valid non-negative integer."
+          }
         },
         "warehouseModal": {
           "title": "New Warehouse",
@@ -790,7 +806,15 @@
           "postalCode": "Postal / ZIP Code",
           "country": "Country Code (ISO 2-letter)",
           "save": "Create Warehouse",
-          "cancel": "Cancel"
+          "cancel": "Cancel",
+          "err": {
+            "nameRequired": "Warehouse name is required.",
+            "nameLong": "Warehouse name must be 100 characters or fewer.",
+            "line1Required": "Street address line 1 is required.",
+            "cityRequired": "City is required.",
+            "postalCodeRequired": "Postal / ZIP code is required.",
+            "countryFormat": "Enter a valid 2-letter country code (e.g. US)."
+          }
         }
       }
     },
@@ -837,6 +861,10 @@
       "offerNotFound": "The offer listing was not found.",
       "offerAlreadyExists": "An active offer already exists for this seller and variant combination.",
       "offerPriceInvalid": "The offer price must be a positive amount.",
+      "offerSalePriceInvalid": "The sale price must be strictly less than the list price.",
+      "offerSaleDatesInvalid": "The sale end date must be after the start date.",
+      "offerOrderLimitsInvalid": "Maximum order quantity cannot be less than minimum quantity.",
+      "offerWarehouseRequired": "A warehouse must be specified when setting initial stock.",
       "warehouseNotFound": "The fulfillment warehouse was not found.",
       "stockInsufficient": "Insufficient inventory available for this operation.",
       "conflict": "That action conflicts with the current state — reload and try again.",

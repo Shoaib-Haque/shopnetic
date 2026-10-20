@@ -22,6 +22,7 @@ import {
 } from '@shopnetic/ui';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
+import { integerKeyDownHandler, integerPasteHandler } from '@/lib/numeric-input';
 import { updateStock } from './api';
 
 export interface StockAdjustModalProps {
@@ -34,13 +35,17 @@ export interface StockAdjustModalProps {
 }
 
 interface WarehouseStockRowState {
-  onHand: number;
-  safetyStock: number;
+  onHand: string;
+  safetyStock: string;
   backorder: boolean;
   restockEta: string;
   saving: boolean;
   saved: boolean;
   error: string | null;
+  fieldErrors: {
+    onHand?: string | undefined;
+    safetyStock?: string | undefined;
+  };
 }
 
 export function StockAdjustModal({
@@ -61,13 +66,14 @@ export function StockAdjustModal({
     for (const wh of warehouses) {
       const existing = offer.stocks.find((s) => s.warehouseId === wh.id);
       initial[wh.id] = {
-        onHand: existing ? existing.onHand : 0,
-        safetyStock: existing ? existing.safetyStock : 0,
+        onHand: existing ? String(existing.onHand) : '0',
+        safetyStock: existing ? String(existing.safetyStock) : '0',
         backorder: existing ? existing.backorder : false,
         restockEta: existing && existing.restockEta ? existing.restockEta.slice(0, 10) : '',
         saving: false,
         saved: false,
         error: null,
+        fieldErrors: {},
       };
     }
     setRowStates(initial);
@@ -77,24 +83,45 @@ export function StockAdjustModal({
 
   const handleFieldChange = (
     warehouseId: string,
-    field: keyof Omit<WarehouseStockRowState, 'saving' | 'saved' | 'error'>,
+    field: 'onHand' | 'safetyStock' | 'backorder' | 'restockEta',
     value: unknown,
   ) => {
     setRowStates((prev) => {
       const current = prev[warehouseId] ?? {
-        onHand: 0,
-        safetyStock: 0,
+        onHand: '0',
+        safetyStock: '0',
         backorder: false,
         restockEta: '',
         saving: false,
         saved: false,
         error: null,
+        fieldErrors: {},
       };
+
+      const updatedFieldErrors = { ...current.fieldErrors };
+      if (field === 'onHand') {
+        const strVal = String(value ?? '').trim();
+        if (strVal === '' || !/^\d+$/.test(strVal)) {
+          updatedFieldErrors.onHand = t('products.offers.stockModal.err.onHandInvalid');
+        } else {
+          delete updatedFieldErrors.onHand;
+        }
+      }
+      if (field === 'safetyStock') {
+        const strVal = String(value ?? '').trim();
+        if (strVal === '' || !/^\d+$/.test(strVal)) {
+          updatedFieldErrors.safetyStock = t('products.offers.stockModal.err.safetyStockInvalid');
+        } else {
+          delete updatedFieldErrors.safetyStock;
+        }
+      }
+
       return {
         ...prev,
         [warehouseId]: {
           ...current,
           [field]: value,
+          fieldErrors: updatedFieldErrors,
           saved: false,
           error: null,
         },
@@ -105,6 +132,27 @@ export function StockAdjustModal({
   const handleSaveWarehouseStock = async (warehouse: Warehouse) => {
     const row = rowStates[warehouse.id];
     if (!row) return;
+
+    const cleanOnHand = String(row.onHand ?? '').trim();
+    const cleanSafety = String(row.safetyStock ?? '').trim();
+    const onHandInvalid = cleanOnHand === '' || !/^\d+$/.test(cleanOnHand);
+    const safetyInvalid = cleanSafety === '' || !/^\d+$/.test(cleanSafety);
+
+    if (onHandInvalid || safetyInvalid) {
+      setRowStates((prev) => ({
+        ...prev,
+        [warehouse.id]: {
+          ...(prev[warehouse.id] as WarehouseStockRowState),
+          fieldErrors: {
+            onHand: onHandInvalid ? t('products.offers.stockModal.err.onHandInvalid') : undefined,
+            safetyStock: safetyInvalid
+              ? t('products.offers.stockModal.err.safetyStockInvalid')
+              : undefined,
+          },
+        },
+      }));
+      return;
+    }
 
     setRowStates((prev) => ({
       ...prev,
@@ -118,8 +166,8 @@ export function StockAdjustModal({
     const existing = offer.stocks.find((s) => s.warehouseId === warehouse.id);
 
     const body: UpdateStockRequest = {
-      onHand: Math.max(0, Math.floor(row.onHand || 0)),
-      safetyStock: Math.max(0, Math.floor(row.safetyStock || 0)),
+      onHand: Math.max(0, parseInt(cleanOnHand, 10)),
+      safetyStock: Math.max(0, parseInt(cleanSafety, 10)),
       backorder: row.backorder,
       restockEta: row.restockEta ? new Date(row.restockEta).toISOString() : null,
       expectedUpdatedAt: existing?.updatedAt,
@@ -218,16 +266,18 @@ export function StockAdjustModal({
               const existing = offer.stocks.find((s) => s.warehouseId === wh.id);
               const reserved = existing ? existing.reserved : 0;
               const row = rowStates[wh.id] ?? {
-                onHand: existing ? existing.onHand : 0,
-                safetyStock: existing ? existing.safetyStock : 0,
+                onHand: existing ? String(existing.onHand) : '0',
+                safetyStock: existing ? String(existing.safetyStock) : '0',
                 backorder: existing ? existing.backorder : false,
                 restockEta: existing && existing.restockEta ? existing.restockEta.slice(0, 10) : '',
                 saving: false,
                 saved: false,
                 error: null,
+                fieldErrors: {},
               };
 
-              const liveAvailable = Math.max(0, (row.onHand || 0) - reserved);
+              const parsedOnHand = parseInt(row.onHand, 10) || 0;
+              const liveAvailable = Math.max(0, parsedOnHand - reserved);
 
               return (
                 <div
@@ -272,15 +322,19 @@ export function StockAdjustModal({
                     <Field
                       label={t('products.offers.stockModal.onHand')}
                       hint={t('products.offers.stockModal.onHandHint')}
+                      error={row.fieldErrors.onHand}
                     >
                       <Input
                         type="number"
                         min={0}
                         value={row.onHand}
-                        onChange={(e) =>
-                          handleFieldChange(wh.id, 'onHand', parseInt(e.target.value, 10) || 0)
+                        onChange={(e) => handleFieldChange(wh.id, 'onHand', e.target.value)}
+                        onKeyDown={integerKeyDownHandler}
+                        onPaste={(e) =>
+                          integerPasteHandler(e, (val) => handleFieldChange(wh.id, 'onHand', val))
                         }
                         disabled={row.saving}
+                        invalid={Boolean(row.fieldErrors.onHand)}
                         className="font-mono text-sm"
                       />
                     </Field>
@@ -288,15 +342,21 @@ export function StockAdjustModal({
                     <Field
                       label={t('products.offers.stockModal.safetyStock')}
                       hint={t('products.offers.stockModal.safetyStockHint')}
+                      error={row.fieldErrors.safetyStock}
                     >
                       <Input
                         type="number"
                         min={0}
                         value={row.safetyStock}
-                        onChange={(e) =>
-                          handleFieldChange(wh.id, 'safetyStock', parseInt(e.target.value, 10) || 0)
+                        onChange={(e) => handleFieldChange(wh.id, 'safetyStock', e.target.value)}
+                        onKeyDown={integerKeyDownHandler}
+                        onPaste={(e) =>
+                          integerPasteHandler(e, (val) =>
+                            handleFieldChange(wh.id, 'safetyStock', val),
+                          )
                         }
                         disabled={row.saving}
+                        invalid={Boolean(row.fieldErrors.safetyStock)}
                         className="font-mono text-sm"
                       />
                     </Field>

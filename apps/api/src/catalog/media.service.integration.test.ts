@@ -139,6 +139,38 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     expect(list.map((m) => m.fileKey)).toEqual([s('img-b.jpg'), s('img-a.jpg')]);
   });
 
+  it('rejects video creation with invalid duration (durationS <= 0 or > 86400)', async () => {
+    await expect(
+      media.create(
+        'product',
+        productId,
+        {
+          kind: 'video',
+          fileKey: s('video-0s.mp4'),
+          posterKey: s('poster.jpg'),
+          durationS: 0,
+        },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 422 });
+
+    await expect(
+      media.create(
+        'product',
+        productId,
+        {
+          kind: 'video',
+          fileKey: s('video-too-long.mp4'),
+          posterKey: s('poster.jpg'),
+          durationS: 90000,
+        },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 422 });
+  });
+
   it('automatically increments position when position is omitted in create', async () => {
     const p1 = await prisma.product.create({
       data: {
