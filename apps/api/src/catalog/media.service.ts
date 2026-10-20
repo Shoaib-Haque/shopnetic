@@ -61,19 +61,29 @@ export class MediaService {
     await this.assertOwner(ownerType, ownerId);
 
     const created = await this.prisma.$transaction(async (tx) => {
+      let position = input.position;
+      if (position === undefined) {
+        const last = await tx.mediaAsset.findFirst({
+          where: { ownerType, ownerId },
+          orderBy: { position: 'desc' },
+          select: { position: true },
+        });
+        position = last ? last.position + 1 : 0;
+      }
+
       const row = await tx.mediaAsset.create({
         data: {
           ownerType,
           ownerId,
           kind: input.kind,
           fileKey: input.fileKey,
+          position,
           ...(input.posterKey != null ? { posterKey: input.posterKey } : {}),
           ...(input.width != null ? { width: input.width } : {}),
           ...(input.height != null ? { height: input.height } : {}),
           ...(input.durationS != null ? { durationS: input.durationS } : {}),
           ...(input.blurhash != null ? { blurhash: input.blurhash } : {}),
           ...(input.alt ? { altI18n: input.alt } : {}),
-          ...(input.position !== undefined ? { position: input.position } : {}),
           ...(input.status ? { status: input.status } : {}),
         },
         include: withTags,
@@ -98,6 +108,15 @@ export class MediaService {
     meta: RequestMeta,
   ): Promise<MediaAsset> {
     const current = await this.rowOrThrow(id);
+
+    if (
+      input.expectedUpdatedAt !== undefined &&
+      input.expectedUpdatedAt !== current.updatedAt.toISOString()
+    ) {
+      throw new AppError('CONFLICT', 409, {
+        detail: 'media asset was modified concurrently; reload and try again',
+      });
+    }
 
     const data: Prisma.MediaAssetUpdateInput = {};
     if (input.fileKey !== undefined) data.fileKey = input.fileKey;
@@ -196,8 +215,15 @@ export class MediaService {
     optionValueId: string,
     actor: Actor,
     meta: RequestMeta,
+    expectedUpdatedAt?: string,
   ): Promise<MediaAsset> {
     const row = await this.rowOrThrow(id);
+
+    if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== row.updatedAt.toISOString()) {
+      throw new AppError('CONFLICT', 409, {
+        detail: 'media asset was modified concurrently; reload and try again',
+      });
+    }
     const value = await this.prisma.optionValue.findFirst({
       where: { id: optionValueId, optionTypeId },
       select: { id: true, code: true, optionType: { select: { code: true } } },

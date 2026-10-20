@@ -382,12 +382,12 @@ export class ProductService {
     brandId: string | null,
   ): Promise<void> {
     if (requirement === 'required' && brandId === null) {
-      throw new AppError('PRODUCT_BRAND_INVALID', 422, {
+      throw new AppError('PRODUCT_BRAND_REQUIRED', 422, {
         detail: 'this category requires a brand',
       });
     }
     if (requirement === 'none' && brandId !== null) {
-      throw new AppError('PRODUCT_BRAND_INVALID', 422, {
+      throw new AppError('PRODUCT_BRAND_NOT_ALLOWED', 422, {
         detail: 'this category does not allow a brand',
       });
     }

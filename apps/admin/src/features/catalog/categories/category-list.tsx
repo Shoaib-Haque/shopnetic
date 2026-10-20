@@ -744,7 +744,12 @@ export function CategoryList() {
           </ActionButton>
         </div>
       ) : !isFlatMode && error !== null ? (
-        <p className="px-6 py-10 text-center text-sm text-destructive">{error}</p>
+        <div className="flex flex-col items-start gap-2 px-6 py-10 text-sm">
+          <p className="text-destructive">{error}</p>
+          <ActionButton variant="outline" size="sm" onClick={() => void load()}>
+            {tCommon('list.retry')}
+          </ActionButton>
+        </div>
       ) : isFlatMode ? (
         flatList.loading && !highlighted ? (
           // skipped once the deep-link target is already known, even if

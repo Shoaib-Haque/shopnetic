@@ -75,6 +75,15 @@ export class VariantController {
     return ok(req, await this.variants.update(id, body, actor, meta(req)));
   }
 
+  @Post(':id/restore')
+  async restore(
+    @Req() req: Request,
+    @CurrentActor() actor: Actor,
+    @Param('id') id: string,
+  ): Promise<Envelope<Variant>> {
+    return ok(req, await this.variants.restore(id, actor, meta(req)));
+  }
+
   @Delete(':id')
   @HttpCode(204)
   async remove(

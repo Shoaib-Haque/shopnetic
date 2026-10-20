@@ -15,6 +15,7 @@ import {
   deleteVariant,
   listProductOptions,
   listVariants,
+  restoreVariant,
   updateVariant,
 } from './api';
 import { ProductVariantsDialog } from './product-variants-dialog';
@@ -28,6 +29,7 @@ vi.mock('./api', async () => {
     createVariant: vi.fn(),
     updateVariant: vi.fn(),
     deleteVariant: vi.fn(),
+    restoreVariant: vi.fn(),
   };
 });
 
@@ -44,6 +46,7 @@ const mockedListProductOptions = vi.mocked(listProductOptions);
 const mockedCreateVariant = vi.mocked(createVariant);
 const mockedUpdateVariant = vi.mocked(updateVariant);
 const mockedDeleteVariant = vi.mocked(deleteVariant);
+const mockedRestoreVariant = vi.mocked(restoreVariant);
 const mockedListCategoryOptions = vi.mocked(listCategoryOptions);
 const mockedListOptionTypesPage = vi.mocked(listOptionTypesPage);
 
@@ -307,6 +310,7 @@ describe('ProductVariantsDialog', () => {
         weightG: 195,
         dims: { length: 250, width: 200, height: 15 },
         status: 'active',
+        expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
       });
       expect(screen.getByText('TEE-S-UPDATED')).toBeInTheDocument();
     });
@@ -314,6 +318,7 @@ describe('ProductVariantsDialog', () => {
 
   it('deletes a variant', async () => {
     mockedDeleteVariant.mockResolvedValue(undefined);
+    mockedListVariants.mockResolvedValueOnce([sampleVariant]).mockResolvedValue([]);
 
     renderAdmin(
       <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
@@ -327,7 +332,7 @@ describe('ProductVariantsDialog', () => {
 
     await waitFor(() => {
       expect(mockedDeleteVariant).toHaveBeenCalledWith('prod_1', 'var_1');
-      expect(screen.queryByText('TEE-S')).not.toBeInTheDocument();
+      expect(screen.queryByRole('row', { name: /TEE-S/ })).not.toBeInTheDocument();
     });
   });
 
@@ -476,5 +481,43 @@ describe('ProductVariantsDialog', () => {
       expect(screen.getByText('Material: Cotton')).toBeInTheDocument();
     });
     expect(screen.queryByText(/01a0b3eb-6700/)).not.toBeInTheDocument();
+  });
+
+  it('soft-deleting a variant displays an undo toast, and clicking Undo restores it', async () => {
+    mockedListVariants
+      .mockResolvedValueOnce([sampleVariant]) // mount
+      .mockResolvedValueOnce([]) // after delete
+      .mockResolvedValueOnce([sampleVariant]); // after undo/restore
+    mockedListProductOptions.mockResolvedValue(productOptions);
+    mockedListCategoryOptions.mockResolvedValue(categoryOptions);
+    mockedListOptionTypesPage.mockResolvedValue({
+      optionTypes: [sizeOptionType],
+      nextCursor: undefined,
+    });
+    mockedDeleteVariant.mockResolvedValueOnce();
+    mockedRestoreVariant.mockResolvedValueOnce(sampleVariant);
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('TEE-S')).toBeInTheDocument();
+    });
+
+    const deleteBtn = screen.getByRole('button', { name: 'Delete variant' });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(mockedDeleteVariant).toHaveBeenCalledWith('prod_1', 'var_1');
+    });
+
+    // Undo toast appears with Undo button
+    const undoBtn = await screen.findByRole('button', { name: 'Undo' });
+    fireEvent.click(undoBtn);
+
+    await waitFor(() => {
+      expect(mockedRestoreVariant).toHaveBeenCalledWith('prod_1', 'var_1');
+    });
   });
 });

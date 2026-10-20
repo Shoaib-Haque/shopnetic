@@ -50,6 +50,16 @@ export const createWarehouseRequestSchema = z.object({
 });
 export type CreateWarehouseRequest = z.input<typeof createWarehouseRequestSchema>;
 
+export const updateWarehouseRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    isDefault: z.boolean(),
+    address: warehouseAddressSchema,
+    expectedUpdatedAt: z.string().optional(),
+  })
+  .partial();
+export type UpdateWarehouseRequest = z.infer<typeof updateWarehouseRequestSchema>;
+
 export const stockLevelSchema = z.object({
   id: z.string().uuid(),
   warehouseId: z.string().uuid(),

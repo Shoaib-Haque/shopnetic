@@ -139,6 +139,46 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     expect(list.map((m) => m.fileKey)).toEqual([s('img-b.jpg'), s('img-a.jpg')]);
   });
 
+  it('automatically increments position when position is omitted in create', async () => {
+    const p1 = await prisma.product.create({
+      data: {
+        categoryId,
+        titleI18n: { en: 'Test Auto Pos' },
+        slug: `itest-md-pos-${stamp}`,
+        status: 'draft',
+      },
+    });
+
+    const m0 = await media.create(
+      'product',
+      p1.id,
+      { kind: 'image', fileKey: s('m0.jpg') },
+      actor,
+      {},
+    );
+    const m1 = await media.create(
+      'product',
+      p1.id,
+      { kind: 'image', fileKey: s('m1.jpg') },
+      actor,
+      {},
+    );
+    const m2 = await media.create(
+      'product',
+      p1.id,
+      { kind: 'image', fileKey: s('m2.jpg') },
+      actor,
+      {},
+    );
+
+    expect(m0.position).toBe(0);
+    expect(m1.position).toBe(1);
+    expect(m2.position).toBe(2);
+
+    await prisma.mediaAsset.deleteMany({ where: { ownerId: p1.id } });
+    await prisma.product.delete({ where: { id: p1.id } });
+  });
+
   it('rejects an unknown product owner and offer-owned media', async () => {
     await expect(
       media.create('product', crypto.randomUUID(), { kind: 'image', fileKey: s('x') }, actor, {}),
@@ -381,5 +421,36 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
 
     await prisma.mediaAsset.deleteMany({ where: { ownerId: archivedProd.id } });
     await prisma.product.deleteMany({ where: { id: archivedProd.id } });
+  });
+
+  it('update and putTag reject stale expectedUpdatedAt (optimistic concurrency)', async () => {
+    const asset = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: s('occ-test.jpg') },
+      actor,
+      {},
+    );
+
+    await expect(
+      media.update(
+        asset.id,
+        { fileKey: s('occ-stale.jpg'), expectedUpdatedAt: '2020-01-01T00:00:00.000Z' },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    const ok = await media.update(
+      asset.id,
+      { fileKey: s('occ-fresh.jpg'), expectedUpdatedAt: asset.updatedAt },
+      actor,
+      {},
+    );
+    expect(ok.fileKey).toBe(s('occ-fresh.jpg'));
+
+    await expect(
+      media.putTag(asset.id, colorTypeId, colorBlackId, actor, {}, '2020-01-01T00:00:00.000Z'),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 });

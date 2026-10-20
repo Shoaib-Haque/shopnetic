@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import type { Actor } from '@shopnetic/auth';
 import { AuditService } from '../audit/audit.service.js';
@@ -293,5 +293,167 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
     expect(listAfter.some((x) => x.id === target.id)).toBe(false);
 
     await expect(variants.get(target.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('update rejects a stale expectedUpdatedAt (optimistic concurrency)', async () => {
+    const list = await variants.list(productId);
+    const target = list[0]!;
+
+    await expect(
+      variants.update(
+        target.id,
+        { skuCode: s('STALE-SKU'), expectedUpdatedAt: '2020-01-01T00:00:00.000Z' },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    const ok = await variants.update(
+      target.id,
+      { skuCode: s('FRESH-SKU'), expectedUpdatedAt: target.updatedAt },
+      actor,
+      {},
+    );
+    expect(ok.skuCode).toBe(s('FRESH-SKU'));
+  });
+
+  it('restores a soft-deleted variant and recovers it into list', async () => {
+    const list = await variants.list(productId);
+    const target = list[0]!;
+
+    await variants.remove(target.id, actor, {});
+    const listDeleted = await variants.list(productId);
+    expect(listDeleted.some((x) => x.id === target.id)).toBe(false);
+
+    const restored = await variants.restore(target.id, actor, {});
+    expect(restored.id).toBe(target.id);
+
+    const listRestored = await variants.list(productId);
+    expect(listRestored.some((x) => x.id === target.id)).toBe(true);
+  });
+
+  it('throws VARIANT_ALREADY_ACTIVE when attempting to restore a live variant', async () => {
+    const list = await variants.list(productId);
+    const target = list[0]!;
+    await expect(variants.restore(target.id, actor, {})).rejects.toMatchObject({
+      code: 'VARIANT_ALREADY_ACTIVE',
+      status: 409,
+    });
+  });
+
+  it('throws PRODUCT_PARENT_ARCHIVED when restoring variant whose product is archived', async () => {
+    const tempProd = await prisma.product.create({
+      data: {
+        categoryId,
+        titleI18n: t('Temp Prod For Restore Test'),
+        slug: s('temp-prod-archived-test'),
+        status: 'draft',
+      },
+    });
+    await productOptions.put(tempProd.id, sizeTypeId, { position: 0 }, actor, {});
+    await productOptions.setValues(
+      tempProd.id,
+      sizeTypeId,
+      { values: [{ optionValueId: sizeValues['s']!, position: 0 }] },
+      actor,
+      {},
+    );
+    const v = await variants.create(
+      tempProd.id,
+      {
+        selections: [{ optionTypeId: sizeTypeId, optionValueId: sizeValues['s']! }],
+      },
+      actor,
+      {},
+    );
+    await variants.remove(v.id, actor, {});
+    await prisma.product.update({
+      where: { id: tempProd.id },
+      data: { deletedAt: new Date() },
+    });
+
+    await expect(variants.restore(v.id, actor, {})).rejects.toMatchObject({
+      code: 'PRODUCT_PARENT_ARCHIVED',
+      status: 409,
+    });
+  });
+
+  it('throws VARIANT_COMBO_EXISTS when restoring variant whose combo is taken by another live variant', async () => {
+    const tempProd = await prisma.product.create({
+      data: {
+        categoryId,
+        titleI18n: t('Temp Prod For Collision Test'),
+        slug: s('temp-prod-collision-test'),
+        status: 'draft',
+      },
+    });
+    await productOptions.put(tempProd.id, sizeTypeId, { position: 0 }, actor, {});
+    await productOptions.setValues(
+      tempProd.id,
+      sizeTypeId,
+      { values: [{ optionValueId: sizeValues['s']!, position: 0 }] },
+      actor,
+      {},
+    );
+    const v1 = await variants.create(
+      tempProd.id,
+      {
+        selections: [{ optionTypeId: sizeTypeId, optionValueId: sizeValues['s']! }],
+      },
+      actor,
+      {},
+    );
+    await variants.remove(v1.id, actor, {});
+
+    const spy = vi
+      .spyOn(prisma.variant, 'findFirst')
+      .mockResolvedValueOnce({ id: 'existing-active-id' } as never);
+
+    try {
+      await expect(variants.restore(v1.id, actor, {})).rejects.toMatchObject({
+        code: 'VARIANT_COMBO_EXISTS',
+        status: 409,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('productOptions enforces optimistic concurrency control (expectedUpdatedAt)', async () => {
+    const options = await productOptions.list(productId);
+    const sizeOpt = options.find((o) => o.optionTypeId === sizeTypeId)!;
+    expect(sizeOpt.updatedAt).toBeDefined();
+
+    await expect(
+      productOptions.put(
+        productId,
+        sizeTypeId,
+        { position: 5, expectedUpdatedAt: '2020-01-01T00:00:00.000Z' },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    await expect(
+      productOptions.setValues(
+        productId,
+        sizeTypeId,
+        {
+          values: [{ optionValueId: sizeValues['s']!, position: 0 }],
+          expectedUpdatedAt: '2020-01-01T00:00:00.000Z',
+        },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    const ok = await productOptions.put(
+      productId,
+      sizeTypeId,
+      { position: 0, expectedUpdatedAt: sizeOpt.updatedAt },
+      actor,
+      {},
+    );
+    expect(ok.position).toBe(0);
   });
 });

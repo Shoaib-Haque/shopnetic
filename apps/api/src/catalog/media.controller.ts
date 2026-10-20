@@ -118,7 +118,17 @@ export class MediaController {
     @Param('optionTypeId') optionTypeId: string,
     @Body(tagBody) body: PutMediaTagRequest,
   ): Promise<Envelope<MediaAsset>> {
-    return ok(req, await this.media.putTag(id, optionTypeId, body.optionValueId, actor, meta(req)));
+    return ok(
+      req,
+      await this.media.putTag(
+        id,
+        optionTypeId,
+        body.optionValueId,
+        actor,
+        meta(req),
+        body.expectedUpdatedAt,
+      ),
+    );
   }
 
   @Delete('media/:id/tags/:optionTypeId')

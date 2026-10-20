@@ -51,6 +51,12 @@ export const DrawerContent = forwardRef<ElementRef<typeof RDialog.Content>, Draw
             className,
           )}
           {...props}
+          onCloseAutoFocus={(e) => {
+            props.onCloseAutoFocus?.(e);
+            if (typeof document !== 'undefined') {
+              document.body.style.pointerEvents = '';
+            }
+          }}
         >
           {children}
           <OverlayCloseButton as={RDialog.Close} position="corner-lg" closeLabel={closeLabel} />

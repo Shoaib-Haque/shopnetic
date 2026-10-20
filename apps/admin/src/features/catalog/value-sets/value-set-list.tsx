@@ -238,6 +238,7 @@ export function ValueSetList() {
       );
       if (effectiveHighlighted?.id === vs.id) setHighlighted(vs);
     } else {
+      setHighlighted(vs);
       resync();
     }
   }

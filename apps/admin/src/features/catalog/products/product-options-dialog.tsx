@@ -211,6 +211,53 @@ function ValueSelectModal({
   );
 }
 
+interface OptionDeleteConfirmModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  optionTypeName: string;
+  onConfirm: () => Promise<void>;
+  deleting: boolean;
+}
+
+function OptionDeleteConfirmModal({
+  open,
+  onOpenChange,
+  optionTypeName,
+  onConfirm,
+  deleting,
+}: OptionDeleteConfirmModalProps) {
+  const t = useTranslations('catalog');
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-md">
+        <ModalHeader>
+          <ModalTitle className="text-destructive">
+            {t('products.options.removeConfirmTitle')}
+          </ModalTitle>
+          <ModalDescription>
+            {t('products.options.removeConfirmMessage', { name: optionTypeName })}
+          </ModalDescription>
+        </ModalHeader>
+        <ModalFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={deleting}
+            onClick={() => onOpenChange(false)}
+          >
+            {t('products.options.cancel')}
+          </Button>
+          <Button type="button" variant="destructive" disabled={deleting} onClick={onConfirm}>
+            {deleting ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
+            {t('products.options.removeConfirmAction')}
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
 export function ProductOptionsDialog({
   open,
   onOpenChange,
@@ -242,6 +289,7 @@ export function ProductOptionsDialog({
   const [valueSelectTarget, setValueSelectTarget] = useState<string | null>(null);
 
   // Removing state
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   const mounted = useRef(true);
@@ -371,6 +419,7 @@ export function ProductOptionsDialog({
       await deleteProductOption(product.id, optionTypeId);
       setProductOptions((prev) => prev.filter((po) => po.optionTypeId !== optionTypeId));
       notify.saved(t('products.options.toast.optionRemoved', { name }));
+      setDeleteTarget(null);
     } catch (e) {
       if (e instanceof AdminApiError && e.code === 'CONFLICT') {
         setActionError(t('products.options.inUseByVariant'));
@@ -385,26 +434,26 @@ export function ProductOptionsDialog({
   const handleSaveValues = async (optionTypeId: string, valueIds: string[]) => {
     if (!product) return;
     const name = optName(optionTypeId);
+    const po = productOptions.find((p) => p.optionTypeId === optionTypeId);
     const updated = await setProductOptionValues(product.id, optionTypeId, {
       values: valueIds.map((id, idx) => ({ optionValueId: id, position: idx })),
+      expectedUpdatedAt: po?.updatedAt,
     });
-    setProductOptions((prev) =>
-      prev.map((po) => (po.optionTypeId === optionTypeId ? updated : po)),
-    );
+    setProductOptions((prev) => prev.map((p) => (p.optionTypeId === optionTypeId ? updated : p)));
     notify.saved(t('products.options.toast.valuesSaved', { name, count: valueIds.length }));
   };
 
   const handleSetRequiredValue = async (optionTypeId: string, requiredValueId: string | null) => {
     if (!product) return;
     const name = optName(optionTypeId);
+    const po = productOptions.find((p) => p.optionTypeId === optionTypeId);
     setActionError(null);
     try {
       const updated = await putProductOption(product.id, optionTypeId, {
         requiredValueId,
+        expectedUpdatedAt: po?.updatedAt,
       });
-      setProductOptions((prev) =>
-        prev.map((po) => (po.optionTypeId === optionTypeId ? updated : po)),
-      );
+      setProductOptions((prev) => prev.map((p) => (p.optionTypeId === optionTypeId ? updated : p)));
       notify.saved(t('products.options.toast.optionUpdated', { name }));
     } catch (e) {
       setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
@@ -666,7 +715,7 @@ export function ProductOptionsDialog({
                                   variant="ghost"
                                   size="sm"
                                   disabled={isRemoving}
-                                  onClick={() => handleRemoveOption(po.optionTypeId)}
+                                  onClick={() => setDeleteTarget(po.optionTypeId)}
                                   className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                                   aria-label="Remove option"
                                 >
@@ -745,6 +794,19 @@ export function ProductOptionsDialog({
           if (!valueSelectTarget) return Promise.resolve();
           return handleSaveValues(valueSelectTarget, valIds);
         }}
+      />
+
+      <OptionDeleteConfirmModal
+        open={deleteTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setDeleteTarget(null);
+        }}
+        optionTypeName={deleteTarget ? optName(deleteTarget) : ''}
+        onConfirm={() => {
+          if (!deleteTarget) return Promise.resolve();
+          return handleRemoveOption(deleteTarget);
+        }}
+        deleting={removingId !== null}
       />
     </>
   );

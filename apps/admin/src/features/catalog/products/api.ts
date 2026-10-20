@@ -148,6 +148,12 @@ export function deleteVariant(productId: string, id: string): Promise<void> {
   });
 }
 
+export function restoreVariant(productId: string, id: string): Promise<Variant> {
+  return adminApi<Variant>(`/products/${productId}/variants/${id}/restore`, {
+    method: 'POST',
+  });
+}
+
 // ── Product media (plan/26 §5) ──────────────────────────────────────────────
 
 export function listProductMedia(productId: string): Promise<MediaAsset[]> {

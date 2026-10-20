@@ -192,6 +192,7 @@ export function OptionTypeList() {
       // own doc comment has the full reasoning).
       if (highlighted?.id === ot.id) setHighlighted(ot);
     } else {
+      setHighlighted(ot);
       resync();
     }
   }

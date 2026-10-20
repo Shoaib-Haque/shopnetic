@@ -36,6 +36,7 @@ export function Toaster({ topOffset = 72 }: { topOffset?: number }) {
       offset={topOffset}
       gap={8}
       duration={DEFAULT_MS}
+      style={{ pointerEvents: 'auto' }}
       // sonner's default collapses a stack so only the newest toast is
       // fully shown, older ones receding behind it — wrong here since an
       // Undo toast's only job is staying reachable for its whole window;

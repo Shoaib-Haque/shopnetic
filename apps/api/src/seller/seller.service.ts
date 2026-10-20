@@ -184,6 +184,15 @@ export class SellerService {
       throw new AppError('SELLER_NOT_FOUND', 404, { detail: `seller ${id} not found` });
     }
 
+    if (
+      data.expectedUpdatedAt !== undefined &&
+      data.expectedUpdatedAt !== existing.updatedAt.toISOString()
+    ) {
+      throw new AppError('CONFLICT', 409, {
+        detail: 'seller was modified concurrently; reload and try again',
+      });
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const seller = await tx.seller.update({
         where: { id },

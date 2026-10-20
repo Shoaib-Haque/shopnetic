@@ -195,6 +195,7 @@ export function BrandList() {
       // own doc comment has the full reasoning).
       if (highlighted?.id === b.id) setHighlighted(b);
     } else {
+      setHighlighted(b);
       resync();
     }
   }

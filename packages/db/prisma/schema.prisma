@@ -665,6 +665,8 @@ model ProductOption {
   requiredValueId String?              @map("required_value_id") @db.Uuid
   requiredValue   OptionValue?         @relation("ProductOptionRequiredValue", fields: [requiredValueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   values          ProductOptionValue[]
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime             @updatedAt @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@id([productId, optionTypeId])
   @@index([optionTypeId])

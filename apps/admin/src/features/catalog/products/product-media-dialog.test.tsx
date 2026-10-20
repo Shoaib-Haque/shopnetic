@@ -269,6 +269,7 @@ describe('ProductMediaDialog', () => {
     await waitFor(() => {
       expect(mockedPutMediaTag).toHaveBeenCalledWith('media_1', 'ot_color', {
         optionValueId: 'val_navy',
+        expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
       });
     });
   });

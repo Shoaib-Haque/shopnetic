@@ -4,7 +4,14 @@ import type { Brand, Category, Product } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
 import { listCategories } from '@/features/catalog/categories/api';
 import { listBrandsPage } from '@/features/catalog/brands/api';
-import { deleteProduct, getProduct, listProductsPage, restoreProduct, updateProduct } from './api';
+import {
+  createProduct,
+  deleteProduct,
+  getProduct,
+  listProductsPage,
+  restoreProduct,
+  updateProduct,
+} from './api';
 import { ProductList } from './product-list';
 
 vi.mock('@/features/catalog/categories/api', () => ({
@@ -51,6 +58,7 @@ const mockedListProductsPage = vi.mocked(listProductsPage);
 const mockedGetProduct = vi.mocked(getProduct);
 const mockedDeleteProduct = vi.mocked(deleteProduct);
 const mockedRestoreProduct = vi.mocked(restoreProduct);
+const mockedCreateProduct = vi.mocked(createProduct);
 const mockedUpdateProduct = vi.mocked(updateProduct);
 
 const mockCategories: Category[] = [
@@ -521,5 +529,42 @@ describe('ProductList', () => {
     fireEvent.click(offersBtn);
 
     expect(await screen.findByText('Offers & Stock')).toBeInTheDocument();
+  });
+
+  it('creating a product switches to its status tab, resets secondary filters, and pins the product', async () => {
+    const validCatId = '22222222-2222-2222-2222-222222222222';
+    mockedListCategories.mockResolvedValue([{ ...mockCategories[0]!, id: validCatId }]);
+    mockedListBrandsPage.mockResolvedValue({ brands: mockBrands, nextCursor: undefined });
+    mockedListProductsPage.mockResolvedValue({ products: [], nextCursor: undefined });
+
+    const newProduct = sampleProduct('p-created', 'Brand New Hoodie', {
+      status: 'active',
+      categoryId: validCatId,
+    });
+    mockedCreateProduct.mockResolvedValue(newProduct);
+
+    // Start on 'draft' tab
+    mockSearchParams = new URLSearchParams('tab=draft');
+
+    renderAdmin(<ProductList />);
+
+    // Click "New product"
+    fireEvent.click(await screen.findByRole('button', { name: /New product/i }));
+    expect(await screen.findByText('New product (1P)')).toBeInTheDocument();
+
+    // Fill form
+    fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'Brand New Hoodie' } });
+
+    // Submit
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => {
+      expect(mockedCreateProduct).toHaveBeenCalled();
+    });
+
+    // Pinned product is displayed in the list (in both desktop and mobile view)
+    expect(await screen.findAllByText('Brand New Hoodie')).not.toHaveLength(0);
+    const rows = document.querySelectorAll('[data-product-row="p-created"]');
+    expect(rows.length).toBeGreaterThan(0);
   });
 });

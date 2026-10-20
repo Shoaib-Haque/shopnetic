@@ -14,3 +14,7 @@ allowBuilds:
   # bullmq's msgpackr dep — native build is a pure perf optimization with a
   # JS fallback if skipped; deny like the other native-build deps above.
   msgpackr-extract: false
+
+overrides:
+  "@radix-ui/react-dismissable-layer": "1.2.1"
+

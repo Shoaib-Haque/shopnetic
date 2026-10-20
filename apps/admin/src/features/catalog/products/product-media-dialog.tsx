@@ -142,6 +142,7 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
           alt: alt.trim() ? { en: alt.trim() } : null,
           durationS: durationS ? Number(durationS) : null,
           status,
+          expectedUpdatedAt: asset.updatedAt,
         };
         const updated = await updateMedia(asset.id, req);
         onSaved(updated);
@@ -608,7 +609,11 @@ export function ProductMediaDialog({
         notify.saved(t('products.media.toast.tagRemoved'));
       } else {
         // Upsert tag on this axis
-        const updated = await putMediaTag(assetId, optionTypeId, { optionValueId });
+        const currentAsset = mediaAssets.find((m) => m.id === assetId);
+        const updated = await putMediaTag(assetId, optionTypeId, {
+          optionValueId,
+          expectedUpdatedAt: currentAsset?.updatedAt,
+        });
         setMediaAssets((prev) => prev.map((m) => (m.id === assetId ? updated : m)));
         notify.saved(t('products.media.toast.tagUpdated', { name: otName }));
       }

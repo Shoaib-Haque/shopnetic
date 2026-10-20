@@ -66,5 +66,6 @@ export type CreateSellerRequest = z.infer<typeof createSellerRequestSchema>;
 export const updateSellerStatusRequestSchema = z.object({
   status: sellerStatusSchema,
   reason: z.string().trim().max(500).optional(),
+  expectedUpdatedAt: z.string().optional(),
 });
 export type UpdateSellerStatusRequest = z.infer<typeof updateSellerStatusRequestSchema>;

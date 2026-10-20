@@ -20,6 +20,7 @@ import {
   listOffersQuerySchema,
   updateOfferRequestSchema,
   updateStockRequestSchema,
+  updateWarehouseRequestSchema,
   type Buybox,
   type CreateOfferRequest,
   type CreateWarehouseRequest,
@@ -27,6 +28,7 @@ import {
   type StockLevel,
   type UpdateOfferRequest,
   type UpdateStockRequest,
+  type UpdateWarehouseRequest,
   type Warehouse,
 } from '@shopnetic/contracts';
 import { ok } from '../common/envelope.js';
@@ -47,6 +49,7 @@ const createOfferBody = new ZodBodyPipe(createOfferRequestSchema);
 const updateOfferBody = new ZodBodyPipe(updateOfferRequestSchema);
 const updateStockBody = new ZodBodyPipe(updateStockRequestSchema);
 const createWarehouseBody = new ZodBodyPipe(createWarehouseRequestSchema);
+const updateWarehouseBody = new ZodBodyPipe(updateWarehouseRequestSchema);
 
 type Envelope<T> = { data: T; meta: { requestId: string; nextCursor?: string; count?: number } };
 
@@ -231,7 +234,7 @@ export class AdminWarehouseController {
     @Req() req: Request,
     @CurrentActor() actor: Actor,
     @Param('id') id: string,
-    @Body() body: Partial<CreateWarehouseRequest>,
+    @Body(updateWarehouseBody) body: UpdateWarehouseRequest,
   ): Promise<Envelope<Warehouse>> {
     return ok(req, await this.warehouses.update(id, body, actor, meta(req)));
   }

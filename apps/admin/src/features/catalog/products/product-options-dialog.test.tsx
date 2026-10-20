@@ -302,6 +302,7 @@ describe('ProductOptionsDialog', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove option' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Option' }));
 
     await waitFor(() => {
       expect(mockedDeleteProductOption).toHaveBeenCalledWith('prod_1', 'ot_size');
@@ -321,6 +322,7 @@ describe('ProductOptionsDialog', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove option' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Option' }));
 
     await waitFor(() => {
       expect(

@@ -4,6 +4,7 @@ import {
   warehouseAddressSchema,
   createWarehouseRequestSchema,
   type CreateWarehouseRequest,
+  type UpdateWarehouseRequest,
   type Warehouse,
 } from '@shopnetic/contracts';
 import type { Warehouse as WarehouseRow } from '@shopnetic/db';
@@ -98,7 +99,7 @@ export class WarehouseService {
 
   async update(
     id: string,
-    data: Partial<CreateWarehouseRequest>,
+    data: UpdateWarehouseRequest,
     actor: Actor,
     meta: RequestMeta,
   ): Promise<Warehouse> {
@@ -107,6 +108,15 @@ export class WarehouseService {
     });
     if (!existing || existing.deletedAt) {
       throw new AppError('WAREHOUSE_NOT_FOUND', 404, { detail: `warehouse ${id} not found` });
+    }
+
+    if (
+      data.expectedUpdatedAt !== undefined &&
+      data.expectedUpdatedAt !== existing.updatedAt.toISOString()
+    ) {
+      throw new AppError('CONFLICT', 409, {
+        detail: 'warehouse was modified concurrently; reload and try again',
+      });
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {

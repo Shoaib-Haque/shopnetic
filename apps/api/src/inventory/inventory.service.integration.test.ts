@@ -473,5 +473,26 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
       );
       expect(updatedStock.onHand).toBe(stock.onHand + 5);
     });
+
+    it('enforces optimistic concurrency control on warehouse updates (expectedUpdatedAt)', async () => {
+      const wh = await warehouseService.get(warehouse1Id);
+
+      await expect(
+        warehouseService.update(
+          warehouse1Id,
+          { name: 'Concurrent Stale Depot', expectedUpdatedAt: '2020-01-01T00:00:00.000Z' },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+      const ok = await warehouseService.update(
+        warehouse1Id,
+        { name: 'Concurrent Fresh Depot', expectedUpdatedAt: wh.updatedAt },
+        staffActor,
+        {},
+      );
+      expect(ok.name).toBe('Concurrent Fresh Depot');
+    });
   });
 });

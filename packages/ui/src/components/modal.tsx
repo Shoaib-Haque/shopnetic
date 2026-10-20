@@ -78,6 +78,12 @@ export const ModalContent = forwardRef<ElementRef<typeof RDialog.Content>, Modal
                 className,
               )}
               {...props}
+              onCloseAutoFocus={(e) => {
+                props.onCloseAutoFocus?.(e);
+                if (typeof document !== 'undefined') {
+                  document.body.style.pointerEvents = '';
+                }
+              }}
             >
               {children}
               {!hideClose && (
@@ -119,7 +125,7 @@ export function ModalFooter({ className, ...props }: HTMLAttributes<HTMLDivEleme
   return (
     <div
       className={cn(
-        'flex shrink-0 items-center justify-end gap-2 border-t border-border px-5 py-3',
+        'flex shrink-0 flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 border-t border-border px-5 py-3 [&>button]:w-full sm:[&>button]:w-auto',
         className,
       )}
       {...props}

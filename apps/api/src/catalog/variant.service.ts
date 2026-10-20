@@ -146,6 +146,13 @@ export class VariantService {
     meta: RequestMeta,
   ): Promise<Variant> {
     const current = await this.get(id);
+
+    if (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== current.updatedAt) {
+      throw new AppError('CONFLICT', 409, {
+        detail: 'variant was modified concurrently; reload and try again',
+      });
+    }
+
     if (
       input.skuCode !== undefined &&
       input.skuCode !== null &&
@@ -205,6 +212,70 @@ export class VariantService {
       before: { ...current, productTitle, selections: resolvedSelections },
       reason: 'soft delete',
     });
+  }
+
+  async restore(id: string, actor: Actor, meta: RequestMeta): Promise<Variant> {
+    const current = await this.prisma.variant.findUnique({
+      where: { id },
+      include: withValues,
+    });
+    if (!current) throw new AppError('NOT_FOUND', 404, { detail: 'variant not found' });
+    if (!current.deletedAt) {
+      throw new AppError('VARIANT_ALREADY_ACTIVE', 409, { detail: 'variant is not deleted' });
+    }
+
+    const product = await this.prisma.product.findFirst({
+      where: { id: current.productId, deletedAt: null },
+      select: { id: true, categoryId: true },
+    });
+    if (!product) {
+      throw new AppError('PRODUCT_PARENT_ARCHIVED', 409, {
+        detail: 'cannot restore variant because its product is archived; restore the product first',
+      });
+    }
+
+    const dupe = await this.prisma.variant.findFirst({
+      where: {
+        productId: current.productId,
+        comboSignature: current.comboSignature,
+        deletedAt: null,
+        id: { not: id },
+      },
+      select: { id: true },
+    });
+    if (dupe) {
+      throw new AppError('VARIANT_COMBO_EXISTS', 409, {
+        detail: 'a variant with this combination already exists',
+      });
+    }
+
+    if (current.skuCode) {
+      await this.assertSkuFree(current.productId, current.skuCode, id);
+    }
+
+    const restored = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.variant.update({
+        where: { id },
+        data: { deletedAt: null },
+        include: withValues,
+      });
+      await writeCatalogOutbox(tx, 'variant', 'variant.restored', id, {
+        id,
+        productId: current.productId,
+      });
+      return row;
+    });
+
+    const view = toView(restored);
+    const [productTitle, resolvedSelections] = await Promise.all([
+      this.productTitleOf(view.productId),
+      this.selectionLabels(view.selections),
+    ]);
+    await this.record(actor, 'catalog.variant_restored', id, meta, {
+      after: { ...view, productTitle, selections: resolvedSelections },
+      reason: 'restore',
+    });
+    return view;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────

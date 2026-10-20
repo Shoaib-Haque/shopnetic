@@ -523,12 +523,14 @@ export const productOptionSchema = z.object({
   position: z.number().int(),
   requiredValueId: z.string().nullable(),
   values: z.array(productOptionValueRefSchema),
+  updatedAt: z.string().datetime().optional(),
 });
 export type ProductOption = z.infer<typeof productOptionSchema>;
 
 export const putProductOptionRequestSchema = z.object({
   position: positionField.optional(),
   requiredValueId: z.string().uuid().nullable().optional(),
+  expectedUpdatedAt: z.string().optional(),
 });
 export type PutProductOptionRequest = z.infer<typeof putProductOptionRequestSchema>;
 
@@ -537,6 +539,7 @@ export const setProductOptionValuesRequestSchema = z.object({
   values: z
     .array(z.object({ optionValueId: z.string().uuid(), position: positionField.optional() }))
     .max(500),
+  expectedUpdatedAt: z.string().optional(),
 });
 export type SetProductOptionValuesRequest = z.infer<typeof setProductOptionValuesRequestSchema>;
 
@@ -622,6 +625,7 @@ export const updateVariantRequestSchema = z
     dims: dimsSchema.nullable(),
     status: variantStatusSchema,
     position: positionField,
+    expectedUpdatedAt: z.string().optional(),
   })
   .partial();
 export type UpdateVariantRequest = z.infer<typeof updateVariantRequestSchema>;
@@ -722,12 +726,16 @@ export const updateMediaRequestSchema = z
     alt: localizedTextSchema.nullable(),
     position: positionField,
     status: mediaStatusSchema,
+    expectedUpdatedAt: z.string().optional(),
   })
   .partial();
 export type UpdateMediaRequest = z.infer<typeof updateMediaRequestSchema>;
 
 /** Upsert a tag on one axis: `PUT …/media/:id/tags/:optionTypeId`. */
-export const putMediaTagRequestSchema = z.object({ optionValueId: z.string().uuid() });
+export const putMediaTagRequestSchema = z.object({
+  optionValueId: z.string().uuid(),
+  expectedUpdatedAt: z.string().optional(),
+});
 export type PutMediaTagRequest = z.infer<typeof putMediaTagRequestSchema>;
 
 /** Atomic reordering of a product's media assets: `PUT …/products/:productId/media/reorder`. */

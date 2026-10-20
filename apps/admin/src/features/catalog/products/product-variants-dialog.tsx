@@ -62,11 +62,13 @@ import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
+import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
 import {
   createVariant,
   deleteVariant,
   listProductOptions,
   listVariants,
+  restoreVariant,
   updateVariant,
 } from './api';
 
@@ -463,6 +465,7 @@ function VariantFormModal({
 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const isEdit = variant !== null;
 
@@ -490,6 +493,7 @@ function VariantFormModal({
       setHeight(d?.height != null ? String(d.height) : '');
       setStatus(variant.status);
       setFormError(null);
+      setErrorCode(null);
     } else {
       setSkuCode('');
       setGtin('');
@@ -500,6 +504,7 @@ function VariantFormModal({
       setStatus('active');
       setManualSelections({});
       setFormError(null);
+      setErrorCode(null);
     }
   }, [variant, open]);
 
@@ -533,6 +538,7 @@ function VariantFormModal({
           weightG: weightG ? Number(weightG) : null,
           dims: dimsObj,
           status,
+          expectedUpdatedAt: variant.updatedAt,
         };
         const updated = await updateVariant(product.id, variant.id, req);
         onSaved(updated);
@@ -565,7 +571,9 @@ function VariantFormModal({
         onOpenChange(false);
       }
     } catch (err) {
-      setFormError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
+      const code = err instanceof AdminApiError ? err.code : undefined;
+      setErrorCode(code ?? null);
+      setFormError(t(catalogErrorKey(code)));
     } finally {
       setSaving(false);
     }
@@ -674,6 +682,11 @@ function VariantFormModal({
                     </Field>
                   );
                 })}
+                {errorCode === 'VARIANT_COMBO_EXISTS' && formError && (
+                  <div className="mt-2 rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-xs font-medium text-destructive">
+                    {formError}
+                  </div>
+                )}
               </div>
             ) : null}
 
@@ -755,7 +768,7 @@ function VariantFormModal({
               />
             </div>
 
-            {formError && (
+            {formError && errorCode !== 'VARIANT_COMBO_EXISTS' && (
               <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
                 {formError}
               </div>
@@ -885,16 +898,32 @@ export function ProductVariantsDialog({
     return map;
   }, [optionTypes]);
 
-  const handleDeleteVariant = async (variantId: string) => {
+  const labelOfVariant = (v: Variant | null | undefined): string =>
+    v?.skuCode || (v?.comboSignature ? v.comboSignature : '');
+
+  const { doDelete: doDeleteVariant } = useSoftDeleteWithUndo<Variant>({
+    deleteItem: (variantId) => (product ? deleteVariant(product.id, variantId) : Promise.resolve()),
+    restoreItem: (variantId) =>
+      product ? restoreVariant(product.id, variantId) : Promise.resolve(),
+    resync: () => void loadData(),
+    labelOf: labelOfVariant,
+    onError: (e) =>
+      setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined))),
+    messages: {
+      deleted: (name) => t('products.variants.toast.deletedNamed', { name }),
+      restored: (name) => t('products.variants.toast.restoredNamed', { name }),
+      alreadyDeleted: (name) => t('products.variants.alreadyDeleted', { name }),
+      alreadyRestored: (name) => t('products.variants.alreadyRestored', { name }),
+      undoLabel: t('products.variants.undo'),
+    },
+  });
+
+  const handleDeleteVariant = async (variant: Variant) => {
     if (!product) return;
-    setDeletingId(variantId);
+    setDeletingId(variant.id);
     setActionError(null);
     try {
-      await deleteVariant(product.id, variantId);
-      setVariants((prev) => prev.filter((v) => v.id !== variantId));
-      notify.saved(t('products.variants.toast.deleted'));
-    } catch (e) {
-      setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+      await doDeleteVariant(variant);
     } finally {
       setDeletingId(null);
     }
@@ -1148,7 +1177,7 @@ export function ProductVariantsDialog({
                                     variant="ghost"
                                     size="sm"
                                     disabled={isDeleting}
-                                    onClick={() => handleDeleteVariant(v.id)}
+                                    onClick={() => handleDeleteVariant(v)}
                                     className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                                     aria-label="Delete variant"
                                   >

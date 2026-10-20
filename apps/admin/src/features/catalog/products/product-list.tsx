@@ -307,6 +307,10 @@ export function ProductList() {
         }
       }
     } else {
+      if (tab !== 'all' && tab !== p.status) {
+        handleTabChange(p.status);
+      }
+      setHighlighted(p);
       resync();
     }
   }

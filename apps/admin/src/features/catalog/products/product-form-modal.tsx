@@ -72,6 +72,8 @@ const FIELD_FOR_CODE: Record<string, Path<FormValues>> = {
   PRODUCT_SLUG_TAKEN: 'slug',
   PRODUCT_CATEGORY_INVALID: 'categoryId',
   PRODUCT_BRAND_INVALID: 'brandId',
+  PRODUCT_BRAND_REQUIRED: 'brandId',
+  PRODUCT_BRAND_NOT_ALLOWED: 'brandId',
 };
 
 const collapseWs = (s: string): string => s.replace(/\s+/g, ' ').trim();

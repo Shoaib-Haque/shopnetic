@@ -46,6 +46,11 @@
   --ring: 213 27% 84%;
 }
 
+/* Ensure toasts remain interactive even when a modal dialog sets pointer-events: none on body */
+[data-sonner-toaster] {
+  pointer-events: auto !important;
+}
+
 /* Toast timer bar (see components/toast.tsx). */
 @keyframes sn-toast-timer {
   from {

@@ -24,6 +24,7 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
 
   let catOptionalId: string;
   let catNoneId: string;
+  let catRequiredId: string;
   let brandId: string;
   let sizeTypeId: string;
   let sizeValues: Record<string, string> = {};
@@ -46,7 +47,7 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     });
     actor = { accountId: acc.id, plane: 'staff', grants: [] };
 
-    const mkCat = async (slug: string, req: 'optional' | 'none'): Promise<string> => {
+    const mkCat = async (slug: string, req: 'optional' | 'none' | 'required'): Promise<string> => {
       const c = await prisma.category.create({
         data: { slug, nameI18n: t(slug), brandRequirement: req },
       });
@@ -59,6 +60,7 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     };
     catOptionalId = await mkCat(s('apparel'), 'optional');
     catNoneId = await mkCat(s('generic'), 'none');
+    catRequiredId = await mkCat(s('branded'), 'required');
 
     const brand = await prisma.brand.create({ data: { name: s('Acme'), slug: s('acme') } });
     brandId = brand.id;
@@ -118,7 +120,9 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
       where: { slug: { startsWith: `itest-pr-${stamp}-` } },
       select: { id: true },
     });
-    const catIds = Array.from(new Set([...testCats.map((c) => c.id), catOptionalId, catNoneId]));
+    const catIds = Array.from(
+      new Set([...testCats.map((c) => c.id), catOptionalId, catNoneId, catRequiredId]),
+    );
     const prodIds = (
       await prisma.product.findMany({
         where: {
@@ -179,7 +183,19 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     ).rejects.toMatchObject({ code: 'PRODUCT_CATEGORY_INVALID' });
 
     await expect(
+      products.create({ categoryId: catRequiredId, title: t('x'), slug: s('x0') }, actor, {}),
+    ).rejects.toMatchObject({ code: 'PRODUCT_BRAND_REQUIRED' });
+
+    await expect(
       products.create({ categoryId: catNoneId, title: t('x'), slug: s('x2'), brandId }, actor, {}),
+    ).rejects.toMatchObject({ code: 'PRODUCT_BRAND_NOT_ALLOWED' });
+
+    await expect(
+      products.create(
+        { categoryId: catOptionalId, title: t('x'), slug: s('x2b'), brandId: crypto.randomUUID() },
+        actor,
+        {},
+      ),
     ).rejects.toMatchObject({ code: 'PRODUCT_BRAND_INVALID' });
 
     await expect(

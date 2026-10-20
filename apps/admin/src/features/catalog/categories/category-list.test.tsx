@@ -80,6 +80,20 @@ describe('CategoryList error states', () => {
 
     expect(await screen.findByText(GENERIC_ERROR)).toBeInTheDocument();
     expect(screen.queryByText('No categories yet.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+  });
+
+  it('retries loading the tree when clicking try again on load error', async () => {
+    mockedAdminApi.mockRejectedValueOnce(new AdminApiError('INTERNAL', 500)); // #1 mount GET
+    mockedAdminApi.mockResolvedValueOnce([cat('c1', 'Root Cat')]); // #2 retry GET
+
+    renderAdmin(<CategoryList />);
+
+    expect(await screen.findByText(GENERIC_ERROR)).toBeInTheDocument();
+    const retryBtn = screen.getByRole('button', { name: /try again/i });
+    fireEvent.click(retryBtn);
+
+    await screen.findAllByText('Root Cat');
   });
 
   it('keeps the rows on screen when a background resync fails after a successful mutation', async () => {

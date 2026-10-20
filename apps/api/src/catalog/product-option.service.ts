@@ -74,6 +74,19 @@ export class ProductOptionService {
   ): Promise<ProductOption> {
     const product = await this.productOrThrow(productId);
     await this.assertConfigured(product.categoryId, optionTypeId);
+
+    const existing = await this.prisma.productOption.findUnique({
+      where: { productId_optionTypeId: { productId, optionTypeId } },
+    });
+
+    if (input.expectedUpdatedAt !== undefined) {
+      if (!existing || input.expectedUpdatedAt !== existing.updatedAt.toISOString()) {
+        throw new AppError('CONFLICT', 409, {
+          detail: 'product option was modified concurrently; reload and try again',
+        });
+      }
+    }
+
     if (input.requiredValueId != null) {
       await this.assertValueOfType(optionTypeId, input.requiredValueId);
     }
@@ -117,12 +130,25 @@ export class ProductOptionService {
       });
     }
 
+    if (
+      input.expectedUpdatedAt !== undefined &&
+      input.expectedUpdatedAt !== option.updatedAt.toISOString()
+    ) {
+      throw new AppError('CONFLICT', 409, {
+        detail: 'product option was modified concurrently; reload and try again',
+      });
+    }
+
     const wanted = dedupe(input.values.map((v) => v.optionValueId));
     await this.assertValuesAllowed(product.categoryId, optionTypeId, wanted);
 
     const positionOf = new Map(input.values.map((v, i) => [v.optionValueId, v.position ?? i]));
 
     await this.prisma.$transaction(async (tx) => {
+      await tx.productOption.update({
+        where: { productId_optionTypeId: { productId, optionTypeId } },
+        data: { updatedAt: new Date() },
+      });
       await tx.productOptionValue.deleteMany({ where: { productId, optionTypeId } });
       if (wanted.length > 0) {
         await tx.productOptionValue.createMany({
@@ -307,6 +333,7 @@ function toView(row: ProductOptionRow): ProductOption {
         code: v.optionValue.code,
         position: v.position,
       })),
+    updatedAt: row.updatedAt ? row.updatedAt.toISOString() : undefined,
   };
 }
 
