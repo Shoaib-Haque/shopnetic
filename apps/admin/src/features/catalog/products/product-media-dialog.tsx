@@ -492,9 +492,9 @@ export function ProductMediaDialog({
     };
   }, []);
 
-  const isArchived = Boolean(
-    product && (Boolean(product.archivedAt) || product.status === 'archived'),
-  );
+  const isArchived = product?.status === 'archived' || Boolean(product?.archivedAt);
+  const isPending = product?.status === 'pending';
+  const isReadOnly = isArchived || isPending;
 
   const loadData = useCallback(async () => {
     if (!product) return;
@@ -584,7 +584,7 @@ export function ProductMediaDialog({
   // ── Reorder Handlers ──────────────────────────────────────────────────────────
 
   const handleMove = async (assetId: string, direction: 'left' | 'right') => {
-    if (!product || isArchived || reordering) return;
+    if (!product || isReadOnly || reordering) return;
     const currentIndex = mediaAssets.findIndex((m) => m.id === assetId);
     if (currentIndex === -1) return;
 
@@ -617,7 +617,7 @@ export function ProductMediaDialog({
   };
 
   const handleSetAsCover = async (assetId: string) => {
-    if (!product || isArchived || reordering) return;
+    if (!product || isReadOnly || reordering) return;
     const currentIndex = mediaAssets.findIndex((m) => m.id === assetId);
     if (currentIndex <= 0) return;
 
@@ -665,7 +665,7 @@ export function ProductMediaDialog({
   // ── Tagging Handler ───────────────────────────────────────────────────────────
 
   const handleTagChange = async (assetId: string, optionTypeId: string, optionValueId: string) => {
-    if (isArchived) return;
+    if (isReadOnly) return;
     setTaggingId(assetId);
     setActionError(null);
     const ot = optionTypeMap.get(optionTypeId);
@@ -718,14 +718,26 @@ export function ProductMediaDialog({
                       — {product.title?.en ?? product.slug}
                     </span>
                   )}
+                  {isArchived && (
+                    <StatusBadge tone="neutral" className="text-xs">
+                      {t('products.status.archived')}
+                    </StatusBadge>
+                  )}
+                  {isPending && (
+                    <StatusBadge tone="warning" className="text-xs">
+                      {t('products.status.pending')}
+                    </StatusBadge>
+                  )}
                 </ModalTitle>
                 <ModalDescription>
                   {isArchived
                     ? t('products.media.dialogSubtitleArchived')
-                    : t('products.media.dialogSubtitle')}
+                    : isPending
+                      ? t('products.media.dialogSubtitlePending')
+                      : t('products.media.dialogSubtitle')}
                 </ModalDescription>
               </div>
-              {!isArchived && (
+              {!isReadOnly && (
                 <Button
                   type="button"
                   size="sm"
@@ -806,7 +818,7 @@ export function ProductMediaDialog({
                 <p className="text-xs text-muted-foreground mt-1 max-w-sm">
                   {t('products.media.emptySubtitle')}
                 </p>
-                {!isArchived && (
+                {!isReadOnly && (
                   <Button
                     type="button"
                     size="sm"
@@ -824,8 +836,8 @@ export function ProductMediaDialog({
                   const isCover = asset.id === productCoverId;
                   const isVariantLead = variantLeadIds.has(asset.id);
                   const isHighlighted = targetAssetId === asset.id;
-                  const canMoveLeft = index > 0 && !isArchived;
-                  const canMoveRight = index < mediaAssets.length - 1 && !isArchived;
+                  const canMoveLeft = index > 0 && !isReadOnly;
+                  const canMoveRight = index < mediaAssets.length - 1 && !isReadOnly;
 
                   return (
                     <div
@@ -904,7 +916,7 @@ export function ProductMediaDialog({
                         </div>
 
                         {/* Hover Overlay Actions (Desktop) */}
-                        {!isArchived && (
+                        {!isReadOnly && (
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-2">
                             {canMoveLeft && (
                               <Button
@@ -1031,7 +1043,7 @@ export function ProductMediaDialog({
                                         v === '__none__' ? '' : v,
                                       )
                                     }
-                                    disabled={isArchived || isTaggingThis}
+                                    disabled={isReadOnly || isTaggingThis}
                                   >
                                     <SelectTrigger
                                       id={`tag-${asset.id}-${po.optionTypeId}`}

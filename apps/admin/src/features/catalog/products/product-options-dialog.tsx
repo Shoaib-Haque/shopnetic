@@ -392,8 +392,20 @@ export function ProductOptionsDialog({
     );
   }, [categoryOptions, configuredOptionTypeIds]);
 
+  // Required options configured on the product but with 0 values selected
+  const emptyRequired = useMemo(() => {
+    return productOptions.filter((po) => {
+      const co = categoryOptionMap.get(po.optionTypeId);
+      return co?.applicability === 'required' && po.values.length === 0;
+    });
+  }, [productOptions, categoryOptionMap]);
+
+  const isArchived = product?.status === 'archived' || Boolean(product?.archivedAt);
+  const isPending = product?.status === 'pending';
+  const isReadOnly = isArchived || isPending;
+
   const handleAddOption = async () => {
-    if (!product || !selectedToAdd) return;
+    if (!product || !selectedToAdd || isReadOnly) return;
     setAdding(true);
     setActionError(null);
     try {
@@ -491,8 +503,20 @@ export function ProductOptionsDialog({
                   — {product.title?.en ?? product.slug}
                 </span>
               )}
+              {isArchived && (
+                <StatusBadge tone="neutral">{t('products.status.archived')}</StatusBadge>
+              )}
+              {isPending && (
+                <StatusBadge tone="warning">{t('products.status.pending')}</StatusBadge>
+              )}
             </ModalTitle>
-            <ModalDescription>{t('products.options.dialogSubtitle')}</ModalDescription>
+            <ModalDescription>
+              {isArchived
+                ? t('products.options.dialogSubtitleArchived')
+                : isPending
+                  ? t('products.options.dialogSubtitlePending')
+                  : t('products.options.dialogSubtitle')}
+            </ModalDescription>
           </ModalHeader>
 
           <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-5 py-4">
@@ -531,56 +555,78 @@ export function ProductOptionsDialog({
                   </div>
                 )}
 
-                {/* Add Option Toolbar */}
-                {categoryOptions.length === 0 ? (
-                  <div className="rounded-md bg-muted/60 p-3 text-sm text-muted-foreground">
-                    {t('products.options.noCategoryOptionsConfigured')}
-                  </div>
-                ) : availableToAdd.length > 0 ? (
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-lg border border-border bg-card p-3">
-                    <div className="min-w-0 flex-1">
-                      <Select
-                        value={selectedToAdd}
-                        onValueChange={setSelectedToAdd}
-                        disabled={adding}
-                      >
-                        <SelectTrigger aria-label={t('products.options.selectOptionType')}>
-                          <SelectValue placeholder={t('products.options.selectOptionType')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableToAdd.map((co) => {
-                            const name = optName(co.optionTypeId);
-                            const isReq = co.applicability === 'required';
-                            const isAxis = co.isVariantAxis;
-                            return (
-                              <SelectItem
-                                key={co.optionTypeId}
-                                value={co.optionTypeId}
-                                title={name}
-                              >
-                                {name} {isReq ? '★ (Required)' : ''}{' '}
-                                {isAxis ? '[Variant Axis]' : '[Info]'}
-                              </SelectItem>
-                            );
+                {emptyRequired.length > 0 && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+                    <p className="font-medium">
+                      {emptyRequired.length === 1
+                        ? t('products.options.emptyRequiredSingle', {
+                            name: optName(emptyRequired[0]!.optionTypeId),
+                          })
+                        : t('products.options.emptyRequiredPlural', {
+                            count: emptyRequired.length,
                           })}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      type="button"
-                      disabled={!selectedToAdd || adding}
-                      onClick={handleAddOption}
-                      className="w-full sm:w-auto shrink-0"
-                    >
-                      {adding ? <Spinner className="size-4" /> : <Plus className="size-4" />}
-                      {t('products.options.addOption')}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                    {t('products.options.noAvailableCategoryOptions')}
+                    </p>
+                    {emptyRequired.length > 1 && (
+                      <ul className="mt-1 list-inside list-disc text-xs">
+                        {emptyRequired.map((po) => (
+                          <li key={po.optionTypeId}>{optName(po.optionTypeId)}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 )}
+
+                {/* Add Option Toolbar */}
+                {!isReadOnly &&
+                  (categoryOptions.length === 0 ? (
+                    <div className="rounded-md bg-muted/60 p-3 text-sm text-muted-foreground">
+                      {t('products.options.noCategoryOptionsConfigured')}
+                    </div>
+                  ) : availableToAdd.length > 0 ? (
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-lg border border-border bg-card p-3">
+                      <div className="min-w-0 flex-1">
+                        <Select
+                          value={selectedToAdd}
+                          onValueChange={setSelectedToAdd}
+                          disabled={adding}
+                        >
+                          <SelectTrigger aria-label={t('products.options.selectOptionType')}>
+                            <SelectValue placeholder={t('products.options.selectOptionType')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableToAdd.map((co) => {
+                              const name = optName(co.optionTypeId);
+                              const isReq = co.applicability === 'required';
+                              const isAxis = co.isVariantAxis;
+                              return (
+                                <SelectItem
+                                  key={co.optionTypeId}
+                                  value={co.optionTypeId}
+                                  title={name}
+                                >
+                                  {name} {isReq ? '★ (Required)' : ''}{' '}
+                                  {isAxis ? '[Variant Axis]' : '[Info]'}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        disabled={!selectedToAdd || adding}
+                        onClick={handleAddOption}
+                        className="w-full sm:w-auto shrink-0"
+                      >
+                        {adding ? <Spinner className="size-4" /> : <Plus className="size-4" />}
+                        {t('products.options.addOption')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                      {t('products.options.noAvailableCategoryOptions')}
+                    </div>
+                  ))}
 
                 {actionError && (
                   <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
@@ -608,6 +654,7 @@ export function ProductOptionsDialog({
                       <TableBody>
                         {productOptions.map((po) => {
                           const co = categoryOptionMap.get(po.optionTypeId);
+                          const ot = optionTypeMap.get(po.optionTypeId);
                           const name = optName(po.optionTypeId);
                           const isReq = co?.applicability === 'required';
                           const isAxis = co?.isVariantAxis ?? false;
@@ -649,38 +696,60 @@ export function ProductOptionsDialog({
                                 <div className="flex flex-col gap-2">
                                   <div className="flex flex-wrap items-center gap-1.5">
                                     {po.values.length === 0 ? (
-                                      <span className="text-xs text-muted-foreground italic">
-                                        No values selected
-                                      </span>
-                                    ) : (
-                                      po.values.map((v) => (
-                                        <span
-                                          key={v.optionValueId}
-                                          className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
-                                        >
-                                          {v.code}
+                                      isReq ? (
+                                        <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                                          {t('products.options.noValuesSelectedRequired')}
                                         </span>
-                                      ))
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground italic">
+                                          No values selected
+                                        </span>
+                                      )
+                                    ) : (
+                                      po.values.map((v) => {
+                                        const optVal = ot?.values.find(
+                                          (val) => val.id === v.optionValueId,
+                                        );
+                                        const valLabel = optVal?.label.en || v.code;
+                                        return (
+                                          <span
+                                            key={v.optionValueId}
+                                            className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
+                                          >
+                                            {optVal?.swatchHex && (
+                                              <span
+                                                className="size-3 rounded-full border border-border shadow-xs shrink-0"
+                                                style={{ backgroundColor: optVal.swatchHex }}
+                                                title={optVal.swatchHex}
+                                              />
+                                            )}
+                                            <span>{valLabel}</span>
+                                          </span>
+                                        );
+                                      })
                                     )}
                                   </div>
-                                  <div>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      data-action="manage-values"
-                                      data-option-code={po.optionTypeCode}
-                                      onClick={() => setValueSelectTarget(po.optionTypeId)}
-                                    >
-                                      {t('products.options.manageValues')} ({po.values.length})
-                                    </Button>
-                                  </div>
+                                  {!isReadOnly && (
+                                    <div>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        data-action="manage-values"
+                                        data-option-code={po.optionTypeCode}
+                                        onClick={() => setValueSelectTarget(po.optionTypeId)}
+                                      >
+                                        {t('products.options.manageValues')} ({po.values.length})
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               </TableCell>
                               <TableCell>
                                 {po.values.length > 0 ? (
                                   <Select
                                     value={po.requiredValueId ?? '__none__'}
+                                    disabled={isReadOnly}
                                     onValueChange={(v) =>
                                       handleSetRequiredValue(
                                         po.optionTypeId,
@@ -698,11 +767,17 @@ export function ProductOptionsDialog({
                                       <SelectItem value="__none__">
                                         {t('products.options.noneRequiredValue')}
                                       </SelectItem>
-                                      {po.values.map((v) => (
-                                        <SelectItem key={v.optionValueId} value={v.optionValueId}>
-                                          Only {v.code} (Skip picker)
-                                        </SelectItem>
-                                      ))}
+                                      {po.values.map((v) => {
+                                        const optVal = ot?.values.find(
+                                          (val) => val.id === v.optionValueId,
+                                        );
+                                        const label = optVal?.label.en || v.code;
+                                        return (
+                                          <SelectItem key={v.optionValueId} value={v.optionValueId}>
+                                            {t('products.options.singleValueSkipItem', { label })}
+                                          </SelectItem>
+                                        );
+                                      })}
                                     </SelectContent>
                                   </Select>
                                 ) : (
@@ -710,21 +785,23 @@ export function ProductOptionsDialog({
                                 )}
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={isRemoving}
-                                  onClick={() => setDeleteTarget(po.optionTypeId)}
-                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                  aria-label="Remove option"
-                                >
-                                  {isRemoving ? (
-                                    <Spinner className="size-4" />
-                                  ) : (
-                                    <Trash2 className="size-4" />
-                                  )}
-                                </Button>
+                                {!isReadOnly && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={isRemoving}
+                                    onClick={() => setDeleteTarget(po.optionTypeId)}
+                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    aria-label="Remove option"
+                                  >
+                                    {isRemoving ? (
+                                      <Spinner className="size-4" />
+                                    ) : (
+                                      <Trash2 className="size-4" />
+                                    )}
+                                  </Button>
+                                )}
                               </TableCell>
                             </TableRow>
                           );

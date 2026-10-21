@@ -263,3 +263,7 @@ export function createWarehouse(body: CreateWarehouseRequest): Promise<Warehouse
 export function listSellers(): Promise<SellerWithShop[]> {
   return adminApi<SellerWithShop[]>('/sellers');
 }
+
+export function getSeller(id: string): Promise<SellerWithShop> {
+  return adminApi<SellerWithShop>(`/sellers/${id}`);
+}

@@ -412,8 +412,28 @@ describe('ProductMediaDialog', () => {
 
     await screen.findByText('Product Media Gallery');
 
+    expect(screen.getByText('Archived')).toBeInTheDocument();
     expect(
       screen.getByText('This product is archived. Media is displayed in read-only mode.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add Media' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Move Right' })).not.toBeInTheDocument();
+  });
+
+  it('disables mutation controls when product is pending review', async () => {
+    const pendingProduct: Product = {
+      ...sampleProduct,
+      status: 'pending',
+      archivedAt: null,
+    };
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={pendingProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    expect(screen.getByText('Pending Review')).toBeInTheDocument();
+    expect(
+      screen.getByText('This product is awaiting review. Media is displayed in read-only mode.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add Media' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Move Right' })).not.toBeInTheDocument();

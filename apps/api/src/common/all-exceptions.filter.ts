@@ -10,6 +10,7 @@ import { ZodError } from 'zod';
 import type { Request, Response } from 'express';
 import type { ApiError, ErrorCode } from '@shopnetic/contracts';
 import { AppError } from './app-error.js';
+import { AuthorizationError } from '@shopnetic/auth';
 
 export const ERROR_BASE = 'https://errors.shopnetic.com/';
 
@@ -89,6 +90,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
           rule: issue.code,
           message: `errors.field.${issue.code}`,
         })),
+      };
+    }
+
+    if (exception instanceof AuthorizationError) {
+      return {
+        status: 403,
+        code: 'FORBIDDEN',
+        title: titleFor(403),
+        detail: exception.message,
       };
     }
 

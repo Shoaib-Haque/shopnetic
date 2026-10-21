@@ -550,4 +550,98 @@ describe('ProductVariantsDialog', () => {
       expect(mockedRestoreVariant).toHaveBeenCalledWith('prod_1', 'var_1');
     });
   });
+
+  it('shows warning banner and explanation in GeneratorModal when variant axis has 0 values', async () => {
+    const emptyAxisPo: ProductOption = {
+      productId: 'prod_1',
+      optionTypeId: 'ot_size',
+      optionTypeCode: 'size',
+      position: 0,
+      requiredValueId: null,
+      values: [],
+    };
+    mockedListProductOptions.mockResolvedValue([emptyAxisPo]);
+    mockedListVariants.mockResolvedValue([]);
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Generate Variants' })[0]).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Generate Variants' })[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Generate Variant Matrix')).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText(/The following variant axes have no values selected: Size/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Configure offered values in Options & Attributes before generating combinations/i,
+      ),
+    ).toBeInTheDocument();
+
+    const generateBtn = screen.getByRole('button', { name: /Generate 0 Variants/i });
+    expect(generateBtn).toBeDisabled();
+  });
+
+  it('renders view-only mode for archived product', async () => {
+    const archivedProduct: Product = {
+      ...sampleProduct,
+      status: 'archived',
+    };
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={archivedProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('TEE-S')).toBeInTheDocument();
+    });
+
+    // Subtitle shows archived note
+    expect(
+      screen.getByText('This product is archived. Variants are displayed in read-only mode.'),
+    ).toBeInTheDocument();
+
+    // Create / Generate buttons are not rendered
+    expect(screen.queryByRole('button', { name: 'Generate Variants' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add Variant' })).not.toBeInTheDocument();
+
+    // Row action buttons for Edit / Delete are not rendered
+    expect(screen.queryByRole('button', { name: 'Edit variant' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete variant' })).not.toBeInTheDocument();
+  });
+
+  it('renders view-only mode for pending review product', async () => {
+    const pendingProduct: Product = {
+      ...sampleProduct,
+      status: 'pending',
+    };
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={pendingProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('TEE-S')).toBeInTheDocument();
+      expect(screen.getByText('Pending Review')).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText(
+        'This product is awaiting review. Variants are displayed in read-only mode.',
+      ),
+    ).toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: 'Generate Variants' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add Variant' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit variant' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete variant' })).not.toBeInTheDocument();
+  });
 });

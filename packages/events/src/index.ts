@@ -32,6 +32,7 @@ export const DomainEvent = {
   PRODUCT_DELETED: 'catalog.product_deleted',
   PRODUCT_OPTIONS_CHANGED: 'catalog.product_options_changed',
   PRODUCT_APPROVED: 'catalog.product_approved',
+  PRODUCT_REJECTED: 'catalog.product_rejected',
   PRODUCT_ARCHIVED: 'catalog.product_archived',
   VARIANT_CREATED: 'catalog.variant_created',
   VARIANT_UPDATED: 'catalog.variant_updated',

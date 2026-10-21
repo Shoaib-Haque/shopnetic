@@ -247,8 +247,8 @@ describe('ProductOptionsDialog', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Select Offered Values')).toBeInTheDocument();
-      expect(screen.getByText('Small')).toBeInTheDocument();
-      expect(screen.getByText('Medium')).toBeInTheDocument();
+      expect(screen.getAllByText('Small').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Medium').length).toBeGreaterThanOrEqual(1);
     });
 
     // Deselect Medium
@@ -281,7 +281,7 @@ describe('ProductOptionsDialog', () => {
     });
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Single Value (Skip Picker)' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Only s (Skip picker)' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Only Small (Skip picker)' }));
 
     await waitFor(() => {
       expect(mockedPutProductOption).toHaveBeenCalledWith('prod_1', 'ot_size', {
@@ -386,5 +386,89 @@ describe('ProductOptionsDialog', () => {
     expect(modalHeader).toBeInTheDocument();
     const minWTable = document.querySelector('.min-w-\\[640px\\]');
     expect(minWTable).toBeInTheDocument();
+  });
+
+  it('renders swatch hex color circle for swatch option values in offered values pills', async () => {
+    const swatchPo: ProductOption = {
+      productId: 'prod_1',
+      optionTypeId: 'ot_color',
+      optionTypeCode: 'color',
+      position: 0,
+      requiredValueId: null,
+      values: [{ optionValueId: 'val_blk', code: 'blk', position: 0 }],
+    };
+    mockedListProductOptions.mockResolvedValue([swatchPo]);
+
+    renderAdmin(
+      <ProductOptionsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Black')).toBeInTheDocument();
+    });
+
+    const swatchCircle = document.querySelector('span[title="#000000"]');
+    expect(swatchCircle).toBeInTheDocument();
+  });
+
+  it('shows warning banner when a required category option has 0 values selected', async () => {
+    const emptyRequiredPo: ProductOption = {
+      productId: 'prod_1',
+      optionTypeId: 'ot_size',
+      optionTypeCode: 'size',
+      position: 0,
+      requiredValueId: null,
+      values: [],
+    };
+    mockedListProductOptions.mockResolvedValue([emptyRequiredPo]);
+
+    renderAdmin(
+      <ProductOptionsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Required category axis “Size” has no values selected/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText('No values selected (Required)')).toBeInTheDocument();
+    });
+  });
+
+  it('renders view-only mode for archived product', async () => {
+    const archivedProd = { ...sampleProduct, status: 'archived' as const };
+    renderAdmin(<ProductOptionsDialog open={true} onOpenChange={vi.fn()} product={archivedProd} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Options and attributes are displayed in read-only mode/i),
+      ).toBeInTheDocument();
+    });
+
+    // Add option toolbar and remove button should not be present
+    expect(
+      screen.queryByRole('combobox', { name: 'Select an option axis…' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove option' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Select Values (2)')).not.toBeInTheDocument();
+  });
+
+  it('renders view-only mode for pending review product', async () => {
+    const pendingProd = { ...sampleProduct, status: 'pending' as const };
+    renderAdmin(<ProductOptionsDialog open={true} onOpenChange={vi.fn()} product={pendingProd} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Pending Review')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'This product is awaiting review. Options and attributes are displayed in read-only mode.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole('combobox', { name: 'Select an option axis…' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove option' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Select Values (2)')).not.toBeInTheDocument();
   });
 });

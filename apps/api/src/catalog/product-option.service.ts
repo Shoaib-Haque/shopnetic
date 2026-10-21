@@ -56,7 +56,7 @@ export class ProductOptionService {
   }
 
   async list(productId: string): Promise<ProductOption[]> {
-    await this.productOrThrow(productId);
+    await this.productOrThrow(productId, true);
     const rows = await this.prisma.productOption.findMany({
       where: { productId },
       include: withDetail,
@@ -242,12 +242,25 @@ export class ProductOptionService {
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  private async productOrThrow(id: string): Promise<{ id: string; categoryId: string }> {
+  private async productOrThrow(
+    id: string,
+    allowArchived = false,
+  ): Promise<{ id: string; categoryId: string }> {
     const row = await this.prisma.product.findFirst({
-      where: { id, deletedAt: null },
-      select: { id: true, categoryId: true },
+      where: allowArchived ? { id } : { id, deletedAt: null },
+      select: { id: true, categoryId: true, status: true, deletedAt: true },
     });
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'product not found' });
+    if (!allowArchived && (row.deletedAt || row.status === 'archived')) {
+      throw new AppError('PRODUCT_PARENT_ARCHIVED', 409, {
+        detail: 'cannot modify options on an archived product',
+      });
+    }
+    if (!allowArchived && row.status === 'pending') {
+      throw new AppError('PRODUCT_IN_REVIEW', 409, {
+        detail: 'cannot modify options on a pending product',
+      });
+    }
     return row;
   }
 

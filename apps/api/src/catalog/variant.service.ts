@@ -46,7 +46,7 @@ export class VariantService {
   }
 
   async list(productId: string): Promise<Variant[]> {
-    await this.productOrThrow(productId);
+    await this.productOrThrow(productId, true);
     const rows = await this.prisma.variant.findMany({
       where: { productId, deletedAt: null },
       include: withValues,
@@ -146,6 +146,7 @@ export class VariantService {
     meta: RequestMeta,
   ): Promise<Variant> {
     const current = await this.get(id);
+    await this.productOrThrow(current.productId);
 
     if (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== current.updatedAt) {
       throw new AppError('CONFLICT', 409, {
@@ -200,6 +201,7 @@ export class VariantService {
 
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
     const current = await this.get(id);
+    await this.productOrThrow(current.productId);
     await this.prisma.$transaction(async (tx) => {
       await tx.variant.update({ where: { id }, data: { deletedAt: new Date() } });
       await writeCatalogOutbox(tx, 'variant', 'variant.deleted', id, { id });
@@ -226,11 +228,16 @@ export class VariantService {
 
     const product = await this.prisma.product.findFirst({
       where: { id: current.productId, deletedAt: null },
-      select: { id: true, categoryId: true },
+      select: { id: true, categoryId: true, status: true },
     });
-    if (!product) {
+    if (!product || product.status === 'archived') {
       throw new AppError('PRODUCT_PARENT_ARCHIVED', 409, {
         detail: 'cannot restore variant because its product is archived; restore the product first',
+      });
+    }
+    if (product.status === 'pending') {
+      throw new AppError('PRODUCT_IN_REVIEW', 409, {
+        detail: 'cannot restore variant on a pending product',
       });
     }
 
@@ -280,12 +287,25 @@ export class VariantService {
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  private async productOrThrow(id: string): Promise<{ id: string; categoryId: string }> {
+  private async productOrThrow(
+    id: string,
+    allowArchived = false,
+  ): Promise<{ id: string; categoryId: string }> {
     const row = await this.prisma.product.findFirst({
-      where: { id, deletedAt: null },
-      select: { id: true, categoryId: true },
+      where: allowArchived ? { id } : { id, deletedAt: null },
+      select: { id: true, categoryId: true, status: true, deletedAt: true },
     });
     if (!row) throw new AppError('NOT_FOUND', 404, { detail: 'product not found' });
+    if (!allowArchived && (row.deletedAt || row.status === 'archived')) {
+      throw new AppError('PRODUCT_PARENT_ARCHIVED', 409, {
+        detail: 'cannot modify variants on an archived product',
+      });
+    }
+    if (!allowArchived && row.status === 'pending') {
+      throw new AppError('PRODUCT_IN_REVIEW', 409, {
+        detail: 'cannot modify variants on a pending product',
+      });
+    }
     return row;
   }
 

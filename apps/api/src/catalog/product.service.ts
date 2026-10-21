@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Actor } from '@shopnetic/auth';
+import { can, Permission, type Actor } from '@shopnetic/auth';
 import type {
   CreateProductRequest,
   Product,
@@ -191,6 +191,48 @@ export class ProductService {
       });
     }
 
+    if (current.status === 'pending') {
+      if (input.status === 'active') {
+        if (!can(actor, Permission.PRODUCT_APPROVE)) {
+          throw AppError.forbidden('FORBIDDEN', 'missing permission: product:approve');
+        }
+        if (
+          input.title !== undefined ||
+          input.description !== undefined ||
+          input.slug !== undefined ||
+          input.brandId !== undefined ||
+          input.basePriceMinor !== undefined ||
+          input.currency !== undefined ||
+          input.spec !== undefined
+        ) {
+          throw new AppError('PRODUCT_IN_REVIEW', 422, {
+            detail: 'cannot modify product fields while approving; status transition only',
+          });
+        }
+      } else if (input.status === 'draft') {
+        if (
+          input.title !== undefined ||
+          input.description !== undefined ||
+          input.slug !== undefined ||
+          input.brandId !== undefined ||
+          input.basePriceMinor !== undefined ||
+          input.currency !== undefined
+        ) {
+          throw new AppError('PRODUCT_IN_REVIEW', 422, {
+            detail: 'cannot modify product fields while rejecting; status and rejection notes only',
+          });
+        }
+      } else {
+        throw new AppError('PRODUCT_IN_REVIEW', 422, {
+          detail: 'cannot modify product while in review; approve or reject first',
+        });
+      }
+    }
+
+    if (input.status === 'active' && current.status !== 'active') {
+      await this.assertRequiredCategoryOptionsConfigured(id, current.categoryId);
+    }
+
     if (input.slug !== undefined && input.slug !== current.slug) {
       await this.assertSlugFree(input.slug, id);
     }
@@ -229,11 +271,32 @@ export class ProductService {
       return toView(current);
     }
 
+    const isApproval = current.status === 'pending' && input.status === 'active';
+    const isRejection = current.status === 'pending' && input.status === 'draft';
+
+    const outboxEvent = isApproval
+      ? 'product.approved'
+      : isRejection
+        ? 'product.rejected'
+        : 'product.updated';
+
+    const auditAction = isApproval
+      ? 'catalog.product_approved'
+      : isRejection
+        ? 'catalog.product_rejected'
+        : 'catalog.product_updated';
+
+    const rejectionNote =
+      isRejection && input.spec && typeof input.spec === 'object' && 'rejectionNote' in input.spec
+        ? String((input.spec as Record<string, unknown>)['rejectionNote'] ?? '')
+        : undefined;
+
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({ where: { id }, data });
-      await writeCatalogOutbox(tx, 'product', 'product.updated', id, {
+      await writeCatalogOutbox(tx, 'product', outboxEvent, id, {
         id,
         fields: Object.keys(data),
+        ...(rejectionNote ? { rejectionNote } : {}),
       });
     });
 
@@ -246,15 +309,21 @@ export class ProductService {
         this.categoryNameOf(view.categoryId),
         this.brandNameOf(view.brandId),
       ]);
-    await this.record(actor, 'catalog.product_updated', id, meta, {
+    await this.record(actor, auditAction, id, meta, {
       before: { ...beforeView, categoryName: beforeCategoryName, brandName: beforeBrandName },
       after: { ...view, categoryName: afterCategoryName, brandName: afterBrandName },
+      ...(rejectionNote ? { rejectionNote } : {}),
     });
     return view;
   }
 
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
     const current = await this.rowOrThrow(id);
+    if (current.status === 'pending') {
+      throw new AppError('PRODUCT_IN_REVIEW', 422, {
+        detail: 'cannot delete a product while pending review; approve or reject to draft first',
+      });
+    }
     const currentSpec = (current.spec as Record<string, unknown>) ?? {};
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({
@@ -427,6 +496,31 @@ export class ProductService {
     });
     if (clash)
       throw new AppError('PRODUCT_SLUG_TAKEN', 409, { detail: `slug "${slug}" is in use` });
+  }
+
+  private async assertRequiredCategoryOptionsConfigured(
+    productId: string,
+    categoryId: string,
+  ): Promise<void> {
+    const requiredCategoryOptions = await this.prisma.categoryOption.findMany({
+      where: { categoryId, applicability: 'required' },
+      select: { optionTypeId: true, optionType: { select: { code: true } } },
+    });
+    if (requiredCategoryOptions.length === 0) return;
+
+    const productOptions = await this.prisma.productOption.findMany({
+      where: { productId },
+      include: { values: true },
+    });
+
+    for (const req of requiredCategoryOptions) {
+      const match = productOptions.find((po) => po.optionTypeId === req.optionTypeId);
+      if (!match || (match.values.length === 0 && !match.requiredValueId)) {
+        throw new AppError('PRODUCT_OPTION_NOT_CONFIGURED', 422, {
+          detail: `required option axis "${req.optionType.code}" is not configured with values`,
+        });
+      }
+    }
   }
 }
 

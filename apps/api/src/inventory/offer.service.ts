@@ -210,14 +210,7 @@ export class OfferService {
       });
     }
 
-    const variant = await this.prisma.variant.findUnique({
-      where: { id: data.variantId },
-    });
-    if (!variant || variant.deletedAt || variant.status !== 'active') {
-      throw new AppError('OFFER_VARIANT_INVALID', 422, {
-        detail: `variant ${data.variantId} is invalid or inactive`,
-      });
-    }
+    await this.assertVariantAndProductLive(data.variantId);
 
     const existing = await this.prisma.offer.findFirst({
       where: { sellerId, variantId: data.variantId, deletedAt: null },
@@ -349,6 +342,7 @@ export class OfferService {
     if (!existing || existing.deletedAt) {
       throw new AppError('OFFER_NOT_FOUND', 404, { detail: `offer ${id} not found` });
     }
+    await this.assertVariantAndProductLive(existing.variantId);
 
     assertCan(actor, Permission.OFFER_MANAGE, { sellerId: existing.sellerId });
 
@@ -464,6 +458,7 @@ export class OfferService {
     if (!existing || existing.deletedAt) {
       throw new AppError('OFFER_NOT_FOUND', 404, { detail: `offer ${id} not found` });
     }
+    await this.assertVariantAndProductLive(existing.variantId);
 
     assertCan(actor, Permission.OFFER_MANAGE, { sellerId: existing.sellerId });
 
@@ -505,6 +500,7 @@ export class OfferService {
     if (!existing.deletedAt) {
       return this.serialize(existing);
     }
+    await this.assertVariantAndProductLive(existing.variantId);
 
     assertCan(actor, Permission.OFFER_MANAGE, { sellerId: existing.sellerId });
 
@@ -545,5 +541,27 @@ export class OfferService {
     });
 
     return this.serialize(updated);
+  }
+
+  private async assertVariantAndProductLive(variantId: string): Promise<void> {
+    const variant = await this.prisma.variant.findUnique({
+      where: { id: variantId },
+      include: { product: true },
+    });
+    if (!variant || variant.deletedAt || variant.status !== 'active') {
+      throw new AppError('OFFER_VARIANT_INVALID', 422, {
+        detail: `variant ${variantId} is invalid or inactive`,
+      });
+    }
+    if (variant.product.deletedAt || variant.product.status === 'archived') {
+      throw new AppError('PRODUCT_PARENT_ARCHIVED', 409, {
+        detail: 'cannot modify offer on an archived product',
+      });
+    }
+    if (variant.product.status === 'pending') {
+      throw new AppError('PRODUCT_IN_REVIEW', 409, {
+        detail: 'cannot modify offer on a pending product',
+      });
+    }
   }
 }

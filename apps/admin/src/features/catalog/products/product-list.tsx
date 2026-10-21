@@ -369,12 +369,6 @@ export function ProductList() {
             <DropdownMenuItem onSelect={() => setOffersProduct(p)}>
               {t('products.offersAction')}
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => void doDelete(p)}
-              className="text-destructive focus:text-destructive"
-            >
-              {t('products.delete')}
-            </DropdownMenuItem>
           </>
         ) : (
           <>

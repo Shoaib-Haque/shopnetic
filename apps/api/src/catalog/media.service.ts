@@ -134,6 +134,7 @@ export class MediaService {
     }
     const valid = parseRes.data;
     const current = await this.rowOrThrow(id);
+    await this.assertOwner(current.ownerType, current.ownerId);
 
     if (
       valid.expectedUpdatedAt !== undefined &&
@@ -173,6 +174,7 @@ export class MediaService {
 
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
     const current = await this.rowOrThrow(id);
+    await this.assertOwner(current.ownerType, current.ownerId);
     await this.prisma.$transaction(async (tx) => {
       await tx.mediaAsset.delete({ where: { id } });
       await writeCatalogOutbox(tx, 'media_asset', 'media.deleted', id, { id });
@@ -244,6 +246,7 @@ export class MediaService {
     expectedUpdatedAt?: string,
   ): Promise<MediaAsset> {
     const row = await this.rowOrThrow(id);
+    await this.assertOwner(row.ownerType, row.ownerId);
 
     if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== row.updatedAt.toISOString()) {
       throw new AppError('CONFLICT', 409, {
@@ -312,7 +315,8 @@ export class MediaService {
     actor: Actor,
     meta: RequestMeta,
   ): Promise<void> {
-    await this.rowOrThrow(id);
+    const row = await this.rowOrThrow(id);
+    await this.assertOwner(row.ownerType, row.ownerId);
     // best-effort, for the audit snapshot below — this method never
     // otherwise needs the option type's own row
     const optionType = await this.prisma.optionType.findUnique({
@@ -353,10 +357,20 @@ export class MediaService {
       });
     }
     const product = await this.prisma.product.findFirst({
-      where: { id: ownerId, ...(allowArchived ? {} : { deletedAt: null }) },
-      select: { id: true },
+      where: allowArchived ? { id: ownerId } : { id: ownerId, deletedAt: null },
+      select: { id: true, status: true, deletedAt: true },
     });
     if (!product) throw new AppError('NOT_FOUND', 404, { detail: 'product not found' });
+    if (!allowArchived && (product.deletedAt || product.status === 'archived')) {
+      throw new AppError('PRODUCT_PARENT_ARCHIVED', 409, {
+        detail: 'cannot modify media on an archived product',
+      });
+    }
+    if (!allowArchived && product.status === 'pending') {
+      throw new AppError('PRODUCT_IN_REVIEW', 409, {
+        detail: 'cannot modify media on a pending product',
+      });
+    }
   }
 }
 

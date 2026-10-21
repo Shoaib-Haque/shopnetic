@@ -79,7 +79,9 @@ export function ProductOffersDialog({
   onBackToVariants,
 }: ProductOffersDialogProps) {
   const t = useTranslations('catalog');
-  const isArchived = product?.status === 'archived';
+  const isArchived = product?.status === 'archived' || Boolean(product?.archivedAt);
+  const isPending = product?.status === 'pending';
+  const isReadOnly = isArchived || isPending;
 
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -275,18 +277,25 @@ export function ProductOffersDialog({
                   )}
                   {isArchived && (
                     <StatusBadge tone="neutral" className="text-xs">
-                      Archived
+                      {t('products.status.archived')}
+                    </StatusBadge>
+                  )}
+                  {isPending && (
+                    <StatusBadge tone="warning" className="text-xs">
+                      {t('products.status.pending')}
                     </StatusBadge>
                   )}
                 </div>
                 <ModalDescription className="mt-1">
                   {isArchived
                     ? t('products.offers.dialogSubtitleArchived')
-                    : t('products.offers.dialogSubtitle')}
+                    : isPending
+                      ? t('products.offers.dialogSubtitlePending')
+                      : t('products.offers.dialogSubtitle')}
                 </ModalDescription>
               </div>
 
-              {!isArchived && (
+              {!isReadOnly && (
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   <Button
                     type="button"
@@ -450,7 +459,7 @@ export function ProductOffersDialog({
                     <p className="mt-1 text-xs text-muted-foreground">
                       {t('products.offers.emptySubtitle')}
                     </p>
-                    {!isArchived && (
+                    {!isReadOnly && (
                       <Button
                         type="button"
                         size="sm"
@@ -607,25 +616,27 @@ export function ProductOffersDialog({
 
                               <TableCell className="text-right">
                                 <div className="flex items-center justify-end gap-1">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setStockAdjustState({ open: true, offer })}
-                                        aria-label={t('products.offers.adjustStock')}
-                                      >
-                                        <Boxes className="size-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {t('products.offers.adjustStock')}
-                                    </TooltipContent>
-                                  </Tooltip>
-
-                                  {!isArchived && (
+                                  {!isReadOnly && (
                                     <>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                              setStockAdjustState({ open: true, offer })
+                                            }
+                                            aria-label={t('products.offers.adjustStock')}
+                                          >
+                                            <Boxes className="size-3.5" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {t('products.offers.adjustStock')}
+                                        </TooltipContent>
+                                      </Tooltip>
+
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <Button

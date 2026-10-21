@@ -670,5 +670,97 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
       );
       expect(ok.name).toBe('Concurrent Fresh Depot');
     });
+
+    it('rejects offer mutations and stock adjustments on archived or pending products', async () => {
+      const cat = await prisma.category.findFirstOrThrow({
+        where: { slug: { startsWith: `itest-inv-${stamp}-` } },
+      });
+      const prodArchived = await prisma.product.create({
+        data: {
+          slug: s('archived-prod'),
+          categoryId: cat.id,
+          titleI18n: { en: s('Archived Item') },
+          status: 'archived',
+          deletedAt: new Date(),
+        },
+      });
+      const varArchived = await prisma.variant.create({
+        data: {
+          productId: prodArchived.id,
+          skuCode: s('SKU-ARCHIVED'),
+          comboSignature: '',
+          status: 'active',
+        },
+      });
+
+      await expect(
+        offerService.create(
+          testSeller1Id,
+          {
+            variantId: varArchived.id,
+            priceMinor: '1999',
+            currency: 'USD',
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'PRODUCT_PARENT_ARCHIVED', status: 409 });
+
+      const prodPending = await prisma.product.create({
+        data: {
+          slug: s('pending-prod'),
+          categoryId: cat.id,
+          titleI18n: { en: s('Pending Item') },
+          status: 'pending',
+        },
+      });
+      const varPending = await prisma.variant.create({
+        data: {
+          productId: prodPending.id,
+          skuCode: s('SKU-PENDING'),
+          comboSignature: '',
+          status: 'active',
+        },
+      });
+
+      await expect(
+        offerService.create(
+          testSeller1Id,
+          {
+            variantId: varPending.id,
+            priceMinor: '1999',
+            currency: 'USD',
+          },
+          staffActor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'PRODUCT_IN_REVIEW', status: 409 });
+
+      const liveProduct = await prisma.product.findFirstOrThrow({
+        where: { slug: s('inv-product') },
+      });
+      await prisma.product.update({
+        where: { id: liveProduct.id },
+        data: { status: 'archived', deletedAt: new Date() },
+      });
+
+      await expect(
+        stockService.update(offer1Id, warehouse1Id, { delta: 1 }, staffActor, {}),
+      ).rejects.toMatchObject({ code: 'PRODUCT_PARENT_ARCHIVED', status: 409 });
+
+      await prisma.product.update({
+        where: { id: liveProduct.id },
+        data: { status: 'pending', deletedAt: null },
+      });
+
+      await expect(
+        stockService.update(offer1Id, warehouse1Id, { delta: 1 }, staffActor, {}),
+      ).rejects.toMatchObject({ code: 'PRODUCT_IN_REVIEW', status: 409 });
+
+      await prisma.product.update({
+        where: { id: liveProduct.id },
+        data: { status: 'active', deletedAt: null },
+      });
+    });
   });
 });

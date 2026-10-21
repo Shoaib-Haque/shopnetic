@@ -20,6 +20,13 @@ import {
   Button,
   Field,
   Input,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalDescription,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
   Select,
   SelectContent,
   SelectItem,
@@ -37,7 +44,7 @@ import {
   decimalPasteHandler,
   sanitizeDecimalString,
 } from '@/lib/numeric-input';
-import { createProduct, updateProduct } from './api';
+import { createProduct, getSeller, updateProduct } from './api';
 
 const textareaCls =
   'w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)] disabled:cursor-not-allowed disabled:opacity-50';
@@ -128,6 +135,27 @@ export function ProductFormModal({
   const [submittingAction, setSubmittingAction] = useState<'save' | 'approve' | 'reject' | null>(
     null,
   );
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectionNote, setRejectionNote] = useState('');
+  const [sellerName, setSellerName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open && product?.proposedBySellerId) {
+      void getSeller(product.proposedBySellerId)
+        .then((s) => {
+          if (s?.shop?.displayName) {
+            setSellerName(s.shop.displayName);
+          }
+        })
+        .catch(() => {
+          // Keep sellerId fallback
+        });
+    } else if (!open) {
+      setSellerName(null);
+      setRejectModalOpen(false);
+      setRejectionNote('');
+    }
+  }, [open, product?.proposedBySellerId]);
 
   const {
     register,
@@ -138,7 +166,6 @@ export function ProductFormModal({
     setValue,
     getValues,
     watch,
-    trigger,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -181,6 +208,7 @@ export function ProductFormModal({
   async function submitWithStatus(
     targetStatus: Product['status'],
     values: FormValues,
+    note?: string,
   ): Promise<void> {
     setFormError(null);
     try {
@@ -206,6 +234,15 @@ export function ProductFormModal({
         const basePriceMinor = values.basePrice
           ? Number(decimalToMinor(values.basePrice, values.currency || 'USD'))
           : null;
+        const currentSpec = (product.spec as Record<string, unknown>) ?? {};
+        const spec = note?.trim()
+          ? {
+              ...currentSpec,
+              rejectionNote: note.trim(),
+              rejectedAt: new Date().toISOString(),
+            }
+          : undefined;
+
         const p = await updateProduct(product.id, {
           brandId: values.brandId ? values.brandId : null,
           title: { en: values.titleEn },
@@ -215,6 +252,7 @@ export function ProductFormModal({
           basePriceMinor,
           currency: values.currency || (values.basePrice ? 'USD' : null),
           expectedUpdatedAt: product.updatedAt,
+          ...(spec ? { spec } : {}),
         });
         onOpenChange(false);
         onSaved('updated', p);
@@ -249,14 +287,19 @@ export function ProductFormModal({
     }
   }
 
-  async function handleReject(): Promise<void> {
+  function handleReject(): void {
     if (isSubmitting || submittingAction) return;
-    const valid = await trigger();
-    if (!valid) return;
+    setRejectionNote('');
+    setRejectModalOpen(true);
+  }
+
+  async function confirmReject(): Promise<void> {
+    if (isSubmitting || submittingAction) return;
     const values = getValues();
     setSubmittingAction('reject');
     try {
-      await submitWithStatus('draft', values);
+      await submitWithStatus('draft', values, rejectionNote);
+      setRejectModalOpen(false);
     } finally {
       setSubmittingAction(null);
     }
@@ -286,6 +329,7 @@ export function ProductFormModal({
   const catName = selectedCat ? selectedCat.name.en || selectedCat.slug : product?.categoryId;
 
   const isReadOnly = mode === 'view';
+  const isFieldsDisabled = mode === 'view' || mode === 'review';
 
   const secondaryAction: ReactNode =
     mode === 'review' ? (
@@ -295,7 +339,7 @@ export function ProductFormModal({
         size="sm"
         disabled={isSubmitting || submittingAction !== null}
         loading={submittingAction === 'reject'}
-        onClick={() => void handleReject()}
+        onClick={handleReject}
       >
         {t('products.form.reject')}
       </Button>
@@ -325,63 +369,116 @@ export function ProductFormModal({
         : t('products.form.save');
 
   return (
-    <FormModal
-      open={open}
-      onOpenChange={onOpenChange}
-      title={modalTitle}
-      onSubmit={handleSubmit(onSubmit)}
-      submitting={isSubmitting || submittingAction !== null}
-      submitLabel={submitLabel}
-      readOnly={isReadOnly}
-      dirty={isDirty}
-      size="lg"
-      {...(secondaryAction ? { secondaryAction } : {})}
-    >
-      {formError && (
-        <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
-          {formError}
-        </div>
-      )}
-
-      {/* Origin & vendor notification for 3P proposals or edit mode */}
-      {product?.proposedBySellerId ? (
-        <div className="flex items-center justify-between rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
-          <div className="flex items-center gap-2">
-            <StatusBadge tone="warning">{t('products.originBadges.threeP')}</StatusBadge>
-            <span>{t('products.form.vendorInfo', { sellerId: product.proposedBySellerId })}</span>
+    <>
+      <FormModal
+        open={open}
+        onOpenChange={onOpenChange}
+        title={modalTitle}
+        onSubmit={handleSubmit(onSubmit)}
+        submitting={isSubmitting || submittingAction !== null}
+        submitLabel={submitLabel}
+        readOnly={isReadOnly}
+        dirty={isDirty}
+        size="lg"
+        {...(secondaryAction ? { secondaryAction } : {})}
+      >
+        {formError && (
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+            {formError}
           </div>
-          {mode === 'review' && (
-            <span className="font-semibold text-warning-foreground uppercase tracking-wider text-[10px]">
-              {t('products.status.pending')}
-            </span>
-          )}
-        </div>
-      ) : product ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <StatusBadge tone="neutral">{t('products.originBadges.oneP')}</StatusBadge>
-          <span>{t('products.form.inHouseInfo')}</span>
-        </div>
-      ) : null}
+        )}
 
-      {/* Category selection (locked on edit/review/view) */}
-      {mode === 'create' ? (
+        {/* Origin & vendor notification for 3P proposals or edit mode */}
+        {product?.proposedBySellerId ? (
+          <div className="flex items-center justify-between rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
+            <div className="flex items-center gap-2">
+              <StatusBadge tone="warning">{t('products.originBadges.threeP')}</StatusBadge>
+              <span>
+                {sellerName
+                  ? t('products.form.vendorInfoWithName', { sellerName })
+                  : t('products.form.vendorInfo', { sellerId: product.proposedBySellerId })}
+              </span>
+            </div>
+            {mode === 'review' && (
+              <span className="font-semibold text-amber-900 dark:text-amber-200 uppercase tracking-wider text-[10px]">
+                {t('products.status.pending')}
+              </span>
+            )}
+          </div>
+        ) : product ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <StatusBadge tone="neutral">{t('products.originBadges.oneP')}</StatusBadge>
+            <span>{t('products.form.inHouseInfo')}</span>
+          </div>
+        ) : null}
+
+        {/* Category selection (locked on edit/review/view) */}
+        {mode === 'create' ? (
+          <Field
+            label={t('products.form.category')}
+            htmlFor="product-category"
+            error={fieldError('categoryId')}
+          >
+            <Controller
+              control={control}
+              name="categoryId"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  disabled={isFieldsDisabled}
+                >
+                  <SelectTrigger id="product-category" invalid={Boolean(errors.categoryId)}>
+                    <SelectValue placeholder={t('products.form.selectCategory')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id} title={c.name.en || c.slug}>
+                        {c.name.en || c.slug}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </Field>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-foreground">
+              {t('products.form.category')}
+            </label>
+            <div className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-foreground">
+              {catName}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {t('products.form.categoryLockedHint')}
+            </span>
+          </div>
+        )}
+
+        {/* Brand selection */}
         <Field
-          label={t('products.form.category')}
-          htmlFor="product-category"
-          error={fieldError('categoryId')}
+          label={t('products.form.brand')}
+          htmlFor="product-brand"
+          error={fieldError('brandId')}
         >
           <Controller
             control={control}
-            name="categoryId"
+            name="brandId"
             render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange} disabled={isReadOnly}>
-                <SelectTrigger id="product-category" invalid={Boolean(errors.categoryId)}>
-                  <SelectValue placeholder={t('products.form.selectCategory')} />
+              <Select
+                value={field.value || '__none__'}
+                onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+                disabled={isFieldsDisabled}
+              >
+                <SelectTrigger id="product-brand" invalid={Boolean(errors.brandId)}>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id} title={c.name.en || c.slug}>
-                      {c.name.en || c.slug}
+                  <SelectItem value="__none__">{t('products.form.noBrand')}</SelectItem>
+                  {brands.map((b) => (
+                    <SelectItem key={b.id} value={b.id} title={b.name}>
+                      {b.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -389,194 +486,209 @@ export function ProductFormModal({
             )}
           />
         </Field>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-foreground">
-            {t('products.form.category')}
-          </label>
-          <div className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-foreground">
-            {catName}
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {t('products.form.categoryLockedHint')}
-          </span>
-        </div>
-      )}
 
-      {/* Brand selection */}
-      <Field label={t('products.form.brand')} htmlFor="product-brand" error={fieldError('brandId')}>
-        <Controller
-          control={control}
-          name="brandId"
-          render={({ field }) => (
-            <Select
-              value={field.value || '__none__'}
-              onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
-              disabled={isReadOnly}
-            >
-              <SelectTrigger id="product-brand" invalid={Boolean(errors.brandId)}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">{t('products.form.noBrand')}</SelectItem>
-                {brands.map((b) => (
-                  <SelectItem key={b.id} value={b.id} title={b.name}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        />
-      </Field>
-
-      {/* Title */}
-      <Field label={t('products.form.title')} htmlFor="product-title" error={fieldError('titleEn')}>
-        <Input
-          id="product-title"
-          maxLength={200}
-          placeholder={t('products.form.titlePlaceholder')}
-          invalid={Boolean(errors.titleEn)}
-          disabled={isReadOnly}
-          {...titleField}
-          onChange={(e) => {
-            void titleField.onChange(e);
-            if (mode === 'create' && !slugTouched) {
-              setValue('slug', slugifyLive(e.target.value));
-            }
-          }}
-          onBlur={(e) => {
-            e.currentTarget.value = collapseWs(e.currentTarget.value);
-            void titleField.onChange(e);
-            void titleField.onBlur(e);
-            if (mode === 'create' && !slugTouched) {
-              setValue('slug', slugify(e.currentTarget.value));
-            }
-          }}
-        />
-      </Field>
-
-      {/* Slug */}
-      <Field
-        label={t('products.form.slug')}
-        htmlFor="product-slug"
-        hint={mode === 'create' && !slugTouched ? t('products.form.slugAutoHint') : undefined}
-        error={fieldError('slug')}
-      >
-        <Input
-          id="product-slug"
-          maxLength={80}
-          placeholder={t('products.form.slugPlaceholder')}
-          invalid={Boolean(errors.slug)}
-          disabled={isReadOnly}
-          {...slugField}
-          onChange={(e) => {
-            e.currentTarget.value = slugifyLive(e.currentTarget.value);
-            void slugField.onChange(e);
-            setSlugTouched(true);
-          }}
-          onBlur={(e) => {
-            e.currentTarget.value = slugify(e.currentTarget.value);
-            void slugField.onChange(e);
-            void slugField.onBlur(e);
-          }}
-        />
-      </Field>
-
-      {/* Description */}
-      <Field
-        label={t('products.form.description')}
-        htmlFor="product-description"
-        error={fieldError('descriptionEn')}
-      >
-        <textarea
-          id="product-description"
-          className={textareaCls}
-          placeholder={t('products.form.descriptionPlaceholder')}
-          disabled={isReadOnly}
-          {...descField}
-          onBlur={(e) => {
-            e.currentTarget.value = collapseWs(e.currentTarget.value);
-            void descField.onChange(e);
-            void descField.onBlur(e);
-          }}
-        />
-      </Field>
-
-      {/* Base Price and Currency */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* Title */}
         <Field
-          label={t('products.form.basePrice')}
-          htmlFor="product-price"
-          error={fieldError('basePrice')}
+          label={t('products.form.title')}
+          htmlFor="product-title"
+          error={fieldError('titleEn')}
         >
           <Input
-            id="product-price"
-            placeholder={t('products.form.basePricePlaceholder')}
-            invalid={Boolean(errors.basePrice)}
-            disabled={isReadOnly}
-            {...priceField}
-            onKeyDown={(e) => decimalKeyDownHandler(e, currencyExponent)}
-            onPaste={(e) =>
-              decimalPasteHandler(
-                e,
-                (val) => setValue('basePrice', val, { shouldValidate: true, shouldDirty: true }),
-                currencyExponent,
-              )
-            }
+            id="product-title"
+            maxLength={200}
+            placeholder={t('products.form.titlePlaceholder')}
+            invalid={Boolean(errors.titleEn)}
+            disabled={isFieldsDisabled}
+            {...titleField}
+            onChange={(e) => {
+              void titleField.onChange(e);
+              if (mode === 'create' && !slugTouched) {
+                setValue('slug', slugifyLive(e.target.value));
+              }
+            }}
+            onBlur={(e) => {
+              e.currentTarget.value = collapseWs(e.currentTarget.value);
+              void titleField.onChange(e);
+              void titleField.onBlur(e);
+              if (mode === 'create' && !slugTouched) {
+                setValue('slug', slugify(e.currentTarget.value));
+              }
+            }}
           />
         </Field>
-        <Field
-          label={t('products.form.currency')}
-          htmlFor="product-currency"
-          error={fieldError('currency')}
-        >
-          <Controller
-            control={control}
-            name="currency"
-            render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange} disabled={isReadOnly}>
-                <SelectTrigger id="product-currency" invalid={Boolean(errors.currency)}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SUPPORTED_CURRENCIES.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>
-                      {c.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </Field>
-      </div>
 
-      {/* Status (when not review or create) */}
-      {mode === 'edit' && (
+        {/* Slug */}
         <Field
-          label={t('products.form.status')}
-          htmlFor="product-status"
-          error={fieldError('status')}
+          label={t('products.form.slug')}
+          htmlFor="product-slug"
+          hint={mode === 'create' && !slugTouched ? t('products.form.slugAutoHint') : undefined}
+          error={fieldError('slug')}
         >
-          <Controller
-            control={control}
-            name="status"
-            render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange} disabled={isReadOnly}>
-                <SelectTrigger id="product-status" invalid={Boolean(errors.status)}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="draft">{t('products.status.draft')}</SelectItem>
-                  <SelectItem value="pending">{t('products.status.pending')}</SelectItem>
-                  <SelectItem value="active">{t('products.status.active')}</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
+          <Input
+            id="product-slug"
+            maxLength={80}
+            placeholder={t('products.form.slugPlaceholder')}
+            invalid={Boolean(errors.slug)}
+            disabled={isFieldsDisabled}
+            {...slugField}
+            onChange={(e) => {
+              e.currentTarget.value = slugifyLive(e.currentTarget.value);
+              void slugField.onChange(e);
+              setSlugTouched(true);
+            }}
+            onBlur={(e) => {
+              e.currentTarget.value = slugify(e.currentTarget.value);
+              void slugField.onChange(e);
+              void slugField.onBlur(e);
+            }}
           />
         </Field>
-      )}
-    </FormModal>
+
+        {/* Description */}
+        <Field
+          label={t('products.form.description')}
+          htmlFor="product-description"
+          error={fieldError('descriptionEn')}
+        >
+          <textarea
+            id="product-description"
+            className={textareaCls}
+            placeholder={t('products.form.descriptionPlaceholder')}
+            disabled={isFieldsDisabled}
+            {...descField}
+            onBlur={(e) => {
+              e.currentTarget.value = collapseWs(e.currentTarget.value);
+              void descField.onChange(e);
+              void descField.onBlur(e);
+            }}
+          />
+        </Field>
+
+        {/* Base Price and Currency */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field
+            label={t('products.form.basePrice')}
+            htmlFor="product-price"
+            error={fieldError('basePrice')}
+          >
+            <Input
+              id="product-price"
+              placeholder={t('products.form.basePricePlaceholder')}
+              invalid={Boolean(errors.basePrice)}
+              disabled={isFieldsDisabled}
+              {...priceField}
+              onKeyDown={(e) => decimalKeyDownHandler(e, currencyExponent)}
+              onPaste={(e) =>
+                decimalPasteHandler(
+                  e,
+                  (val) => setValue('basePrice', val, { shouldValidate: true, shouldDirty: true }),
+                  currencyExponent,
+                )
+              }
+            />
+          </Field>
+          <Field
+            label={t('products.form.currency')}
+            htmlFor="product-currency"
+            error={fieldError('currency')}
+          >
+            <Controller
+              control={control}
+              name="currency"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  disabled={isFieldsDisabled}
+                >
+                  <SelectTrigger id="product-currency" invalid={Boolean(errors.currency)}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUPPORTED_CURRENCIES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </Field>
+        </div>
+
+        {/* Status (when not review or create) */}
+        {mode === 'edit' && (
+          <Field
+            label={t('products.form.status')}
+            htmlFor="product-status"
+            error={fieldError('status')}
+          >
+            <Controller
+              control={control}
+              name="status"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  disabled={isFieldsDisabled}
+                >
+                  <SelectTrigger id="product-status" invalid={Boolean(errors.status)}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">{t('products.status.draft')}</SelectItem>
+                    <SelectItem value="pending">{t('products.status.pending')}</SelectItem>
+                    <SelectItem value="active">{t('products.status.active')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </Field>
+        )}
+      </FormModal>
+
+      <Modal open={rejectModalOpen} onOpenChange={setRejectModalOpen}>
+        <ModalContent size="md">
+          <ModalHeader>
+            <ModalTitle>{t('products.form.rejectModalTitle')}</ModalTitle>
+            <ModalDescription>{t('products.form.rejectModalDescription')}</ModalDescription>
+          </ModalHeader>
+          <ModalBody className="space-y-3">
+            <Field label={t('products.form.rejectionNoteLabel')} htmlFor="rejection-note">
+              <textarea
+                id="rejection-note"
+                className={textareaCls}
+                rows={3}
+                placeholder={t('products.form.rejectionNotePlaceholder')}
+                value={rejectionNote}
+                onChange={(e) => setRejectionNote(e.target.value)}
+                disabled={submittingAction === 'reject'}
+              />
+            </Field>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setRejectModalOpen(false)}
+              disabled={submittingAction === 'reject'}
+            >
+              {t('products.form.cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => void confirmReject()}
+              loading={submittingAction === 'reject'}
+            >
+              {t('products.form.confirmReject')}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </>
   );
 }

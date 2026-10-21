@@ -40,6 +40,26 @@ export class StockService {
       throw new AppError('OFFER_NOT_FOUND', 404, { detail: `offer ${offerId} not found` });
     }
 
+    const variant = await this.prisma.variant.findUnique({
+      where: { id: offer.variantId },
+      include: { product: true },
+    });
+    if (
+      !variant ||
+      variant.deletedAt ||
+      variant.product.deletedAt ||
+      variant.product.status === 'archived'
+    ) {
+      throw new AppError('PRODUCT_PARENT_ARCHIVED', 409, {
+        detail: 'cannot adjust stock on an archived product',
+      });
+    }
+    if (variant.product.status === 'pending') {
+      throw new AppError('PRODUCT_IN_REVIEW', 409, {
+        detail: 'cannot adjust stock on a pending product',
+      });
+    }
+
     assertCan(actor, Permission.INVENTORY_MANAGE, { sellerId: offer.sellerId });
 
     const warehouse = await this.prisma.warehouse.findUnique({

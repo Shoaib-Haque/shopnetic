@@ -3,7 +3,7 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { Brand, Category, Product } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
 import { AdminApiError } from '@/features/admin-api/client';
-import { createProduct, updateProduct } from './api';
+import { createProduct, getSeller, updateProduct } from './api';
 import { ProductFormModal } from './product-form-modal';
 
 vi.mock('./api', async () => {
@@ -12,11 +12,13 @@ vi.mock('./api', async () => {
     ...actual,
     createProduct: vi.fn(),
     updateProduct: vi.fn(),
+    getSeller: vi.fn().mockResolvedValue({ id: 'dummy', shop: null }),
   };
 });
 
 const mockedCreateProduct = vi.mocked(createProduct);
 const mockedUpdateProduct = vi.mocked(updateProduct);
+const mockedGetSeller = vi.mocked(getSeller);
 
 const mockCategories: Category[] = [
   {
@@ -299,6 +301,87 @@ describe('ProductFormModal', () => {
     });
   });
 
+  it('resolves and displays seller shop name on vendor proposal banner via getSeller', async () => {
+    const onOpenChange = vi.fn();
+    const onSaved = vi.fn();
+    const sellerId = '55555555-5555-5555-5555-555555555555';
+    const product = sampleProduct({
+      proposedBySellerId: sellerId,
+      status: 'pending',
+    });
+    mockedGetSeller.mockResolvedValueOnce({
+      id: sellerId,
+      accountId: '00000000-0000-0000-0000-000000000001',
+      legalName: 'Acme Corp',
+      type: 'business',
+      country: 'US',
+      status: 'approved',
+      commissionOverrideBps: null,
+      reserveBps: null,
+      deletedAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      shop: {
+        id: '66666666-6666-6666-6666-666666666666',
+        sellerId,
+        displayName: 'Acme Super Store',
+        slug: 'acme-super-store',
+        description: null,
+        logoUrl: null,
+        bannerUrl: null,
+        vacationUntil: null,
+        deletedAt: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+
+    renderAdmin(
+      <ProductFormModal
+        open
+        onOpenChange={onOpenChange}
+        mode="review"
+        product={product}
+        categories={mockCategories}
+        brands={mockBrands}
+        onSaved={onSaved}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockedGetSeller).toHaveBeenCalledWith(sellerId);
+      expect(screen.getByText('Proposed by vendor: Acme Super Store')).toBeInTheDocument();
+    });
+  });
+
+  it('falls back to sellerId in vendor proposal banner when getSeller fails', async () => {
+    const onOpenChange = vi.fn();
+    const onSaved = vi.fn();
+    const sellerId = '77777777-7777-7777-7777-777777777777';
+    const product = sampleProduct({
+      proposedBySellerId: sellerId,
+      status: 'pending',
+    });
+    mockedGetSeller.mockRejectedValueOnce(new Error('Seller not found'));
+
+    renderAdmin(
+      <ProductFormModal
+        open
+        onOpenChange={onOpenChange}
+        mode="review"
+        product={product}
+        categories={mockCategories}
+        brands={mockBrands}
+        onSaved={onSaved}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockedGetSeller).toHaveBeenCalledWith(sellerId);
+      expect(screen.getByText(`Proposed by vendor (Seller ID: ${sellerId})`)).toBeInTheDocument();
+    });
+  });
+
   it('handles reject in review mode to set status to draft', async () => {
     const onOpenChange = vi.fn();
     const onSaved = vi.fn();
@@ -324,6 +407,9 @@ describe('ProductFormModal', () => {
     const rejectBtn = screen.getByRole('button', { name: 'Reject to Draft' });
     fireEvent.click(rejectBtn);
 
+    const confirmRejectBtn = screen.getByRole('button', { name: 'Confirm Rejection' });
+    fireEvent.click(confirmRejectBtn);
+
     await waitFor(() => {
       expect(mockedUpdateProduct).toHaveBeenCalledWith(
         product.id,
@@ -333,6 +419,78 @@ describe('ProductFormModal', () => {
       );
       expect(onSaved).toHaveBeenCalledWith('updated', rejectedProduct);
     });
+  });
+
+  it('captures optional rejection note when rejecting in review mode', async () => {
+    const onOpenChange = vi.fn();
+    const onSaved = vi.fn();
+    const product = sampleProduct({
+      proposedBySellerId: '55555555-5555-5555-5555-555555555555',
+      status: 'pending',
+    });
+    const rejectedProduct = { ...product, status: 'draft' as const };
+    mockedUpdateProduct.mockResolvedValueOnce(rejectedProduct);
+
+    renderAdmin(
+      <ProductFormModal
+        open
+        onOpenChange={onOpenChange}
+        mode="review"
+        product={product}
+        categories={mockCategories}
+        brands={mockBrands}
+        onSaved={onSaved}
+      />,
+    );
+
+    const rejectBtn = screen.getByRole('button', { name: 'Reject to Draft' });
+    fireEvent.click(rejectBtn);
+
+    const noteInput = screen.getByLabelText('Rejection Note (Optional)');
+    fireEvent.change(noteInput, { target: { value: 'Please provide higher resolution photos.' } });
+
+    const confirmRejectBtn = screen.getByRole('button', { name: 'Confirm Rejection' });
+    fireEvent.click(confirmRejectBtn);
+
+    await waitFor(() => {
+      expect(mockedUpdateProduct).toHaveBeenCalledWith(
+        product.id,
+        expect.objectContaining({
+          status: 'draft',
+          spec: expect.objectContaining({
+            rejectionNote: 'Please provide higher resolution photos.',
+          }),
+        }),
+      );
+      expect(onSaved).toHaveBeenCalledWith('updated', rejectedProduct);
+    });
+  });
+
+  it('disables all input fields in review mode (B13 read-only)', () => {
+    const onOpenChange = vi.fn();
+    const product = sampleProduct({
+      proposedBySellerId: '55555555-5555-5555-5555-555555555555',
+      status: 'pending',
+    });
+
+    renderAdmin(
+      <ProductFormModal
+        open
+        onOpenChange={onOpenChange}
+        mode="review"
+        product={product}
+        categories={mockCategories}
+        brands={mockBrands}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Brand' })).toBeDisabled();
+    expect(screen.getByLabelText('Title')).toBeDisabled();
+    expect(screen.getByLabelText('Slug')).toBeDisabled();
+    expect(screen.getByLabelText('Description')).toBeDisabled();
+    expect(screen.getByLabelText('Base Price')).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Currency' })).toBeDisabled();
   });
 
   it('renders view mode for archived product as read-only', () => {

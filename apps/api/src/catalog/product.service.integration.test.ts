@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
-import type { Actor } from '@shopnetic/auth';
+import { Permission, type Actor } from '@shopnetic/auth';
 import { AuditService } from '../audit/audit.service.js';
 import { OptionTypeService } from './option-type.service.js';
 import { CategoryOptionService } from './category-option.service.js';
@@ -17,6 +17,7 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
   let productOptions: ProductOptionService;
   let variants: VariantService;
   let optionTypes: OptionTypeService;
+  let categoryOptions: CategoryOptionService;
   let actor: Actor;
   const stamp = Date.now();
   const s = (x: string): string => `itest-pr-${stamp}-${x}`;
@@ -37,7 +38,7 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     const pr = prisma as PrismaService;
     const audit = new AuditService(pr);
     optionTypes = new OptionTypeService(pr, audit);
-    const categoryOptions = new CategoryOptionService(pr, audit);
+    categoryOptions = new CategoryOptionService(pr, audit);
     products = new ProductService(pr, audit);
     productOptions = new ProductOptionService(pr, audit);
     variants = new VariantService(pr, audit);
@@ -695,5 +696,198 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     });
     expect(removed.before).toMatchObject({ productTitle: s('Labeled Tee') });
     expect((removed.before as { selections: unknown[] }).selections).toHaveLength(2);
+  });
+
+  it('enforces review mode rules on pending products (block edits, approve permissions, reject notes, sub-service mutations)', async () => {
+    const approverActor: Actor = {
+      accountId: actor.accountId,
+      plane: 'staff',
+      grants: [
+        {
+          role: 'admin',
+          scopeType: 'global',
+          scopeId: null,
+          permissions: [Permission.PRODUCT_APPROVE, Permission.PRODUCT_MANAGE],
+        },
+      ],
+    };
+    const nonApproverActor: Actor = {
+      accountId: actor.accountId,
+      plane: 'staff',
+      grants: [
+        {
+          role: 'staff',
+          scopeType: 'global',
+          scopeId: null,
+          permissions: [Permission.PRODUCT_MANAGE],
+        },
+      ],
+    };
+
+    // 1. Create a pending product
+    const p = await products.create(
+      {
+        categoryId: catOptionalId,
+        title: t('Pending Tee'),
+        slug: s('pending-tee'),
+        status: 'pending',
+      },
+      actor,
+      {},
+    );
+    expect(p.status).toBe('pending');
+
+    // 2. Editing fields while pending is blocked with PRODUCT_IN_REVIEW (422)
+    await expect(
+      products.update(p.id, { title: t('Changed Title') }, actor, {}),
+    ).rejects.toMatchObject({ code: 'PRODUCT_IN_REVIEW', status: 422 });
+
+    await expect(
+      products.update(p.id, { slug: s('changed-slug') }, actor, {}),
+    ).rejects.toMatchObject({ code: 'PRODUCT_IN_REVIEW', status: 422 });
+
+    // 3. Reading options & variants on pending product succeeds (not blocked by review mode)
+    const pendingOptions = await productOptions.list(p.id);
+    expect(Array.isArray(pendingOptions)).toBe(true);
+    const pendingVariants = await variants.list(p.id);
+    expect(Array.isArray(pendingVariants)).toBe(true);
+
+    // 4. Mutating product options on pending product is blocked with PRODUCT_IN_REVIEW (409)
+    await expect(productOptions.put(p.id, sizeTypeId, {}, actor, {})).rejects.toMatchObject({
+      code: 'PRODUCT_IN_REVIEW',
+      status: 409,
+    });
+
+    // 5. Mutating variants on pending product is blocked with PRODUCT_IN_REVIEW (409)
+    await expect(variants.create(p.id, { selections: [] }, actor, {})).rejects.toMatchObject({
+      code: 'PRODUCT_IN_REVIEW',
+      status: 409,
+    });
+
+    // 6. Deleting a product while pending review is blocked with PRODUCT_IN_REVIEW (422)
+    await expect(products.remove(p.id, actor, {})).rejects.toMatchObject({
+      code: 'PRODUCT_IN_REVIEW',
+      status: 422,
+    });
+
+    // 7. Approving without Permission.PRODUCT_APPROVE throws 403 FORBIDDEN
+    await expect(
+      products.update(p.id, { status: 'active' }, nonApproverActor, {}),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+
+    // 8. Rejecting with rejection note succeeds and transitions to draft
+    const rejected = await products.update(
+      p.id,
+      {
+        status: 'draft',
+        spec: { rejectionNote: 'Needs better imagery', rejectedAt: new Date().toISOString() },
+        expectedUpdatedAt: p.updatedAt,
+      },
+      actor,
+      {},
+    );
+    expect(rejected.status).toBe('draft');
+    expect(rejected.spec).toMatchObject({ rejectionNote: 'Needs better imagery' });
+
+    const rejectAudit = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.product_rejected', targetId: p.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(rejectAudit.action).toBe('catalog.product_rejected');
+
+    // 9. Transition back to pending
+    const pendingAgain = await products.update(
+      p.id,
+      { status: 'pending', expectedUpdatedAt: rejected.updatedAt },
+      actor,
+      {},
+    );
+    expect(pendingAgain.status).toBe('pending');
+
+    // 10. Rejecting without a rejection note also succeeds
+    const rejectedNoNote = await products.update(
+      p.id,
+      { status: 'draft', expectedUpdatedAt: pendingAgain.updatedAt },
+      actor,
+      {},
+    );
+    expect(rejectedNoNote.status).toBe('draft');
+
+    const pendingForApprove = await products.update(
+      p.id,
+      { status: 'pending', expectedUpdatedAt: rejectedNoNote.updatedAt },
+      actor,
+      {},
+    );
+    expect(pendingForApprove.status).toBe('pending');
+
+    // 11. Approving with approverActor succeeds and transitions to active
+    const approved = await products.update(
+      p.id,
+      { status: 'active', expectedUpdatedAt: pendingForApprove.updatedAt },
+      approverActor,
+      {},
+    );
+    expect(approved.status).toBe('active');
+
+    const approveAudit = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: 'catalog.product_approved', targetId: p.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(approveAudit.action).toBe('catalog.product_approved');
+  });
+
+  it('blocks publishing a product to active when required category options are missing or unconfigured', async () => {
+    // Configure sizeTypeId as a required option on catRequiredId
+    await categoryOptions.put(
+      catRequiredId,
+      sizeTypeId,
+      { applicability: 'required', isVariantAxis: true, valueSource: 'open' },
+      actor,
+      {},
+    );
+
+    const pReq = await products.create(
+      { categoryId: catRequiredId, brandId, title: t('Req Prod'), slug: s('req-prod') },
+      actor,
+      {},
+    );
+    expect(pReq.status).toBe('draft');
+
+    // Trying to publish without configuring the required option fails with PRODUCT_OPTION_NOT_CONFIGURED (422)
+    await expect(
+      products.update(pReq.id, { status: 'active', expectedUpdatedAt: pReq.updatedAt }, actor, {}),
+    ).rejects.toMatchObject({ code: 'PRODUCT_OPTION_NOT_CONFIGURED', status: 422 });
+
+    // Configure the option but with 0 values
+    await productOptions.put(pReq.id, sizeTypeId, {}, actor, {});
+    const pWithOpt = await products.get(pReq.id);
+    await expect(
+      products.update(
+        pReq.id,
+        { status: 'active', expectedUpdatedAt: pWithOpt.updatedAt },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'PRODUCT_OPTION_NOT_CONFIGURED', status: 422 });
+
+    // Configure offered values
+    await productOptions.setValues(
+      pReq.id,
+      sizeTypeId,
+      { values: [{ optionValueId: sizeValues['s']! }] },
+      actor,
+      {},
+    );
+    const pConfigured = await products.get(pReq.id);
+
+    // Now publishing succeeds
+    const published = await products.update(
+      pReq.id,
+      { status: 'active', expectedUpdatedAt: pConfigured.updatedAt },
+      actor,
+      {},
+    );
+    expect(published.status).toBe('active');
   });
 });

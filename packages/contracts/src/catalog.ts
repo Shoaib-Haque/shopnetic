@@ -453,7 +453,15 @@ export { currencySchema, type Currency };
 
 /** Non-negative integer minor units (cents). Carried as a string in views. */
 const priceMinorSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
-const specSchema = z.record(z.string(), z.unknown());
+
+export const productSpecSchema = z
+  .object({
+    rejectionNote: z.string().optional(),
+    rejectedAt: z.string().optional(),
+    _previousStatus: productStatusSchema.optional(),
+  })
+  .passthrough();
+export type ProductSpec = z.infer<typeof productSpecSchema>;
 
 export const productSchema = z.object({
   id: z.string(),
@@ -465,7 +473,7 @@ export const productSchema = z.object({
   status: productStatusSchema,
   basePriceMinor: z.string().nullable(),
   currency: z.string().nullable(),
-  spec: specSchema,
+  spec: productSpecSchema.default({}),
   proposedBySellerId: z.string().nullable(),
   archivedAt: z.string().nullable().optional(),
   createdAt: z.string(),
@@ -482,7 +490,7 @@ export const createProductRequestSchema = z.object({
   status: productStatusSchema.optional(),
   basePriceMinor: priceMinorSchema.nullish(),
   currency: currencySchema.nullish(),
-  spec: specSchema.optional(),
+  spec: productSpecSchema.optional(),
   proposedBySellerId: z.string().uuid().nullish(),
 });
 export type CreateProductRequest = z.infer<typeof createProductRequestSchema>;
@@ -497,7 +505,7 @@ export const updateProductRequestSchema = z
     status: productStatusSchema,
     basePriceMinor: priceMinorSchema.nullable(),
     currency: currencySchema.nullable(),
-    spec: specSchema,
+    spec: productSpecSchema,
     expectedUpdatedAt: z.string().optional(),
   })
   .partial();

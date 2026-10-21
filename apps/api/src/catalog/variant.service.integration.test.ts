@@ -456,4 +456,41 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
     );
     expect(ok.position).toBe(0);
   });
+
+  it('allows listing options and variants on an archived product, but rejects creating new ones', async () => {
+    const archivedProd = await prisma.product.create({
+      data: {
+        categoryId,
+        titleI18n: { en: 'Archived Product For Test' },
+        slug: s('archived-prod-list'),
+        status: 'archived',
+        deletedAt: new Date(),
+      },
+    });
+
+    try {
+      const opts = await productOptions.list(archivedProd.id);
+      expect(opts).toEqual([]);
+
+      const vars = await variants.list(archivedProd.id);
+      expect(vars).toEqual([]);
+
+      await expect(
+        productOptions.put(archivedProd.id, sizeTypeId, { position: 0 }, actor, {}),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+
+      await expect(
+        variants.create(
+          archivedProd.id,
+          {
+            selections: [{ optionTypeId: sizeTypeId, optionValueId: sizeValues['s']! }],
+          },
+          actor,
+          {},
+        ),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+    } finally {
+      await prisma.product.delete({ where: { id: archivedProd.id } });
+    }
+  });
 });

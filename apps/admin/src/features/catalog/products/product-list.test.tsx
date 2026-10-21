@@ -34,6 +34,7 @@ vi.mock('./api', () => ({
   listProductMedia: vi.fn().mockResolvedValue([]),
   listProductOffers: vi.fn().mockResolvedValue([]),
   listSellers: vi.fn().mockResolvedValue([]),
+  getSeller: vi.fn().mockResolvedValue(null),
   listWarehouses: vi.fn().mockResolvedValue([]),
   getVariantBuybox: vi.fn().mockResolvedValue(null),
 }));
@@ -284,6 +285,7 @@ describe('ProductList', () => {
     openFirstRowMenu();
 
     const reviewMenuItem = await screen.findByRole('menuitem', { name: 'Review proposal' });
+    expect(screen.queryByRole('menuitem', { name: 'Archive' })).not.toBeInTheDocument();
     fireEvent.click(reviewMenuItem);
 
     expect(await screen.findByText('Review vendor proposal')).toBeInTheDocument();
@@ -472,6 +474,7 @@ describe('ProductList', () => {
     openFirstRowMenu();
 
     const reviewMenuItem = await screen.findByRole('menuitem', { name: 'Review proposal' });
+    expect(screen.queryByRole('menuitem', { name: 'Archive' })).not.toBeInTheDocument();
     fireEvent.click(reviewMenuItem);
 
     const approveBtn = await screen.findByRole('button', { name: 'Approve & Publish' });

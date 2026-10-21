@@ -134,6 +134,10 @@ function GeneratorModal({
     });
   }, [productOptions, categoryOptionMap]);
 
+  const emptyAxes = useMemo(() => {
+    return variantAxes.filter((axis) => axis.values.length === 0);
+  }, [variantAxes]);
+
   // Existing signatures
   const existingSignatures = useMemo(() => {
     return new Set(existingVariants.map((v) => v.comboSignature));
@@ -279,6 +283,27 @@ function GeneratorModal({
         </ModalHeader>
 
         <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
+          {emptyAxes.length > 0 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 text-sm text-amber-900 dark:text-amber-200">
+              <div className="flex items-center gap-2 font-medium">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden />
+                <span>
+                  {t('products.variants.matrix.emptyAxesWarning', {
+                    axes: emptyAxes
+                      .map((axis) => {
+                        const ot = optionTypeMap.get(axis.optionTypeId);
+                        return ot?.name.en || axis.optionTypeCode;
+                      })
+                      .join(', '),
+                  })}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground pt-1">
+                {t('products.variants.matrix.emptyAxesHint')}
+              </p>
+            </div>
+          )}
+
           <div className="rounded-lg border border-border bg-card p-3 text-sm">
             <p className="font-medium text-foreground">
               {t('products.variants.matrix.totalCombos', { total })}
@@ -408,7 +433,7 @@ function GeneratorModal({
           </Button>
           <Button
             type="button"
-            disabled={generating || selectedCombos.size === 0}
+            disabled={generating || selectedCombos.size === 0 || emptyAxes.length > 0}
             onClick={handleGenerate}
           >
             {generating ? (
@@ -1076,6 +1101,10 @@ export function ProductVariantsDialog({
     return `${d.length ?? 0}×${d.width ?? 0}×${d.height ?? 0} mm`;
   };
 
+  const isArchived = product?.status === 'archived' || Boolean(product?.archivedAt);
+  const isPending = product?.status === 'pending';
+  const isReadOnly = isArchived || isPending;
+
   return (
     <>
       <Modal open={open} onOpenChange={onOpenChange}>
@@ -1094,33 +1123,47 @@ export function ProductVariantsDialog({
                       — {product.title?.en ?? product.slug}
                     </span>
                   )}
+                  {isArchived && (
+                    <StatusBadge tone="neutral">{t('products.status.archived')}</StatusBadge>
+                  )}
+                  {isPending && (
+                    <StatusBadge tone="warning">{t('products.status.pending')}</StatusBadge>
+                  )}
                 </ModalTitle>
-                <ModalDescription>{t('products.variants.dialogSubtitle')}</ModalDescription>
+                <ModalDescription>
+                  {isArchived
+                    ? t('products.variants.dialogSubtitleArchived')
+                    : isPending
+                      ? t('products.variants.dialogSubtitlePending')
+                      : t('products.variants.dialogSubtitle')}
+                </ModalDescription>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setGeneratorOpen(true)}
-                  disabled={loading}
-                  className="w-full sm:w-auto"
-                >
-                  <Wand2 className="size-4" />
-                  {t('products.variants.generate')}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => setFormModalState({ open: true, variant: null })}
-                  disabled={loading}
-                  className="w-full sm:w-auto"
-                >
-                  <Plus className="size-4" />
-                  {t('products.variants.createSingle')}
-                </Button>
-              </div>
+              {!isReadOnly && (
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setGeneratorOpen(true)}
+                    disabled={loading}
+                    className="w-full sm:w-auto"
+                  >
+                    <Wand2 className="size-4" />
+                    {t('products.variants.generate')}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setFormModalState({ open: true, variant: null })}
+                    disabled={loading}
+                    className="w-full sm:w-auto"
+                  >
+                    <Plus className="size-4" />
+                    {t('products.variants.createSingle')}
+                  </Button>
+                </div>
+              )}
             </div>
           </ModalHeader>
 
@@ -1176,10 +1219,12 @@ export function ProductVariantsDialog({
                           {t('products.variants.backToOptions')}
                         </Button>
                       )}
-                      <Button type="button" size="sm" onClick={() => setGeneratorOpen(true)}>
-                        <Wand2 className="size-4" />
-                        {t('products.variants.generate')}
-                      </Button>
+                      {!isReadOnly && (
+                        <Button type="button" size="sm" onClick={() => setGeneratorOpen(true)}>
+                          <Wand2 className="size-4" />
+                          {t('products.variants.generate')}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -1292,30 +1337,36 @@ export function ProductVariantsDialog({
                                       <TooltipContent>{t('products.offersAction')}</TooltipContent>
                                     </Tooltip>
                                   )}
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setFormModalState({ open: true, variant: v })}
-                                    aria-label="Edit variant"
-                                  >
-                                    <Edit2 className="size-3.5" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={isDeleting}
-                                    onClick={() => handleDeleteVariant(v)}
-                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                    aria-label="Delete variant"
-                                  >
-                                    {isDeleting ? (
-                                      <Spinner className="size-3.5" />
-                                    ) : (
-                                      <Trash2 className="size-3.5" />
-                                    )}
-                                  </Button>
+                                  {!isReadOnly && (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() =>
+                                          setFormModalState({ open: true, variant: v })
+                                        }
+                                        aria-label="Edit variant"
+                                      >
+                                        <Edit2 className="size-3.5" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={isDeleting}
+                                        onClick={() => handleDeleteVariant(v)}
+                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                        aria-label="Delete variant"
+                                      >
+                                        {isDeleting ? (
+                                          <Spinner className="size-3.5" />
+                                        ) : (
+                                          <Trash2 className="size-3.5" />
+                                        )}
+                                      </Button>
+                                    </>
+                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>

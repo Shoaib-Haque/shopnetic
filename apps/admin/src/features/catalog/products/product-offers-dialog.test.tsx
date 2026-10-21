@@ -481,6 +481,35 @@ describe('ProductOffersDialog', () => {
         ),
       ).toBeInTheDocument();
       expect(screen.queryByText('Add Offer')).not.toBeInTheDocument();
+      expect(screen.queryByText('New Warehouse')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Adjust Stock')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Edit Offer')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Delete Offer')).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders read-only notice and hides mutations when product is pending review', async () => {
+    const pendingProduct: Product = {
+      ...sampleProduct,
+      status: 'pending',
+    };
+
+    renderAdmin(
+      <ProductOffersDialog open={true} onOpenChange={vi.fn()} product={pendingProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Pending Review')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'This product is awaiting review. Offers and inventory are displayed in read-only mode.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Add Offer')).not.toBeInTheDocument();
+      expect(screen.queryByText('New Warehouse')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Adjust Stock')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Edit Offer')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Delete Offer')).not.toBeInTheDocument();
     });
   });
 
