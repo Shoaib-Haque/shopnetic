@@ -378,6 +378,19 @@ describe('ProductMediaDialog', () => {
     });
   });
 
+  it('renders option tag select trigger with min-w-0 and flex-1 to prevent cell overflow', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const triggers = screen.getAllByRole('combobox', { name: /Tag / });
+    expect(triggers.length).toBeGreaterThan(0);
+    for (const trigger of triggers) {
+      expect(trigger.className).toContain('min-w-0');
+      expect(trigger.className).toContain('flex-1');
+    }
+  });
+
   it('confirms hard delete via confirmation modal', async () => {
     mockedDeleteMedia.mockResolvedValue();
 

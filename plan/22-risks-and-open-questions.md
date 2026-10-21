@@ -44,6 +44,7 @@ When answered, record it as an ADR and delete/collapse the entry here.
 | Q32 | ~~Category archived while live products reference it~~ **Decided 2026-10-08** (`32` section 3): strictly block category archival while non-archived products reference it (`CATEGORY_HAS_PRODUCTS`, 409). Category is immutable post-creation, so dependent products must be archived first | See `plan/32-catalog-lifecycle-and-product-guards.md` | Phase 1 | — |
 | Q33 | ~~`anonymized` account status and login~~ **Decided 2026-10-06**: block is intentional (staff plane); give `anonymized` its own `ACCOUNT_ANONYMIZED` error code distinct from `ACCOUNT_LOCKED` (which stays for `locked`/`disabled`), plus a test. Buyer/seller plane out of scope — no lockout mechanism exists there at all yet (`16` section 1, separate gap) | See `plan/CODING-RULES.md` changelog once implemented | Phase 1 | — |
 | Q34 | ~~Whether sellers can propose a brand-new Option Type~~ **Decided 2026-09-25** (`26` section 1.1): yes, gated by admin approval, same shape as Brand/Product/Q26. Still open: whether it gets its own typed request table (mirroring `brand_request`) or shares one generalized `catalog_request` table with Q26/brand/product proposals — schema detail, no seller UI exists yet to build either against | Lean: typed table, matches existing `brand_request` precedent | Phase 1–2 | — |
+| Q35 | ~~Systemic modal collision containment for floating UI~~ **Decided 2026-10-21**: `ModalContent` exposes reactive `ModalBoundaryContext`; all nested `SelectContent` (and popovers) automatically bind their Floating UI collision boundaries to the active modal | Implemented in `@shopnetic/ui` | Phase 1 | — |
 
 ## B. Risk register
 
@@ -71,6 +72,7 @@ Likelihood (L) / Impact (I): 1–5. Score = L×I. Mitigations are the plan.
 | R18 | **Key-person / knowledge silos** given breadth of system | 3 | 3 | 9 | This `plan/` + ADRs + per-service runbooks; pairing on money/auth/RBAC; mandatory review on critical areas | — |
 | R19 | **Notification spam / poor deliverability** harms brand + engagement | 2 | 3 | 6 | Preferences + digests + quiet hours; transactional/marketing split; SPF/DKIM/DMARC + dedicated domain; bounce/complaint handling; provider failover (`15` section 2) | — |
 | R20 | **Test suite rot / flakiness** erodes CI trust, slows delivery | 3 | 3 | 9 | Right-layer testing; Testcontainers for realism; quarantine flaky with owner+deadline; coverage floors as floors not goals (`19`) | — |
+| R21 | **UI Popover & Dropdown Boundary Collision**: Portaled selects/popovers inside modals overflowing dialog boundaries onto backdrops on narrow/desktop viewports | 2 | 2 | 4 | Two-layer defense: (1) Systemic reactive `ModalBoundaryContext` in `@shopnetic/ui` automatically binds the enclosing `ModalContent` DOM node as `collisionBoundary` (`collisionPadding: 8`) for all nested `SelectContent` components, verified across async mounts and sibling/nested modal transitions; and (2) localized cell/trigger flexbox containment (`min-w-0 flex-1` on triggers, `min-w-0` on parent cells in `ProductMediaDialog` and `ProductOptionsDialog`) to prevent flex blowout. | — |
 
 ## C. Assumptions to validate
 

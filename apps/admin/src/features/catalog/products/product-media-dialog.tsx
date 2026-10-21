@@ -1026,7 +1026,10 @@ export function ProductMediaDialog({
                               const isTaggingThis = taggingId === asset.id;
 
                               return (
-                                <div key={po.optionTypeId} className="flex items-center gap-1">
+                                <div
+                                  key={po.optionTypeId}
+                                  className="flex items-center gap-1.5 min-w-0"
+                                >
                                   <label
                                     htmlFor={`tag-${asset.id}-${po.optionTypeId}`}
                                     className="text-[11px] text-muted-foreground w-12 shrink-0 truncate"
@@ -1047,12 +1050,12 @@ export function ProductMediaDialog({
                                   >
                                     <SelectTrigger
                                       id={`tag-${asset.id}-${po.optionTypeId}`}
-                                      className="h-7 px-1.5 text-[11px]"
+                                      className="h-7 min-w-0 flex-1 px-1.5 text-[11px]"
                                       aria-label={`Tag ${otName}`}
                                     >
                                       <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent>
+                                    <SelectContent align="end" className="min-w-[7rem]">
                                       <SelectItem value="__none__">
                                         {t('products.media.untagged')}
                                       </SelectItem>

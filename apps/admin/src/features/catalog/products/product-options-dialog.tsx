@@ -745,41 +745,46 @@ export function ProductOptionsDialog({
                                   )}
                                 </div>
                               </TableCell>
-                              <TableCell>
+                              <TableCell className="w-48 min-w-0">
                                 {po.values.length > 0 ? (
-                                  <Select
-                                    value={po.requiredValueId ?? '__none__'}
-                                    disabled={isReadOnly}
-                                    onValueChange={(v) =>
-                                      handleSetRequiredValue(
-                                        po.optionTypeId,
-                                        v === '__none__' ? null : v,
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger
-                                      className="h-8 text-xs"
-                                      aria-label={t('products.options.requiredValue')}
+                                  <div className="flex items-center min-w-0 w-full">
+                                    <Select
+                                      value={po.requiredValueId ?? '__none__'}
+                                      disabled={isReadOnly}
+                                      onValueChange={(v) =>
+                                        handleSetRequiredValue(
+                                          po.optionTypeId,
+                                          v === '__none__' ? null : v,
+                                        )
+                                      }
                                     >
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="__none__">
-                                        {t('products.options.noneRequiredValue')}
-                                      </SelectItem>
-                                      {po.values.map((v) => {
-                                        const optVal = ot?.values.find(
-                                          (val) => val.id === v.optionValueId,
-                                        );
-                                        const label = optVal?.label.en || v.code;
-                                        return (
-                                          <SelectItem key={v.optionValueId} value={v.optionValueId}>
-                                            {t('products.options.singleValueSkipItem', { label })}
-                                          </SelectItem>
-                                        );
-                                      })}
-                                    </SelectContent>
-                                  </Select>
+                                      <SelectTrigger
+                                        className="h-8 text-xs min-w-0 flex-1 w-full"
+                                        aria-label={t('products.options.requiredValue')}
+                                      >
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent align="end">
+                                        <SelectItem value="__none__">
+                                          {t('products.options.noneRequiredValue')}
+                                        </SelectItem>
+                                        {po.values.map((v) => {
+                                          const optVal = ot?.values.find(
+                                            (val) => val.id === v.optionValueId,
+                                          );
+                                          const label = optVal?.label.en || v.code;
+                                          return (
+                                            <SelectItem
+                                              key={v.optionValueId}
+                                              value={v.optionValueId}
+                                            >
+                                              {t('products.options.singleValueSkipItem', { label })}
+                                            </SelectItem>
+                                          );
+                                        })}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
                                 ) : (
                                   <span className="text-xs text-muted-foreground">—</span>
                                 )}

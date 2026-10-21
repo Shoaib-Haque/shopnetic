@@ -275,9 +275,10 @@ describe('ProductOptionsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('combobox', { name: 'Single Value (Skip Picker)' }),
-      ).toBeInTheDocument();
+      const skipTrigger = screen.getByRole('combobox', { name: 'Single Value (Skip Picker)' });
+      expect(skipTrigger).toBeInTheDocument();
+      expect(skipTrigger.className).toContain('min-w-0');
+      expect(skipTrigger.className).toContain('flex-1');
     });
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Single Value (Skip Picker)' }));

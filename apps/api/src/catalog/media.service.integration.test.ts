@@ -455,6 +455,44 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     await prisma.product.deleteMany({ where: { id: archivedProd.id } });
   });
 
+  it('allows listing media on a pending product, but rejects mutations with PRODUCT_IN_REVIEW', async () => {
+    const pendingProd = await prisma.product.create({
+      data: {
+        slug: s('pending-prod'),
+        categoryId,
+        titleI18n: t('Pending Prod'),
+        status: 'pending',
+      },
+    });
+
+    const m = await prisma.mediaAsset.create({
+      data: {
+        ownerType: 'product',
+        ownerId: pendingProd.id,
+        kind: 'image',
+        fileKey: s('pending-img.jpg'),
+      },
+    });
+
+    // listForOwner should succeed on pending product (read path works for moderation/review)
+    const list = await media.listForOwner('product', pendingProd.id);
+    expect(list.some((item) => item.id === m.id)).toBe(true);
+
+    // create should reject with PRODUCT_IN_REVIEW (409)
+    await expect(
+      media.create('product', pendingProd.id, { kind: 'image', fileKey: s('new.jpg') }, actor, {}),
+    ).rejects.toMatchObject({ code: 'PRODUCT_IN_REVIEW', status: 409 });
+
+    // remove should reject with PRODUCT_IN_REVIEW (409)
+    await expect(media.remove(m.id, actor, {})).rejects.toMatchObject({
+      code: 'PRODUCT_IN_REVIEW',
+      status: 409,
+    });
+
+    await prisma.mediaAsset.deleteMany({ where: { ownerId: pendingProd.id } });
+    await prisma.product.deleteMany({ where: { id: pendingProd.id } });
+  });
+
   it('update and putTag reject stale expectedUpdatedAt (optimistic concurrency)', async () => {
     const asset = await media.create(
       'product',

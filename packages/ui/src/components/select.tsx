@@ -4,6 +4,7 @@ import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from 'reac
 import * as RSelect from '@radix-ui/react-select';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { useModalBoundary } from './modal';
 
 /**
  * Project select wrapper over Radix (plan/CODING-RULES.md D1). Unlike a native
@@ -45,39 +46,61 @@ export const SelectTrigger = forwardRef<
   );
 });
 
-export const SelectContent = forwardRef<
-  ElementRef<typeof RSelect.Content>,
-  ComponentPropsWithoutRef<typeof RSelect.Content>
->(function SelectContent(
-  { className, children, position = 'popper', sideOffset = 4, ...props },
-  ref,
-) {
-  return (
-    <RSelect.Portal>
-      <RSelect.Content
-        ref={ref}
-        position={position}
-        sideOffset={sideOffset}
-        className={cn(
-          'sn-popover z-[60] max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden',
-          'rounded-md border border-border bg-background text-sm shadow-md',
-          position === 'popper' &&
-            'w-[var(--radix-select-trigger-width)] max-w-[min(28rem,calc(100vw_-_2rem))]',
-          className,
-        )}
-        {...props}
-      >
-        <RSelect.ScrollUpButton className="flex h-6 cursor-default items-center justify-center">
-          <ChevronUp className="size-4" aria-hidden />
-        </RSelect.ScrollUpButton>
-        <RSelect.Viewport className="p-1">{children}</RSelect.Viewport>
-        <RSelect.ScrollDownButton className="flex h-6 cursor-default items-center justify-center">
-          <ChevronDown className="size-4" aria-hidden />
-        </RSelect.ScrollDownButton>
-      </RSelect.Content>
-    </RSelect.Portal>
-  );
-});
+export type SelectContentProps = ComponentPropsWithoutRef<typeof RSelect.Content> & {
+  /**
+   * Optional custom container element to portal the content into.
+   * If omitted, defaults to document.body (RSelect.Portal default).
+   */
+  container?: ComponentPropsWithoutRef<typeof RSelect.Portal>['container'];
+};
+
+export const SelectContent = forwardRef<ElementRef<typeof RSelect.Content>, SelectContentProps>(
+  function SelectContent(
+    {
+      className,
+      children,
+      position = 'popper',
+      sideOffset = 4,
+      container,
+      collisionBoundary: explicitBoundary,
+      collisionPadding: explicitPadding,
+      ...props
+    },
+    ref,
+  ) {
+    const modalBoundary = useModalBoundary();
+    const collisionBoundary = explicitBoundary ?? modalBoundary ?? undefined;
+    const collisionPadding = explicitPadding ?? (modalBoundary ? 8 : undefined);
+
+    return (
+      <RSelect.Portal container={container}>
+        <RSelect.Content
+          ref={ref}
+          position={position}
+          sideOffset={sideOffset}
+          collisionBoundary={collisionBoundary}
+          collisionPadding={collisionPadding}
+          className={cn(
+            'sn-popover z-[60] max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-hidden',
+            'rounded-md border border-border bg-background text-sm shadow-md',
+            position === 'popper' &&
+              'w-[var(--radix-select-trigger-width)] max-w-[min(28rem,calc(100vw_-_2rem))]',
+            className,
+          )}
+          {...props}
+        >
+          <RSelect.ScrollUpButton className="flex h-6 cursor-default items-center justify-center">
+            <ChevronUp className="size-4" aria-hidden />
+          </RSelect.ScrollUpButton>
+          <RSelect.Viewport className="p-1">{children}</RSelect.Viewport>
+          <RSelect.ScrollDownButton className="flex h-6 cursor-default items-center justify-center">
+            <ChevronDown className="size-4" aria-hidden />
+          </RSelect.ScrollDownButton>
+        </RSelect.Content>
+      </RSelect.Portal>
+    );
+  },
+);
 
 export const SelectItem = forwardRef<
   ElementRef<typeof RSelect.Item>,

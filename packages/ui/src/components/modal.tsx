@@ -1,7 +1,11 @@
 'use client';
 
 import {
+  createContext,
   forwardRef,
+  useCallback,
+  useContext,
+  useState,
   type ComponentPropsWithoutRef,
   type ElementRef,
   type HTMLAttributes,
@@ -9,6 +13,17 @@ import {
 import * as RDialog from '@radix-ui/react-dialog';
 import { cn } from '../lib/cn';
 import { DialogHeader, DialogTitle, OverlayCloseButton } from '../lib/overlay-parts';
+
+export const ModalBoundaryContext = createContext<HTMLElement | null>(null);
+
+/**
+ * Hook to access the enclosing ModalContent element reference.
+ * Used automatically by SelectContent, PopoverContent, etc., to establish
+ * their collision boundary reactively within the modal.
+ */
+export function useModalBoundary(): HTMLElement | null {
+  return useContext(ModalBoundaryContext);
+}
 
 /**
  * Centered modal dialog over Radix (plan/CODING-RULES.md D1). The default
@@ -40,8 +55,22 @@ export interface ModalContentProps extends ComponentPropsWithoutRef<typeof RDial
 export const ModalContent = forwardRef<ElementRef<typeof RDialog.Content>, ModalContentProps>(
   function ModalContent(
     { className, children, size = 'md', hideClose = false, closeLabel = 'Close', ...props },
-    ref,
+    forwardedRef,
   ) {
+    const [boundaryElement, setBoundaryElement] = useState<HTMLDivElement | null>(null);
+
+    const handleRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        setBoundaryElement(node);
+        if (typeof forwardedRef === 'function') {
+          forwardedRef(node);
+        } else if (forwardedRef) {
+          forwardedRef.current = node;
+        }
+      },
+      [forwardedRef],
+    );
+
     return (
       <RDialog.Portal>
         <RDialog.Overlay
@@ -64,7 +93,7 @@ export const ModalContent = forwardRef<ElementRef<typeof RDialog.Content>, Modal
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center p-4">
             <RDialog.Content
-              ref={ref}
+              ref={handleRef}
               className={cn(
                 'relative flex max-h-[calc(100dvh_-_2rem)] w-full flex-col rounded-lg',
                 'border border-border bg-background shadow-xl',
@@ -85,7 +114,9 @@ export const ModalContent = forwardRef<ElementRef<typeof RDialog.Content>, Modal
                 }
               }}
             >
-              {children}
+              <ModalBoundaryContext.Provider value={boundaryElement}>
+                {children}
+              </ModalBoundaryContext.Provider>
               {!hideClose && (
                 <OverlayCloseButton
                   as={RDialog.Close}

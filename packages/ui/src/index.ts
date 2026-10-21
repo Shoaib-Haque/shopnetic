@@ -30,6 +30,8 @@ export {
   ModalDescription,
   ModalBody,
   ModalFooter,
+  ModalBoundaryContext,
+  useModalBoundary,
   type ModalContentProps,
 } from './components/modal';
 export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './components/table';
