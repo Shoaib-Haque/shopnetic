@@ -727,7 +727,8 @@
           "winner": "Winner",
           "competing": "Competing",
           "oneP": "1P Retail",
-          "threeP": "3P Seller"
+          "threeP": "3P Seller",
+          "backorderAvailable": "Backorder Available"
         },
         "stockSummary": "{available} available ({onHand} on hand, {reserved} reserved)",
         "adjustStock": "Adjust Stock",
@@ -812,6 +813,9 @@
         "warehouseModal": {
           "title": "New Warehouse",
           "subtitle": "Register a fulfillment center or distribution depot for {seller}.",
+          "subtitleGeneric": "Register a fulfillment center or distribution depot.",
+          "seller": "Seller",
+          "selectSellerPlaceholder": "Select a seller...",
           "name": "Warehouse Name",
           "namePlaceholder": "e.g. Austin Regional Depot",
           "isDefault": "Set as default fulfillment warehouse",
@@ -826,6 +830,7 @@
           "save": "Create Warehouse",
           "cancel": "Cancel",
           "err": {
+            "sellerRequired": "Seller selection is required.",
             "nameRequired": "Warehouse name is required.",
             "nameLong": "Warehouse name must be 100 characters or fewer.",
             "line1Required": "Street address line 1 is required.",

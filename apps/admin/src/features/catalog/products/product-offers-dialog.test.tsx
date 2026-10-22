@@ -689,4 +689,67 @@ describe('ProductOffersDialog', () => {
     const overflowTabs = document.querySelector('.overflow-x-auto');
     expect(overflowTabs).toBeInTheDocument();
   });
+
+  it('renders Backorder Available badge when offer has warehouse stock with backorder enabled', async () => {
+    const backorderOffer: Offer = {
+      ...sampleOffer,
+      stocks: [
+        {
+          ...sampleOffer.stocks[0]!,
+          backorder: true,
+        },
+      ],
+    };
+    mockedListProductOffers.mockResolvedValue([backorderOffer]);
+
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Backorder Available')).toBeInTheDocument();
+    });
+  });
+
+  it('preserves the active variant tab when soft-deleting an offer and syncing via undo resync', async () => {
+    mockedListVariants.mockResolvedValue([sampleVariant1, sampleVariant2]);
+    const offerForVar2: Offer = {
+      ...sampleOffer,
+      id: 'offer_var2',
+      variantId: 'var_2',
+      skuCode: 'TEE-M',
+    };
+    mockedListProductOffers.mockResolvedValue([sampleOffer, offerForVar2]);
+
+    renderAdmin(
+      <ProductOffersDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        product={sampleProduct}
+        initialVariantId="var_1"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('TEE-S')).toBeInTheDocument();
+      expect(screen.getByText('TEE-M')).toBeInTheDocument();
+    });
+
+    // Click on TEE-M tab
+    fireEvent.click(screen.getByText('TEE-M'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Delete Offer')).toBeInTheDocument();
+    });
+
+    // Delete offer on TEE-M
+    fireEvent.click(screen.getByLabelText('Delete Offer'));
+
+    await waitFor(() => {
+      expect(mockedDeleteOffer).toHaveBeenCalledWith('offer_var2');
+    });
+
+    // After resync triggered by soft-delete hook, TEE-M tab is still active and selected
+    await waitFor(() => {
+      expect(mockedGetVariantBuybox).toHaveBeenCalledWith('var_2');
+    });
+  });
 });

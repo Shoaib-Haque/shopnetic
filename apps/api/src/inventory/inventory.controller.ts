@@ -209,8 +209,7 @@ export class AdminWarehouseController {
     @Req() req: Request,
     @Query('sellerId') requestedSellerId?: string,
   ): Promise<Envelope<Warehouse[]>> {
-    const sellerId = await this.resolveSellerId(requestedSellerId);
-    return ok(req, await this.warehouses.list(sellerId));
+    return ok(req, await this.warehouses.list(requestedSellerId));
   }
 
   @Get(':id')

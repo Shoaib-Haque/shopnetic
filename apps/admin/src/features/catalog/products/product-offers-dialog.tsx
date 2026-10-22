@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   AlertTriangle,
@@ -94,6 +94,11 @@ export function ProductOffersDialog({
   const [buybox, setBuybox] = useState<Buybox | null>(null);
   const [buyboxLoading, setBuyboxLoading] = useState(false);
 
+  const selectedVariantIdRef = useRef<string | null>(null);
+  selectedVariantIdRef.current = selectedVariantId;
+
+  const lastSyncedInitialVariantIdRef = useRef<string | undefined>(undefined);
+
   // Sub-modal states
   const [offerFormState, setOfferFormState] = useState<{
     open: boolean;
@@ -112,39 +117,74 @@ export function ProductOffersDialog({
   }>({ open: false, sellerId: '', sellerName: '' });
 
   // Load all initial data for product
-  const loadData = useCallback(async () => {
-    if (!product) return;
-    setLoading(true);
-    setLoadError(null);
+  const loadData = useCallback(
+    async ({ preserveSelected = false }: { preserveSelected?: boolean } = {}) => {
+      if (!product) return;
+      setLoading(true);
+      setLoadError(null);
 
-    try {
-      const [fetchedVariants, fetchedOffers, fetchedSellers, fetchedWarehouses] = await Promise.all(
-        [listVariants(product.id), listProductOffers(product.id), listSellers(), listWarehouses()],
-      );
+      try {
+        const [fetchedVariants, fetchedOffers, fetchedSellers, fetchedWarehouses] =
+          await Promise.all([
+            listVariants(product.id),
+            listProductOffers(product.id),
+            listSellers(),
+            listWarehouses(),
+          ]);
 
-      setVariants(fetchedVariants);
-      setOffers(fetchedOffers);
-      setSellers(fetchedSellers);
-      setWarehouses(fetchedWarehouses);
+        setVariants(fetchedVariants);
+        setOffers(fetchedOffers);
+        setSellers(fetchedSellers);
+        setWarehouses(fetchedWarehouses);
 
-      // Determine active variant
-      let activeId = initialVariantId;
-      if (!activeId || !fetchedVariants.some((v) => v.id === activeId)) {
-        activeId = fetchedVariants[0]?.id ?? null;
+        const currentSelected = selectedVariantIdRef.current;
+        let activeId: string | null = null;
+
+        if (
+          preserveSelected &&
+          currentSelected &&
+          fetchedVariants.some((v) => v.id === currentSelected)
+        ) {
+          activeId = currentSelected;
+        } else if (initialVariantId && fetchedVariants.some((v) => v.id === initialVariantId)) {
+          activeId = initialVariantId;
+          lastSyncedInitialVariantIdRef.current = initialVariantId;
+        } else {
+          activeId = fetchedVariants[0]?.id ?? null;
+          lastSyncedInitialVariantIdRef.current = activeId ?? undefined;
+        }
+
+        setSelectedVariantId(activeId);
+      } catch (err) {
+        setLoadError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
+      } finally {
+        setLoading(false);
       }
-      setSelectedVariantId(activeId);
-    } catch (err) {
-      setLoadError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
-    } finally {
-      setLoading(false);
-    }
-  }, [product, initialVariantId, t]);
+    },
+    [product, initialVariantId, t],
+  );
 
   useEffect(() => {
     if (open && product) {
       void loadData();
     }
   }, [open, product, loadData]);
+
+  // Deep-link variant selection sync: only update if initialVariantId prop changed
+  useEffect(() => {
+    if (!open) {
+      lastSyncedInitialVariantIdRef.current = undefined;
+      return;
+    }
+    if (
+      initialVariantId &&
+      initialVariantId !== lastSyncedInitialVariantIdRef.current &&
+      variants.some((v) => v.id === initialVariantId)
+    ) {
+      lastSyncedInitialVariantIdRef.current = initialVariantId;
+      setSelectedVariantId(initialVariantId);
+    }
+  }, [open, initialVariantId, variants]);
 
   // Load buybox whenever selectedVariantId changes
   const loadBuybox = useCallback(async (vId: string) => {
@@ -179,7 +219,9 @@ export function ProductOffersDialog({
     deleteItem: (id) => deleteOffer(id),
     restoreItem: (id) => restoreOffer(id),
     resync: () => {
-      if (product) void loadData();
+      if (product) void loadData({ preserveSelected: true });
+      const currentVid = selectedVariantIdRef.current;
+      if (currentVid) void loadBuybox(currentVid);
     },
     labelOf: (o) => (o ? `${o.sellerName} (${o.skuCode})` : 'Offer'),
     messages: {
@@ -214,7 +256,8 @@ export function ProductOffersDialog({
       }
       return [saved, ...prev];
     });
-    if (selectedVariantId) void loadBuybox(selectedVariantId);
+    const currentVid = selectedVariantIdRef.current;
+    if (currentVid) void loadBuybox(currentVid);
   };
 
   const handleStockUpdated = (offerId: string, level: StockLevel) => {
@@ -238,7 +281,46 @@ export function ProductOffersDialog({
         };
       }),
     );
-    if (selectedVariantId) void loadBuybox(selectedVariantId);
+
+    setStockAdjustState((curr) => {
+      if (!curr.offer || curr.offer.id !== offerId) return curr;
+      const existingStockIdx = curr.offer.stocks.findIndex((s) => s.id === level.id);
+      const nextStocks = [...curr.offer.stocks];
+      if (existingStockIdx >= 0) {
+        nextStocks[existingStockIdx] = level;
+      } else {
+        nextStocks.push(level);
+      }
+      const totalOnHand = nextStocks.reduce((sum, s) => sum + s.onHand, 0);
+      const totalAvailable = nextStocks.reduce((sum, s) => sum + s.available, 0);
+      return {
+        ...curr,
+        offer: {
+          ...curr.offer,
+          stocks: nextStocks,
+          totalOnHand,
+          totalAvailable,
+        },
+      };
+    });
+
+    if (product) {
+      void listProductOffers(product.id)
+        .then((freshOffers) => {
+          setOffers(freshOffers);
+          setStockAdjustState((curr) => {
+            if (!curr.offer) return curr;
+            const fresh = freshOffers.find((o) => o.id === curr.offer?.id);
+            return fresh ? { ...curr, offer: fresh } : curr;
+          });
+        })
+        .catch(() => {
+          // Keep optimistic state if background fetch fails
+        });
+    }
+
+    const currentVid = selectedVariantIdRef.current;
+    if (currentVid) void loadBuybox(currentVid);
   };
 
   const handleWarehouseCreated = (newWh: Warehouse) => {
@@ -246,14 +328,18 @@ export function ProductOffersDialog({
   };
 
   const openNewWarehouseModal = (sellerId?: string) => {
-    const sId = sellerId || (sellers[0]?.id ?? '');
-    const seller = sellers.find((s) => s.id === sId);
+    const sId = sellerId ?? '';
+    const seller = sId ? sellers.find((s) => s.id === sId) : undefined;
     setWarehouseModalState({
       open: true,
       sellerId: sId,
-      sellerName: seller?.shop?.displayName ?? 'Seller',
+      sellerName: seller ? (seller.shop?.displayName ?? seller.legalName ?? 'Seller') : '',
     });
   };
+
+  const sellerWarehouses = useMemo(() => {
+    return warehouses.filter((w) => w.sellerId === stockAdjustState.offer?.sellerId);
+  }, [warehouses, stockAdjustState.offer?.sellerId]);
 
   if (!product) return null;
 
@@ -369,7 +455,7 @@ export function ProductOffersDialog({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={loadData}
+                  onClick={() => loadData({ preserveSelected: true })}
                   className="mt-4"
                 >
                   Retry
@@ -589,6 +675,14 @@ export function ProductOffersDialog({
                                   <span className="text-[11px] text-muted-foreground">
                                     {offer.stocks.length} warehouses
                                   </span>
+                                  {offer.stocks.some((s) => s.backorder) && (
+                                    <StatusBadge
+                                      tone="neutral"
+                                      className="text-[10px] w-fit mt-0.5"
+                                    >
+                                      {t('products.offers.badges.backorderAvailable')}
+                                    </StatusBadge>
+                                  )}
                                 </div>
                               </TableCell>
 
@@ -742,7 +836,7 @@ export function ProductOffersDialog({
         open={stockAdjustState.open}
         onOpenChange={(open) => setStockAdjustState((prev) => ({ ...prev, open }))}
         offer={stockAdjustState.offer}
-        warehouses={warehouses.filter((w) => w.sellerId === stockAdjustState.offer?.sellerId)}
+        warehouses={sellerWarehouses}
         onStockUpdated={handleStockUpdated}
         onNewWarehouseRequested={() => openNewWarehouseModal(stockAdjustState.offer?.sellerId)}
       />
@@ -753,6 +847,7 @@ export function ProductOffersDialog({
         onOpenChange={(open) => setWarehouseModalState((prev) => ({ ...prev, open }))}
         sellerId={warehouseModalState.sellerId}
         sellerName={warehouseModalState.sellerName}
+        sellers={sellers}
         onCreated={handleWarehouseCreated}
       />
     </>

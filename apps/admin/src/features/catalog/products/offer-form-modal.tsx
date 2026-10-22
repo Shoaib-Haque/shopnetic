@@ -309,9 +309,7 @@ export function OfferFormModal({
       reset({
         sellerId: initialSellerId,
         variantId: initialVariantId,
-        price: product.basePriceMinor
-          ? minorToDecimal(product.basePriceMinor, product.currency)
-          : '29.99',
+        price: '',
         currency: normalizeCurrency(product.currency, 'USD'),
         salePrice: '',
         saleStartsAt: '',

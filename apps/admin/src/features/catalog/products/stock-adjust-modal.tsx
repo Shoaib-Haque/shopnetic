@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Building2, Check, Plus } from 'lucide-react';
 import type { Offer, StockLevel, UpdateStockRequest, Warehouse } from '@shopnetic/contracts';
@@ -59,25 +59,42 @@ export function StockAdjustModal({
   const t = useTranslations('catalog');
 
   const [rowStates, setRowStates] = useState<Record<string, WarehouseStockRowState>>({});
+  const offerId = offer?.id;
+  const lastOfferIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!offer || !open) return;
-    const initial: Record<string, WarehouseStockRowState> = {};
-    for (const wh of warehouses) {
-      const existing = offer.stocks.find((s) => s.warehouseId === wh.id);
-      initial[wh.id] = {
-        onHand: existing ? String(existing.onHand) : '0',
-        safetyStock: existing ? String(existing.safetyStock) : '0',
-        backorder: existing ? existing.backorder : false,
-        restockEta: existing && existing.restockEta ? existing.restockEta.slice(0, 10) : '',
-        saving: false,
-        saved: false,
-        error: null,
-        fieldErrors: {},
-      };
+    if (!open || !offer) {
+      setRowStates({});
+      lastOfferIdRef.current = null;
+      return;
     }
-    setRowStates(initial);
-  }, [offer, warehouses, open]);
+
+    const isDifferentOffer = lastOfferIdRef.current !== offerId;
+    lastOfferIdRef.current = offerId ?? null;
+
+    setRowStates((prev) => {
+      const next: Record<string, WarehouseStockRowState> = {};
+      for (const wh of warehouses) {
+        const existingRow = isDifferentOffer ? undefined : prev[wh.id];
+        if (existingRow) {
+          next[wh.id] = existingRow;
+        } else {
+          const existing = offer.stocks.find((s) => s.warehouseId === wh.id);
+          next[wh.id] = {
+            onHand: existing ? String(existing.onHand) : '0',
+            safetyStock: existing ? String(existing.safetyStock) : '0',
+            backorder: existing ? existing.backorder : false,
+            restockEta: existing && existing.restockEta ? existing.restockEta.slice(0, 10) : '',
+            saving: false,
+            saved: false,
+            error: null,
+            fieldErrors: {},
+          };
+        }
+      }
+      return next;
+    });
+  }, [open, offerId, warehouses]);
 
   if (!offer) return null;
 
@@ -318,7 +335,7 @@ export function StockAdjustModal({
                     </div>
                   )}
 
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-start">
                     <Field
                       label={t('products.offers.stockModal.onHand')}
                       hint={t('products.offers.stockModal.onHandHint')}

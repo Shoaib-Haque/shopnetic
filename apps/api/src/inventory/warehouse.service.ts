@@ -7,7 +7,7 @@ import {
   type UpdateWarehouseRequest,
   type Warehouse,
 } from '@shopnetic/contracts';
-import type { Warehouse as WarehouseRow } from '@shopnetic/db';
+import type { Prisma, Warehouse as WarehouseRow } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -49,9 +49,13 @@ export class WarehouseService {
     return serializeWarehouse(warehouse);
   }
 
-  async list(sellerId: string): Promise<Warehouse[]> {
+  async list(sellerId?: string): Promise<Warehouse[]> {
+    const where: Prisma.WarehouseWhereInput = { deletedAt: null };
+    if (sellerId) {
+      where.sellerId = sellerId;
+    }
     const warehouses = await this.prisma.warehouse.findMany({
-      where: { sellerId, deletedAt: null },
+      where,
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
     });
     return warehouses.map(serializeWarehouse);

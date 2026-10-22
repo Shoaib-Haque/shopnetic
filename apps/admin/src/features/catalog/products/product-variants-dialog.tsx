@@ -1115,6 +1115,9 @@ export function ProductVariantsDialog({
                 <ModalTitle className="flex flex-wrap items-center gap-2">
                   <Layers className="size-5 text-primary shrink-0" aria-hidden />
                   <span>{t('products.variants.dialogTitle')}</span>
+                  <StatusBadge tone="neutral" className="text-xs font-mono">
+                    {variants.length}
+                  </StatusBadge>
                   {product && (
                     <span
                       className="max-w-xs sm:max-w-sm truncate text-sm font-normal text-muted-foreground"

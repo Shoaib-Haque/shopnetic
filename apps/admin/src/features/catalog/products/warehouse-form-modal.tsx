@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import type { CreateWarehouseRequest, Warehouse } from '@shopnetic/contracts';
+import type { CreateWarehouseRequest, SellerWithShop, Warehouse } from '@shopnetic/contracts';
 import {
   Button,
   Checkbox,
@@ -18,6 +18,11 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   notify,
 } from '@shopnetic/ui';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -27,12 +32,14 @@ import { createWarehouse } from './api';
 export interface WarehouseFormModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  sellerId: string;
-  sellerName: string;
+  sellerId?: string;
+  sellerName?: string;
+  sellers?: SellerWithShop[];
   onCreated: (warehouse: Warehouse) => void;
 }
 
 const warehouseFormSchema = z.object({
+  sellerId: z.string().trim().uuid('products.offers.warehouseModal.err.sellerRequired'),
   name: z
     .string()
     .trim()
@@ -57,6 +64,7 @@ export function WarehouseFormModal({
   onOpenChange,
   sellerId,
   sellerName,
+  sellers,
   onCreated,
 }: WarehouseFormModalProps) {
   const t = useTranslations('catalog');
@@ -71,6 +79,7 @@ export function WarehouseFormModal({
   } = useForm<WarehouseFormValues>({
     resolver: zodResolver(warehouseFormSchema),
     defaultValues: {
+      sellerId: sellerId ?? '',
       name: '',
       isDefault: false,
       line1: '',
@@ -89,26 +98,25 @@ export function WarehouseFormModal({
   }
 
   useEffect(() => {
-    if (!open) {
-      reset({
-        name: '',
-        isDefault: false,
-        line1: '',
-        line2: '',
-        city: '',
-        state: '',
-        postalCode: '',
-        country: 'US',
-      });
-      setServerError(null);
-    }
-  }, [open, reset]);
+    reset({
+      sellerId: sellerId ?? '',
+      name: '',
+      isDefault: false,
+      line1: '',
+      line2: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      country: 'US',
+    });
+    setServerError(null);
+  }, [open, sellerId, reset]);
 
   const onValidSubmit = async (data: WarehouseFormValues) => {
     setServerError(null);
 
     const body: CreateWarehouseRequest = {
-      sellerId,
+      sellerId: data.sellerId,
       name: data.name.trim(),
       isDefault: data.isDefault,
       address: {
@@ -145,7 +153,9 @@ export function WarehouseFormModal({
           <ModalHeader className="shrink-0 border-b border-border pb-4">
             <ModalTitle>{t('products.offers.warehouseModal.title')}</ModalTitle>
             <ModalDescription>
-              {t('products.offers.warehouseModal.subtitle', { seller: sellerName })}
+              {sellerName
+                ? t('products.offers.warehouseModal.subtitle', { seller: sellerName })
+                : t('products.offers.warehouseModal.subtitleGeneric')}
             </ModalDescription>
           </ModalHeader>
 
@@ -154,6 +164,42 @@ export function WarehouseFormModal({
               <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
                 {serverError}
               </div>
+            )}
+
+            {!sellerId && (
+              <Field
+                label={t('products.offers.warehouseModal.seller')}
+                htmlFor="wh-seller"
+                error={fieldError('sellerId')}
+              >
+                <Controller
+                  control={control}
+                  name="sellerId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="wh-seller" invalid={Boolean(errors.sellerId)}>
+                        <SelectValue
+                          placeholder={t('products.offers.warehouseModal.selectSellerPlaceholder')}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(sellers ?? []).map((s) => {
+                          const label = `${s.shop?.displayName ?? s.legalName ?? s.id} (${s.type === 'business' ? '3P' : 'Seller'})`;
+                          return (
+                            <SelectItem key={s.id} value={s.id} title={label}>
+                              {label}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
             )}
 
             <Field
@@ -220,7 +266,7 @@ export function WarehouseFormModal({
                 />
               </Field>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field
                   label={t('products.offers.warehouseModal.city')}
                   htmlFor="wh-city"
@@ -247,7 +293,7 @@ export function WarehouseFormModal({
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field
                   label={t('products.offers.warehouseModal.postalCode')}
                   htmlFor="wh-postal-code"

@@ -203,6 +203,11 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
       expect(list.length).toBeGreaterThanOrEqual(2);
       expect(list[0]?.id).toBe(wh1.id); // default first
       expect(list.some((w) => w.id === warehouse2Id)).toBe(true);
+
+      const allList = await warehouseService.list();
+      expect(allList.length).toBeGreaterThanOrEqual(list.length);
+      expect(allList.some((w) => w.id === wh1.id)).toBe(true);
+      expect(allList.some((w) => w.id === warehouse2Id)).toBe(true);
     });
   });
 
