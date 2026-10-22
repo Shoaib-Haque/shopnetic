@@ -608,4 +608,105 @@ describe('ProductMediaDialog', () => {
     const filterTabsContainer = document.querySelector('.overflow-x-auto');
     expect(filterTabsContainer).toBeInTheDocument();
   });
+
+  it('opens video preview modal on clicking play button and unmounts video on close', async () => {
+    const videoAsset: MediaAsset = {
+      id: 'media_video_1',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/tee-promo.mp4',
+      posterKey: 'products/tee-promo-poster.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 45,
+      blurhash: null,
+      alt: { en: 'Organic Tee Promo Reel' },
+      position: 2,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListProductMedia.mockResolvedValue([...sampleAssets, videoAsset]);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    // Video duration badge is rendered on the card
+    expect(screen.getByText('45s')).toBeInTheDocument();
+
+    // Click play preview button
+    const playBtn = screen.getByRole('button', { name: /Play video preview/i });
+    expect(playBtn).toBeInTheDocument();
+    fireEvent.click(playBtn);
+
+    // Modal title & video element are rendered
+    expect(await screen.findByText('Organic Tee Promo Reel')).toBeInTheDocument();
+    expect(screen.getByText(/45s • products\/tee-promo\.mp4/i)).toBeInTheDocument();
+
+    const videoEl = screen.getByTestId('video-preview-player') as HTMLVideoElement;
+    expect(videoEl).toBeInTheDocument();
+    expect(videoEl).toHaveAttribute('src', 'products/tee-promo.mp4');
+    expect(videoEl).toHaveAttribute('poster', 'products/tee-promo-poster.jpg');
+    expect(videoEl).toHaveAttribute('controls');
+    expect(videoEl).toHaveAttribute('autoplay');
+
+    // Close preview modal via Close button
+    const closeBtn = screen
+      .getAllByRole('button', { name: /Close/i })
+      .find((btn) => btn.closest('[role="dialog"]'));
+    expect(closeBtn).toBeDefined();
+    fireEvent.click(closeBtn!);
+
+    // Video is unmounted from document
+    await waitFor(() => {
+      expect(screen.queryByTestId('video-preview-player')).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders graceful error container when video playback encounters an error', async () => {
+    const videoAsset: MediaAsset = {
+      id: 'media_video_broken',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/invalid-video.mp4',
+      posterKey: null,
+      width: null,
+      height: null,
+      durationS: null,
+      blurhash: null,
+      alt: null,
+      position: 2,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListProductMedia.mockResolvedValue([videoAsset]);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const playBtn = screen.getByRole('button', { name: /Play video preview/i });
+    fireEvent.click(playBtn);
+
+    const videoEl = await screen.findByTestId('video-preview-player');
+    expect(videoEl).toBeInTheDocument();
+
+    // Trigger video error
+    fireEvent.error(videoEl);
+
+    // Error fallback is displayed with localized message and fileKey
+    const errContainer = await screen.findByTestId('video-load-error');
+    expect(errContainer).toBeInTheDocument();
+    expect(within(errContainer).getByText(/Unable to load video preview/i)).toBeInTheDocument();
+    expect(within(errContainer).getByText('products/invalid-video.mp4')).toBeInTheDocument();
+    expect(screen.queryByTestId('video-preview-player')).not.toBeInTheDocument();
+  });
 });

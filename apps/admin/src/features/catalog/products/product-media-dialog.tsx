@@ -6,6 +6,7 @@ import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
+  AlertCircle,
   AlertTriangle,
   ArrowLeft,
   ChevronLeft,
@@ -436,6 +437,72 @@ function DeleteConfirmModal({
   );
 }
 
+// ── Sub-modal: Video Preview Modal (B10) ─────────────────────────────────────
+
+interface VideoPreviewModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  asset: MediaAsset | null;
+}
+
+function VideoPreviewModal({ open, onOpenChange, asset }: VideoPreviewModalProps) {
+  const t = useTranslations('catalog');
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setLoadError(false);
+    }
+  }, [open, asset?.id]);
+
+  if (!asset) return null;
+
+  const title = asset.alt?.en?.trim() || t('products.media.videoPreviewTitle');
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <ModalHeader className="p-4 border-b border-border shrink-0">
+          <ModalTitle className="truncate pr-8">{title}</ModalTitle>
+          <ModalDescription className="text-xs font-mono text-muted-foreground truncate">
+            {asset.durationS != null ? `${asset.durationS}s • ` : ''}
+            {asset.fileKey}
+          </ModalDescription>
+        </ModalHeader>
+
+        <ModalBody className="p-0 bg-black flex items-center justify-center min-h-[300px] flex-1 overflow-hidden relative">
+          {loadError ? (
+            <div
+              data-testid="video-load-error"
+              className="flex flex-col items-center justify-center p-8 text-center text-white/80 gap-2"
+            >
+              <AlertCircle className="size-8 text-destructive shrink-0" />
+              <p className="text-sm font-medium">{t('products.media.videoLoadError')}</p>
+              <p className="font-mono text-xs text-white/50 break-all max-w-md">{asset.fileKey}</p>
+            </div>
+          ) : (
+            <video
+              data-testid="video-preview-player"
+              src={asset.fileKey}
+              poster={asset.posterKey || undefined}
+              controls
+              autoPlay
+              className="max-h-[70vh] w-full"
+              onError={() => setLoadError(true)}
+            />
+          )}
+        </ModalBody>
+
+        <ModalFooter className="p-3 border-t border-border flex justify-end shrink-0 bg-background">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            {t('products.media.close')}
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
 // ── Main Dialog: ProductMediaDialog ───────────────────────────────────────────
 
 export interface ProductMediaDialogProps {
@@ -477,6 +544,9 @@ export function ProductMediaDialog({
   // Delete modal state
   const [deleteTarget, setDeleteTarget] = useState<MediaAsset | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Video preview modal state (B10)
+  const [previewVideoAsset, setPreviewVideoAsset] = useState<MediaAsset | null>(null);
 
   // Reordering state
   const [reordering, setReordering] = useState(false);
@@ -863,21 +933,32 @@ export function ProductMediaDialog({
                             }}
                           />
                         ) : (
-                          <div className="relative size-full flex items-center justify-center bg-black/80">
+                          <div
+                            className="relative size-full flex items-center justify-center bg-black/80 group/video cursor-pointer"
+                            onClick={() => setPreviewVideoAsset(asset)}
+                          >
                             {asset.posterKey ? (
                               <img
                                 src={asset.posterKey}
-                                alt="Video poster thumbnail"
-                                className="size-full object-cover opacity-80"
+                                alt={asset.alt?.en ?? 'Video poster thumbnail'}
+                                className="size-full object-cover opacity-80 transition-opacity group-hover/video:opacity-90"
                               />
                             ) : null}
                             <div className="absolute inset-0 flex items-center justify-center">
-                              <span className="flex size-10 items-center justify-center rounded-full bg-primary/90 text-primary-foreground shadow-md">
+                              <button
+                                type="button"
+                                className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform group-hover:scale-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring z-10"
+                                aria-label={t('products.media.playPreview')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPreviewVideoAsset(asset);
+                                }}
+                              >
                                 <Play className="size-5 fill-current ml-0.5" />
-                              </span>
+                              </button>
                             </div>
                             {asset.durationS != null && (
-                              <span className="absolute bottom-2 right-2 rounded-md bg-black/75 px-1.5 py-0.5 font-mono text-[10px] text-white">
+                              <span className="absolute bottom-2 right-2 rounded-md bg-black/75 px-1.5 py-0.5 font-mono text-[10px] text-white transition-opacity group-hover:opacity-0">
                                 {asset.durationS}s
                               </span>
                             )}
@@ -917,7 +998,10 @@ export function ProductMediaDialog({
 
                         {/* Hover Overlay Actions (Desktop) */}
                         {!isReadOnly && (
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-2">
+                          <div
+                            className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-2 pt-6 z-20"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             {canMoveLeft && (
                               <Button
                                 type="button"
@@ -1146,6 +1230,14 @@ export function ProductMediaDialog({
         asset={deleteTarget}
         onConfirm={handleConfirmDelete}
         deleting={deleting}
+      />
+
+      <VideoPreviewModal
+        open={previewVideoAsset !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setPreviewVideoAsset(null);
+        }}
+        asset={previewVideoAsset}
       />
     </>
   );
