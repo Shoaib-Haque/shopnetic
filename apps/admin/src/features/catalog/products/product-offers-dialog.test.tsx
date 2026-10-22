@@ -17,6 +17,7 @@ import {
   listSellers,
   listVariants,
   listWarehouses,
+  restoreOffer,
   updateOffer,
   updateStock,
 } from './api';
@@ -47,6 +48,7 @@ const mockedListSellers = vi.mocked(listSellers);
 const mockedListWarehouses = vi.mocked(listWarehouses);
 const mockedGetVariantBuybox = vi.mocked(getVariantBuybox);
 const mockedDeleteOffer = vi.mocked(deleteOffer);
+const mockedRestoreOffer = vi.mocked(restoreOffer);
 const mockedUpdateOffer = vi.mocked(updateOffer);
 const mockedUpdateStock = vi.mocked(updateStock);
 
@@ -709,7 +711,7 @@ describe('ProductOffersDialog', () => {
     });
   });
 
-  it('preserves the active variant tab when soft-deleting an offer and syncing via undo resync', async () => {
+  it('preserves the active variant tab when soft-deleting an offer and prevents snap-back to initialVariantId', async () => {
     mockedListVariants.mockResolvedValue([sampleVariant1, sampleVariant2]);
     const offerForVar2: Offer = {
       ...sampleOffer,
@@ -728,28 +730,93 @@ describe('ProductOffersDialog', () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText('TEE-S')).toBeInTheDocument();
-      expect(screen.getByText('TEE-M')).toBeInTheDocument();
-    });
+    const tabVar1 = await screen.findByRole('button', { name: /TEE-S/ });
+    const tabVar2 = await screen.findByRole('button', { name: /TEE-M/ });
 
-    // Click on TEE-M tab
-    fireEvent.click(screen.getByText('TEE-M'));
+    // Initial variant is Variant 1
+    expect(tabVar1).toHaveClass('bg-primary');
+    expect(tabVar2).not.toHaveClass('bg-primary');
 
-    await waitFor(() => {
-      expect(screen.getByLabelText('Delete Offer')).toBeInTheDocument();
-    });
+    // Click on TEE-M tab (Variant 2)
+    fireEvent.click(tabVar2);
+
+    expect(tabVar2).toHaveClass('bg-primary');
+    expect(tabVar1).not.toHaveClass('bg-primary');
 
     // Delete offer on TEE-M
-    fireEvent.click(screen.getByLabelText('Delete Offer'));
+    const deleteBtn = await screen.findByLabelText('Delete Offer');
+    fireEvent.click(deleteBtn);
 
     await waitFor(() => {
       expect(mockedDeleteOffer).toHaveBeenCalledWith('offer_var2');
     });
 
-    // After resync triggered by soft-delete hook, TEE-M tab is still active and selected
+    // After resync triggered by soft-delete hook, TEE-M tab is STILL active and selected (did NOT snap back to initialVariantId)
+    await waitFor(() => {
+      expect(tabVar2).toHaveClass('bg-primary');
+      expect(tabVar1).not.toHaveClass('bg-primary');
+    });
+  });
+
+  it('invokes Buybox refresh for live active tab when clicking delayed Undo after switching tabs', async () => {
+    mockedListVariants.mockResolvedValue([sampleVariant1, sampleVariant2]);
+    const offerForVar2: Offer = {
+      ...sampleOffer,
+      id: 'offer_var2',
+      variantId: 'var_2',
+      skuCode: 'TEE-M',
+      sellerName: 'Beta Store',
+    };
+    mockedListProductOffers.mockResolvedValue([sampleOffer, offerForVar2]);
+    mockedRestoreOffer.mockResolvedValue(sampleOffer);
+
+    renderAdmin(
+      <ProductOffersDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        product={sampleProduct}
+        initialVariantId="var_1"
+      />,
+    );
+
+    const tabVar1 = await screen.findByRole('button', { name: /TEE-S/ });
+    const tabVar2 = await screen.findByRole('button', { name: /TEE-M/ });
+    expect(tabVar1).toHaveClass('bg-primary');
+
+    // 1. Delete offer on Variant 1 (TEE-S)
+    const deleteBtn = await screen.findByLabelText('Delete Offer');
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(mockedDeleteOffer).toHaveBeenCalledWith('offer_1');
+    });
+
+    // Undo toast is visible
+    const undoBtn = await screen.findByRole('button', { name: 'Undo' });
+    expect(undoBtn).toBeInTheDocument();
+
+    // 2. While Undo toast is still countdown-pending, switch to Variant 2 (TEE-M)
+    fireEvent.click(tabVar2);
+    expect(tabVar2).toHaveClass('bg-primary');
+
+    // Clear mock calls to isolate the delayed Undo resync invocation
+    mockedGetVariantBuybox.mockClear();
+
+    // 3. User clicks Undo ~20s later while still viewing Variant 2
+    fireEvent.click(undoBtn);
+
+    await waitFor(() => {
+      expect(mockedRestoreOffer).toHaveBeenCalledWith('offer_1');
+    });
+
+    // 4. resync() must read selectedVariantIdRef.current and refresh Buy-Box for Variant 2 (TEE-M), NOT Variant 1 (TEE-S)
     await waitFor(() => {
       expect(mockedGetVariantBuybox).toHaveBeenCalledWith('var_2');
     });
+    expect(mockedGetVariantBuybox).not.toHaveBeenCalledWith('var_1');
+
+    // And active tab remains Variant 2
+    expect(tabVar2).toHaveClass('bg-primary');
+    expect(tabVar1).not.toHaveClass('bg-primary');
   });
 });

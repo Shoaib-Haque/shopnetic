@@ -199,15 +199,39 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
       warehouse2Id = wh2.id;
       expect(wh2.isDefault).toBe(false);
 
-      const list = await warehouseService.list(testSeller1Id);
-      expect(list.length).toBeGreaterThanOrEqual(2);
-      expect(list[0]?.id).toBe(wh1.id); // default first
-      expect(list.some((w) => w.id === warehouse2Id)).toBe(true);
+      const whSeller2 = await warehouseService.create(
+        testSeller2Id,
+        {
+          name: 'Beta Houston Depot',
+          isDefault: true,
+          address: {
+            line1: '500 Space Center Blvd',
+            city: 'Houston',
+            state: 'TX',
+            postalCode: '77058',
+            country: 'US',
+          },
+        },
+        staffActor,
+        {},
+      );
+
+      const listSeller1 = await warehouseService.list(testSeller1Id);
+      expect(listSeller1.length).toBeGreaterThanOrEqual(2);
+      expect(listSeller1[0]?.id).toBe(wh1.id); // default first
+      expect(listSeller1.some((w) => w.id === warehouse2Id)).toBe(true);
+      expect(listSeller1.some((w) => w.id === whSeller2.id)).toBe(false); // strictly isolated from seller2
+
+      const listSeller2 = await warehouseService.list(testSeller2Id);
+      expect(listSeller2.some((w) => w.id === whSeller2.id)).toBe(true);
+      expect(listSeller2.some((w) => w.id === wh1.id)).toBe(false); // strictly isolated from seller1
+      expect(listSeller2.some((w) => w.id === warehouse2Id)).toBe(false);
 
       const allList = await warehouseService.list();
-      expect(allList.length).toBeGreaterThanOrEqual(list.length);
+      expect(allList.length).toBeGreaterThanOrEqual(listSeller1.length + listSeller2.length);
       expect(allList.some((w) => w.id === wh1.id)).toBe(true);
       expect(allList.some((w) => w.id === warehouse2Id)).toBe(true);
+      expect(allList.some((w) => w.id === whSeller2.id)).toBe(true);
     });
   });
 

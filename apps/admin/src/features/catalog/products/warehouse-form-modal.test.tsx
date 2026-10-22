@@ -118,6 +118,68 @@ describe('WarehouseFormModal', () => {
     expect(mockedCreateWarehouse).not.toHaveBeenCalled();
   });
 
+  it('selects seller from dropdown and submits warehouse with selected sellerId', async () => {
+    mockedCreateWarehouse.mockResolvedValue(sampleWarehouse);
+    const onCreated = vi.fn();
+    const onOpenChange = vi.fn();
+
+    renderAdmin(
+      <WarehouseFormModal
+        open={true}
+        onOpenChange={onOpenChange}
+        sellers={[sampleSeller]}
+        onCreated={onCreated}
+      />,
+    );
+
+    // Pick seller from combobox
+    fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Apex Logistics (3P)' }));
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. Austin Regional Depot'), {
+      target: { value: 'Austin Regional Depot' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g. 100 Industrial Blvd'), {
+      target: { value: '100 Industrial Blvd' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g. Suite 400'), {
+      target: { value: 'Suite 400' },
+    });
+
+    const inputs = screen.getAllByRole('textbox');
+    // inputs: name, line1, line2, city, state, postalCode, country
+    const cityInput = inputs[3]!;
+    const stateInput = inputs[4]!;
+    const postalCodeInput = inputs[5]!;
+
+    fireEvent.change(cityInput, { target: { value: 'Austin' } });
+    fireEvent.change(stateInput, { target: { value: 'TX' } });
+    fireEvent.change(postalCodeInput, { target: { value: '78701' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Create Warehouse' });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockedCreateWarehouse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sellerId: sampleSeller.id,
+          name: 'Austin Regional Depot',
+          isDefault: false,
+          address: {
+            line1: '100 Industrial Blvd',
+            line2: 'Suite 400',
+            city: 'Austin',
+            state: 'TX',
+            postalCode: '78701',
+            country: 'US',
+          },
+        }),
+      );
+      expect(onCreated).toHaveBeenCalledWith(sampleWarehouse);
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+  });
+
   it('validates required fields inline and blocks submission if invalid', async () => {
     renderAdmin(
       <WarehouseFormModal
