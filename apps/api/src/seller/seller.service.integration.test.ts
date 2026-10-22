@@ -72,7 +72,24 @@ describe.skipIf(!hasDb)('SellerService (integration)', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    if (!prisma) return;
+    try {
+      if (sellerId) {
+        await prisma.shop.deleteMany({ where: { sellerId } });
+        await prisma.seller.deleteMany({ where: { id: sellerId } });
+      }
+      const testAccounts = await prisma.account.findMany({
+        where: { email: { startsWith: `itest-seller-${stamp}-` } },
+        select: { id: true },
+      });
+      const accountIds = testAccounts.map((a) => a.id);
+      if (accountIds.length > 0) {
+        await prisma.auditEvent.deleteMany({ where: { actorAccountId: { in: accountIds } } });
+        await prisma.account.deleteMany({ where: { id: { in: accountIds } } });
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   it('gets seller by id, accountId, and shop slug', async () => {

@@ -299,7 +299,13 @@ describe('ProductOffersDialog', () => {
     await waitFor(() => {
       expect(screen.getByText('Create Seller Offer')).toBeInTheDocument();
       expect(screen.getByText('List Price (USD)')).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Seller' })).toBeInTheDocument();
     });
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
+    expect(
+      screen.getByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' }),
+    ).toBeInTheDocument();
   });
 
   it('validates offer form fields inline (e.g. sale price >= price) and blocks submit', async () => {

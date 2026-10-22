@@ -29,12 +29,27 @@ export function tokenizeForSql(query: string): string[] {
   return [...tokens];
 }
 
+export interface BuildTokenSearchOptions {
+  /**
+   * Optional primary text expression (e.g. `lower(coalesce(title_i18n->>'en', ''))` or `lower(name)`).
+   * Matches in this primary field receive higher relevance weight than matches in secondary fields (e.g. slug/code/id).
+   */
+  primarySql?: string;
+}
+
 /**
- * Builds a `WHERE` fragment (any token matches) and a match-count `score`
- * expression (how many tokens matched) against `haystackSql` — a SQL
- * expression evaluating to the lowercased, searchable text for one row
- * (e.g. `lower(name || ' ' || slug)`). `ORDER BY <scoreSql> DESC` then puts
- * a row matching every token above one matching only some.
+ * Builds a `WHERE` fragment (any token matches) and a relevance-weighted `score`
+ * expression against `haystackSql` (and optionally `opts.primarySql`).
+ *
+ * Scoring tiers:
+ * 1. Base: Each token match in `haystackSql` (+1 point each).
+ * 2. All-tokens bonus: If >1 token and all tokens match (+5 points).
+ * 3. Full phrase in haystack: If >1 token and full consecutive phrase matches (+10 points).
+ * 4. Primary field (if provided):
+ *    - Token match in primary field: (+2 points each).
+ *    - Full phrase in primary field: (+10 points).
+ *    - Prefix match (primary field starts with phrase): (+10 points).
+ *    - Exact match (primary field equals phrase): (+20 points).
  *
  * Appends its own placeholders to the caller's positional-params array —
  * call this *after* pushing any other `WHERE` params that come earlier in
@@ -44,14 +59,65 @@ export function buildTokenSearch(
   tokens: string[],
   haystackSql: string,
   params: unknown[],
+  opts?: BuildTokenSearchOptions,
 ): { whereSql: string; scoreSql: string } {
+  if (tokens.length === 0) {
+    return { whereSql: '1=1', scoreSql: '0' };
+  }
+
+  const tokenParamIndexes: number[] = [];
   const matchExprs = tokens.map((tok) => {
     params.push(`%${tok}%`);
+    tokenParamIndexes.push(params.length);
     return `(${haystackSql} LIKE $${params.length})`;
   });
+
+  const scoreParts: string[] = [];
+
+  // A. Base: per-token match in haystack (1 point each)
+  scoreParts.push(...matchExprs.map((e) => `${e}::int`));
+
+  const fullPhrase = tokens.join(' ');
+  let phraseParamIndex: number | undefined;
+
+  // B. Multi-token combinations
+  if (tokens.length > 1) {
+    // All tokens match bonus
+    scoreParts.push(`((${matchExprs.join(' AND ')})::int * 5)`);
+
+    // Full consecutive phrase in haystack
+    params.push(`%${fullPhrase}%`);
+    phraseParamIndex = params.length;
+    scoreParts.push(`((${haystackSql} LIKE $${phraseParamIndex})::int * 10)`);
+  }
+
+  // C. Primary field boosts
+  if (opts?.primarySql) {
+    const pSql = opts.primarySql;
+
+    // Per-token match in primary field (+2 points each)
+    tokens.forEach((_, idx) => {
+      const pIdx = tokenParamIndexes[idx]!;
+      scoreParts.push(`((${pSql} LIKE $${pIdx})::int * 2)`);
+    });
+
+    if (tokens.length > 1 && phraseParamIndex !== undefined) {
+      // Full phrase in primary field (+10 points, reuses phrase param)
+      scoreParts.push(`((${pSql} LIKE $${phraseParamIndex})::int * 10)`);
+    }
+
+    // Prefix match (+10 points)
+    params.push(`${fullPhrase}%`);
+    scoreParts.push(`((${pSql} LIKE $${params.length})::int * 10)`);
+
+    // Exact match (+20 points)
+    params.push(fullPhrase);
+    scoreParts.push(`((${pSql} = $${params.length})::int * 20)`);
+  }
+
   return {
     whereSql: `(${matchExprs.join(' OR ')})`,
-    scoreSql: matchExprs.map((e) => `${e}::int`).join(' + '),
+    scoreSql: scoreParts.join(' + '),
   };
 }
 

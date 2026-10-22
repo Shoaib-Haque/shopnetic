@@ -80,10 +80,13 @@ export class BrandService {
       // into one haystack per row via a correlated subquery, since
       // `buildTokenSearch` needs a single searchable-text expression, not a
       // join.
+      const primary = `lower(name)`;
       const haystack = `lower(name || ' ' || slug || ' ' || coalesce((
         SELECT string_agg(ba.alias::text, ' ') FROM catalog.brand_alias ba WHERE ba.brand_id = brand.id
       ), ''))`;
-      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params);
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params, {
+        primarySql: primary,
+      });
       where.push(whereSql);
       scoreExpr = scoreSql;
     }

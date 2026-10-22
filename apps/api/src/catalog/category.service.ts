@@ -106,8 +106,11 @@ export class CategoryService {
     const isSearch = tokens.length > 0;
     let scoreExpr = '0';
     if (isSearch) {
+      const primary = `regexp_replace(lower(coalesce(name_i18n->>'en', '')), '[^a-z0-9]+', ' ', 'g')`;
       const haystack = `regexp_replace(lower(coalesce(name_i18n->>'en', '') || ' ' || slug), '[^a-z0-9]+', ' ', 'g')`;
-      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params);
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params, {
+        primarySql: primary,
+      });
       where.push(whereSql);
       scoreExpr = scoreSql;
     }

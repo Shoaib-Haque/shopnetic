@@ -62,7 +62,9 @@ export class ValueSetService {
     let scoreExpr = '0';
     if (isSearch) {
       const haystack = 'lower(name)';
-      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params);
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params, {
+        primarySql: haystack,
+      });
       where.push(whereSql);
       scoreExpr = scoreSql;
     }

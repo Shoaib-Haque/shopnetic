@@ -142,7 +142,49 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    if (!prisma) return;
+    try {
+      const testProds = await prisma.product.findMany({
+        where: { slug: { startsWith: `itest-var-${stamp}-` } },
+        select: { id: true },
+      });
+      const prodIds = testProds.map((p) => p.id);
+
+      if (prodIds.length > 0) {
+        await prisma.variant.deleteMany({ where: { productId: { in: prodIds } } });
+        await prisma.productOptionValue.deleteMany({
+          where: { productOption: { productId: { in: prodIds } } },
+        });
+        await prisma.productOption.deleteMany({ where: { productId: { in: prodIds } } });
+        await prisma.product.deleteMany({ where: { id: { in: prodIds } } });
+      }
+
+      await prisma.categoryOption.deleteMany({
+        where: { category: { slug: { startsWith: `itest-var-${stamp}-` } } },
+      });
+
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM catalog.category WHERE slug LIKE $1`,
+        `itest-var-${stamp}-%`,
+      );
+
+      const testOpts = await prisma.optionType.findMany({
+        where: { code: { startsWith: `itest-var-${stamp}-` } },
+        select: { id: true },
+      });
+      const optIds = testOpts.map((o) => o.id);
+      if (optIds.length > 0) {
+        await prisma.optionValue.deleteMany({ where: { optionTypeId: { in: optIds } } });
+        await prisma.optionType.deleteMany({ where: { id: { in: optIds } } });
+      }
+
+      if (actor?.accountId) {
+        await prisma.auditEvent.deleteMany({ where: { actorAccountId: actor.accountId } });
+        await prisma.account.deleteMany({ where: { id: actor.accountId } });
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   it('creates a variant and denormalizes option type and value names on selections', async () => {

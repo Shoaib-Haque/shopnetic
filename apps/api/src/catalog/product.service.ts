@@ -89,8 +89,11 @@ export class ProductService {
     const isSearch = tokens.length > 0;
     let scoreExpr = '0';
     if (isSearch) {
+      const primary = `lower(coalesce(title_i18n->>'en', ''))`;
       const haystack = `lower(coalesce(title_i18n->>'en', '') || ' ' || slug)`;
-      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params);
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params, {
+        primarySql: primary,
+      });
       where.push(whereSql);
       scoreExpr = scoreSql;
     }

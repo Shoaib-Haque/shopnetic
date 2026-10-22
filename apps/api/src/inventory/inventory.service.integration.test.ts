@@ -155,7 +155,88 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    if (!prisma) return;
+    try {
+      const testProducts = await prisma.product.findMany({
+        where: { slug: { startsWith: `itest-inv-${stamp}-` } },
+        select: { id: true },
+      });
+      const prodIds = testProducts.map((p) => p.id);
+
+      const testVariants = await prisma.variant.findMany({
+        where: {
+          OR: [{ productId: { in: prodIds } }, { skuCode: { startsWith: `itest-inv-${stamp}-` } }],
+        },
+        select: { id: true },
+      });
+      const varIds = testVariants.map((v) => v.id);
+
+      const testAccounts = await prisma.account.findMany({
+        where: { email: { startsWith: `itest-inv-${stamp}-` } },
+        select: { id: true },
+      });
+      const accountIds = testAccounts.map((a) => a.id);
+
+      const testSellers = await prisma.seller.findMany({
+        where: { accountId: { in: accountIds } },
+        select: { id: true },
+      });
+      const sellerIds = testSellers.map((s) => s.id);
+
+      const testWarehouses = await prisma.warehouse.findMany({
+        where: { sellerId: { in: sellerIds } },
+        select: { id: true },
+      });
+      const warehouseIds = testWarehouses.map((w) => w.id);
+
+      if (warehouseIds.length > 0 || sellerIds.length > 0 || varIds.length > 0) {
+        await prisma.stock.deleteMany({
+          where: {
+            OR: [
+              { warehouseId: { in: warehouseIds } },
+              { offer: { sellerId: { in: sellerIds } } },
+              { offer: { variantId: { in: varIds } } },
+            ],
+          },
+        });
+      }
+
+      if (sellerIds.length > 0 || varIds.length > 0) {
+        await prisma.offer.deleteMany({
+          where: {
+            OR: [{ sellerId: { in: sellerIds } }, { variantId: { in: varIds } }],
+          },
+        });
+      }
+
+      if (warehouseIds.length > 0) {
+        await prisma.warehouse.deleteMany({
+          where: { id: { in: warehouseIds } },
+        });
+      }
+
+      if (prodIds.length > 0) {
+        await prisma.variant.deleteMany({ where: { productId: { in: prodIds } } });
+        await prisma.product.deleteMany({ where: { id: { in: prodIds } } });
+      }
+
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM catalog.category WHERE slug LIKE $1`,
+        `itest-inv-${stamp}-%`,
+      );
+
+      if (sellerIds.length > 0) {
+        await prisma.shop.deleteMany({ where: { sellerId: { in: sellerIds } } });
+        await prisma.seller.deleteMany({ where: { id: { in: sellerIds } } });
+      }
+
+      if (accountIds.length > 0) {
+        await prisma.auditEvent.deleteMany({ where: { actorAccountId: { in: accountIds } } });
+        await prisma.account.deleteMany({ where: { id: { in: accountIds } } });
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   describe('Warehouse management', () => {

@@ -550,9 +550,23 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     expect(ids3p).toContain(p2.id);
     expect(ids3p).not.toContain(p1.id);
 
-    // Multi-token search: 'Alpha Shoe' matches p1
-    const resSearch = await products.list({ q: 'Alpha Shoe' });
-    expect(resSearch.items.map((x) => x.id)).toContain(p1.id);
+    // Multi-token relevance-ranked search: exact match and title boosts rank higher than partial token matches
+    const p3 = await products.create(
+      {
+        categoryId: catOptionalId,
+        title: { en: 'Alpha Running Shoe Elite' },
+        slug: s('alpha-shoe-elite'),
+      },
+      actor,
+      {},
+    );
+
+    const resSearch = await products.list({ q: 'Alpha Running Shoe' });
+    const searchIds = resSearch.items.map((x) => x.id);
+    expect(searchIds).toContain(p1.id);
+    expect(searchIds).toContain(p3.id);
+    // Exact match (p1) must outrank partial/extended phrase match (p3)
+    expect(searchIds.indexOf(p1.id)).toBeLessThan(searchIds.indexOf(p3.id));
 
     // Status filter
     const resPending = await products.list({ status: 'pending' });

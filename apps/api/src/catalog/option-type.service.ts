@@ -79,10 +79,12 @@ export class OptionTypeService {
       where.push(`status::text = $${params.length}`);
     }
     if (isSearch) {
+      const primary = `lower(coalesce(name_i18n->>'en', ''))`;
       const { whereSql, scoreSql } = buildTokenSearch(
         tokens,
         `lower(coalesce(name_i18n->>'en', '') || ' ' || code)`,
         params,
+        { primarySql: primary },
       );
       where.push(whereSql);
       scoreExpr = scoreSql;

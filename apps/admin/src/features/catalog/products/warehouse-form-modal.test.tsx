@@ -134,7 +134,7 @@ describe('WarehouseFormModal', () => {
 
     // Pick seller from combobox
     fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Apex Logistics (3P)' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Apex Logistics (3P) • @apex-logistics' }));
 
     fireEvent.change(screen.getByPlaceholderText('e.g. Austin Regional Depot'), {
       target: { value: 'Austin Regional Depot' },

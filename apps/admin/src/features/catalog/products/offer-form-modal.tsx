@@ -465,7 +465,13 @@ export function OfferFormModal({
                         </SelectTrigger>
                         <SelectContent>
                           {sellers.map((s) => {
-                            const label = `${s.shop?.displayName ?? s.id} (${s.type === 'business' ? '3P' : 'Seller'})`;
+                            const is1P = s.shop?.slug === 'shopnetic-retail';
+                            const typeTag = is1P ? '1P' : '3P';
+                            const name = s.shop?.displayName ?? s.legalName ?? s.id;
+                            const handle = s.shop?.slug
+                              ? `@${s.shop.slug}`
+                              : `#${s.id.slice(0, 8)}`;
+                            const label = `${name} (${typeTag}) • ${handle}`;
                             return (
                               <SelectItem key={s.id} value={s.id} title={label}>
                                 {label}
