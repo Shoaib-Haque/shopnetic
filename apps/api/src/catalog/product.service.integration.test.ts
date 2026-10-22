@@ -861,6 +861,21 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
       {},
     );
 
+    // Attempting to create directly as active in a category with required options fails
+    await expect(
+      products.create(
+        {
+          categoryId: catRequiredId,
+          brandId,
+          title: t('Direct Active Prod'),
+          slug: s('direct-active-prod'),
+          status: 'active',
+        },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'PRODUCT_OPTION_NOT_CONFIGURED', status: 422 });
+
     const pReq = await products.create(
       { categoryId: catRequiredId, brandId, title: t('Req Prod'), slug: s('req-prod') },
       actor,

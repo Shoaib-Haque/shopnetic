@@ -140,6 +140,19 @@ export class ProductService {
     assertPriceCoherent(input.basePriceMinor ?? null, input.currency ?? null);
     await this.assertSlugFree(input.slug, null);
 
+    if (input.status === 'active') {
+      const requiredCategoryOptions = await this.prisma.categoryOption.findMany({
+        where: { categoryId: input.categoryId, applicability: 'required' },
+        select: { optionType: { select: { code: true } } },
+      });
+      if (requiredCategoryOptions.length > 0) {
+        const first = requiredCategoryOptions[0]!;
+        throw new AppError('PRODUCT_OPTION_NOT_CONFIGURED', 422, {
+          detail: `required option axis "${first.optionType.code}" is not configured with values`,
+        });
+      }
+    }
+
     const created = await this.prisma.$transaction(async (tx) => {
       const row = await tx.product.create({
         data: {

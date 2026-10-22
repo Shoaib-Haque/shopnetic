@@ -148,7 +148,7 @@ describe('ProductMediaDialog', () => {
     cleanup();
   });
 
-  it('renders loading state and then media gallery items with cover and variant lead badges', async () => {
+  it('renders media gallery items with cover and variant lead badges', async () => {
     renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
 
     expect(await screen.findByText('Product Media Gallery')).toBeInTheDocument();
