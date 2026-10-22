@@ -25,21 +25,12 @@ vi.mock('../api', () => ({
 }));
 
 const PATHNAME = '/en/x7f2k9t3m1qp/staff';
-const routerReplace = vi.fn();
 // per-test control over what `useSearchParams()` returns on mount —
 // reassigned (not mutated) in `beforeEach`, and the mock factory re-reads
 // this binding on every call rather than capturing one instance.
 let mockSearchParams = new URLSearchParams();
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({
-    replace: routerReplace,
-    refresh: vi.fn(),
-    push: vi.fn(),
-    prefetch: vi.fn(),
-    back: vi.fn(),
-    forward: vi.fn(),
-  }),
   usePathname: () => PATHNAME,
   useSearchParams: () => mockSearchParams,
 }));
@@ -99,9 +90,11 @@ function openRowMenu(row: HTMLElement) {
   fireEvent.keyDown(trigger, { key: 'Enter' });
 }
 
+let replaceStateSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   mockSearchParams = new URLSearchParams();
-  routerReplace.mockReset();
+  replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -112,6 +105,7 @@ afterEach(() => {
   mockedActivateStaff.mockReset();
   mockedResetStaffTotp.mockReset();
   mockedDeprovisionStaff.mockReset();
+  replaceStateSpy.mockRestore();
 });
 
 describe('StaffList', () => {
@@ -484,7 +478,7 @@ describe('StaffList — deep link from Audit Log (?highlight=accountId) — fetc
     await waitFor(() =>
       expect(document.querySelector(`[data-staff-row="${target.id}"]`)).toHaveClass('bg-primary/5'),
     );
-    expect(routerReplace).toHaveBeenCalledWith(PATHNAME, { scroll: false });
+    expect(replaceStateSpy).toHaveBeenCalledWith(window.history.state, '', PATHNAME);
     expect(mockedGetStaffAccount).toHaveBeenCalledWith(target.id);
     // pinned once (desktop + its hidden mobile twin) — its own natural
     // spot in the loaded page is filtered out, not rendered a second time
@@ -573,8 +567,8 @@ describe('StaffList — deep link from Audit Log (?highlight=accountId) — fetc
     // the q-sync effect below still fires a mount-time no-op replace (same
     // as Category List / Audit Log's own filter sync) — what matters here
     // is that `highlight` never appears in any of those calls
-    for (const [url] of routerReplace.mock.calls) {
-      expect(url).not.toContain('highlight');
+    for (const call of replaceStateSpy.mock.calls) {
+      expect(call[2]).not.toContain('highlight');
     }
   });
 });
@@ -594,9 +588,11 @@ describe('StaffList — search', () => {
     await screen.findAllByText(target.email);
     expect(mockedListStaff).toHaveBeenLastCalledWith({ q: 'search-target', limit: 30 });
     await waitFor(() =>
-      expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?q=search-target`, {
-        scroll: false,
-      }),
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        window.history.state,
+        '',
+        `${PATHNAME}?q=search-target`,
+      ),
     );
   });
 
@@ -631,13 +627,13 @@ describe('StaffList — search', () => {
 
     render();
     await screen.findAllByText(ME.email);
-    routerReplace.mockClear();
+    replaceStateSpy.mockClear();
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
 
     await waitFor(() => expect(mockedListStaff).toHaveBeenLastCalledWith({ limit: 30 }));
     await waitFor(() =>
-      expect(routerReplace).toHaveBeenLastCalledWith(PATHNAME, { scroll: false }),
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(window.history.state, '', PATHNAME),
     );
   });
 });

@@ -428,6 +428,34 @@ describe('BrandList', () => {
     expect(archivedCall).not.toContain('status=');
   });
 
+  it('switching to Archived resets statusFilter to all so returning to Live does not leak stale status', async () => {
+    mockedAdminApi
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount (live, all)
+      .mockResolvedValueOnce(page([brand('a', 'Acme', { status: 'pending' })])) // #2 live, status=pending
+      .mockResolvedValueOnce(page([])) // #3 switch to archived
+      .mockResolvedValueOnce(page([brand('a', 'Acme')])); // #4 switch back to live
+
+    renderAdmin(<BrandList />);
+    await screen.findAllByText('Acme');
+
+    // 1. Filter by Pending on Live
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', { name: 'Pending' }));
+    await screen.findAllByText('Acme');
+
+    // 2. Switch to Archived tab
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await screen.findByText('No brands yet.');
+
+    // 3. Switch back to Live tab
+    fireEvent.click(screen.getByRole('button', { name: 'Live' }));
+    await screen.findAllByText('Acme');
+
+    const liveReturnCall = mockedAdminApi.mock.calls[3]?.[0] as string;
+    expect(liveReturnCall).not.toContain('archived=true');
+    expect(liveReturnCall).not.toContain('status=');
+  });
+
   it('adding an alias updates the row in place — no extra list reload — the 2026-09-17 fix', async () => {
     mockedAdminApi
       .mockResolvedValueOnce(page([brand('a', 'Acme')])) // #1 mount

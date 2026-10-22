@@ -10,7 +10,6 @@ import { AuditLog } from './audit-log';
 vi.mock('../api', () => ({ listAuditEvents: vi.fn() }));
 
 const PATHNAME = '/en/x7f2k9t3m1qp/audit-log';
-const routerReplace = vi.fn();
 // per-test control over what `useSearchParams()` returns on mount —
 // reassigned (not mutated) in `beforeEach`, and the mock factory re-reads
 // this binding on every call rather than capturing one instance.
@@ -33,14 +32,6 @@ vi.mock('next/link', () => ({
 }));
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({
-    replace: routerReplace,
-    refresh: vi.fn(),
-    push: vi.fn(),
-    prefetch: vi.fn(),
-    back: vi.fn(),
-    forward: vi.fn(),
-  }),
   usePathname: () => PATHNAME,
   useSearchParams: () => mockSearchParams,
 }));
@@ -81,14 +72,17 @@ function tableRowFor(text: string): HTMLElement {
   return row;
 }
 
+let replaceStateSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   mockSearchParams = new URLSearchParams();
-  routerReplace.mockReset();
+  replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
 });
 
 afterEach(() => {
   cleanup();
   mockedListAuditEvents.mockReset();
+  replaceStateSpy.mockRestore();
 });
 
 describe('AuditLog', () => {
@@ -547,16 +541,18 @@ describe('AuditLog — filters sync to the URL', () => {
 
     renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findAllByText('identity.staff_activated');
-    routerReplace.mockClear(); // drop the mount-time no-op replace
+    replaceStateSpy.mockClear(); // drop the mount-time no-op replace
 
     fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
     fireEvent.click(await screen.findByRole('combobox', { name: 'Domain' }));
     fireEvent.click(screen.getByRole('option', { name: 'Identity' }));
 
     await waitFor(() =>
-      expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?domain=identity`, {
-        scroll: false,
-      }),
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(
+        window.history.state,
+        '',
+        `${PATHNAME}?domain=identity`,
+      ),
     );
   });
 
@@ -568,12 +564,12 @@ describe('AuditLog — filters sync to the URL', () => {
 
     renderAdmin(<AuditLog locale="en" basePath="x7f2k9t3m1qp" />);
     await screen.findByText('Clear filters');
-    routerReplace.mockClear();
+    replaceStateSpy.mockClear();
 
     fireEvent.click(screen.getByText('Clear filters'));
 
     await waitFor(() =>
-      expect(routerReplace).toHaveBeenLastCalledWith(PATHNAME, { scroll: false }),
+      expect(replaceStateSpy).toHaveBeenLastCalledWith(window.history.state, '', PATHNAME),
     );
   });
 });

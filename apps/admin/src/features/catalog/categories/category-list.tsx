@@ -745,7 +745,7 @@ export function CategoryList() {
         </div>
       ) : !isFlatMode && error !== null ? (
         <div className="flex flex-col items-start gap-2 px-6 py-10 text-sm">
-          <p className="text-destructive">{error}</p>
+          <p className="text-destructive">{tCommon('list.loadError')}</p>
           <ActionButton variant="outline" size="sm" onClick={() => void load()}>
             {tCommon('list.retry')}
           </ActionButton>

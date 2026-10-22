@@ -74,17 +74,25 @@ export function BrandList() {
   // seeded from the URL once at mount, same one-way sync pattern Categories
   // and Audit Log use — a refresh / back-button reopens on the same
   // tab/filter/search instead of resetting.
-  const [tab, setTab] = useState<Tab>(() => parseTab(searchParams.get('tab')));
+  const initialTab = parseTab(searchParams.get('tab'));
+  const [tab, setTab] = useState<Tab>(() => initialTab);
   const [statusFilter, setStatusFilter] = useState<BrandStatus | 'all'>(() =>
-    parseStatusFilter(searchParams.get('status')),
+    initialTab === 'live' ? parseStatusFilter(searchParams.get('status')) : 'all',
   );
   const [highlightId] = useState(() => searchParams.get('highlight'));
   const [q, setQ] = useState(() => searchParams.get('q') ?? '');
   const debouncedQ = useDebouncedSearch(q);
 
+  const handleTabChange = useCallback((newTab: Tab) => {
+    setTab(newTab);
+    if (newTab === 'archived') {
+      setStatusFilter('all');
+    }
+  }, []);
+
   useUrlParamsSync({
     tab: tab !== 'live' ? tab : undefined,
-    status: statusFilter !== 'all' ? statusFilter : undefined,
+    status: tab === 'live' && statusFilter !== 'all' ? statusFilter : undefined,
     q: debouncedQ,
   });
 
@@ -141,7 +149,7 @@ export function BrandList() {
     targetId: highlightId,
     fetchById: getBrand,
     tab,
-    setTab,
+    setTab: handleTabChange,
     isArchived: (b) => b.archived,
   });
 
@@ -370,7 +378,7 @@ export function BrandList() {
             <button
               key={tb}
               type="button"
-              onClick={() => setTab(tb)}
+              onClick={() => handleTabChange(tb)}
               className={cn(
                 'rounded px-2.5 py-1 text-sm capitalize text-muted-foreground hover:text-foreground',
                 tab === tb && 'bg-muted font-medium text-foreground',

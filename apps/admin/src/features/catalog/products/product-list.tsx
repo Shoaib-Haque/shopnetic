@@ -412,18 +412,21 @@ export function ProductList() {
         data-product-row={p.id}
         className={cn('scroll-my-24', opts?.spotlight && 'bg-primary/5')}
       >
-        <TableCell className="pl-3 max-w-[240px]">
+        <TableCell className="pl-3 max-w-[280px]">
           <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-foreground truncate block" title={title}>
+            <div className="flex items-start justify-between gap-2">
+              <span
+                className="font-medium text-foreground line-clamp-2 leading-snug break-words flex-1 min-w-0"
+                title={title}
+              >
                 {title}
               </span>
               {p.proposedBySellerId ? (
-                <StatusBadge tone="warning" className="shrink-0">
+                <StatusBadge tone="warning" className="shrink-0 mt-0.5">
                   {t('products.originBadges.threeP')}
                 </StatusBadge>
               ) : (
-                <StatusBadge tone="neutral" className="shrink-0">
+                <StatusBadge tone="neutral" className="shrink-0 mt-0.5">
                   {t('products.originBadges.oneP')}
                 </StatusBadge>
               )}
@@ -468,13 +471,16 @@ export function ProductList() {
         className={cn('flex items-start gap-3 px-3 py-3', opts?.spotlight && 'bg-primary/5')}
       >
         <div className="min-w-0 flex-1 space-y-0.5">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="font-medium text-foreground truncate min-w-0" title={title}>
+          <div className="flex items-start justify-between gap-1.5 min-w-0">
+            <span
+              className="font-medium text-foreground line-clamp-2 leading-snug break-words flex-1 min-w-0"
+              title={title}
+            >
               {title}
             </span>
             <StatusBadge
               tone={p.proposedBySellerId ? 'warning' : 'neutral'}
-              className="shrink-0 text-[11px]"
+              className="shrink-0 mt-0.5 text-[11px]"
             >
               {p.proposedBySellerId
                 ? t('products.originBadges.threeP')

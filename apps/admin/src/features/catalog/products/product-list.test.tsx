@@ -163,7 +163,10 @@ describe('ProductList', () => {
 
     renderAdmin(<ProductList />);
 
-    expect(await screen.findAllByText('Platform Hoodie')).not.toHaveLength(0);
+    const hoodieTitles = await screen.findAllByText('Platform Hoodie');
+    expect(hoodieTitles).not.toHaveLength(0);
+    expect(hoodieTitles[0]).toHaveClass('line-clamp-2');
+    expect(hoodieTitles[0]).toHaveClass('break-words');
     expect(screen.getAllByText('Vendor Sneakers')).not.toHaveLength(0);
 
     // Badges

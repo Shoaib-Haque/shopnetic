@@ -14,21 +14,12 @@ vi.mock('@/features/admin-api/client', async () => {
 });
 
 const PATHNAME = '/en/x7f2k9t3m1qp/catalog/categories';
-const routerReplace = vi.fn();
 // per-test control over what `useSearchParams()` returns on mount —
 // reassigned (not mutated) in `beforeEach`, and the mock factory re-reads
 // this binding on every call rather than capturing one instance.
 let mockSearchParams = new URLSearchParams();
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({
-    replace: routerReplace,
-    refresh: vi.fn(),
-    push: vi.fn(),
-    prefetch: vi.fn(),
-    back: vi.fn(),
-    forward: vi.fn(),
-  }),
   usePathname: () => PATHNAME,
   useSearchParams: () => mockSearchParams,
 }));
@@ -54,7 +45,10 @@ function cat(id: string, name: string): Category {
 }
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
+const LIST_LOAD_ERROR = 'Couldn’t load the list.';
 const OFFLINE_ERROR = 'You appear to be offline. Check your connection and try again.';
+
+let replaceStateSpy: ReturnType<typeof vi.spyOn>;
 
 function openRowMenu(index = 0): void {
   const trigger = screen.getAllByRole('button', { name: 'More actions' })[index]!;
@@ -64,12 +58,13 @@ function openRowMenu(index = 0): void {
 
 beforeEach(() => {
   mockSearchParams = new URLSearchParams();
-  routerReplace.mockReset();
+  replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
 });
 
 afterEach(() => {
   cleanup();
   mockedAdminApi.mockReset();
+  replaceStateSpy.mockRestore();
 });
 
 describe('CategoryList error states', () => {
@@ -78,7 +73,7 @@ describe('CategoryList error states', () => {
 
     renderAdmin(<CategoryList />);
 
-    expect(await screen.findByText(GENERIC_ERROR)).toBeInTheDocument();
+    expect(await screen.findByText(LIST_LOAD_ERROR)).toBeInTheDocument();
     expect(screen.queryByText('No categories yet.')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
   });
@@ -89,7 +84,7 @@ describe('CategoryList error states', () => {
 
     renderAdmin(<CategoryList />);
 
-    expect(await screen.findByText(GENERIC_ERROR)).toBeInTheDocument();
+    expect(await screen.findByText(LIST_LOAD_ERROR)).toBeInTheDocument();
     const retryBtn = screen.getByRole('button', { name: /try again/i });
     fireEvent.click(retryBtn);
 
@@ -488,14 +483,16 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
-    routerReplace.mockClear(); // drop the mount-time no-op replace
+    replaceStateSpy.mockClear(); // drop the mount-time no-op replace
 
     fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
     await screen.findAllByText('Zulu');
 
-    expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?status=archived`, {
-      scroll: false,
-    });
+    expect(replaceStateSpy).toHaveBeenLastCalledWith(
+      window.history.state,
+      '',
+      `${PATHNAME}?status=archived`,
+    );
   });
 
   it('typing a search query replaces the URL once the debounce settles', async () => {
@@ -506,14 +503,18 @@ describe('CategoryList flat/paginated views (Archived, All, search)', () => {
 
     renderAdmin(<CategoryList />);
     await screen.findAllByText('Alpha');
-    routerReplace.mockClear();
+    replaceStateSpy.mockClear();
 
     fireEvent.change(screen.getByPlaceholderText('Search categories…'), {
       target: { value: 'bravo' },
     });
     await screen.findAllByText('Bravo', {}, { timeout: 2000 });
 
-    expect(routerReplace).toHaveBeenLastCalledWith(`${PATHNAME}?q=bravo`, { scroll: false });
+    expect(replaceStateSpy).toHaveBeenLastCalledWith(
+      window.history.state,
+      '',
+      `${PATHNAME}?q=bravo`,
+    );
   });
 
   it('scrolling the sentinel into view on a flat page appends the next page', async () => {
