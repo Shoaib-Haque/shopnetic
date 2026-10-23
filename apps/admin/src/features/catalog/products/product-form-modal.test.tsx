@@ -588,4 +588,177 @@ describe('ProductFormModal', () => {
       expect(priceInput).toHaveValue('150');
     });
   });
+
+  describe('Validation and Server Error Mapping', () => {
+    it('blocks submission and displays inline error when Title is empty', async () => {
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      const submitBtn = screen.getByRole('button', { name: 'Create' });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Please enter a product title.')).toBeInTheDocument();
+      });
+      expect(mockedCreateProduct).not.toHaveBeenCalled();
+    });
+
+    it('blocks submission and displays inline error when Slug is invalid or reserved', async () => {
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'Test Product' } });
+      fireEvent.change(screen.getByLabelText(/Slug/i), { target: { value: 'admin' } });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create' });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Lowercase letters, digits, and single hyphens only.'),
+        ).toBeInTheDocument();
+      });
+      expect(mockedCreateProduct).not.toHaveBeenCalled();
+    });
+
+    it('blocks submission and displays inline error when Base Price has invalid decimals', async () => {
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'Test Product' } });
+      fireEvent.change(screen.getByLabelText(/Base price/i), { target: { value: '19.999' } });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create' });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Enter a valid non-negative number.')).toBeInTheDocument();
+      });
+      expect(mockedCreateProduct).not.toHaveBeenCalled();
+    });
+
+    it('maps backend PRODUCT_SLUG_TAKEN (409) to inline error on Slug field', async () => {
+      mockedCreateProduct.mockRejectedValueOnce(new AdminApiError('PRODUCT_SLUG_TAKEN', 409));
+
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Title/i), {
+        target: { value: 'Duplicated Product' },
+      });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create' });
+      fireEvent.click(submitBtn);
+
+      expect(await screen.findByText('That product slug is already in use.')).toBeInTheDocument();
+    });
+
+    it('maps backend PRODUCT_BRAND_REQUIRED (422) to inline error on Brand field', async () => {
+      mockedCreateProduct.mockRejectedValueOnce(new AdminApiError('PRODUCT_BRAND_REQUIRED', 422));
+
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Title/i), {
+        target: { value: 'Brand Required Product' },
+      });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create' });
+      fireEvent.click(submitBtn);
+
+      expect(
+        await screen.findByText('This category requires a brand. Please select a brand.'),
+      ).toBeInTheDocument();
+    });
+
+    it('maps backend PRODUCT_BRAND_NOT_ALLOWED (422) to inline error on Brand field', async () => {
+      mockedCreateProduct.mockRejectedValueOnce(
+        new AdminApiError('PRODUCT_BRAND_NOT_ALLOWED', 422),
+      );
+
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Title/i), {
+        target: { value: 'Brand Forbidden Product' },
+      });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create' });
+      fireEvent.click(submitBtn);
+
+      expect(
+        await screen.findByText('This category does not allow a brand. Please select None.'),
+      ).toBeInTheDocument();
+    });
+
+    it('displays top banner error when backend returns generic VALIDATION_ERROR (422)', async () => {
+      mockedCreateProduct.mockRejectedValueOnce(new AdminApiError('VALIDATION_ERROR', 422));
+
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'Invalid Product' } });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create' });
+      fireEvent.click(submitBtn);
+
+      expect(await screen.findByText('Please check the highlighted fields.')).toBeInTheDocument();
+    });
+  });
 });
