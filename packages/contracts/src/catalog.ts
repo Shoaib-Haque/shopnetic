@@ -450,6 +450,8 @@ export type ProductOrigin = z.infer<typeof productOriginSchema>;
 
 import { currencySchema, type Currency } from './currency.js';
 export { currencySchema, type Currency };
+export * from './catalog-description.js';
+import { productDescriptionSchema } from './catalog-description.js';
 
 /** Non-negative integer minor units (cents). Carried as a string in views. */
 const priceMinorSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -468,7 +470,7 @@ export const productSchema = z.object({
   categoryId: z.string(),
   brandId: z.string().nullable(),
   title: localizedTextSchema,
-  description: localizedTextSchema.nullable(),
+  description: productDescriptionSchema.nullable(),
   slug: z.string(),
   status: productStatusSchema,
   basePriceMinor: z.string().nullable(),
@@ -485,7 +487,7 @@ export const createProductRequestSchema = z.object({
   categoryId: z.string().uuid(),
   brandId: z.string().uuid().nullish(),
   title: localizedTextSchema,
-  description: localizedTextSchema.optional(),
+  description: productDescriptionSchema.optional(),
   slug: slugSchema,
   status: productStatusSchema.optional(),
   basePriceMinor: priceMinorSchema.nullish(),
@@ -500,7 +502,7 @@ export const updateProductRequestSchema = z
   .object({
     brandId: z.string().uuid().nullable(),
     title: localizedTextSchema,
-    description: localizedTextSchema.nullable(),
+    description: productDescriptionSchema.nullable(),
     slug: slugSchema,
     status: productStatusSchema,
     basePriceMinor: priceMinorSchema.nullable(),

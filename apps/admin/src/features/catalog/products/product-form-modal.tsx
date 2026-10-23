@@ -15,6 +15,7 @@ import {
   minorToDecimal,
   getCurrencyExponent,
   normalizeCurrency,
+  productDescriptionDocSchema,
 } from '@shopnetic/contracts';
 import {
   Button,
@@ -45,6 +46,7 @@ import {
   sanitizeDecimalString,
 } from '@/lib/numeric-input';
 import { createProduct, getSeller, updateProduct } from './api';
+import { RichTextEditor } from './rich-text-editor';
 
 const textareaCls =
   'w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)] disabled:cursor-not-allowed disabled:opacity-50';
@@ -67,7 +69,7 @@ const formSchema = z
       .refine((s) => !isReservedSlug(s), 'products.form.err.slugFormat'),
     categoryId: z.string().uuid('products.form.err.categoryRequired'),
     brandId: z.string().uuid().or(z.literal('')).nullable(),
-    descriptionEn: z.string().trim(),
+    descriptionEn: productDescriptionDocSchema.nullable().optional(),
     status: z.enum(['draft', 'pending', 'active', 'archived']),
     basePrice: z.string().trim(),
     currency: currencySchema.optional().or(z.literal('')),
@@ -92,7 +94,7 @@ const EMPTY: FormValues = {
   slug: '',
   categoryId: '',
   brandId: '',
-  descriptionEn: '',
+  descriptionEn: null,
   status: 'draft',
   basePrice: '',
   currency: 'USD',
@@ -184,7 +186,7 @@ export function ProductFormModal({
         slug: product.slug ?? '',
         categoryId: product.categoryId ?? '',
         brandId: product.brandId ?? '',
-        descriptionEn: product.description?.en ?? '',
+        descriptionEn: product.description?.en ?? null,
         status: product.status,
         basePrice: product.basePriceMinor
           ? minorToDecimal(product.basePriceMinor, product.currency)
@@ -199,7 +201,7 @@ export function ProductFormModal({
     }
   }, [open, product, categories, reset]);
 
-  function fieldError(field: Path<FormValues>): string | undefined {
+  function fieldError(field: keyof FormValues): string | undefined {
     const err = errors[field];
     if (!err) return undefined;
     return err.message?.startsWith('products.') ? t(err.message) : err.message;
@@ -307,7 +309,6 @@ export function ProductFormModal({
 
   const titleField = register('titleEn');
   const slugField = register('slug');
-  const descField = register('descriptionEn');
   const priceField = register('basePrice');
   const watchCurrency = watch('currency') || 'USD';
   const currencyExponent = getCurrencyExponent(watchCurrency);
@@ -550,17 +551,19 @@ export function ProductFormModal({
           htmlFor="product-description"
           error={fieldError('descriptionEn')}
         >
-          <textarea
-            id="product-description"
-            className={textareaCls}
-            placeholder={t('products.form.descriptionPlaceholder')}
-            disabled={isFieldsDisabled}
-            {...descField}
-            onBlur={(e) => {
-              e.currentTarget.value = collapseWs(e.currentTarget.value);
-              void descField.onChange(e);
-              void descField.onBlur(e);
-            }}
+          <Controller
+            control={control}
+            name="descriptionEn"
+            render={({ field }) => (
+              <RichTextEditor
+                id="product-description"
+                value={field.value}
+                onChange={field.onChange}
+                disabled={isFieldsDisabled}
+                placeholder={t('products.form.descriptionPlaceholder')}
+                error={fieldError('descriptionEn')}
+              />
+            )}
           />
         </Field>
 

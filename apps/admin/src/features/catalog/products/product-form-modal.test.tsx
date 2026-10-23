@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import type { Brand, Category, Product } from '@shopnetic/contracts';
+import { plainTextToDoc, type Brand, type Category, type Product } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
 import { AdminApiError } from '@/features/admin-api/client';
 import { createProduct, getSeller, updateProduct } from './api';
@@ -74,7 +74,7 @@ function sampleProduct(overrides: Partial<Product> = {}): Product {
     categoryId: '22222222-2222-2222-2222-222222222222',
     brandId: '33333333-3333-3333-3333-333333333333',
     title: { en: 'Classic Crewneck Tee' },
-    description: { en: '100% organic cotton basic t-shirt' },
+    description: { en: plainTextToDoc('100% organic cotton basic t-shirt') },
     slug: 'classic-crewneck-tee',
     status: 'draft',
     basePriceMinor: '2999',
@@ -488,7 +488,14 @@ describe('ProductFormModal', () => {
     expect(screen.getByRole('combobox', { name: 'Brand' })).toBeDisabled();
     expect(screen.getByLabelText('Title')).toBeDisabled();
     expect(screen.getByLabelText('Slug')).toBeDisabled();
-    expect(screen.getByLabelText('Description')).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Description' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('textbox', { name: 'Description' })).toHaveAttribute(
+      'contenteditable',
+      'false',
+    );
     expect(screen.getByLabelText('Base Price')).toBeDisabled();
     expect(screen.getByRole('combobox', { name: 'Currency' })).toBeDisabled();
   });

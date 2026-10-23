@@ -6,6 +6,8 @@
  * discussion on this page).
  */
 
+import { docToPlainText, type ProductDescriptionDoc } from '@shopnetic/contracts';
+
 export interface DiffEntry {
   /** Dot path into nested objects, e.g. `name.en`. */
   path: string;
@@ -20,6 +22,10 @@ export interface DiffEntry {
  * the audit row's own timestamp already says when the write happened. */
 const EXCLUDED_KEYS = new Set(['id', 'updatedAt']);
 
+function isProductDescriptionDoc(v: unknown): v is ProductDescriptionDoc {
+  return typeof v === 'object' && v !== null && (v as { type?: unknown }).type === 'doc';
+}
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -29,6 +35,9 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  * flattening array indices into paths (`orderedIds.0`, `orderedIds.1`, …)
  * reads worse than just showing the whole array changed. */
 function flatten(value: unknown, prefix = ''): Record<string, unknown> {
+  if (isProductDescriptionDoc(value)) {
+    return { [prefix]: docToPlainText(value) };
+  }
   if (!isPlainObject(value)) return { [prefix]: value };
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(value)) {

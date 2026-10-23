@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import type { MediaAsset, OptionType, Product, ProductOption } from '@shopnetic/contracts';
+import {
+  plainTextToDoc,
+  type MediaAsset,
+  type OptionType,
+  type Product,
+  type ProductOption,
+} from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import {
@@ -46,7 +52,7 @@ const sampleProduct: Product = {
   categoryId: 'cat_1',
   brandId: null,
   title: { en: 'Organic Tee' },
-  description: { en: 'Comfortable tee' },
+  description: { en: plainTextToDoc('Comfortable tee') },
   slug: 'organic-tee',
   status: 'active',
   basePriceMinor: '2999',

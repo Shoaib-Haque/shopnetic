@@ -1,6 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import { Permission, type Actor } from '@shopnetic/auth';
+import {
+  createProductRequestSchema,
+  updateProductRequestSchema,
+  type ProductDescriptionDoc,
+} from '@shopnetic/contracts';
+import { ZodBodyPipe } from '../common/zod-body.pipe.js';
 import { AuditService } from '../audit/audit.service.js';
 import { OptionTypeService } from './option-type.service.js';
 import { CategoryOptionService } from './category-option.service.js';
@@ -918,5 +924,228 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
       {},
     );
     expect(published.status).toBe('active');
+  });
+
+  it('validates, persists, snapshots, and normalizes rich product descriptions (B3 boundary tests)', async () => {
+    const createPipe = new ZodBodyPipe(createProductRequestSchema);
+    const updatePipe = new ZodBodyPipe(updateProductRequestSchema);
+
+    // 1. HTTP boundary pipe rejects disallowed node types (rawHtml, script)
+    expect(() =>
+      createPipe.transform({
+        categoryId: catNoneId,
+        brandId,
+        title: t('Exploit Product'),
+        slug: s('exploit-prod-1'),
+        description: {
+          en: {
+            type: 'doc',
+            content: [{ type: 'rawHtml', text: '<script>alert(1)</script>' }],
+          },
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: 'VALIDATION_ERROR',
+        status: 422,
+      }),
+    );
+
+    // 2. HTTP boundary pipe rejects protocol-relative links (//evil.com/phish)
+    expect(() =>
+      createPipe.transform({
+        categoryId: catNoneId,
+        brandId,
+        title: t('Phish Product'),
+        slug: s('phish-prod-1'),
+        description: {
+          en: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  {
+                    type: 'text',
+                    text: 'Free gift card',
+                    marks: [{ type: 'link', attrs: { href: '//evil.com/phish' } }],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: 'VALIDATION_ERROR',
+        status: 422,
+      }),
+    );
+
+    // 2b. HTTP boundary pipe rejects WHATWG stripped tab/newline bypass (/\t/evil.com)
+    expect(() =>
+      createPipe.transform({
+        categoryId: catNoneId,
+        brandId,
+        title: t('Tab Phish Product'),
+        slug: s('tab-phish-prod-1'),
+        description: {
+          en: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  {
+                    type: 'text',
+                    text: 'Free gift card',
+                    marks: [{ type: 'link', attrs: { href: '/\t/evil.com' } }],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: 'VALIDATION_ERROR',
+        status: 422,
+      }),
+    );
+
+    // 3. HTTP boundary pipe rejects oversized CJK payload based on UTF-8 bytes (>50KB)
+    const cjkText = '製品の詳細情報テスト'.repeat(2500);
+    expect(() =>
+      createPipe.transform({
+        categoryId: catNoneId,
+        brandId,
+        title: t('Oversized Product'),
+        slug: s('oversized-prod-1'),
+        description: {
+          en: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: cjkText }] }],
+          },
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: 'VALIDATION_ERROR',
+        status: 422,
+      }),
+    );
+
+    // 4. Valid rich text document passes boundary pipe and is persisted via ProductService
+    const validAst: ProductDescriptionDoc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{ type: 'text', text: 'Premium Craftsmanship' }],
+        },
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Tailored with ' },
+            { type: 'text', text: '100% long-staple cotton', marks: [{ type: 'bold' }] },
+            { type: 'text', text: '. View ' },
+            {
+              type: 'text',
+              text: 'sizing guide',
+              marks: [{ type: 'link', attrs: { href: '/guides/sizing' } }],
+            },
+            { type: 'text', text: '.' },
+          ],
+        },
+        {
+          type: 'bulletList',
+          content: [
+            {
+              type: 'listItem',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Pre-shrunk' }] }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const transformedCreate = createPipe.transform({
+      categoryId: catOptionalId,
+      brandId,
+      title: t('Rich Desc Product'),
+      slug: s('rich-desc-prod'),
+      description: { en: validAst },
+    });
+
+    const created = await products.create(transformedCreate, actor, {
+      ip: '127.0.0.1',
+      correlationId: s('cid-create'),
+    });
+    expect(created.description?.['en']).toEqual(validAst);
+
+    // 5. Update rich description passes update pipe and writes plain text into audit log
+    const updatedAst: ProductDescriptionDoc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'Updated description: now includes organic hemp blend.',
+              marks: [{ type: 'italic' }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const transformedUpdate = updatePipe.transform({
+      description: { en: updatedAst },
+      expectedUpdatedAt: created.updatedAt,
+    });
+
+    const updated = await products.update(created.id, transformedUpdate, actor, {
+      ip: '127.0.0.1',
+      correlationId: s('cid-update'),
+    });
+    expect(updated.description?.['en']).toEqual(updatedAst);
+
+    // Verify audit entry has human-readable plain text snapshot, NOT raw JSON AST
+    const auditEvent = await prisma.auditEvent.findFirst({
+      where: { targetId: created.id, action: 'catalog.product_updated' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(auditEvent).not.toBeNull();
+    const afterSnapshot = auditEvent!.after as Record<string, unknown>;
+    expect(afterSnapshot['description']).toBe(
+      'Updated description: now includes organic hemp blend.',
+    );
+
+    // 6. Legacy normalization: simulate legacy raw string in Postgres description_i18n
+    const legacyProd = await prisma.product.create({
+      data: {
+        categoryId: catOptionalId,
+        brandId,
+        titleI18n: t('Legacy Product'),
+        slug: s('legacy-desc-prod'),
+        status: 'draft',
+        descriptionI18n: { en: 'Legacy unformatted description text' },
+      },
+    });
+
+    const loadedLegacy = await products.get(legacyProd.id);
+    expect(loadedLegacy.description?.['en']).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'Legacy unformatted description text' }],
+        },
+      ],
+    });
   });
 });

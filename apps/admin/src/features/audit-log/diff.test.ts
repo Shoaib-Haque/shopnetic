@@ -76,4 +76,41 @@ describe('diffRecords', () => {
 
     expect(diffRecords(before, after).map((e) => e.path)).toEqual(['apple', 'zebra']);
   });
+
+  it('flattens TipTap document ASTs into human-readable plain text diffs', () => {
+    const before = {
+      description: {
+        en: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'Original description text' }],
+            },
+          ],
+        },
+      },
+    };
+    const after = {
+      description: {
+        en: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'Updated description text with new details' }],
+            },
+          ],
+        },
+      },
+    };
+
+    expect(diffRecords(before, after)).toEqual([
+      {
+        path: 'description.en',
+        before: 'Original description text',
+        after: 'Updated description text with new details',
+      },
+    ]);
+  });
 });

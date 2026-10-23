@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { can, Permission, type Actor } from '@shopnetic/auth';
-import type {
-  CreateProductRequest,
-  Product,
-  ProductListStatus,
-  ProductOrigin,
-  UpdateProductRequest,
+import {
+  docToPlainText,
+  plainTextToDoc,
+  type CreateProductRequest,
+  type Product,
+  type ProductDescription,
+  type ProductDescriptionDoc,
+  type ProductListStatus,
+  type ProductOrigin,
+  type UpdateProductRequest,
 } from '@shopnetic/contracts';
 import { Prisma } from '@shopnetic/db';
 import type { Product as ProductRow } from '@shopnetic/db';
@@ -189,7 +193,7 @@ export class ProductService {
       this.brandNameOf(view.brandId),
     ]);
     await this.record(actor, 'catalog.product_created', created.id, meta, {
-      after: { ...view, categoryName, brandName },
+      after: this.toAuditSnapshot(view, categoryName, brandName),
     });
     return view;
   }
@@ -326,8 +330,8 @@ export class ProductService {
         this.brandNameOf(view.brandId),
       ]);
     await this.record(actor, auditAction, id, meta, {
-      before: { ...beforeView, categoryName: beforeCategoryName, brandName: beforeBrandName },
-      after: { ...view, categoryName: afterCategoryName, brandName: afterBrandName },
+      before: this.toAuditSnapshot(beforeView, beforeCategoryName, beforeBrandName),
+      after: this.toAuditSnapshot(view, afterCategoryName, afterBrandName),
       ...(rejectionNote ? { rejectionNote } : {}),
     });
     return view;
@@ -358,7 +362,7 @@ export class ProductService {
       this.brandNameOf(view.brandId),
     ]);
     await this.record(actor, 'catalog.product_deleted', id, meta, {
-      before: { ...toView(current), categoryName, brandName },
+      before: this.toAuditSnapshot(toView(current), categoryName, brandName),
       reason: 'soft delete',
     });
   }
@@ -429,13 +433,27 @@ export class ProductService {
       this.brandNameOf(view.brandId),
     ]);
     await this.record(actor, 'catalog.product_restored', id, meta, {
-      after: { ...view, categoryName, brandName },
+      after: this.toAuditSnapshot(view, categoryName, brandName),
       reason: 'restore',
     });
     return view;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
+
+  private toAuditSnapshot(
+    view: Product,
+    categoryName: string | null,
+    brandName: string | null,
+  ): Record<string, unknown> {
+    const descriptionText = view.description?.en ? docToPlainText(view.description.en) : null;
+    return {
+      ...view,
+      description: descriptionText,
+      categoryName,
+      brandName,
+    };
+  }
 
   private async rowOrThrow(id: string): Promise<ProductRow> {
     const row = await this.prisma.product.findFirst({ where: { id, deletedAt: null } });
@@ -549,6 +567,19 @@ function assertPriceCoherent(priceMinor: number | null, currency: string | null)
   }
 }
 
+function toDescriptionView(raw: unknown): ProductDescription | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const result: Record<string, ProductDescriptionDoc> = {};
+  for (const [locale, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof val === 'string') {
+      result[locale] = plainTextToDoc(val);
+    } else if (val && typeof val === 'object' && (val as { type?: unknown }).type === 'doc') {
+      result[locale] = val as ProductDescriptionDoc;
+    }
+  }
+  return typeof result['en'] !== 'undefined' ? (result as ProductDescription) : null;
+}
+
 function toView(row: ProductRow): Product {
   const spec = { ...((row.spec as Record<string, unknown>) ?? {}) };
   delete spec['_previousStatus'];
@@ -558,7 +589,7 @@ function toView(row: ProductRow): Product {
     categoryId: row.categoryId,
     brandId: row.brandId,
     title: row.titleI18n as Record<string, string>,
-    description: (row.descriptionI18n as Record<string, string> | null) ?? null,
+    description: toDescriptionView(row.descriptionI18n),
     slug: row.slug,
     status: row.status,
     basePriceMinor: row.basePriceMinor === null ? null : row.basePriceMinor.toString(),
