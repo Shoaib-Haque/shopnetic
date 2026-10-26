@@ -61,10 +61,10 @@ function openDatePicker(e: MouseEvent<HTMLInputElement>): void {
   if (typeof el.showPicker === 'function') el.showPicker();
 }
 
-const DOMAINS: Array<AuditDomain | 'all'> = ['all', 'catalog', 'identity'];
+const DOMAINS: Array<AuditDomain | 'all'> = ['all', 'catalog', 'identity', 'seller'];
 
 function parseDomain(v: string | null): AuditDomain | 'all' {
-  return v === 'catalog' || v === 'identity' ? v : 'all';
+  return v === 'catalog' || v === 'identity' || v === 'seller' ? v : 'all';
 }
 
 // Every `targetType` any `audit.record()` call site writes today (raw,
@@ -84,6 +84,7 @@ const TARGET_TYPES = [
   'variant',
   'value_set',
   'media_asset',
+  'seller',
 ];
 
 // Only these target types have any admin page to land on today (per
@@ -121,6 +122,9 @@ function targetHref(event: AuditEvent, locale: string, basePath: string): string
   }
   if (event.targetType === 'account' && event.action.startsWith('identity.staff_')) {
     return `/${locale}/${basePath}/staff?highlight=${encodeURIComponent(event.targetId)}`;
+  }
+  if (event.targetType === 'seller') {
+    return `/${locale}/${basePath}/sellers?target=${encodeURIComponent(event.targetId)}`;
   }
   return null;
 }
@@ -166,15 +170,22 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
     parseDomain(searchParams.get('domain')),
   );
   const [targetType, setTargetType] = useState(() => searchParams.get('targetType') ?? '');
+  const [targetId, setTargetId] = useState(() => searchParams.get('targetId') ?? '');
   const [from, setFrom] = useState(() => searchParams.get('from') ?? '');
   const [to, setTo] = useState(() => searchParams.get('to') ?? '');
   const filtersActive =
-    q !== '' || domain !== 'all' || targetType !== '' || from !== '' || to !== '';
+    q !== '' ||
+    domain !== 'all' ||
+    targetType !== '' ||
+    targetId !== '' ||
+    from !== '' ||
+    to !== '';
 
   useUrlParamsSync({
     q: debouncedQ,
     domain: domain !== 'all' ? domain : undefined,
     targetType,
+    targetId,
     from,
     to,
   });
@@ -183,6 +194,7 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
     setQ('');
     setDomain('all');
     setTargetType('');
+    setTargetId('');
     setFrom('');
     setTo('');
   }
@@ -193,12 +205,13 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
         ...(debouncedQ ? { q: debouncedQ } : {}),
         ...(domain !== 'all' ? { domain } : {}),
         ...(targetType ? { targetType } : {}),
+        ...(targetId ? { targetId } : {}),
         ...(from ? { from } : {}),
         ...(to ? { to } : {}),
         ...(cursor ? { cursor } : {}),
         limit: 30,
       }).then((page) => ({ items: page.events, nextCursor: page.nextCursor })),
-    [debouncedQ, domain, targetType, from, to],
+    [debouncedQ, domain, targetType, targetId, from, to],
   );
 
   const {
@@ -210,7 +223,7 @@ export function AuditLog({ locale, basePath }: { locale: string; basePath: strin
     sentinelRef,
     retry,
     loadMore,
-  } = useScrollLoad<AuditEvent>(fetchPage, [debouncedQ, domain, targetType, from, to]);
+  } = useScrollLoad<AuditEvent>(fetchPage, [debouncedQ, domain, targetType, targetId, from, to]);
 
   function toggleExpanded(id: string): void {
     setExpanded((prev) => {

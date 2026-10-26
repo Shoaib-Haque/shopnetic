@@ -13,13 +13,14 @@ export default getRequestConfig(async ({ requestLocale }) => {
   const requested = await requestLocale;
   const locale = hasLocale(routing.locales, requested) ? requested : routing.defaultLocale;
 
-  const [common, staff, admin, catalog, auditLog] = (await Promise.all([
+  const [common, staff, admin, catalog, auditLog, sellers] = (await Promise.all([
     import(`../../messages/${locale}/common.json`),
     import(`../../messages/${locale}/staff.json`),
     import(`../../messages/${locale}/admin.json`),
     import(`../../messages/${locale}/catalog.json`),
     import(`../../messages/${locale}/audit-log.json`),
-  ])) as [MessageModule, MessageModule, MessageModule, MessageModule, MessageModule];
+    import(`../../messages/${locale}/sellers.json`),
+  ])) as [MessageModule, MessageModule, MessageModule, MessageModule, MessageModule, MessageModule];
 
   return {
     locale,
@@ -29,6 +30,7 @@ export default getRequestConfig(async ({ requestLocale }) => {
       ...admin.default,
       ...catalog.default,
       ...auditLog.default,
+      ...sellers.default,
     },
   };
 });

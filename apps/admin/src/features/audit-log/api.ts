@@ -8,12 +8,13 @@ export interface AuditEventsPage {
   nextCursor: string | undefined;
 }
 
-export type AuditDomain = 'catalog' | 'identity';
+export type AuditDomain = 'catalog' | 'identity' | 'seller';
 
 export interface AuditEventsFilters {
   q?: string | undefined;
   domain?: AuditDomain | undefined;
   targetType?: string | undefined;
+  targetId?: string | undefined;
   /** `YYYY-MM-DD` — inclusive of the whole day on both ends. */
   from?: string | undefined;
   to?: string | undefined;
@@ -43,6 +44,7 @@ export function listAuditEvents(
   if (opts.q) params.set('q', opts.q);
   if (opts.domain) params.set('domain', opts.domain);
   if (opts.targetType) params.set('targetType', opts.targetType);
+  if (opts.targetId) params.set('targetId', opts.targetId);
   if (opts.from) params.set('from', opts.from);
   if (opts.to) params.set('to', opts.to);
   return auditLogApi<{ data: AuditEvent[]; meta: AuditEventsMeta }>(`?${params}`, {

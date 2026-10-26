@@ -7,11 +7,12 @@ import staff from '../../messages/en/staff.json';
 import admin from '../../messages/en/admin.json';
 import catalog from '../../messages/en/catalog.json';
 import auditLog from '../../messages/en/audit-log.json';
+import sellers from '../../messages/en/sellers.json';
 
 // Mirrors `src/i18n/request.ts`'s namespace merge, so a test asserts against
 // the real English copy (not a translation key) — a typo'd or missing message
 // key fails the test the same way it'd show up broken in the app.
-const messages = { ...common, ...staff, ...admin, ...catalog, ...auditLog };
+const messages = { ...common, ...staff, ...admin, ...catalog, ...auditLog, ...sellers };
 
 /**
  * The same provider tree `renderAdmin` mounts, exported separately for a

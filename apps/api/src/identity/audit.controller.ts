@@ -18,7 +18,7 @@ import { CurrentActor } from '../auth/current-actor.decorator.js';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-const DOMAINS = ['catalog', 'identity'] as const;
+const DOMAINS = ['catalog', 'identity', 'seller'] as const;
 type Domain = (typeof DOMAINS)[number];
 
 /** Every `staff:manage`-gated action (`staff.controller.ts`'s invite/role/
@@ -77,6 +77,7 @@ export class AuditController {
     @Query('targetType') targetType?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('targetId') targetId?: string,
   ): Promise<{
     data: AuditEvent[];
     meta: { requestId: string; nextCursor?: string; count: number };
@@ -110,6 +111,10 @@ export class AuditController {
     if (targetType) {
       params.push(targetType);
       where.push(`ae.target_type = $${params.length}`);
+    }
+    if (targetId) {
+      params.push(targetId);
+      where.push(`ae.target_id = $${params.length}`);
     }
     if (from) {
       params.push(new Date(from));

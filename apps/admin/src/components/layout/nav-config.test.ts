@@ -28,6 +28,7 @@ describe('visibleNavSections', () => {
   it('sections with no superAdminOnly items are never filtered', () => {
     const sections = visibleNavSections([]);
     expect(sections.find((s) => s.key === 'overview')).toBeDefined();
+    expect(sections.find((s) => s.key === 'operations')).toBeDefined();
     expect(sections.find((s) => s.key === 'catalog')).toBeDefined();
   });
 });

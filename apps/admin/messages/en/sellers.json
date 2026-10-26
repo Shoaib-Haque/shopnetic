@@ -1,0 +1,96 @@
+{
+  "sellers": {
+    "title": "Sellers",
+    "subtitle": "Review applications, inspect shops, and manage marketplace seller statuses.",
+    "searchPlaceholder": "Search shop name, slug, legal name, email…",
+    "filter": {
+      "statusLabel": "Status filter",
+      "all": "All",
+      "in_review": "In review",
+      "approved": "Approved",
+      "suspended": "Suspended",
+      "offboarding": "Offboarding",
+      "closed": "Closed",
+      "draft": "Draft"
+    },
+    "cols": {
+      "shop": "Shop",
+      "legalName": "Legal name",
+      "type": "Type",
+      "country": "Country",
+      "status": "Status",
+      "accountEmail": "Account email",
+      "createdAt": "Registered",
+      "actions": "Actions"
+    },
+    "type": {
+      "business": "Business",
+      "individual": "Individual"
+    },
+    "status": {
+      "draft": "Draft",
+      "in_review": "In review",
+      "approved": "Approved",
+      "suspended": "Suspended",
+      "offboarding": "Offboarding",
+      "closed": "Closed"
+    },
+    "inspect": {
+      "title": "Seller Details & Moderation",
+      "subtitle": "Inspect legal details, storefront profile, and manage account status.",
+      "shopSection": "Storefront Profile",
+      "legalSection": "Legal & Account",
+      "moderationSection": "Status Moderation",
+      "displayName": "Shop display name",
+      "slug": "Shop slug",
+      "description": "Description",
+      "noDescription": "No description provided.",
+      "logo": "Logo URL",
+      "banner": "Banner URL",
+      "vacationUntil": "Vacation until",
+      "legalName": "Legal name",
+      "type": "Seller type",
+      "country": "Country",
+      "accountId": "Account ID",
+      "accountEmail": "Account email",
+      "sellerId": "Seller ID",
+      "createdAt": "Registered",
+      "updatedAt": "Last updated",
+      "viewAuditLog": "View in audit log",
+      "currentStatus": "Current status",
+      "targetStatus": "Select next status",
+      "reasonLabel": "Moderation reason",
+      "reasonPlaceholderRequired": "Enter a reason for this disciplinary action (required, min 5 chars)…",
+      "reasonPlaceholderOptional": "Optional note for internal audit log…",
+      "reasonMinLength": "Please provide a reason with at least 5 characters.",
+      "terminalState": "This seller account is closed and in a terminal state. No further status transitions are permitted.",
+      "noTransitions": "No status transitions available from current state.",
+      "applyTransition": "Update status",
+      "updating": "Updating status…",
+      "actions": {
+        "approve": "Approve seller",
+        "suspend": "Suspend seller",
+        "reactivate": "Reactivate seller",
+        "offboard": "Start offboarding",
+        "close": "Close account",
+        "reject": "Reject application"
+      },
+      "conflictTitle": "Seller updated concurrently",
+      "conflictMessage": "This seller was updated by another administrator. Please reload to review the latest changes.",
+      "conflictReload": "Reload seller",
+      "close": "Close"
+    },
+    "actions": {
+      "inspect": "Inspect & moderate",
+      "viewAuditLog": "View audit events",
+      "more": "More actions"
+    },
+    "toast": {
+      "statusUpdated": "Seller \"{name}\" status updated to {status}."
+    },
+    "empty": "No sellers found.",
+    "emptyFilter": "No sellers match the selected filter.",
+    "loadError": "Couldn’t load the seller list.",
+    "retry": "Try again"
+  }
+}

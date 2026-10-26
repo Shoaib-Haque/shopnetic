@@ -195,6 +195,37 @@ describe.skipIf(!hasDb)('AuditController (integration)', () => {
       expect(targets).not.toContain('itest_widget_b');
     });
 
+    it('targetId narrows to an exact match', async () => {
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'itest.audit_target_id_probe',
+        targetType: 'seller',
+        targetId: 'sel-target-x',
+      });
+      await audit.record({
+        actorAccountId: actorId,
+        action: 'itest.audit_target_id_probe',
+        targetType: 'seller',
+        targetId: 'sel-target-y',
+      });
+
+      const res = await controller.list(
+        req,
+        superAdmin,
+        undefined,
+        '50',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'sel-target-x',
+      );
+      const targetIds = res.data.map((e) => e.targetId);
+      expect(targetIds).toContain('sel-target-x');
+      expect(targetIds).not.toContain('sel-target-y');
+    });
+
     it('"from" excludes rows before it', async () => {
       const px = prisma as PrismaService;
       const oldRow = await px.auditEvent.create({

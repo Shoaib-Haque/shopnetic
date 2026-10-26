@@ -14,9 +14,19 @@ export const sellerStatusSchema = z.enum([
 ]);
 export type SellerStatus = z.infer<typeof sellerStatusSchema>;
 
+export const VALID_SELLER_STATUS_TRANSITIONS: Record<SellerStatus, readonly SellerStatus[]> = {
+  draft: ['in_review'],
+  in_review: ['approved', 'closed'],
+  approved: ['suspended', 'offboarding'],
+  suspended: ['approved', 'offboarding'],
+  offboarding: ['closed'],
+  closed: [],
+} as const;
+
 export const sellerSchema = z.object({
   id: z.string().uuid(),
   accountId: z.string().uuid(),
+  accountEmail: z.string().email().nullable().optional(),
   legalName: z.string().min(1).max(255),
   type: sellerTypeSchema,
   country: z.string().length(2).toUpperCase(),
@@ -63,9 +73,28 @@ export const createSellerRequestSchema = z.object({
 });
 export type CreateSellerRequest = z.infer<typeof createSellerRequestSchema>;
 
-export const updateSellerStatusRequestSchema = z.object({
-  status: sellerStatusSchema,
-  reason: z.string().trim().max(500).optional(),
-  expectedUpdatedAt: z.string().optional(),
-});
+export const DISCIPLINARY_SELLER_STATUSES: readonly SellerStatus[] = [
+  'suspended',
+  'offboarding',
+  'closed',
+] as const;
+
+export const updateSellerStatusRequestSchema = z
+  .object({
+    status: sellerStatusSchema,
+    reason: z.string().trim().max(500).optional(),
+    expectedUpdatedAt: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      (DISCIPLINARY_SELLER_STATUSES as readonly string[]).includes(data.status) &&
+      (!data.reason || data.reason.trim().length < 5)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reason'],
+        message: 'A reason of at least 5 characters is required for this status change',
+      });
+    }
+  });
 export type UpdateSellerStatusRequest = z.infer<typeof updateSellerStatusRequestSchema>;

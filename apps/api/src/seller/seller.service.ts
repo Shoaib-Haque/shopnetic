@@ -1,18 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import type { Actor } from '@shopnetic/auth';
-import type {
-  CreateSellerRequest,
-  SellerStatus,
-  SellerWithShop,
-  Shop,
-  UpdateSellerStatusRequest,
+import {
+  VALID_SELLER_STATUS_TRANSITIONS,
+  type CreateSellerRequest,
+  type SellerStatus,
+  type SellerWithShop,
+  type Shop,
+  type UpdateSellerStatusRequest,
 } from '@shopnetic/contracts';
 import type { Seller as SellerRow, Shop as ShopRow } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
-import { clampLimit } from '../common/pagination.js';
+import { clampLimit, paginate } from '../common/pagination.js';
+import {
+  tokenizeForSql,
+  buildTokenSearch,
+  rankedOffsetFromCursor,
+  rankedNextCursor,
+} from '../common/text-search.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeSellerOutbox } from './seller-outbox.js';
 
@@ -35,10 +42,14 @@ function serializeShop(shop: ShopRow): Shop {
   };
 }
 
-function serializeSeller(seller: SellerRow & { shop: ShopRow | null }): SellerWithShop {
+function serializeSeller(
+  seller: SellerRow & { shop: ShopRow | null },
+  accountEmail?: string | null,
+): SellerWithShop {
   return {
     id: seller.id,
     accountId: seller.accountId,
+    accountEmail: accountEmail ?? null,
     legalName: seller.legalName,
     type: seller.type,
     country: seller.country,
@@ -71,7 +82,11 @@ export class SellerService {
     if (!seller || seller.deletedAt) {
       throw new AppError('SELLER_NOT_FOUND', 404, { detail: `seller ${id} not found` });
     }
-    return serializeSeller(seller);
+    const account = await this.prisma.account.findUnique({
+      where: { id: seller.accountId },
+      select: { email: true },
+    });
+    return serializeSeller(seller, account?.email ?? null);
   }
 
   async getByAccountId(accountId: string): Promise<SellerWithShop | null> {
@@ -80,7 +95,11 @@ export class SellerService {
       include: { shop: true },
     });
     if (!seller || seller.deletedAt) return null;
-    return serializeSeller(seller);
+    const account = await this.prisma.account.findUnique({
+      where: { id: seller.accountId },
+      select: { email: true },
+    });
+    return serializeSeller(seller, account?.email ?? null);
   }
 
   async getByShopSlug(slug: string): Promise<SellerWithShop | null> {
@@ -89,32 +108,92 @@ export class SellerService {
       include: { seller: { include: { shop: true } } },
     });
     if (!shop || shop.deletedAt || shop.seller.deletedAt) return null;
-    return serializeSeller(shop.seller);
+    const account = await this.prisma.account.findUnique({
+      where: { id: shop.seller.accountId },
+      select: { email: true },
+    });
+    return serializeSeller(shop.seller, account?.email ?? null);
   }
 
   async list(opts: {
     status?: SellerStatus;
     cursor?: string;
     limit?: number;
+    q?: string;
   }): Promise<{ items: SellerWithShop[]; nextCursor?: string }> {
     const limit = clampLimit(opts.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
-    const sellers = await this.prisma.seller.findMany({
-      where: {
-        deletedAt: null,
-        ...(opts.status ? { status: opts.status } : {}),
-      },
+    const tokens = opts.q ? tokenizeForSql(opts.q) : [];
+    const isSearch = tokens.length > 0;
+
+    const params: unknown[] = [];
+    const where: string[] = ['s.deleted_at IS NULL'];
+
+    if (opts.status) {
+      params.push(opts.status);
+      where.push(`s.status::text = $${params.length}`);
+    }
+
+    let scoreExpr = '0';
+    if (isSearch) {
+      const primary = 'lower(s.legal_name)';
+      const haystack = `lower(
+        s.legal_name || ' ' || s.country || ' ' ||
+        coalesce((SELECT sh.display_name || ' ' || sh.slug FROM seller.shop sh WHERE sh.seller_id = s.id AND sh.deleted_at IS NULL LIMIT 1), '') || ' ' ||
+        coalesce((SELECT a.email FROM identity.account a WHERE a.id = s.account_id), '')
+      )`;
+      const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params, {
+        primarySql: primary,
+      });
+      where.push(whereSql);
+      scoreExpr = scoreSql;
+    }
+
+    if (opts.cursor && !isSearch) {
+      params.push(opts.cursor);
+      where.push(`s.id < $${params.length}::uuid`);
+    }
+
+    const offset = isSearch ? rankedOffsetFromCursor(opts.cursor) : 0;
+    const idRows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT s.id
+         FROM seller.seller s
+        WHERE ${where.join(' AND ')}
+        ORDER BY ${isSearch ? `${scoreExpr} DESC, ` : ''}s.id DESC
+        LIMIT ${limit + 1}${isSearch ? ` OFFSET ${offset}` : ''}`,
+      ...params,
+    );
+
+    const { page: idPage, nextCursor: keysetCursor } = paginate(idRows, limit);
+    const nextCursor = isSearch ? rankedNextCursor(idRows.length, limit, offset) : keysetCursor;
+
+    const orderedIds = idPage.map((r) => r.id);
+    if (orderedIds.length === 0) {
+      return { items: [], ...(nextCursor ? { nextCursor } : {}) };
+    }
+
+    const unorderedRows = await this.prisma.seller.findMany({
+      where: { id: { in: orderedIds } },
       include: { shop: true },
-      take: limit + 1,
-      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
-      orderBy: { createdAt: 'desc' },
+    });
+    const byId = new Map(unorderedRows.map((r) => [r.id, r]));
+    const rows = orderedIds.flatMap((id) => {
+      const row = byId.get(id);
+      return row ? [row] : [];
     });
 
-    const hasMore = sellers.length > limit;
-    const items = hasMore ? sellers.slice(0, limit) : sellers;
-    const nextCursor = hasMore ? items[items.length - 1]?.id : undefined;
+    // Batched cross-schema lookup for account emails (no N+1)
+    const accountIds = [...new Set(rows.map((s) => s.accountId))];
+    const accounts =
+      accountIds.length > 0
+        ? await this.prisma.account.findMany({
+            where: { id: { in: accountIds } },
+            select: { id: true, email: true },
+          })
+        : [];
+    const emailByAccountId = new Map(accounts.map((a) => [a.id, a.email]));
 
     return {
-      items: items.map(serializeSeller),
+      items: rows.map((s) => serializeSeller(s, emailByAccountId.get(s.accountId) ?? null)),
       ...(nextCursor ? { nextCursor } : {}),
     };
   }
@@ -167,7 +246,11 @@ export class SellerService {
       after: created,
     });
 
-    return serializeSeller(created);
+    const account = await this.prisma.account.findUnique({
+      where: { id: created.accountId },
+      select: { email: true },
+    });
+    return serializeSeller(created, account?.email ?? null);
   }
 
   async updateStatus(
@@ -182,6 +265,21 @@ export class SellerService {
     });
     if (!existing || existing.deletedAt) {
       throw new AppError('SELLER_NOT_FOUND', 404, { detail: `seller ${id} not found` });
+    }
+
+    const allowedTransitions = VALID_SELLER_STATUS_TRANSITIONS[existing.status];
+    if (!allowedTransitions.includes(data.status)) {
+      throw new AppError('SELLER_STATUS_TRANSITION_INVALID', 422, {
+        detail: `cannot transition seller status from '${existing.status}' to '${data.status}'`,
+      });
+    }
+
+    const isDisciplinary =
+      data.status === 'suspended' || data.status === 'offboarding' || data.status === 'closed';
+    if (isDisciplinary && (!data.reason || data.reason.trim().length < 5)) {
+      throw new AppError('SELLER_STATUS_REASON_REQUIRED', 422, {
+        detail: 'A reason with at least 5 characters is required for this status change',
+      });
     }
 
     if (
@@ -216,6 +314,10 @@ export class SellerService {
       ...(data.reason ? { reason: data.reason } : {}),
     });
 
-    return serializeSeller(updated);
+    const account = await this.prisma.account.findUnique({
+      where: { id: updated.accountId },
+      select: { email: true },
+    });
+    return serializeSeller(updated, account?.email ?? null);
   }
 }

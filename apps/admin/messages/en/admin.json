@@ -20,10 +20,12 @@
     "nav": {
       "sections": {
         "overview": "Overview",
+        "operations": "Operations",
         "catalog": "Catalog",
         "administration": "Administration"
       },
       "dashboard": "Dashboard",
+      "sellers": "Sellers",
       "categories": "Categories",
       "brands": "Brands",
       "optionTypes": "Option types",

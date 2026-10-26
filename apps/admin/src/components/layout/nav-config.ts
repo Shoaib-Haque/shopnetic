@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   ListChecks,
   SlidersHorizontal,
+  Store,
   Tags,
   UserPlus,
   type LucideIcon,
@@ -47,6 +48,10 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     key: 'overview',
     items: [{ key: 'dashboard', path: '', icon: LayoutDashboard }],
+  },
+  {
+    key: 'operations',
+    items: [{ key: 'sellers', path: '/sellers', icon: Store }],
   },
   {
     key: 'catalog',

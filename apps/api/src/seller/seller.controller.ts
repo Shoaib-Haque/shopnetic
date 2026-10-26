@@ -47,11 +47,13 @@ export class AdminSellerController {
     @Query('status') status?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('q') q?: string,
   ): Promise<Envelope<SellerWithShop[]>> {
     const opts: Parameters<SellerService['list']>[0] = {};
     if (status) opts.status = status as SellerStatus;
     if (cursor) opts.cursor = cursor;
     if (limit) opts.limit = Number(limit);
+    if (q) opts.q = q;
 
     const { items, nextCursor } = await this.sellers.list(opts);
     const base = ok(req, items);

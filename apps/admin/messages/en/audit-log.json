@@ -21,7 +21,8 @@
         "label": "Domain",
         "all": "All",
         "catalog": "Catalog",
-        "identity": "Identity"
+        "identity": "Identity",
+        "seller": "Seller"
       },
       "targetType": "Target type",
       "targetTypeAll": "All types",
