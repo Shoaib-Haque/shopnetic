@@ -14,6 +14,14 @@ export const productDescriptionStrikeMarkSchema = z.object({
   type: z.literal('strike'),
 });
 
+export const productDescriptionSuperscriptMarkSchema = z.object({
+  type: z.literal('superscript'),
+});
+
+export const productDescriptionSubscriptMarkSchema = z.object({
+  type: z.literal('subscript'),
+});
+
 export const PRODUCT_DESCRIPTION_LINK_HREF_REGEX =
   /^(?:https?:\/\/|mailto:|tel:|\/(?![\\/\t\n\r]))/i;
 
@@ -52,6 +60,8 @@ export const productDescriptionMarkSchema = z.discriminatedUnion('type', [
   productDescriptionItalicMarkSchema,
   productDescriptionStrikeMarkSchema,
   productDescriptionLinkMarkSchema,
+  productDescriptionSuperscriptMarkSchema,
+  productDescriptionSubscriptMarkSchema,
 ]);
 export type ProductDescriptionMark = z.infer<typeof productDescriptionMarkSchema>;
 
@@ -77,6 +87,11 @@ export type ProductDescriptionInlineNode = z.infer<typeof productDescriptionInli
 
 export const productDescriptionParagraphNodeSchema = z.object({
   type: z.literal('paragraph'),
+  attrs: z
+    .object({
+      textAlign: z.enum(['left', 'center', 'right', 'justify']).nullable().optional(),
+    })
+    .optional(),
   content: z.array(productDescriptionInlineNodeSchema).optional(),
 });
 
@@ -84,6 +99,7 @@ export const productDescriptionHeadingNodeSchema = z.object({
   type: z.literal('heading'),
   attrs: z.object({
     level: z.union([z.literal(2), z.literal(3)]),
+    textAlign: z.enum(['left', 'center', 'right', 'justify']).nullable().optional(),
   }),
   content: z.array(productDescriptionInlineNodeSchema).optional(),
 });
@@ -91,6 +107,15 @@ export const productDescriptionHeadingNodeSchema = z.object({
 export const productDescriptionHorizontalRuleNodeSchema = z.object({
   type: z.literal('horizontalRule'),
 });
+
+export const productDescriptionTableCellAttrsSchema = z
+  .object({
+    colspan: z.number().int().positive().optional(),
+    rowspan: z.number().int().positive().optional(),
+    colwidth: z.array(z.number().positive()).nullable().optional(),
+    align: z.enum(['left', 'center', 'right']).nullable().optional(),
+  })
+  .optional();
 
 export type ProductDescriptionNode =
   | z.infer<typeof productDescriptionParagraphNodeSchema>
@@ -102,6 +127,32 @@ export type ProductDescriptionNode =
   | {
       type: 'orderedList';
       attrs?: { start?: number | undefined } | undefined;
+      content?: ProductDescriptionNode[] | undefined;
+    }
+  | { type: 'table'; content?: ProductDescriptionNode[] | undefined }
+  | { type: 'tableRow'; content?: ProductDescriptionNode[] | undefined }
+  | {
+      type: 'tableHeader';
+      attrs?:
+        | {
+            colspan?: number | undefined;
+            rowspan?: number | undefined;
+            colwidth?: number[] | null | undefined;
+            align?: 'left' | 'center' | 'right' | null | undefined;
+          }
+        | undefined;
+      content?: ProductDescriptionNode[] | undefined;
+    }
+  | {
+      type: 'tableCell';
+      attrs?:
+        | {
+            colspan?: number | undefined;
+            rowspan?: number | undefined;
+            colwidth?: number[] | null | undefined;
+            align?: 'left' | 'center' | 'right' | null | undefined;
+          }
+        | undefined;
       content?: ProductDescriptionNode[] | undefined;
     };
 
@@ -125,6 +176,24 @@ export const productDescriptionNodeSchema: z.ZodType<ProductDescriptionNode> = z
     z.object({
       type: z.literal('orderedList'),
       attrs: z.object({ start: z.number().int().optional() }).optional(),
+      content: z.array(productDescriptionNodeSchema).optional(),
+    }),
+    z.object({
+      type: z.literal('table'),
+      content: z.array(productDescriptionNodeSchema).optional(),
+    }),
+    z.object({
+      type: z.literal('tableRow'),
+      content: z.array(productDescriptionNodeSchema).optional(),
+    }),
+    z.object({
+      type: z.literal('tableHeader'),
+      attrs: productDescriptionTableCellAttrsSchema,
+      content: z.array(productDescriptionNodeSchema).optional(),
+    }),
+    z.object({
+      type: z.literal('tableCell'),
+      attrs: productDescriptionTableCellAttrsSchema,
       content: z.array(productDescriptionNodeSchema).optional(),
     }),
   ]),
@@ -222,8 +291,16 @@ export function docToPlainText(doc: ProductDescriptionDoc | null | undefined): s
       for (const child of node.content) {
         walk(child);
       }
-      if (node.type === 'paragraph' || node.type === 'heading' || node.type === 'listItem') {
+      if (
+        node.type === 'paragraph' ||
+        node.type === 'heading' ||
+        node.type === 'listItem' ||
+        node.type === 'tableRow' ||
+        node.type === 'table'
+      ) {
         chunks.push('\n');
+      } else if (node.type === 'tableCell' || node.type === 'tableHeader') {
+        chunks.push('\t');
       }
     }
   }
@@ -235,12 +312,30 @@ export function docToPlainText(doc: ProductDescriptionDoc | null | undefined): s
   return chunks.join('').trim();
 }
 
+function hasMeaningfulContent(
+  node: ProductDescriptionNode | ProductDescriptionInlineNode,
+): boolean {
+  if (node.type === 'table') return true;
+  if ('text' in node && typeof node.text === 'string' && node.text.trim().length > 0) {
+    return true;
+  }
+  if ('content' in node && Array.isArray(node.content)) {
+    for (const child of node.content) {
+      if (hasMeaningfulContent(child)) return true;
+    }
+  }
+  return false;
+}
+
 /**
- * Checks whether a TipTap document is empty (has no meaningful text).
+ * Checks whether a TipTap document is empty (has no meaningful text or structured elements like tables at any nesting level).
  */
 export function isDocEmpty(doc: ProductDescriptionDoc | null | undefined): boolean {
-  if (!doc) return true;
-  return docToPlainText(doc).length === 0;
+  if (!doc || !Array.isArray(doc.content) || doc.content.length === 0) return true;
+  for (const node of doc.content) {
+    if (hasMeaningfulContent(node)) return false;
+  }
+  return true;
 }
 
 // ── Localized Product Description Schema ─────────────────────────────────────

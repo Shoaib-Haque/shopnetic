@@ -659,6 +659,18 @@ describe('ProductMediaDialog', () => {
     expect(videoEl).toHaveAttribute('poster', 'products/tee-promo-poster.jpg');
     expect(videoEl).toHaveAttribute('controls');
     expect(videoEl).toHaveAttribute('autoplay');
+    expect(videoEl.muted).toBe(true);
+
+    // Speed selector buttons exist and clicking one updates playbackRate
+    const speedBtn = screen.getByRole('button', { name: '1.5x' });
+    expect(speedBtn).toBeInTheDocument();
+    fireEvent.click(speedBtn);
+    expect(videoEl.playbackRate).toBe(1.5);
+
+    // Open original link exists
+    const openOrigLink = screen.getByRole('link', { name: /Open original/i });
+    expect(openOrigLink).toHaveAttribute('href', 'products/tee-promo.mp4');
+    expect(openOrigLink).toHaveAttribute('target', '_blank');
 
     // Close preview modal via Close button
     const closeBtn = screen
@@ -714,5 +726,257 @@ describe('ProductMediaDialog', () => {
     expect(within(errContainer).getByText(/Unable to load video preview/i)).toBeInTheDocument();
     expect(within(errContainer).getByText('products/invalid-video.mp4')).toBeInTheDocument();
     expect(screen.queryByTestId('video-preview-player')).not.toBeInTheDocument();
+  });
+
+  it('navigates between multiple video assets using next/prev buttons', async () => {
+    const video1: MediaAsset = {
+      id: 'media_v1',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/video-1.mp4',
+      posterKey: 'products/poster-1.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 30,
+      blurhash: null,
+      alt: { en: 'First Video Reel' },
+      position: 0,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const video2: MediaAsset = {
+      id: 'media_v2',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/video-2.mp4',
+      posterKey: 'products/poster-2.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 60,
+      blurhash: null,
+      alt: { en: 'Second Video Reel' },
+      position: 1,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListProductMedia.mockResolvedValue([video1, video2]);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const playButtons = screen.getAllByRole('button', { name: /Play video preview/i });
+    expect(playButtons).toHaveLength(2);
+
+    // Play first video
+    fireEvent.click(playButtons[0]!);
+
+    expect(await screen.findByText('First Video Reel')).toBeInTheDocument();
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+
+    const nextBtn = screen.getByRole('button', { name: /Next video/i });
+    expect(nextBtn).not.toBeDisabled();
+
+    // Click Next
+    fireEvent.click(nextBtn);
+
+    expect(await screen.findByText('Second Video Reel')).toBeInTheDocument();
+    expect(screen.getByText('2 / 2')).toBeInTheDocument();
+
+    const prevBtn = screen.getByRole('button', { name: /Previous video/i });
+    expect(prevBtn).not.toBeDisabled();
+
+    // Click Prev
+    fireEvent.click(prevBtn);
+
+    expect(await screen.findByText('First Video Reel')).toBeInTheDocument();
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+  });
+
+  it('triggers fullscreen request on fullscreen button click', async () => {
+    const videoAsset: MediaAsset = {
+      id: 'media_v1',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/video-1.mp4',
+      posterKey: 'products/poster-1.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 30,
+      blurhash: null,
+      alt: { en: 'Product Demo Reel' },
+      position: 0,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListProductMedia.mockResolvedValue([videoAsset]);
+
+    const requestFullscreenMock = vi.fn().mockResolvedValue(undefined);
+    HTMLVideoElement.prototype.requestFullscreen = requestFullscreenMock;
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const playBtn = screen.getByRole('button', { name: /Play video preview/i });
+    fireEvent.click(playBtn);
+
+    const fullscreenBtn = await screen.findByRole('button', { name: /Fullscreen/i });
+    expect(fullscreenBtn).toBeInTheDocument();
+
+    fireEvent.click(fullscreenBtn);
+    expect(requestFullscreenMock).toHaveBeenCalled();
+  });
+
+  it('transitions from video preview to edit details modal on clicking Edit details', async () => {
+    const videoAsset: MediaAsset = {
+      id: 'media_v1',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/video-1.mp4',
+      posterKey: 'products/poster-1.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 30,
+      blurhash: null,
+      alt: { en: 'Product Demo Reel' },
+      position: 0,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListProductMedia.mockResolvedValue([videoAsset]);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const playBtn = screen.getByRole('button', { name: /Play video preview/i });
+    fireEvent.click(playBtn);
+
+    const editDetailsBtn = await screen.findByRole('button', { name: /Edit details/i });
+    expect(editDetailsBtn).toBeInTheDocument();
+
+    fireEvent.click(editDetailsBtn);
+
+    // Should transition to Edit Media Asset modal
+    expect(await screen.findByRole('heading', { name: /Edit Media Asset/i })).toBeInTheDocument();
+  });
+
+  it('transitions from video preview to edit details in MediaFormModal preserving asset details', async () => {
+    const videoAsset: MediaAsset = {
+      id: 'media_v1',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/video-1.mp4',
+      posterKey: 'products/video-1-poster.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 30,
+      blurhash: null,
+      alt: { en: 'Product Demo Reel' },
+      position: 0,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListProductMedia.mockResolvedValue([videoAsset]);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const playBtn = screen.getByRole('button', { name: /Play video preview/i });
+    fireEvent.click(playBtn);
+
+    const editDetailsBtn = await screen.findByRole('button', { name: /Edit details/i });
+    fireEvent.click(editDetailsBtn);
+
+    // MediaFormModal should now be open with existing posterKey preserved
+    const posterInput = (await screen.findByLabelText(
+      /Video Poster Thumbnail URL/i,
+    )) as HTMLInputElement;
+    expect(posterInput.value).toBe('products/video-1-poster.jpg');
+  });
+
+  it('resets video element playbackRate to 1 on asset change', async () => {
+    const videoAsset1: MediaAsset = {
+      id: 'media_v1',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/video-1.mp4',
+      posterKey: 'products/poster-1.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 30,
+      blurhash: null,
+      alt: { en: 'Video 1' },
+      position: 0,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const videoAsset2: MediaAsset = {
+      id: 'media_v2',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/video-2.mp4',
+      posterKey: 'products/poster-2.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 45,
+      blurhash: null,
+      alt: { en: 'Video 2' },
+      position: 1,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListProductMedia.mockResolvedValue([videoAsset1, videoAsset2]);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const playBtns = screen.getAllByRole('button', { name: /Play video preview/i });
+    fireEvent.click(playBtns[0]!);
+
+    const videoEl = (await screen.findByTestId('video-preview-player')) as HTMLVideoElement;
+    expect(videoEl.playbackRate).toBe(1);
+
+    // Change speed to 2x
+    const speed2xBtn = screen.getByRole('button', { name: '2x' });
+    fireEvent.click(speed2xBtn);
+    expect(videoEl.playbackRate).toBe(2);
+
+    // Navigate to next video asset
+    const nextBtn = screen.getByRole('button', { name: /Next video/i });
+    fireEvent.click(nextBtn);
+
+    // Playback rate on DOM element and state should reset to 1
+    expect(videoEl.playbackRate).toBe(1);
+    expect(screen.getByRole('button', { name: '1x' })).toHaveClass('bg-primary');
   });
 });

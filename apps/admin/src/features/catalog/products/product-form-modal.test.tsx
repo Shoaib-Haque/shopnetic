@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { plainTextToDoc, type Brand, type Category, type Product } from '@shopnetic/contracts';
@@ -759,6 +760,108 @@ describe('ProductFormModal', () => {
       fireEvent.click(submitBtn);
 
       expect(await screen.findByText('Please check the highlighted fields.')).toBeInTheDocument();
+    });
+  });
+
+  describe('Draft recovery lifecycle', () => {
+    it('clears create-mode draft from sessionStorage when modal is closed or cancelled', () => {
+      const draftDoc = plainTextToDoc('Unsaved Product A');
+      sessionStorage.setItem('shopnetic:draft:product-desc:create', JSON.stringify(draftDoc));
+
+      const onOpenChange = vi.fn();
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={onOpenChange}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      const cancelBtn = screen
+        .getAllByRole('button', { name: 'Cancel' })
+        .find((b) => b.textContent === 'Cancel')!;
+      fireEvent.click(cancelBtn);
+
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(sessionStorage.getItem('shopnetic:draft:product-desc:create')).toBeNull();
+    });
+
+    it('clears draft from sessionStorage upon successful product creation', async () => {
+      const draftDoc = plainTextToDoc('Saved Product');
+      sessionStorage.setItem('shopnetic:draft:product-desc:create', JSON.stringify(draftDoc));
+
+      const newProduct = sampleProduct({ id: 'prod-new-123' });
+      mockedCreateProduct.mockResolvedValueOnce(newProduct);
+
+      const onSaved = vi.fn();
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={onSaved}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'New Test Product' } });
+      const submitBtn = screen.getByRole('button', { name: 'Create' });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(mockedCreateProduct).toHaveBeenCalled();
+        expect(onSaved).toHaveBeenCalledWith('created', newProduct);
+      });
+
+      expect(sessionStorage.getItem('shopnetic:draft:product-desc:create')).toBeNull();
+    });
+
+    it('clears create-mode draft from sessionStorage when modal unmounts (in-app route navigation)', async () => {
+      const draftDoc = plainTextToDoc('Unsaved Product Navigated Away');
+      sessionStorage.setItem('shopnetic:draft:product-desc:create', JSON.stringify(draftDoc));
+
+      const { unmount } = renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      // In-app route navigation tears down the modal component
+      unmount();
+
+      await waitFor(() => {
+        expect(sessionStorage.getItem('shopnetic:draft:product-desc:create')).toBeNull();
+      });
+    });
+
+    it('preserves create-mode draft on initial mount even under React.StrictMode', () => {
+      const draftDoc = plainTextToDoc('Existing Abandoned Draft');
+      sessionStorage.setItem('shopnetic:draft:product-desc:create', JSON.stringify(draftDoc));
+
+      renderAdmin(
+        <StrictMode>
+          <ProductFormModal
+            open
+            onOpenChange={vi.fn()}
+            mode="create"
+            categories={mockCategories}
+            brands={mockBrands}
+            onSaved={vi.fn()}
+          />
+        </StrictMode>,
+      );
+
+      // Under StrictMode (mount -> cleanup -> mount), the draft must NOT be wiped
+      expect(sessionStorage.getItem('shopnetic:draft:product-desc:create')).not.toBeNull();
     });
   });
 });

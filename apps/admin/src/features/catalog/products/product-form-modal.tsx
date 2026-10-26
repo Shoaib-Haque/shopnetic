@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -230,6 +230,11 @@ export function ProductFormModal({
           currency: values.currency || (values.basePrice ? 'USD' : null),
           proposedBySellerId: null,
         });
+        try {
+          sessionStorage.removeItem('shopnetic:draft:product-desc:create');
+        } catch {
+          // Ignore
+        }
         onOpenChange(false);
         onSaved('created', p);
       } else if (product) {
@@ -256,6 +261,11 @@ export function ProductFormModal({
           expectedUpdatedAt: product.updatedAt,
           ...(spec ? { spec } : {}),
         });
+        try {
+          sessionStorage.removeItem(`shopnetic:draft:product-desc:${product.id}`);
+        } catch {
+          // Ignore
+        }
         onOpenChange(false);
         onSaved('updated', p);
       }
@@ -369,11 +379,50 @@ export function ProductFormModal({
         ? t('products.form.create')
         : t('products.form.save');
 
+  // Clean up create-mode draft if user navigates away or modal unmounts,
+  // resilient against React StrictMode's dev-only mount -> cleanup -> remount simulation.
+  const isMountedRef = useRef(false);
+  const purgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    if (purgeTimerRef.current) {
+      clearTimeout(purgeTimerRef.current);
+      purgeTimerRef.current = null;
+    }
+
+    return () => {
+      isMountedRef.current = false;
+      if (mode === 'create') {
+        purgeTimerRef.current = setTimeout(() => {
+          if (!isMountedRef.current) {
+            try {
+              sessionStorage.removeItem('shopnetic:draft:product-desc:create');
+            } catch {
+              // Ignore
+            }
+          }
+        }, 50);
+      }
+    };
+  }, [mode]);
+
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen && mode === 'create') {
+      try {
+        sessionStorage.removeItem('shopnetic:draft:product-desc:create');
+      } catch {
+        // Ignore
+      }
+    }
+    onOpenChange(isOpen);
+  };
+
   return (
     <>
       <FormModal
         open={open}
-        onOpenChange={onOpenChange}
+        onOpenChange={handleOpenChange}
         title={modalTitle}
         onSubmit={handleSubmit(onSubmit)}
         submitting={isSubmitting || submittingAction !== null}
@@ -557,6 +606,7 @@ export function ProductFormModal({
             render={({ field }) => (
               <RichTextEditor
                 id="product-description"
+                draftKey={`shopnetic:draft:product-desc:${product?.id ?? 'create'}`}
                 value={field.value}
                 onChange={field.onChange}
                 disabled={isFieldsDisabled}

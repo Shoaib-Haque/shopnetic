@@ -12,8 +12,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit2,
+  ExternalLink,
   Film,
   Image as ImageIcon,
+  Maximize,
+  Pencil,
   Play,
   Plus,
   Star,
@@ -32,6 +35,7 @@ import {
 } from '@shopnetic/contracts';
 import {
   Button,
+  cn,
   Field,
   Input,
   Modal,
@@ -157,7 +161,7 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
       reset({
         kind: asset.kind,
         fileKey: asset.fileKey,
-        posterKey: asset.posterKey ?? '',
+        posterKey: asset.posterKey || '',
         alt: asset.alt?.en ?? '',
         durationS: asset.durationS != null ? String(asset.durationS) : '',
         status: asset.status,
@@ -443,17 +447,87 @@ interface VideoPreviewModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   asset: MediaAsset | null;
+  videoAssets?: MediaAsset[];
+  onSelectAsset?: (asset: MediaAsset) => void;
+  onEditAsset?: (asset: MediaAsset) => void;
 }
 
-function VideoPreviewModal({ open, onOpenChange, asset }: VideoPreviewModalProps) {
+function VideoPreviewModal({
+  open,
+  onOpenChange,
+  asset,
+  videoAssets = [],
+  onSelectAsset,
+  onEditAsset,
+}: VideoPreviewModalProps) {
   const t = useTranslations('catalog');
   const [loadError, setLoadError] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState<number>(1);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (open) {
       setLoadError(false);
+      setPlaybackRate(1);
+      if (videoRef.current) {
+        videoRef.current.playbackRate = 1;
+      }
     }
   }, [open, asset?.id]);
+
+  const currentIndex = useMemo(() => {
+    if (!asset || videoAssets.length === 0) return -1;
+    return videoAssets.findIndex((a) => a.id === asset.id);
+  }, [asset, videoAssets]);
+
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < videoAssets.length - 1;
+
+  const handlePrev = useCallback(() => {
+    if (hasPrev && onSelectAsset) {
+      onSelectAsset(videoAssets[currentIndex - 1]!);
+    }
+  }, [hasPrev, onSelectAsset, videoAssets, currentIndex]);
+
+  const handleNext = useCallback(() => {
+    if (hasNext && onSelectAsset) {
+      onSelectAsset(videoAssets[currentIndex + 1]!);
+    }
+  }, [hasNext, onSelectAsset, videoAssets, currentIndex]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handlePrev();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNext();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, handlePrev, handleNext]);
+
+  const handleSetSpeed = (speed: number) => {
+    setPlaybackRate(speed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+    }
+  };
+
+  const handleFullscreen = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.requestFullscreen) {
+      void video.requestFullscreen();
+    } else if ('webkitRequestFullscreen' in video) {
+      void (
+        video as HTMLVideoElement & { webkitRequestFullscreen?: () => Promise<void> }
+      ).webkitRequestFullscreen?.();
+    }
+  };
 
   if (!asset) return null;
 
@@ -462,12 +536,86 @@ function VideoPreviewModal({ open, onOpenChange, asset }: VideoPreviewModalProps
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
-        <ModalHeader className="p-4 border-b border-border shrink-0">
-          <ModalTitle className="truncate pr-8">{title}</ModalTitle>
-          <ModalDescription className="text-xs font-mono text-muted-foreground truncate">
-            {asset.durationS != null ? `${asset.durationS}s • ` : ''}
-            {asset.fileKey}
-          </ModalDescription>
+        <ModalHeader className="p-4 border-b border-border shrink-0 flex flex-row items-center justify-between">
+          <div className="flex flex-col min-w-0 pr-4">
+            <ModalTitle className="truncate pr-4">{title}</ModalTitle>
+            <ModalDescription className="text-xs font-mono text-muted-foreground truncate">
+              {asset.durationS != null ? `${asset.durationS}s • ` : ''}
+              {asset.fileKey}
+            </ModalDescription>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {videoAssets.length > 1 && currentIndex >= 0 && (
+              <div className="flex items-center gap-1 bg-muted/60 px-2 py-0.5 rounded text-xs text-muted-foreground">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!hasPrev}
+                  onClick={handlePrev}
+                  className="h-6 w-6 p-0"
+                  aria-label={t('products.media.prevAsset')}
+                  title={t('products.media.prevAsset')}
+                >
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <span className="font-mono text-[11px] px-1">
+                  {currentIndex + 1} / {videoAssets.length}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!hasNext}
+                  onClick={handleNext}
+                  className="h-6 w-6 p-0"
+                  aria-label={t('products.media.nextAsset')}
+                  title={t('products.media.nextAsset')}
+                >
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleFullscreen}
+              className="h-8 px-2 text-xs"
+              title={t('products.media.fullscreen')}
+              aria-label={t('products.media.fullscreen')}
+            >
+              <Maximize className="size-3.5" />
+              <span className="hidden sm:inline">{t('products.media.fullscreen')}</span>
+            </Button>
+            {onEditAsset && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false);
+                  onEditAsset(asset);
+                }}
+                className="h-8 px-2 text-xs"
+                title={t('products.media.editAsset')}
+                aria-label={t('products.media.editAsset')}
+              >
+                <Pencil className="size-3.5" />
+                <span className="hidden sm:inline">{t('products.media.editAsset')}</span>
+              </Button>
+            )}
+            <a
+              href={asset.fileKey}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium hover:bg-muted text-foreground transition-colors"
+              title={t('products.media.openOriginal')}
+            >
+              <ExternalLink className="size-3.5" />
+              <span className="hidden sm:inline">{t('products.media.openOriginal')}</span>
+            </a>
+          </div>
         </ModalHeader>
 
         <ModalBody className="p-0 bg-black flex items-center justify-center min-h-[300px] flex-1 overflow-hidden relative">
@@ -482,18 +630,44 @@ function VideoPreviewModal({ open, onOpenChange, asset }: VideoPreviewModalProps
             </div>
           ) : (
             <video
+              ref={videoRef}
               data-testid="video-preview-player"
               src={asset.fileKey}
               poster={asset.posterKey || undefined}
               controls
               autoPlay
+              muted
               className="max-h-[70vh] w-full"
               onError={() => setLoadError(true)}
+              onRateChange={(e) => setPlaybackRate(e.currentTarget.playbackRate)}
             />
           )}
         </ModalBody>
 
-        <ModalFooter className="p-3 border-t border-border flex justify-end shrink-0 bg-background">
+        <ModalFooter className="p-3 border-t border-border flex items-center justify-between shrink-0 bg-background">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground mr-1">
+                {t('products.media.speedLabel')}:
+              </span>
+              {[0.5, 1, 1.25, 1.5, 2].map((speed) => (
+                <button
+                  key={speed}
+                  type="button"
+                  onClick={() => handleSetSpeed(speed)}
+                  className={cn(
+                    'px-2 py-0.5 rounded text-xs font-mono font-medium transition-colors',
+                    playbackRate === speed
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted hover:bg-muted/80 text-foreground',
+                  )}
+                >
+                  {speed}x
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             {t('products.media.close')}
           </Button>
@@ -942,6 +1116,9 @@ export function ProductMediaDialog({
                                 src={asset.posterKey}
                                 alt={asset.alt?.en ?? 'Video poster thumbnail'}
                                 className="size-full object-cover opacity-80 transition-opacity group-hover/video:opacity-90"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
                               />
                             ) : null}
                             <div className="absolute inset-0 flex items-center justify-center">
@@ -1213,7 +1390,12 @@ export function ProductMediaDialog({
       {product && (
         <MediaFormModal
           open={formModalState.open}
-          onOpenChange={(isOpen) => setFormModalState((prev) => ({ ...prev, open: isOpen }))}
+          onOpenChange={(isOpen) =>
+            setFormModalState((prev) => ({
+              ...prev,
+              open: isOpen,
+            }))
+          }
           productId={product.id}
           asset={formModalState.asset}
           onSaved={() => {
@@ -1238,6 +1420,9 @@ export function ProductMediaDialog({
           if (!isOpen) setPreviewVideoAsset(null);
         }}
         asset={previewVideoAsset}
+        videoAssets={mediaAssets.filter((a) => a.kind === 'video')}
+        onSelectAsset={(a) => setPreviewVideoAsset(a)}
+        onEditAsset={(a) => setFormModalState({ open: true, asset: a })}
       />
     </>
   );

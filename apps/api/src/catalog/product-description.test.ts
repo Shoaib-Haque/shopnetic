@@ -78,7 +78,7 @@ describe('Product Description Schema (TipTap ProseMirror AST)', () => {
     expect(parsed).toEqual(validDoc);
   });
 
-  it('rejects disallowed node types like raw html, scripts, tables, or images in v1', () => {
+  it('rejects disallowed node types like raw html, scripts, or images', () => {
     const docWithImage = {
       type: 'doc',
       content: [
@@ -100,17 +100,85 @@ describe('Product Description Schema (TipTap ProseMirror AST)', () => {
       ],
     };
     expect(() => productDescriptionDocSchema.parse(docWithScript)).toThrow();
+  });
 
+  it('accepts tables with rows, headers, and cells and formats them cleanly in docToPlainText', () => {
     const docWithTable = {
       type: 'doc',
       content: [
         {
           type: 'table',
-          content: [],
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableHeader',
+                  attrs: { colspan: 1, rowspan: 1 },
+                  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Size' }] }],
+                },
+                {
+                  type: 'tableHeader',
+                  attrs: { colspan: 1, rowspan: 1 },
+                  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Chest (in)' }] }],
+                },
+              ],
+            },
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableCell',
+                  attrs: { colspan: 1, rowspan: 1 },
+                  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'M' }] }],
+                },
+                {
+                  type: 'tableCell',
+                  attrs: { colspan: 1, rowspan: 1 },
+                  content: [{ type: 'paragraph', content: [{ type: 'text', text: '38-40' }] }],
+                },
+              ],
+            },
+          ],
         },
       ],
     };
-    expect(() => productDescriptionDocSchema.parse(docWithTable)).toThrow();
+
+    const parsed = productDescriptionDocSchema.parse(docWithTable);
+    expect(parsed).toEqual(docWithTable);
+
+    const plain = docToPlainText(parsed as ProductDescriptionDoc);
+    expect(plain).toContain('Size');
+    expect(plain).toContain('Chest (in)');
+    expect(plain).toContain('M');
+    expect(plain).toContain('38-40');
+  });
+
+  it('accepts text alignment attributes and superscript/subscript marks', () => {
+    const docWithFormatting = {
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2, textAlign: 'center' },
+          content: [{ type: 'text', text: 'Centered Heading' }],
+        },
+        {
+          type: 'paragraph',
+          attrs: { textAlign: 'right' },
+          content: [
+            { type: 'text', text: 'Area: 100 m' },
+            { type: 'text', text: '2', marks: [{ type: 'superscript' }] },
+            { type: 'text', text: ', Formula: H' },
+            { type: 'text', text: '2', marks: [{ type: 'subscript' }] },
+            { type: 'text', text: 'O' },
+          ],
+        },
+      ],
+    };
+
+    const parsed = productDescriptionDocSchema.parse(docWithFormatting);
+    expect(parsed).toEqual(docWithFormatting);
   });
 
   it('rejects insecure link protocols like javascript:, data:, and protocol-relative //evil.com', () => {
@@ -294,5 +362,99 @@ describe('Product Description Schema (TipTap ProseMirror AST)', () => {
 
     expect(isDocEmpty(doc)).toBe(false);
     expect(docToPlainText(doc)).toBe('Features\nLightweight fabric.');
+
+    // Nested table is recognized as non-empty even without text
+    const nestedTableDoc: ProductDescriptionDoc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'blockquote',
+          content: [
+            {
+              type: 'table',
+              content: [
+                {
+                  type: 'tableRow',
+                  content: [
+                    {
+                      type: 'tableCell',
+                      attrs: { align: 'center', colspan: 1, rowspan: 1 },
+                      content: [{ type: 'paragraph' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(isDocEmpty(nestedTableDoc)).toBe(false);
+    expect(productDescriptionDocSchema.safeParse(nestedTableDoc).success).toBe(true);
+
+    const invalidAlignCellDoc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'table',
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableCell',
+                  attrs: { align: 'justify' },
+                  content: [{ type: 'paragraph' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(productDescriptionDocSchema.safeParse(invalidAlignCellDoc).success).toBe(false);
+
+    // Verify valid cell alignments ('left' | 'center' | 'right') are accepted
+    for (const validAlign of ['left', 'center', 'right'] as const) {
+      const validAlignCellDoc = {
+        type: 'doc',
+        content: [
+          {
+            type: 'table',
+            content: [
+              {
+                type: 'tableRow',
+                content: [
+                  {
+                    type: 'tableCell',
+                    attrs: { align: validAlign },
+                    content: [{ type: 'paragraph' }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      expect(productDescriptionDocSchema.safeParse(validAlignCellDoc).success).toBe(true);
+    }
+
+    // Verify textAlign: 'justify' remains valid on paragraph and heading
+    const validJustifyDoc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2, textAlign: 'justify' },
+          content: [{ type: 'text', text: 'Justified Heading' }],
+        },
+        {
+          type: 'paragraph',
+          attrs: { textAlign: 'justify' },
+          content: [{ type: 'text', text: 'Justified paragraph text.' }],
+        },
+      ],
+    };
+    expect(productDescriptionDocSchema.safeParse(validJustifyDoc).success).toBe(true);
   });
 });

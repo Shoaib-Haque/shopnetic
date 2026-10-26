@@ -17,6 +17,12 @@ installIntersectionObserverMock();
 // than once could hit this the same way.
 afterEach(() => {
   toast.dismiss();
+  try {
+    sessionStorage.clear();
+    localStorage.clear();
+  } catch {
+    // Ignore in non-browser test contexts
+  }
 });
 
 // jsdom doesn't implement matchMedia. category-list.tsx calls it directly
@@ -69,4 +75,31 @@ if (!window.ResizeObserver) {
     unobserve(): void {}
     disconnect(): void {}
   };
+}
+
+// jsdom doesn't implement Range.prototype.getClientRects or getBoundingClientRect.
+// ProseMirror/TipTap calls coordsAtPos when calculating selection coordinates on focus/insert.
+const emptyDomRect: DOMRect = {
+  top: 0,
+  bottom: 0,
+  left: 0,
+  right: 0,
+  width: 0,
+  height: 0,
+  x: 0,
+  y: 0,
+  toJSON: () => ({}),
+};
+
+const emptyDomRectList: DOMRectList = {
+  length: 0,
+  item: () => null,
+  [Symbol.iterator]: () => [][Symbol.iterator](),
+};
+
+if (!Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = () => emptyDomRectList;
+}
+if (!Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = () => emptyDomRect;
 }
