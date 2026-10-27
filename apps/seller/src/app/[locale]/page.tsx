@@ -1,16 +1,33 @@
-import { setRequestLocale, getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
+import { setRequestLocale } from 'next-intl/server';
+import { getSellerSession } from '@/features/seller-api/proxy-with-bearer';
 
-type Props = { params: Promise<{ locale: string }> };
+interface SellerPageProps {
+  params: Promise<{ locale: string }>;
+}
 
-export default async function SellerHome({ params }: Props) {
+export default async function SellerRootPage({ params }: SellerPageProps) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const t = await getTranslations('common');
 
-  return (
-    <main className="mx-auto flex min-h-dvh max-w-3xl flex-col items-start gap-4 px-4 py-10">
-      <h1 className="text-2xl font-semibold">{t('appName')}</h1>
-      <p className="text-muted-foreground">{t('sellerCenter')}</p>
-    </main>
-  );
+  const { actor, seller } = await getSellerSession();
+
+  if (!actor) {
+    redirect(`/${locale}/login`);
+  }
+
+  if (!seller) {
+    redirect(`/${locale}/onboarding`);
+  }
+
+  if (seller.status === 'approved') {
+    redirect(`/${locale}/dashboard`);
+  }
+
+  if (seller.status === 'draft') {
+    redirect(`/${locale}/onboarding`);
+  }
+
+  // in_review, closed, suspended, offboarding
+  redirect(`/${locale}/onboarding/status`);
 }

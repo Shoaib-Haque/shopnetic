@@ -276,12 +276,24 @@ importers:
 
   apps/seller:
     dependencies:
+      '@hookform/resolvers':
+        specifier: 3.10.0
+        version: 3.10.0(react-hook-form@7.54.2(react@19.2.8))
+      '@shopnetic/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@shopnetic/http-client':
+        specifier: workspace:*
+        version: link:../../packages/http-client
       '@shopnetic/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
       '@shopnetic/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      lucide-react:
+        specifier: 0.469.0
+        version: 0.469.0(react@19.2.8)
       next:
         specifier: 16.3.3
         version: 16.3.3(@types/node@22.10.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -294,10 +306,25 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
+      react-hook-form:
+        specifier: 7.54.2
+        version: 7.54.2(react@19.2.8)
+      server-only:
+        specifier: 0.0.1
+        version: 0.0.1
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
     devDependencies:
       '@shopnetic/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@testing-library/jest-dom':
+        specifier: 7.0.1
+        version: 7.0.1(@testing-library/dom@10.4.1)(vitest@2.1.8(@types/node@22.10.5)(jsdom@30.0.1))
+      '@testing-library/react':
+        specifier: 16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.0.3(@types/react@19.0.7))(@types/react@19.0.7)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@types/node':
         specifier: 22.10.5
         version: 22.10.5
@@ -313,6 +340,9 @@ importers:
       eslint:
         specifier: 9.18.0
         version: 9.18.0(jiti@2.6.1)
+      jsdom:
+        specifier: 30.0.1
+        version: 30.0.1
       postcss:
         specifier: 8.4.49
         version: 8.4.49
@@ -322,6 +352,9 @@ importers:
       typescript:
         specifier: 5.7.3
         version: 5.7.3
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@22.10.5)(jsdom@30.0.1)
 
   apps/storefront:
     dependencies:

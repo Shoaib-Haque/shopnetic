@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
   // localhost, so opening the admin over the LAN (phone, another machine) loads
   // the HTML shell but none of the JS. List the hosts allowed to reach the dev
   // server. No effect on `next build` / `next start`.
-  allowedDevOrigins: ['192.168.68.*'],
+  allowedDevOrigins: ['192.168.68.*', '192.168.*.*'],
 };
 
 export default withNextIntl(nextConfig);

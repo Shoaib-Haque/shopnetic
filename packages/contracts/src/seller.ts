@@ -16,12 +16,19 @@ export type SellerStatus = z.infer<typeof sellerStatusSchema>;
 
 export const VALID_SELLER_STATUS_TRANSITIONS: Record<SellerStatus, readonly SellerStatus[]> = {
   draft: ['in_review'],
-  in_review: ['approved', 'closed'],
+  in_review: ['approved', 'draft', 'closed'],
   approved: ['suspended', 'offboarding'],
   suspended: ['approved', 'offboarding'],
   offboarding: ['closed'],
   closed: [],
 } as const;
+
+export const REASON_REQUIRED_SELLER_STATUSES: readonly SellerStatus[] = [
+  'draft',
+  'suspended',
+  'offboarding',
+  'closed',
+] as const;
 
 export const sellerSchema = z.object({
   id: z.string().uuid(),
@@ -31,6 +38,7 @@ export const sellerSchema = z.object({
   type: sellerTypeSchema,
   country: z.string().length(2).toUpperCase(),
   status: sellerStatusSchema,
+  lastReviewNote: z.string().nullable().optional(),
   commissionOverrideBps: z.number().int().min(0).max(10000).nullable(),
   reserveBps: z.number().int().min(0).max(10000).nullable(),
   createdAt: z.string().datetime(),
@@ -73,12 +81,6 @@ export const createSellerRequestSchema = z.object({
 });
 export type CreateSellerRequest = z.infer<typeof createSellerRequestSchema>;
 
-export const DISCIPLINARY_SELLER_STATUSES: readonly SellerStatus[] = [
-  'suspended',
-  'offboarding',
-  'closed',
-] as const;
-
 export const updateSellerStatusRequestSchema = z
   .object({
     status: sellerStatusSchema,
@@ -87,7 +89,7 @@ export const updateSellerStatusRequestSchema = z
   })
   .superRefine((data, ctx) => {
     if (
-      (DISCIPLINARY_SELLER_STATUSES as readonly string[]).includes(data.status) &&
+      (REASON_REQUIRED_SELLER_STATUSES as readonly string[]).includes(data.status) &&
       (!data.reason || data.reason.trim().length < 5)
     ) {
       ctx.addIssue({
@@ -98,3 +100,19 @@ export const updateSellerStatusRequestSchema = z
     }
   });
 export type UpdateSellerStatusRequest = z.infer<typeof updateSellerStatusRequestSchema>;
+
+export const checkShopSlugResponseSchema = z.object({
+  slug: z.string(),
+  available: z.boolean(),
+});
+export type CheckShopSlugResponse = z.infer<typeof checkShopSlugResponseSchema>;
+
+export const updateMyShopRequestSchema = z.object({
+  displayName: z.string().trim().min(1).max(100).optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+  logoUrl: z.string().url().nullable().optional(),
+  bannerUrl: z.string().url().nullable().optional(),
+  vacationUntil: z.string().datetime().nullable().optional(),
+  expectedUpdatedAt: z.string().optional(),
+});
+export type UpdateMyShopRequest = z.infer<typeof updateMyShopRequestSchema>;

@@ -1,0 +1,20 @@
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+import { callAuthApi } from '@/features/auth/api-bridge';
+import {
+  SESSION_COOKIE,
+  clearAccessCookie,
+  clearSessionCookie,
+} from '@/features/auth/session-cookie';
+
+export async function POST(): Promise<NextResponse> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (token) {
+    await callAuthApi('/logout', { method: 'POST', refreshToken: token });
+  }
+
+  const res = new NextResponse(null, { status: 204 });
+  clearSessionCookie(res);
+  clearAccessCookie(res);
+  return res;
+}

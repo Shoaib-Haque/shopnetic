@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import {
+  REASON_REQUIRED_SELLER_STATUSES,
   VALID_SELLER_STATUS_TRANSITIONS,
   type SellerStatus,
   type SellerWithShop,
@@ -80,10 +81,11 @@ export function SellerInspectModal({
   const validTransitions = VALID_SELLER_STATUS_TRANSITIONS[currentSeller.status] ?? [];
   const isTerminal = validTransitions.length === 0;
 
-  const isDisciplinary =
-    targetStatus === 'suspended' || targetStatus === 'offboarding' || targetStatus === 'closed';
+  const isReasonRequired =
+    targetStatus !== null &&
+    (REASON_REQUIRED_SELLER_STATUSES as readonly string[]).includes(targetStatus);
 
-  const isReasonValid = !isDisciplinary || reason.trim().length >= 5;
+  const isReasonValid = !isReasonRequired || reason.trim().length >= 5;
 
   const handleReload = async () => {
     try {
@@ -103,7 +105,7 @@ export function SellerInspectModal({
 
   const handleApplyTransition = async () => {
     if (!targetStatus || submitting) return;
-    if (isDisciplinary && reason.trim().length < 5) {
+    if (isReasonRequired && reason.trim().length < 5) {
       setErrorMsg(t('inspect.reasonMinLength'));
       return;
     }
@@ -336,10 +338,10 @@ export function SellerInspectModal({
 
                 {targetStatus && (
                   <Field
-                    label={`${t('inspect.reasonLabel')}${isDisciplinary ? ' *' : ''}`}
+                    label={`${t('inspect.reasonLabel')}${isReasonRequired ? ' *' : ''}`}
                     htmlFor={reasonId}
                     error={
-                      isDisciplinary && reason.length > 0 && reason.trim().length < 5
+                      isReasonRequired && reason.length > 0 && reason.trim().length < 5
                         ? t('inspect.reasonMinLength')
                         : undefined
                     }
@@ -352,7 +354,7 @@ export function SellerInspectModal({
                         setErrorMsg(null);
                       }}
                       placeholder={
-                        isDisciplinary
+                        isReasonRequired
                           ? t('inspect.reasonPlaceholderRequired')
                           : t('inspect.reasonPlaceholderOptional')
                       }

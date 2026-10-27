@@ -231,6 +231,7 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
       }
 
       if (accountIds.length > 0) {
+        await prisma.grant.deleteMany({ where: { accountId: { in: accountIds } } });
         await prisma.auditEvent.deleteMany({ where: { actorAccountId: { in: accountIds } } });
         await prisma.account.deleteMany({ where: { id: { in: accountIds } } });
       }

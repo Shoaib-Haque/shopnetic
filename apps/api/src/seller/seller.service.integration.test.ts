@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
-import { Permission, type Actor } from '@shopnetic/auth';
+import { Permission, Role, type Actor } from '@shopnetic/auth';
 import { AuditService } from '../audit/audit.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { SellerService } from './seller.service.js';
@@ -15,6 +15,7 @@ describe.skipIf(!hasDb)('SellerService (integration)', () => {
   const s = (x: string): string => `itest-seller-${stamp}-${x}`;
 
   let sellerId: string;
+  const createdSellerIds: string[] = [];
 
   beforeAll(async () => {
     prisma = getPrismaClient();
@@ -37,7 +38,7 @@ describe.skipIf(!hasDb)('SellerService (integration)', () => {
           role: 'ADMIN',
           scopeType: 'global',
           scopeId: null,
-          permissions: [Permission.STAFF_MANAGE],
+          permissions: [Permission.STAFF_MANAGE, Permission.SELLER_APPROVE],
         },
       ],
     };
@@ -69,14 +70,16 @@ describe.skipIf(!hasDb)('SellerService (integration)', () => {
       {},
     );
     sellerId = created.id;
+    createdSellerIds.push(sellerId);
   });
 
   afterAll(async () => {
     if (!prisma) return;
     try {
-      if (sellerId) {
-        await prisma.shop.deleteMany({ where: { sellerId } });
-        await prisma.seller.deleteMany({ where: { id: sellerId } });
+      if (createdSellerIds.length > 0) {
+        await prisma.grant.deleteMany({ where: { scopeId: { in: createdSellerIds } } });
+        await prisma.shop.deleteMany({ where: { sellerId: { in: createdSellerIds } } });
+        await prisma.seller.deleteMany({ where: { id: { in: createdSellerIds } } });
       }
       const testAccounts = await prisma.account.findMany({
         where: { email: { startsWith: `itest-seller-${stamp}-` } },
@@ -84,6 +87,7 @@ describe.skipIf(!hasDb)('SellerService (integration)', () => {
       });
       const accountIds = testAccounts.map((a) => a.id);
       if (accountIds.length > 0) {
+        await prisma.grant.deleteMany({ where: { accountId: { in: accountIds } } });
         await prisma.auditEvent.deleteMany({ where: { actorAccountId: { in: accountIds } } });
         await prisma.account.deleteMany({ where: { id: { in: accountIds } } });
       }
@@ -206,5 +210,185 @@ describe.skipIf(!hasDb)('SellerService (integration)', () => {
     const fresh = await sellerService.get(sellerId);
     expect(fresh.status).toBe('suspended');
     expect(fresh.updatedAt).not.toBe(current.updatedAt);
+  });
+
+  it('implements self-service registration, changes-requested feedback loop, resubmission, and pure grant invariant', async () => {
+    // 1. Create a fresh buyer account
+    const buyerAccount = await prisma.account.create({
+      data: {
+        email: `${s('self-vendor')}@shopnetic.test`,
+        plane: 'marketplace',
+        status: 'active',
+      },
+    });
+    const buyerActor: Actor = {
+      accountId: buyerAccount.id,
+      plane: 'marketplace',
+      grants: [],
+    };
+
+    // Slug check: s('new-artisan') should be available
+    expect(await sellerService.isSlugAvailable(s('new-artisan'))).toBe(true);
+    expect(await sellerService.isSlugAvailable(s('acme-shop'))).toBe(false);
+
+    // 2. Register self: atomic insert at draft -> guarded transition to in_review
+    const reg = await sellerService.registerSelf(
+      {
+        legalName: 'Atelier Artisan SAS',
+        type: 'business',
+        country: 'FR',
+        shop: {
+          slug: s('new-artisan'),
+          displayName: 'Atelier Artisan',
+          description: 'Handcrafted goods from France',
+        },
+      },
+      buyerActor,
+      {},
+    );
+    createdSellerIds.push(reg.id);
+
+    expect(reg.status).toBe('in_review');
+    expect(reg.lastReviewNote).toBeNull();
+
+    // Outbox should contain both 'seller.created' and 'seller.status_changed'
+    const outboxEvents = await prisma.sellerOutbox.findMany({
+      where: { aggregateId: reg.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(outboxEvents.map((e) => e.eventType)).toContain('seller.created');
+    expect(outboxEvents.map((e) => e.eventType)).toContain('seller.status_changed');
+
+    // Duplicate registration should be blocked
+    await expect(
+      sellerService.registerSelf(
+        {
+          legalName: 'Atelier Duplicate',
+          type: 'business',
+          country: 'FR',
+          shop: { slug: s('new-artisan-2'), displayName: 'Atelier 2' },
+        },
+        buyerActor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'SELLER_ALREADY_EXISTS', status: 409 });
+
+    // 3. Staff requests changes (in_review -> draft with mandatory reason)
+    const changeReq = await sellerService.updateStatus(
+      reg.id,
+      {
+        status: 'draft',
+        reason: 'Please provide registered company legal name with legal form',
+      },
+      staffActor,
+      {},
+    );
+    expect(changeReq.status).toBe('draft');
+    expect(changeReq.lastReviewNote).toBe(
+      'Please provide registered company legal name with legal form',
+    );
+
+    // 4. Seller resubmits: draft -> in_review clears lastReviewNote back to null
+    const resubmitted = await sellerService.resubmitSelf(
+      {
+        legalName: 'Atelier Artisan Société par Actions Simplifiée',
+        type: 'business',
+        country: 'FR',
+        shop: {
+          slug: s('new-artisan'),
+          displayName: 'Atelier Artisan Official',
+        },
+      },
+      buyerActor,
+      {},
+    );
+    expect(resubmitted.status).toBe('in_review');
+    expect(resubmitted.lastReviewNote).toBeNull();
+    expect(resubmitted.legalName).toBe('Atelier Artisan Société par Actions Simplifiée');
+
+    // 5. Staff approves application: in_review -> approved mints SELLER grant
+    const sellerRole = await prisma.role.findUniqueOrThrow({ where: { key: Role.SELLER } });
+    const approved = await sellerService.updateStatus(
+      reg.id,
+      { status: 'approved' },
+      staffActor,
+      {},
+    );
+    expect(approved.status).toBe('approved');
+
+    const grant = await prisma.grant.findUnique({
+      where: {
+        accountId_roleId_scopeType_scopeId: {
+          accountId: buyerAccount.id,
+          roleId: sellerRole.id,
+          scopeType: 'seller',
+          scopeId: reg.id,
+        },
+      },
+    });
+    expect(grant).not.toBeNull();
+    expect(grant?.roleId).toBe(sellerRole.id);
+
+    // 6. Active seller updates own shop profile (with vacation mode)
+    const approvedActor: Actor = {
+      accountId: buyerAccount.id,
+      plane: 'marketplace',
+      grants: [
+        {
+          role: 'SELLER',
+          scopeType: 'seller',
+          scopeId: reg.id,
+          permissions: [Permission.SHOP_MANAGE],
+        },
+      ],
+    };
+
+    const vacationDate = new Date(Date.now() + 7 * 86400000).toISOString();
+    const updatedShop = await sellerService.updateMyShop(
+      approvedActor,
+      {
+        displayName: 'Atelier Artisan France',
+        vacationUntil: vacationDate,
+      },
+      {},
+    );
+    expect(updatedShop.shop?.displayName).toBe('Atelier Artisan France');
+    expect(updatedShop.shop?.vacationUntil).toBe(vacationDate);
+
+    // 7. Suspension revokes the SELLER grant
+    await sellerService.updateStatus(
+      reg.id,
+      {
+        status: 'suspended',
+        reason: 'Temporary suspension pending documentation re-check',
+      },
+      staffActor,
+      {},
+    );
+    const grantAfterSuspension = await prisma.grant.findUnique({
+      where: {
+        accountId_roleId_scopeType_scopeId: {
+          accountId: buyerAccount.id,
+          roleId: sellerRole.id,
+          scopeType: 'seller',
+          scopeId: reg.id,
+        },
+      },
+    });
+    expect(grantAfterSuspension).toBeNull();
+
+    // 8. Reactivation restores the SELLER grant
+    await sellerService.updateStatus(reg.id, { status: 'approved' }, staffActor, {});
+    const grantAfterReactivation = await prisma.grant.findUnique({
+      where: {
+        accountId_roleId_scopeType_scopeId: {
+          accountId: buyerAccount.id,
+          roleId: sellerRole.id,
+          scopeType: 'seller',
+          scopeId: reg.id,
+        },
+      },
+    });
+    expect(grantAfterReactivation).not.toBeNull();
   });
 });
