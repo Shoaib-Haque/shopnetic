@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEventHandler, type ReactNode } from 'react';
+import { useState, type FormEventHandler, type ReactNode, type RefObject } from 'react';
 import {
   Button,
   Modal,
@@ -34,6 +34,8 @@ export function FormModal({
   readOnly = false,
   dirty = false,
   size = 'md',
+  initialFocusRef,
+  onOpenAutoFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -47,6 +49,8 @@ export function FormModal({
   readOnly?: boolean;
   dirty?: boolean;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  initialFocusRef?: RefObject<{ focus: () => void } | null> | undefined;
+  onOpenAutoFocus?: ((event: Event) => void) | undefined;
 }) {
   const t = useTranslations('admin');
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -59,10 +63,25 @@ export function FormModal({
     onOpenChange(next);
   }
 
+  const handleOpenAutoFocus = (e: Event): void => {
+    if (onOpenAutoFocus) {
+      onOpenAutoFocus(e);
+      return;
+    }
+    if (initialFocusRef?.current) {
+      e.preventDefault();
+      initialFocusRef.current.focus();
+    }
+  };
+
   return (
     <>
       <Modal open={open} onOpenChange={requestChange}>
-        <ModalContent size={size} closeLabel={t('actions.cancel')}>
+        <ModalContent
+          size={size}
+          closeLabel={t('actions.cancel')}
+          onOpenAutoFocus={handleOpenAutoFocus}
+        >
           <ModalHeader>
             <ModalTitle className="min-w-0 truncate">{title}</ModalTitle>
             {description !== undefined && <ModalDescription>{description}</ModalDescription>}

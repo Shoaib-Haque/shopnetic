@@ -111,7 +111,7 @@ export function OtpInput({
   };
 
   return (
-    <div role="group" aria-label={ariaLabel} className={cn('flex gap-2', disabled && 'opacity-50')}>
+    <div role="group" aria-label={ariaLabel} className={cn('flex gap-2', disabled && 'opacity-75')}>
       {Array.from({ length }, (_, i) => (
         <input
           key={i}

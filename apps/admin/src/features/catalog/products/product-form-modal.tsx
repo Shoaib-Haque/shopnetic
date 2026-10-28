@@ -43,6 +43,7 @@ import {
   SUPPORTED_CURRENCIES,
   decimalKeyDownHandler,
   decimalPasteHandler,
+  normalizeDecimalString,
   sanitizeDecimalString,
 } from '@/lib/numeric-input';
 import { createProduct, getSeller, updateProduct } from './api';
@@ -238,6 +239,31 @@ export function ProductFormModal({
         onOpenChange(false);
         onSaved('created', p);
       } else if (product) {
+        if (mode === 'review') {
+          const currentSpec = (product.spec as Record<string, unknown>) ?? {};
+          const spec = note?.trim()
+            ? {
+                ...currentSpec,
+                rejectionNote: note.trim(),
+                rejectedAt: new Date().toISOString(),
+              }
+            : undefined;
+
+          const p = await updateProduct(product.id, {
+            status: targetStatus,
+            expectedUpdatedAt: product.updatedAt,
+            ...(spec ? { spec } : {}),
+          });
+          try {
+            sessionStorage.removeItem(`shopnetic:draft:product-desc:${product.id}`);
+          } catch {
+            // Ignore
+          }
+          onOpenChange(false);
+          onSaved('updated', p);
+          return;
+        }
+
         const basePriceMinor = values.basePrice
           ? Number(decimalToMinor(values.basePrice, values.currency || 'USD'))
           : null;
@@ -418,6 +444,8 @@ export function ProductFormModal({
     onOpenChange(isOpen);
   };
 
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+
   return (
     <>
       <FormModal
@@ -430,6 +458,7 @@ export function ProductFormModal({
         readOnly={isReadOnly}
         dirty={isDirty}
         size="lg"
+        {...(mode === 'create' ? { initialFocusRef: titleInputRef } : {})}
         {...(secondaryAction ? { secondaryAction } : {})}
       >
         {formError && (
@@ -549,7 +578,12 @@ export function ProductFormModal({
             placeholder={t('products.form.titlePlaceholder')}
             invalid={Boolean(errors.titleEn)}
             disabled={isFieldsDisabled}
+            autoFocus={mode === 'create'}
             {...titleField}
+            ref={(e) => {
+              titleField.ref(e);
+              titleInputRef.current = e;
+            }}
             onChange={(e) => {
               void titleField.onChange(e);
               if (mode === 'create' && !slugTouched) {
@@ -638,6 +672,14 @@ export function ProductFormModal({
                   currencyExponent,
                 )
               }
+              onBlur={(e) => {
+                const normalized = normalizeDecimalString(e.currentTarget.value, currencyExponent);
+                if (normalized !== e.currentTarget.value) {
+                  e.currentTarget.value = normalized;
+                  setValue('basePrice', normalized, { shouldValidate: true, shouldDirty: true });
+                }
+                void priceField.onBlur(e);
+              }}
             />
           </Field>
           <Field
@@ -670,8 +712,8 @@ export function ProductFormModal({
           </Field>
         </div>
 
-        {/* Status (when not review or create) */}
-        {mode === 'edit' && (
+        {/* Status */}
+        {mode === 'edit' ? (
           <Field
             label={t('products.form.status')}
             htmlFor="product-status"
@@ -698,7 +740,19 @@ export function ProductFormModal({
               )}
             />
           </Field>
-        )}
+        ) : mode === 'create' ? (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-foreground">
+              {t('products.form.status')}
+            </label>
+            <div className="flex items-center gap-2">
+              <StatusBadge tone="neutral">{t('products.status.draft')}</StatusBadge>
+              <span className="text-xs text-muted-foreground">
+                {t('products.form.defaultDraftHint')}
+              </span>
+            </div>
+          </div>
+        ) : null}
       </FormModal>
 
       <Modal open={rejectModalOpen} onOpenChange={setRejectModalOpen}>

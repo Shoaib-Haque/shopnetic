@@ -1,5 +1,5 @@
 import type { NextResponse } from 'next/server';
-import { callIdentityStaffApi } from '@/features/admin-api/bridge';
+import { callIdentityStaffApi, extractForwardHeaders } from '@/features/admin-api/bridge';
 import { proxyWithBearer } from '@/features/admin-api/proxy-with-bearer';
 
 /**
@@ -25,12 +25,14 @@ async function handle(
   const sendsBody = method !== 'GET' && method !== 'HEAD';
   const bodyText = sendsBody ? await req.text() : undefined;
   const contentType = req.headers.get('content-type');
+  const extraHeaders = extractForwardHeaders(req.headers);
 
   return proxyWithBearer((token) =>
     callIdentityStaffApi(target, {
       method,
       accessToken: token,
       ...(bodyText ? { body: bodyText, contentType } : {}),
+      ...(Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
     }),
   );
 }

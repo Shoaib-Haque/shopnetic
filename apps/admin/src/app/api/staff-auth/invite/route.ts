@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { staffInviteCreateRequestSchema } from '@shopnetic/contracts';
-import { callIdentityStaffApi } from '@/features/admin-api/bridge';
+import { callIdentityStaffApi, extractForwardHeaders } from '@/features/admin-api/bridge';
 import { proxyWithBearer } from '@/features/admin-api/proxy-with-bearer';
 import { parseJsonBody } from '@/lib/api-route';
 
@@ -14,12 +14,15 @@ export async function POST(req: Request): Promise<NextResponse> {
   const body = await parseJsonBody(req, staffInviteCreateRequestSchema);
   if ('error' in body) return body.error;
 
+  const extraHeaders = extractForwardHeaders(req.headers);
+
   return proxyWithBearer((token) =>
     callIdentityStaffApi('/invites', {
       method: 'POST',
       accessToken: token,
       body: JSON.stringify(body.data),
       contentType: 'application/json',
+      ...(Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
     }),
   );
 }

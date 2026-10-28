@@ -115,6 +115,24 @@ export function sanitizeDecimalString(input: string, maxDecimals = 2): string {
   return `${integerPart}.${decimalPart}`;
 }
 
+/**
+ * Normalizes a decimal string on blur or formatting, stripping non-numeric chars,
+ * trimming redundant leading zeros from the integer portion (e.g. "000" -> "0", "0012" -> "12"),
+ * and capping decimal places to `maxDecimals`.
+ */
+export function normalizeDecimalString(input: string, maxDecimals = 2): string {
+  const sanitized = sanitizeDecimalString(input, maxDecimals);
+  if (!sanitized) return '';
+  const parts = sanitized.split('.');
+  let integerPart = parts[0] ?? '';
+  integerPart = integerPart.replace(/^0+(?=\d)/, '');
+  if (integerPart === '') integerPart = '0';
+  if (parts.length > 1) {
+    return `${integerPart}.${parts[1]}`;
+  }
+  return integerPart;
+}
+
 export {
   SUPPORTED_CURRENCIES,
   SUPPORTED_CURRENCY_CODES,

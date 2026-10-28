@@ -1,5 +1,5 @@
 import type { NextResponse } from 'next/server';
-import { callIdentityApi } from '@/features/admin-api/bridge';
+import { callIdentityApi, extractForwardHeaders } from '@/features/admin-api/bridge';
 import { proxyWithBearer } from '@/features/admin-api/proxy-with-bearer';
 
 /**
@@ -10,8 +10,13 @@ import { proxyWithBearer } from '@/features/admin-api/proxy-with-bearer';
  */
 export async function GET(req: Request): Promise<NextResponse> {
   const search = new URL(req.url).search;
+  const extraHeaders = extractForwardHeaders(req.headers);
 
   return proxyWithBearer((token) =>
-    callIdentityApi(`/audit-events${search}`, { method: 'GET', accessToken: token }),
+    callIdentityApi(`/audit-events${search}`, {
+      method: 'GET',
+      accessToken: token,
+      ...(Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
+    }),
   );
 }

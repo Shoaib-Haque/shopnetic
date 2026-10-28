@@ -31,7 +31,7 @@ export const SelectTrigger = forwardRef<
       className={cn(
         'flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]',
-        'disabled:cursor-not-allowed disabled:opacity-50',
+        'disabled:cursor-not-allowed disabled:opacity-75 disabled:bg-muted/40',
         '[&>span]:min-w-0 [&>span]:flex-1 [&>span]:truncate [&>span]:text-left',
         invalid && 'border-destructive focus-visible:ring-destructive',
         className,

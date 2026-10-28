@@ -67,8 +67,9 @@ type Tab = ProductListStatus;
 const TABS: Tab[] = ['active', 'pending', 'draft', 'archived', 'all'];
 
 function parseTab(v: string | null): Tab {
-  if (v === 'pending' || v === 'draft' || v === 'archived' || v === 'all') return v;
-  return 'active';
+  if (v === 'pending' || v === 'draft' || v === 'archived' || v === 'active' || v === 'all')
+    return v;
+  return 'all';
 }
 
 type OriginFilter = ProductOrigin;
@@ -115,7 +116,7 @@ export function ProductList() {
   const debouncedQ = useDebouncedSearch(q);
 
   useUrlParamsSync({
-    tab: tab !== 'active' ? tab : undefined,
+    tab: tab !== 'all' ? tab : undefined,
     origin: originFilter !== 'all' ? originFilter : undefined,
     category: categoryFilter || undefined,
     brand: brandFilter || undefined,
@@ -265,7 +266,7 @@ export function ProductList() {
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
-    if (tab !== 'active') count++;
+    if (tab !== 'all') count++;
     if (originFilter !== 'all') count++;
     if (categoryFilter) count++;
     if (brandFilter) count++;
@@ -287,7 +288,7 @@ export function ProductList() {
   );
 
   const clearFilters = useCallback(() => {
-    setTab('active');
+    setTab('all');
     setOriginFilter('all');
     setCategoryFilter('');
     setBrandFilter('');
@@ -739,9 +740,9 @@ export function ProductList() {
         onOpenChange={(open) => {
           if (!open) setRestoreTarget(null);
         }}
-        title={t('products.restore')}
-        message={t('products.toast.restored', {
-          title: restoreTarget ? labelOf(restoreTarget) : '',
+        title={t('products.restoreTitle')}
+        message={t('products.restoreMessage', {
+          name: restoreTarget ? labelOf(restoreTarget) : '',
         })}
         confirmLabel={t('products.restore')}
         cancelLabel={tCommon('actions.cancel')}

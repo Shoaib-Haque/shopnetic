@@ -93,141 +93,164 @@ function toJSONContent(doc: ProductDescriptionDoc | null | undefined): JSONConte
   return JSON.parse(JSON.stringify(doc)) as JSONContent;
 }
 
-const TEMPLATES: Array<{
+function getTemplates(t: (key: string) => string): Array<{
   id: string;
   labelKey: 'templateFeatures' | 'templateCare' | 'templateHighlights';
   content: JSONContent[];
-}> = [
-  {
-    id: 'features',
-    labelKey: 'templateFeatures',
-    content: [
-      {
-        type: 'heading',
-        attrs: { level: 2 },
-        content: [{ type: 'text', text: 'Features & Specifications' }],
-      },
-      {
-        type: 'bulletList',
-        content: [
-          {
-            type: 'listItem',
-            content: [
-              {
-                type: 'paragraph',
-                content: [
-                  { type: 'text', marks: [{ type: 'bold' }], text: 'Material: ' },
-                  { type: 'text', text: '100% premium quality fabric' },
-                ],
-              },
-            ],
-          },
-          {
-            type: 'listItem',
-            content: [
-              {
-                type: 'paragraph',
-                content: [
-                  { type: 'text', marks: [{ type: 'bold' }], text: 'Fit: ' },
-                  { type: 'text', text: 'Standard relaxed fit' },
-                ],
-              },
-            ],
-          },
-          {
-            type: 'listItem',
-            content: [
-              {
-                type: 'paragraph',
-                content: [
-                  { type: 'text', marks: [{ type: 'bold' }], text: 'Origin: ' },
-                  { type: 'text', text: 'Ethically manufactured' },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'care',
-    labelKey: 'templateCare',
-    content: [
-      {
-        type: 'heading',
-        attrs: { level: 2 },
-        content: [{ type: 'text', text: 'Materials & Care' }],
-      },
-      {
-        type: 'orderedList',
-        content: [
-          {
-            type: 'listItem',
-            content: [
-              {
-                type: 'paragraph',
-                content: [{ type: 'text', text: 'Machine wash cold with like colors.' }],
-              },
-            ],
-          },
-          {
-            type: 'listItem',
-            content: [
-              {
-                type: 'paragraph',
-                content: [{ type: 'text', text: 'Tumble dry low or line dry in shade.' }],
-              },
-            ],
-          },
-          {
-            type: 'listItem',
-            content: [
-              {
-                type: 'paragraph',
-                content: [{ type: 'text', text: 'Do not bleach. Warm iron if needed.' }],
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'highlights',
-    labelKey: 'templateHighlights',
-    content: [
-      {
-        type: 'heading',
-        attrs: { level: 2 },
-        content: [{ type: 'text', text: "Why You'll Love It" }],
-      },
-      {
-        type: 'blockquote',
-        content: [
-          {
-            type: 'paragraph',
-            content: [
-              {
-                type: 'text',
-                text: 'Designed for effortless versatility, enduring quality, and all-day comfort.',
-              },
-            ],
-          },
-        ],
-      },
-      {
-        type: 'paragraph',
-        content: [
-          {
-            type: 'text',
-            text: 'A wardrobe essential engineered to maintain its shape, texture, and vibrant color wash after wash.',
-          },
-        ],
-      },
-    ],
-  },
-];
+}> {
+  return [
+    {
+      id: 'features',
+      labelKey: 'templateFeatures',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{ type: 'text', text: t('products.form.editor.template.featuresHeading') }],
+        },
+        {
+          type: 'bulletList',
+          content: [
+            {
+              type: 'listItem',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [
+                    {
+                      type: 'text',
+                      marks: [{ type: 'bold' }],
+                      text: t('products.form.editor.template.featuresKeyPrimary'),
+                    },
+                    {
+                      type: 'text',
+                      text: t('products.form.editor.template.featuresValPrimary'),
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'listItem',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [
+                    {
+                      type: 'text',
+                      marks: [{ type: 'bold' }],
+                      text: t('products.form.editor.template.featuresKeyBuild'),
+                    },
+                    {
+                      type: 'text',
+                      text: t('products.form.editor.template.featuresValBuild'),
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'listItem',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [
+                    {
+                      type: 'text',
+                      marks: [{ type: 'bold' }],
+                      text: t('products.form.editor.template.featuresKeyPackage'),
+                    },
+                    {
+                      type: 'text',
+                      text: t('products.form.editor.template.featuresValPackage'),
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'care',
+      labelKey: 'templateCare',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{ type: 'text', text: t('products.form.editor.template.careHeading') }],
+        },
+        {
+          type: 'orderedList',
+          content: [
+            {
+              type: 'listItem',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [{ type: 'text', text: t('products.form.editor.template.careStep1') }],
+                },
+              ],
+            },
+            {
+              type: 'listItem',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [{ type: 'text', text: t('products.form.editor.template.careStep2') }],
+                },
+              ],
+            },
+            {
+              type: 'listItem',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [{ type: 'text', text: t('products.form.editor.template.careStep3') }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'highlights',
+      labelKey: 'templateHighlights',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{ type: 'text', text: t('products.form.editor.template.highlightsHeading') }],
+        },
+        {
+          type: 'blockquote',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: t('products.form.editor.template.highlightsQuote'),
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: t('products.form.editor.template.highlightsParagraph'),
+            },
+          ],
+        },
+      ],
+    },
+  ];
+}
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -259,6 +282,7 @@ const EditorToolbar = memo(function EditorToolbar({
   setIsTemplatesOpen,
 }: EditorToolbarProps) {
   const t = useTranslations('catalog');
+  const templates = useMemo(() => getTemplates(t), [t]);
   const [, setSelectionTick] = useState(0);
 
   useEffect(() => {
@@ -629,7 +653,7 @@ const EditorToolbar = memo(function EditorToolbar({
             <TableIcon className="h-3.5 w-3.5" />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-52 p-1.5 text-xs">
+        <PopoverContent align="start" hideClose className="w-60 p-2 text-xs">
           <div className="flex flex-col gap-0.5">
             <button
               type="button"
@@ -652,6 +676,16 @@ const EditorToolbar = memo(function EditorToolbar({
                 <button
                   type="button"
                   onClick={() => {
+                    editor?.chain().focus().addRowBefore().run();
+                    setIsTableOpen(false);
+                  }}
+                  className="w-full text-left rounded px-2 py-1 hover:bg-muted transition-colors"
+                >
+                  {t('products.form.editor.addRowBefore')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     editor?.chain().focus().addRowAfter().run();
                     setIsTableOpen(false);
                   }}
@@ -670,6 +704,16 @@ const EditorToolbar = memo(function EditorToolbar({
                   {t('products.form.editor.deleteRow')}
                 </button>
                 <div className="my-1 h-[1px] bg-border/60" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    editor?.chain().focus().addColumnBefore().run();
+                    setIsTableOpen(false);
+                  }}
+                  className="w-full text-left rounded px-2 py-1 hover:bg-muted transition-colors"
+                >
+                  {t('products.form.editor.addColumnBefore')}
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -977,7 +1021,7 @@ const EditorToolbar = memo(function EditorToolbar({
             <span className="text-[11px] font-semibold text-muted-foreground px-2 py-1">
               {t('products.form.editor.templates')}
             </span>
-            {TEMPLATES.map((tmpl) => (
+            {templates.map((tmpl) => (
               <button
                 key={tmpl.id}
                 type="button"
@@ -1151,6 +1195,7 @@ export function RichTextEditor({
         'aria-multiline': 'true',
         'aria-disabled': disabled ? 'true' : 'false',
         tabindex: disabled ? '-1' : '0',
+        class: cn('outline-none focus:outline-none', disabled && 'pointer-events-none select-text'),
       },
     },
     ...(value ? { content: toJSONContent(value) } : {}),
@@ -1270,9 +1315,12 @@ export function RichTextEditor({
       data-testid="rich-text-editor"
       className={cn(
         'relative flex flex-col rounded-md border border-input bg-background transition-colors',
-        'focus-within:border-ring focus-within:ring-1 focus-within:ring-ring focus-within:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]',
-        error && 'border-destructive focus-within:border-destructive focus-within:ring-destructive',
-        disabled && 'cursor-not-allowed bg-muted/20 opacity-70',
+        !disabled &&
+          'focus-within:border-ring focus-within:ring-1 focus-within:ring-ring focus-within:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)]',
+        error &&
+          !disabled &&
+          'border-destructive focus-within:border-destructive focus-within:ring-destructive',
+        disabled && 'cursor-default bg-muted/20 opacity-75',
         isFullscreen &&
           'fixed inset-0 z-50 rounded-none border-0 p-4 sm:p-6 bg-background flex flex-col shadow-2xl',
         className,
@@ -1328,7 +1376,8 @@ export function RichTextEditor({
       <div
         data-testid="rich-text-content-area"
         className={cn(
-          'relative px-3 py-2 text-sm text-foreground cursor-text',
+          'relative px-3 py-2 text-sm text-foreground',
+          !disabled ? 'cursor-text' : 'cursor-default',
           '[&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-border [&_th]:bg-muted/60 [&_th]:p-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:text-xs [&_td]:border [&_td]:border-border [&_td]:p-1.5 [&_td]:text-xs',
           isFullscreen
             ? 'flex-1 min-h-0 max-h-none overflow-y-auto'

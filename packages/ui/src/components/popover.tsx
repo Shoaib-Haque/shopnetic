@@ -29,11 +29,21 @@ export const PopoverAnchor = RPopover.Anchor;
 export interface PopoverContentProps extends ComponentPropsWithoutRef<typeof RPopover.Content> {
   /** Already-localized label for the close button (defaults to "Close"). */
   closeLabel?: string;
+  /** Hide the built-in close (×). Useful for action menus that dismiss on selection. */
+  hideClose?: boolean;
 }
 
 export const PopoverContent = forwardRef<ElementRef<typeof RPopover.Content>, PopoverContentProps>(
   function PopoverContent(
-    { className, children, align = 'end', sideOffset = 8, closeLabel = 'Close', ...props },
+    {
+      className,
+      children,
+      align = 'end',
+      sideOffset = 8,
+      closeLabel = 'Close',
+      hideClose = false,
+      ...props
+    },
     ref,
   ) {
     return (
@@ -50,7 +60,9 @@ export const PopoverContent = forwardRef<ElementRef<typeof RPopover.Content>, Po
           {...props}
         >
           {children}
-          <OverlayCloseButton as={RPopover.Close} position="corner-sm" closeLabel={closeLabel} />
+          {!hideClose && (
+            <OverlayCloseButton as={RPopover.Close} position="corner-sm" closeLabel={closeLabel} />
+          )}
         </RPopover.Content>
       </RPopover.Portal>
     );

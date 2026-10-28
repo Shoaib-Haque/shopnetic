@@ -36,6 +36,15 @@ export async function callStaffApi(path: string, opts: CallOptions): Promise<Sta
   if (ua) headers['user-agent'] = ua;
   const ip = fwd?.get('x-forwarded-for') ?? fwd?.get('x-real-ip');
   if (ip) headers['x-forwarded-for'] = ip;
+  const correlationId = fwd?.get('x-correlation-id');
+  if (correlationId) headers['x-correlation-id'] = correlationId;
+  if (fwd && 'entries' in fwd && typeof fwd.entries === 'function') {
+    for (const [key, value] of (fwd as Headers).entries()) {
+      if (key.startsWith('x-debug-')) {
+        headers[key] = value;
+      }
+    }
+  }
 
   const init: RequestInit = { method: opts.method, headers, cache: 'no-store' };
   if (opts.json !== undefined) init.body = JSON.stringify(opts.json);

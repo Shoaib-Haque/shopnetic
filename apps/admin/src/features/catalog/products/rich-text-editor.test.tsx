@@ -250,6 +250,9 @@ describe('RichTextEditor', () => {
     fireEvent.click(label);
 
     expect(editorEl).not.toHaveFocus();
+    const container = screen.getByTestId('rich-text-editor');
+    expect(container).toHaveClass('cursor-default');
+    expect(container.className).not.toContain('focus-within:border-ring');
   });
 
   it('displays live word and character counts in footer bar', () => {

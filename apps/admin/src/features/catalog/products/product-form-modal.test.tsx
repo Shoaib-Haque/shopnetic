@@ -292,12 +292,17 @@ describe('ProductFormModal', () => {
     fireEvent.click(approveBtn);
 
     await waitFor(() => {
-      expect(mockedUpdateProduct).toHaveBeenCalledWith(
-        product.id,
-        expect.objectContaining({
-          status: 'active',
-        }),
-      );
+      expect(mockedUpdateProduct).toHaveBeenCalledWith(product.id, {
+        status: 'active',
+        expectedUpdatedAt: product.updatedAt,
+      });
+      const callArg = (mockedUpdateProduct.mock.calls[0]?.[1] ?? {}) as Record<string, unknown>;
+      expect(callArg['title']).toBeUndefined();
+      expect(callArg['slug']).toBeUndefined();
+      expect(callArg['brandId']).toBeUndefined();
+      expect(callArg['basePriceMinor']).toBeUndefined();
+      expect(callArg['currency']).toBeUndefined();
+      expect(callArg['description']).toBeUndefined();
       expect(onSaved).toHaveBeenCalledWith('updated', approvedProduct);
     });
   });
@@ -458,11 +463,19 @@ describe('ProductFormModal', () => {
         product.id,
         expect.objectContaining({
           status: 'draft',
+          expectedUpdatedAt: product.updatedAt,
           spec: expect.objectContaining({
             rejectionNote: 'Please provide higher resolution photos.',
           }),
         }),
       );
+      const callArg = (mockedUpdateProduct.mock.calls[0]?.[1] ?? {}) as Record<string, unknown>;
+      expect(callArg['title']).toBeUndefined();
+      expect(callArg['slug']).toBeUndefined();
+      expect(callArg['brandId']).toBeUndefined();
+      expect(callArg['basePriceMinor']).toBeUndefined();
+      expect(callArg['currency']).toBeUndefined();
+      expect(callArg['description']).toBeUndefined();
       expect(onSaved).toHaveBeenCalledWith('updated', rejectedProduct);
     });
   });
@@ -862,6 +875,45 @@ describe('ProductFormModal', () => {
 
       // Under StrictMode (mount -> cleanup -> mount), the draft must NOT be wiped
       expect(sessionStorage.getItem('shopnetic:draft:product-desc:create')).not.toBeNull();
+    });
+
+    it('displays default Draft status indicator in create mode', () => {
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Status')).toBeInTheDocument();
+      expect(screen.getByText('Draft')).toBeInTheDocument();
+      expect(screen.getByText('New products start in Draft status.')).toBeInTheDocument();
+    });
+
+    it('normalizes redundant leading zeros in Base Price input on blur', () => {
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      const priceInput = screen.getByLabelText('Base Price') as HTMLInputElement;
+      fireEvent.change(priceInput, { target: { value: '0000000' } });
+      fireEvent.blur(priceInput);
+      expect(priceInput.value).toBe('0');
+
+      fireEvent.change(priceInput, { target: { value: '0019.99' } });
+      fireEvent.blur(priceInput);
+      expect(priceInput.value).toBe('19.99');
     });
   });
 });

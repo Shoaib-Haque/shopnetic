@@ -13,11 +13,26 @@ export interface AdminApiResult {
   body: unknown;
 }
 
+/**
+ * Extracts x-debug-* and x-correlation-id headers from incoming request headers
+ * to safely forward them upstream through the BFF.
+ */
+export function extractForwardHeaders(headers: Headers): Record<string, string> {
+  const extraHeaders: Record<string, string> = {};
+  for (const [key, value] of headers.entries()) {
+    if (key.startsWith('x-debug-') || key === 'x-correlation-id') {
+      extraHeaders[key] = value;
+    }
+  }
+  return extraHeaders;
+}
+
 interface CallOptions {
   method: string;
   accessToken: string;
   body?: string;
   contentType?: string | null;
+  extraHeaders?: Record<string, string>;
 }
 
 /** Server-only call to a protected `/admin/v1/*` endpoint with a Bearer token. */
@@ -57,6 +72,11 @@ async function callWithBearer(
     authorization: `Bearer ${opts.accessToken}`,
   };
   if (opts.body !== undefined && opts.contentType) headers['content-type'] = opts.contentType;
+  if (opts.extraHeaders) {
+    for (const [k, v] of Object.entries(opts.extraHeaders)) {
+      headers[k] = v;
+    }
+  }
 
   const init: RequestInit = { method: opts.method, headers, cache: 'no-store' };
   if (opts.body !== undefined) init.body = opts.body;
