@@ -146,3 +146,19 @@ For catalog/CMS data that must be translatable:
 - [ ] Numbers/money/dates go through `Intl` helpers.
 - [ ] Plurals via ICU.
 - [ ] New namespace file created if it's a new feature area.
+
+---
+
+## 11. Master Architectural Blueprint (2026 Edition) Gap Analysis & Flagged Implementations
+
+The following localization and standards specifications from `plan/gemini/comprehensive_architectural_blueprint_2026_10_28.md` (Entities 1, 15) represent gaps in the current implementation:
+
+1. **[FLAGGED - Missing Implementation] Standardized Measurement Units & Metric-to-Imperial Conversion Engine (Blueprint Entity 1.7, 15.3)**:
+   - *Current State*: Products and variants only support discrete integer quantities and static dimension/weight columns (`weightGrams`, `lengthMm`, etc.) without automated unit conversion.
+   - *Blueprint Specification*: A universal unit conversion engine that dynamically formats measurements according to the visitor's market locale (e.g., displaying `2.5 kg` in the UK/EU vs `5.5 lbs` in the US; displaying `30 cm` vs `11.8 in`). Automatically computes localized unit pricing (e.g. "£1.20 / 100g" or "$0.35 / oz") on PDPs and search facet results.
+
+2. **[FLAGGED - Missing Implementation] Regional Trade & Hazardous Material Restrictions (Blueprint Entity 15.2)**:
+   - *Current State*: Products have a category and brand; no regulatory or trade restriction flags.
+   - *Blueprint Specification*: Country-specific compliance flags for hazardous goods (lithium-ion batteries, flammable liquids, restricted chemicals) with localized mandatory safety warnings and automatic checkout serviceability restrictions preventing cross-border shipments to restricted destination jurisdictions.
+
+---

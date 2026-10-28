@@ -23,6 +23,11 @@ options; `combo_signature` blocks duplicate combinations.
 **Deferred:** `brand_request` (section 6); seller-side self-service listings (`apps/seller`),
 moderation queue for seller-proposed option types/values, per-category media rules (min/max,
 aspect ratio) and render-time gallery resolution (section 5).
+**Flagged from 2026 Master Architectural Blueprint (Missing in Current Implementation):**
+Batch/lot/expiry tracking, FIFO/LIFO/FEFO inventory valuation, standardized continuous measurement
+units & unit-price calculations, backorders/pre-orders, shadow draft versioning for live active
+product updates, 3-tier update sensitivity classification, automated media transcoding pipelines (WebP/AVIF/HLS),
+and 360-spin/3D assets (see Section 9.1).
 
 This is the hardest modeling problem in the platform. Reference screenshots:
 `tmp/amazon/amazon_shirt_options.png` (Color + Size + pack qty), `tmp/amazon/amazon_iphone_options.png`
@@ -497,6 +502,73 @@ practice today.
   (photo + price + category-required attributes) is met; single-merchant
   platforms (Shopify/WooCommerce) don't. Deferred for decision after the
   current Products UI re-sweep and its fixes are complete — see `tmp/claude.txt`.
+
+---
+
+### 9.1 Master Architectural Blueprint (2026 Edition) Gap Analysis & Flagged Implementations
+
+The following specifications from `plan/gemini/comprehensive_architectural_blueprint_2026_10_28.md` represent gaps in the current implementation of the Catalog, Stock, Pricing, and Media domains. These are formally flagged for subsequent implementation phases:
+
+1. **[FLAGGED - Missing Implementation] Batch, Lot & Expiry Tracking (Blueprint Entity 7)**:
+   - *Current State*: Stock is tracked only as a single aggregate quantity per warehouse (`WarehouseStock.onHand`, `allocated`, `reserved`).
+   - *Blueprint Specification*: Physical tracking of distinct shipments with batch/lot numbers, manufacturing dates (`mfg_date`), and expiration dates (`expiry_date`) for perishable, pharmaceutical, and date-sensitive merchandise. Requires `catalog.stock_batch` table linked to `catalog.warehouse_stock`.
+
+2. **[FLAGGED - Missing Implementation] Multi-Batch Price, Stock Prioritization & Cost Accounting (Blueprint Entity 7)**:
+   - *Current State*: Single `basePriceMinor` on product and `priceMinor` on seller offer. Inventory depletion deducts from generic warehouse balances without cost accounting.
+   - *Blueprint Specification*: Ability for merchants to manage multiple concurrent batches of the same SKU with distinct acquisition costs (COGS) and dynamic selling prices. Automated inventory depletion sequencing based on accounting policies: First-In-First-Out (**FIFO**), Last-In-First-Out (**LIFO**), or First-Expired-First-Out (**FEFO**).
+
+3. **[FLAGGED - Missing Implementation] Standardized Measurement Units & Continuous Quantities (Blueprint Entity 1.7)**:
+   - *Current State*: Discrete quantity integers only (e.g. 1 shirt, 2 laptops).
+   - *Blueprint Specification*: Universal measurement unit framework supporting continuous physical quantities (weight: kg, g, lb, oz; volume: L, ml, fl oz; length: m, cm, in) and automated unit-price normalization (e.g. "$1.25 / 100g", "$0.18 / fl oz") displayed prominently on PDPs and search result cards for consumer transparency.
+
+4. **[CORRECTED 2026-10-28 — largely already implemented, was mis-flagged] Backorders &
+   Pre-Orders (Blueprint Entity 7)**:
+   - *Current State*: Already built, not a gap. `Stock.backorder` (boolean) and
+     `Stock.restockEta` (timestamp) exist (`packages/db/prisma/schema.prisma:976-977`),
+     wired through `stock.service.ts` / `offer.service.ts`, directly drive Buy-Box
+     eligibility (`buybox.service.ts`: `allowsBackorder = o.stocks.some((s) =>
+     s.backorder)`), and have a working admin UI (Backorder toggle in
+     `stock-adjust-modal.tsx`, "Backorder Available" badge in
+     `product-offers-dialog.tsx`).
+   - *Still genuinely open*: whether the **storefront** (buyer-facing PDP/cart)
+     surfaces backorder status and the restock ETA to buyers and allows checkout on a
+     backordered item — not verified either way; narrower in scope than the original
+     flag implied.
+
+5. **[FLAGGED - Missing Implementation] Shadow Versioning & Draft Copies for Live Product Updates (Blueprint Entity 8)**:
+   - *Current State*: 3P product moderation operates on the initial submission (`pending` state). When an active product is edited, mutations either apply directly (in admin) or are blocked.
+   - *Blueprint Specification*: When a merchant edits an active product, an isolated **Shadow Draft Copy** (`catalog.product_shadow_draft`) is generated. The live product remains publicly visible and buyable on storefronts without alteration while the proposed edits undergo moderation review. Upon admin approval, the shadow draft merges atomically into the live product record.
+
+6. **[FLAGGED - Missing Implementation] Field-Level Sensitivity Classification for Product Updates (Blueprint Entity 8)**:
+   - *Current State*: Monolithic review state where all fields on pending products are locked together.
+   - *Blueprint Specification*: Risk-tiering matrix for product attribute changes:
+     - *Tier 1 (Auto-Approved / Low-Risk)*: Stock allocations, inventory updates, minor typographical corrections, search tags.
+     - *Tier 2 (Async Review / Low-Friction)*: Adding secondary gallery photos, expanding bullet points, updating non-critical care instructions.
+     - *Tier 3 (Hard Block / Immediate Review)*: Title changes, category re-assignment, brand changes, price spikes (>30%), compliance or warranty disclosures.
+
+7. **[FLAGGED - Missing Implementation] Automated Media Processing Pipelines & Transcoding (Blueprint Entity 12)**:
+   - *Current State*: Media URLs are saved directly upon upload; video preview relies on standard raw MP4 files.
+   - *Blueprint Specification*: Asynchronous BullMQ worker pipeline performing automatic thumbnail generation, format transcoding to modern web formats (WebP, AVIF), automated brand watermarking, and HLS/DASH adaptive bitrate transcoding for smooth video playback under constrained mobile networks.
+
+8. **[FLAGGED - Missing Implementation] 360-Degree Spins & Interactive 3D Model Assets (Blueprint Entity 1.4, 18)**:
+   - *Current State*: Media asset types are limited to `photo` and `video`.
+   - *Blueprint Specification*: Ingestion and presentation of orbital 360-degree spin image frame sets and standardized 3D models (`.glb` / `.usdz`) rendered via `<model-viewer>` with orbital rotation and AR room projection.
+
+9. **[FLAGGED - Missing Implementation] Global Brand Registry & Manufacturer Identification (Blueprint Entity 1.2)**:
+   - *Current State*: Brands are tracked with name, slug, website, and text aliases (`brand_alias`).
+   - *Blueprint Specification*: Standardized mapping of brands to authoritative global manufacturer registries, Manufacturer Part Numbers (MPN), and GTIN / UPC / EAN prefix ranges to enforce catalog harmonization and eliminate duplicate brand listings across multi-vendor imports.
+
+10. **[FLAGGED - Missing Implementation] Multi-Country Regional Pricing & Tiered B2B Volume Pricing (Blueprint Entity 9)**:
+    - *Current State*: Single `basePriceMinor`/currency on `Product` (base/reference
+      price) and single `priceMinor` per `Offer` (the actual sellable price) — `Variant`
+      itself carries no price field. No region or quantity-tier overrides at any level.
+    - *Blueprint Specification*: Region-specific price overrides (e.g. different baseline pricing for US, UK, and EU markets) and quantity-based volume discount tiers (e.g., 1–10 units = $15, 11–50 units = $12, 51+ units = $10) configured at the offer level.
+
+11. **[FLAGGED - Missing Implementation] Factory-to-Doorline Provenance Badges & Supply Chain Journey (Blueprint Differentiator 7, Plan 38)**:
+    - *Current State*: Products track category, brand, options, variants, offers, and media assets; no supply chain origin or certification milestones are tracked.
+    - *Blueprint Specification*: Verified supply chain timeline attached to products (`catalog.supply_chain_node`) detailing raw materials source, manufacturing facility certifications (BSCI, SMETA, ISO 14001, OEKO-TEX), quality assurance inspection, and domestic logistics routing, complete with audit documents and verified ESG badges on PDP headers.
+
+---
 
 ## 10. UI Tests Specification (Product & Sub-Features)
 

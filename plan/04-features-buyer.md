@@ -101,6 +101,28 @@ Related: `03-users-and-rbac.md`, `11-search-and-catalog.md`, `12-cart-checkout-o
 
 ---
 
+### 8.1 Master Architectural Blueprint & Future Commerce Differentiators Gap Analysis & Flagged Implementations
+
+The following specifications from `plan/gemini/GEMINI_FUTURE_COMMERCE_DIFFERENTIATORS_2026_10_28.md` and `plan/38-future-commerce-differentiators.md` represent gaps in the current implementation of Buyer-facing features:
+
+1. **[FLAGGED - Missing Implementation] Automated Price Drop Protection & Store Credit Wallet (Plan 38, Section 3.6)**:
+   - *Current State*: Buyers manually monitor prices; no automated price-matching refunds exist post-delivery.
+   - *Specification*: 14-day post-delivery automated price monitoring. When an item drops in price, the delta is automatically credited to the buyer's platform wallet with a real-time notification.
+
+2. **[FLAGGED - Missing Implementation] Crowdsourced Group Carts & Split-Payment Gifting Links (Plan 38, Section 3.1)**:
+   - *Current State*: Carts are strictly single-buyer sessions.
+   - *Specification*: Creating public split-pay registries (`/pay/split/:id`) for birthdays, weddings, or group gifts. Enables friends and family to contribute fractional payments into escrow until 100% funded.
+
+3. **[FLAGGED - Missing Implementation] Community Drop-Points & Bulk Group Buys (Plan 38, Section 3.3)**:
+   - *Current State*: Standard shipping destinations only.
+   - *Specification*: Option to ship to a local "Community Pickup Point Manager", pooling neighborhood shipments to eliminate individual freight fees and unlock tiered wholesale discounts.
+
+4. **[FLAGGED - Missing Implementation] Instant AI-Verified Trade-In Credit at Checkout (Plan 38, Section 3.4)**:
+   - *Current State*: Standard checkout total calculation.
+   - *Specification*: Phone diagnostic and camera appraisal prompt at checkout providing instant cart trade-in credit deductions, synchronized with simultaneous courier device collection.
+
+---
+
 ## UI Tests Specification (Buyer Auth & Onboarding)
 
 ### Comprehensive Buyer Auth UI Test Suite (Sorted & Grouped)

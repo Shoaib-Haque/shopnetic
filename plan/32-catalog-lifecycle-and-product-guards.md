@@ -171,3 +171,39 @@ This document formalizes the universal lifecycle invariants, resolve deferred po
 - Verify `BrandService.restore()` throws `BRAND_MERGE_INVALID` when brand was merged.
 - Verify `ProductService.restore()` throws `CATEGORY_PARENT_ARCHIVED` when category is archived.
 - Verify `ProductService.restore()` throws `BRAND_PARENT_ARCHIVED` when brand is archived.
+
+---
+
+## 6. Master Architectural Blueprint (2026) Gap Analysis: Product Update Governance & Shadow Versioning
+
+The Master Architectural Blueprint (Entity 8) introduces a sophisticated governance model for post-publication product updates that extends beyond Shopnetic's initial implementation.
+
+### 1. Field-Level Sensitivity Classification
+Instead of treating all updates with a monolithic review check, product updates are categorized into 3 risk tiers:
+
+```mermaid
+flowchart TD
+    Update[Seller Submits Product Update] --> Evaluate{Classify Modified Fields}
+    Evaluate -- "Inventory, Tags, Minor Text" --> Tier1[Tier 1: Low Risk / Auto-Approved]
+    Evaluate -- "Secondary Images, Non-critical Specs" --> Tier2[Tier 2: Async Review / Published with Soft Flag]
+    Evaluate -- "Price Spikes, Title, Brand, Category, Compliance" --> Tier3[Tier 3: High Risk / Hard Block via Shadow Draft]
+    Tier1 --> LiveUpdate[Atomic Update to Live Product Record]
+    Tier2 --> LiveWithFlag[Publish to Live + Queue in Back Office Async Audit]
+    Tier3 --> ShadowDraft[Create Isolated Shadow Draft Copy\nLive Product Remains Visible & Unchanged]
+```
+
+- **Tier 1 (Auto-Approved / Low-Risk)**: Stock counts, warehouse allocations, minor description typo fixes, search keywords. Merges directly to live database.
+- **Tier 2 (Async Review / Low-Friction)**: Adding secondary photos, optional attribute updates. Changes go live immediately while logging a task in the Service Admin background audit queue.
+- **Tier 3 (Hard Block / Immediate Re-Approval)**: Significant price changes (>30%), title renames, brand/manufacturer changes, category re-mapping, hazardous material disclosures. Generates an isolated Shadow Draft.
+
+### 2. Shadow Versioning Architecture (`product_shadow_draft`)
+- When a Tier 3 update is submitted for an active product, the live product row (`catalog.product`) remains active, indexed, and purchasable by buyers.
+- The update writes to `catalog.product_shadow_draft` with foreign key `product_id` and status `pending_review`.
+- Back Office staff reviews the update via a **Side-by-Side Diff Modal** comparing live attributes against proposed changes.
+- **Approval Transition**: Approving the shadow draft executes an atomic transaction that applies the diff to the live product, deletes/archives the shadow draft, and writes a `catalog.product_updated` audit event.
+- **Rejection Transition**: Rejection preserves the live product untouched and records reviewer feedback (`lastReviewNote`) on the shadow draft for seller rectification.
+
+### 3. [FLAGGED - Missing Implementation Status]
+- **Current Implementation**: The platform enforces pre-approval gating on initial 3P product submissions (`status = 'pending'`), but post-publication updates by admins write directly to live rows, and seller-initiated live product updates do not yet support shadow versioning or automated 3-tier risk classification.
+- **Action Required**: Implement `catalog.product_shadow_draft` schema, sensitivity classification middleware, and admin side-by-side diff review UI in subsequent development iterations.
+

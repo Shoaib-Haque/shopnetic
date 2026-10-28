@@ -45,6 +45,13 @@ Start at `00-vision-and-scope.md`, then `01-tech-stack.md` and
 | `29-cart-and-listing-change-alerts.md` | One-time "your cart changed" notices (price/stock/delisted) for returning buyers |
 | `30-reporting-and-analytics.md` | Admin & seller business reports — dimensions, rollup pipeline, provisional vs final, exports |
 | `31-background-jobs-and-queues.md` | BullMQ on Redis, outbox→relay→queue→worker chain, job catalog, queue-vs-cron, when-to-queue checklist |
+| `32-catalog-lifecycle-and-product-guards.md` | Catalog invariants, relational soft-delete guards, brand restrictions, product moderation guards |
+| `33-tax-and-vat-engine.md` | Cross-country VAT/GST, US sales tax nexus, Avalara/TaxJar integration, inclusive vs exclusive display |
+| `34-discount-and-promotion-engine.md` | Multi-channel promotions, BOGO, spend tiers, stackability waterfall, loyalty streaks & gamification |
+| `35-reviews-ratings-and-disputes.md` | Verified-buyer reviews, star ratings, review media, community Q&A, fraud/counterfeit reporting, A-to-Z claims |
+| `36-social-immersive-and-advanced-commerce.md` | In-stream live shopping, shoppable video feeds, AR "View in Room" & 3D, group cart splits, subscriptions |
+| `37-artificial-intelligence-and-machine-learning.md` | Conversational shopping assistant, multimodal visual search, "shop the look", AI descriptions, sizing & demand prediction |
+| `38-future-commerce-differentiators.md` | Crowdsourced group split-pay, DDP landed cost & customs insurance, community pickup points, instant AI trade-in, eco-box cross-docking, price drop protection, provenance badges |
 | `adr/` | Architecture Decision Records — one file per irreversible decision (see `adr/README.md`) |
 
 ### ADRs written so far

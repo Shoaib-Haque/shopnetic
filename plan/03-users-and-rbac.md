@@ -251,6 +251,14 @@ needs that security visibility even though it can't itself manage staff.
 
 ---
 
+## 6.1 Master Architectural Blueprint (2026 Edition) Gap Analysis & Flagged Implementations
+
+Security/IAM gaps surfaced by `plan/gemini/comprehensive_architectural_blueprint_2026_10_28.md` (Entities 3, 13) — Step-Up MFA for high-risk mutations, GDPR data portability/erasure, and Buyer Social OAuth — are tracked in full in `plan/16-security.md` section 11, the dedicated security doc, rather than duplicated here. See that section for current state, specification, and scope.
+
+---
+
+---
+
 ## 7. UI Tests Specification (Dual-Plane Authentication & RBAC Invariants)
 
 ### Comprehensive Identity UI Test Suite (Sorted & Grouped)

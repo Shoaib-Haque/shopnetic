@@ -183,6 +183,56 @@ stateDiagram-v2
 
 ---
 
+## 11. Master Architectural Blueprint (2026 Edition) Gap Analysis & Flagged Implementations
+
+The following specifications from `plan/gemini/comprehensive_architectural_blueprint_2026_10_28.md` represent capabilities not yet present in Shopnetic's Phase 1 Seller Portal implementation and are formally flagged for subsequent phases:
+
+1. **[FLAGGED - Missing Implementation] Seller Health & Performance Metrics Engine (Blueprint Entity 2.7)**:
+   - *Current State*: Basic account status (`draft`, `in_review`, `approved`, `suspended`, `offboarding`, `closed`). No performance calculation.
+   - *Blueprint Specification*: Continuous automated evaluation of core seller operational metrics:
+     - **Order Defect Rate (ODR)**: Negative feedback, A-to-Z claims, and credit card chargebacks (Target: < 1.0%).
+     - **Late Shipment Rate (LSR)**: Orders shipped past the declared handling-time window (Target: < 4.0%).
+     - **Pre-Fulfillment Cancellation Rate (CR)**: Seller-initiated cancellations before shipping (Target: < 2.5%).
+     - **Threshold Enforcement**: Automated warning alerts, Buy-Box eligibility suppression, and automated disciplinary status transitions (`approved -> suspended`) with mandatory appeal workflows.
+
+2. **[FLAGGED - Missing Implementation] Multi-Dimensional Sales Reporting Suite (Blueprint Entity 2.3, 6)**:
+   - *Current State*: Minimal placeholder dashboard with shop status and settings.
+   - *Blueprint Specification*: Comprehensive seller reporting suite providing:
+     - Shop-wide, product-wise, and category-wise sales volume, gross revenue, net payout, and unit velocity.
+     - Custom and preset date range filters (Daily, Weekly, Monthly, Yearly, Custom range).
+     - Interactive visual charts (revenue trends, units sold, conversion rate) and exportable reports (CSV, PDF).
+
+3. **[FLAGGED - Missing Implementation] KYC & Document Verification Pipeline (Blueprint Entity 2.4)**:
+   - *Current State*: Text fields for legal entity name, entity type, and country; no file uploads.
+   - *Blueprint Specification*: Document upload pipeline for government-issued photo ID (passport / driver's license), official company registration certificates, and bank account verification statements. Includes staff verification queue in Back Office with document status tracking (`pending`, `verified`, `rejected_resubmit_needed`).
+
+4. **[FLAGGED - Missing Implementation] Automated Payout & Rolling Reserves (Blueprint Entity 2.6)**:
+   - *Current State*: No financial ledger or automated payout scheduler in `apps/seller`.
+   - *Blueprint Specification*: Automated fund disbursement engine enforcing a mandatory rolling reserve hold (e.g. 14-day hold post-delivery confirmation) to absorb returns and chargebacks before releasing funds. Integration with payment gateway split-settlement rails (e.g. Stripe Connect Custom / Express).
+
+5. **[FLAGGED - Missing Implementation] Seller Staff Sub-Accounts & Scoped RBAC (Blueprint Entity 2.8)**:
+   - *Current State*: One `Account` maps 1:1 to one `Seller`.
+   - *Blueprint Specification*: Multi-user delegation for merchant organizations. Store owners can invite sub-users with scoped seller roles (`Grant { role: 'SELLER_PACKER', scopeType: 'seller', scopeId: sellerId }`):
+     - **Warehouse Packer**: Read orders, print packing slips, enter tracking numbers.
+     - **Inventory Clerk**: Adjust stock allocations, receive shipments.
+     - **Financial Accountant**: Read-only ledger, export payout reports, tax statements.
+
+6. **[FLAGGED - Missing Implementation] Tiered Commission & Platform Fee Engine (Blueprint Entity 2.5)**:
+   - *Current State*: No dynamic commission calculation.
+   - *Blueprint Specification*: Platform monetization engine supporting category-specific commission percentages (e.g. 15% Apparel, 8% Electronics), fixed per-order transaction fees, referral fees, and optional monthly store subscription plans.
+
+7. **[FLAGGED - Missing Implementation] Factory-to-Doorline Provenance & Certifications Management (Blueprint Differentiator 7, Plan 38)**:
+   - *Current State*: Sellers input basic shop profile information and product listing metadata.
+   - *Specification*: Seller portal module allowing verified manufacturers and brands to register tier-1 supply chain facilities (`catalog.supply_chain_node`), upload third-party ethical audit certificates (BSCI, SMETA, ISO 14001), and attach verified milestone journeys to product listings.
+
+8. **[FLAGGED - Missing Implementation] Consolidation Hub Cross-Docking Manifests & Inbound Tracking (Blueprint Differentiator 5, Plan 38)**:
+   - *Current State*: Sellers ship directly to the buyer's home address.
+   - *Specification*: Regional cross-docking dispatch where sellers receive single-shipment labels to route multi-vendor order items to the central platform sorting hub (`logistics.cross_dock_hub`), with inbound scanning status and delivery SLA tracking.
+
+---
+
+---
+
 ## UI Tests Specification (Seller Portal Onboarding & Shop Setup)
 
 ### Comprehensive Seller Portal UI Test Suite (Sorted & Grouped)

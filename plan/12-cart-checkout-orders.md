@@ -166,3 +166,30 @@ Real-time push to open order/tracking pages via Realtime Gateway.
 - Partial shipment + partial return + partial refund math.
 - Seller suspended mid-order.
 - Payment webhook arriving before/after confirm response (out-of-order).
+
+---
+
+## 12. Master Architectural Blueprint & Future Commerce Differentiators Gap Analysis & Flagged Implementations
+
+The following specifications from `plan/gemini/GEMINI_FUTURE_COMMERCE_DIFFERENTIATORS_2026_10_28.md` and `plan/38-future-commerce-differentiators.md` represent gaps in the current implementation of Cart, Checkout, and Order fulfillment sagas. These are formally flagged for subsequent implementation phases:
+
+1. **[FLAGGED - Missing Implementation] Central Consolidation Hub / Cross-Docking for Multi-Vendor Orders (Plan 38, Section 3.5)**:
+   - *Current State*: Multi-seller orders strictly split into independent sub-orders that ship directly from each seller to the buyer as separate packages on different delivery dates.
+   - *Specification*: Regional cross-docking fulfillment option where sellers ship sold items to a central platform sorting hub (`logistics.cross_dock_hub`). Incoming packages are held in staging bins (`logistics.cross_dock_bin`) until all items from the multi-vendor order arrive, packed into a single eco-friendly box, and dispatched as a unified delivery.
+
+2. **[FLAGGED - Missing Implementation] Crowdsourced Group Carts & Split Pay Links (Plan 38, Section 3.1)**:
+   - *Current State*: Checkout session requires a single payer/instrument to capture or authorize the entire order balance.
+   - *Specification*: Public split-payment link generation (`/pay/split/:id`) for event registries and shared carts. Enables multiple contributors to fund portions directly into an escrow account (`escrow:group_split:{id}`). Triggers the place-order saga automatically upon 100% funding milestone, with automatic refund compensation if the campaign window expires.
+
+3. **[FLAGGED - Missing Implementation] DDP (Delivered Duty Paid) Landed Cost Calculator & Customs Insurance (Plan 38, Section 3.2)**:
+   - *Current State*: Tax engine handles domestic sales tax / VAT; international orders do not calculate customs tariffs or cross-border brokerage fees at checkout.
+   - *Specification*: Upfront calculation of 100% landed cost (`Base Price + International Freight + Customs Duty + Import VAT + Clearance Fee`) and an optional "Customs Clearance Guarantee" checkbox protecting buyers from surprise duty revisions or customs demurrage charges.
+
+4. **[FLAGGED - Missing Implementation] Neighborhood Community Drop-Point Delivery Destination (Plan 38, Section 3.3)**:
+   - *Current State*: Shipping addresses are individual residential or commercial addresses.
+   - *Specification*: Selecting a registered local "Community Pickup Point Manager" at checkout to pool neighborhood shipments, waive individual last-mile freight fees, unlock bulk tier pricing, and issue pickup QR passes for manager handoff.
+
+5. **[FLAGGED - Missing Implementation] Instant AI-Verified Trade-In Credit at Checkout (Plan 38, Section 3.4)**:
+   - *Current State*: Checkout total reflects product prices, coupons, shipping, and tax; no trade-in tender exists.
+   - *Specification*: Interactive device diagnostic and computer-vision appraisal flow in checkout drawer deducting instant credit from total, backed by a contingent credit card pre-authorization hold released upon simultaneous courier exchange.
+

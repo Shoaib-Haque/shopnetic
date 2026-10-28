@@ -229,3 +229,21 @@ email* sends; this is about the login attempt itself):
 No prod data in non-prod (use anonymized/synthetic). Separate credentials,
 networks, and cloud accounts per environment. Preview envs are not internet-
 indexed and carry no real secrets.
+
+---
+
+## 11. Master Architectural Blueprint (2026 Edition) Gap Analysis & Flagged Implementations
+
+The following security requirements from `plan/gemini/comprehensive_architectural_blueprint_2026_10_28.md` (Entities 3, 13) are identified as gaps in the current implementation:
+
+1. **[FLAGGED - Missing Implementation] Step-Up MFA Challenge Enforcement (Blueprint Entity 13.2)**:
+   - While staff TOTP is enforced at login, the application currently lacks mid-session step-up prompts for high-risk mutations (updating payout details, deprovisioning accounts, modifying security settings).
+   - Needs dedicated `@RequireStepUpMfa()` route decorator verifying an `mfa_auth_time` claim within the last 5 minutes or issuing a challenge modal.
+
+2. **[FLAGGED - Missing Implementation] Automated GDPR Data Portability & Erasure Pipeline (Blueprint Entity 13.4)**:
+   - The platform lacks an automated background pipeline to generate downloadable personal data archives (JSON/ZIP) and an automated PII anonymization job to scrub user accounts while retaining required accounting ledgers.
+
+3. **[FLAGGED - Missing Implementation] Buyer Social OAuth & Optional MFA (Blueprint Entity 3.10)**:
+   - The marketplace plane currently only supports email/password authentication. Social OAuth2 integration (Google, Apple) and optional buyer-plane TOTP enrollment are not yet implemented.
+
+---

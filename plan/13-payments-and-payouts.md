@@ -166,3 +166,26 @@ buyer / store_credit), proportionally for partials and split payments.
 - Chargeback after payout → negative balance recovery.
 - Provider outage → queue captures, degrade gracefully, no double charge.
 - Reconciliation detects an injected discrepancy.
+
+---
+
+## 13. Master Architectural Blueprint & Future Commerce Differentiators Gap Analysis & Flagged Implementations
+
+The following specifications from `plan/gemini/GEMINI_FUTURE_COMMERCE_DIFFERENTIATORS_2026_10_28.md` and `plan/38-future-commerce-differentiators.md` represent gaps in the current implementation of Payments, Escrow, and Ledger accounts. These are formally flagged for subsequent implementation phases:
+
+1. **[FLAGGED - Missing Implementation] Crowdsourced Split-Pay Escrow Ledger & Multi-Party Settlements (Plan 38, Section 3.1)**:
+   - *Current State*: Single payment authorization per checkout session.
+   - *Specification*: Double-entry escrow ledger bucket (`escrow:group_split:{id}`) collecting individual fractional payments from multiple distinct cards/wallets. Supports milestone-based atomic conversion into active order funds upon 100% funding or automated multi-party ledger reversals on funding expiration.
+
+2. **[FLAGGED - Missing Implementation] Trade-In Credit Deduction & Contingent Collateral Pre-Auth Hold (Plan 38, Section 3.4)**:
+   - *Current State*: Tender types are limited to Gateway (Cards/Wallets/COD) and Store Credit.
+   - *Specification*: Mixed tender where an AI-verified trade-in credit acts as an instant tender discount, paired with a contingent credit card pre-authorization hold for the equivalent amount. Hold is voided upon successful courier device exchange or captured if device handoff is omitted/rejected.
+
+3. **[FLAGGED - Missing Implementation] Automated Price Drop Protection Wallet Credit & Promo Ledger (Plan 38, Section 3.6)**:
+   - *Current State*: Refunds occur strictly in response to cancellations, returns, or dispute settlements.
+   - *Specification*: Algorithmic post-delivery price variance monitoring. Automatically writes double-entry ledger entries (`debit: platform_promotions, credit: buyer_wallet`) when an identical SKU drops in price within 14 days of delivery, crediting the buyer's wallet without human intervention.
+
+4. **[FLAGGED - Missing Implementation] Community Pickup Point Manager Commission Ledger (Plan 38, Section 3.3)**:
+   - *Current State*: Payouts are restricted to third-party merchant seller accounts.
+   - *Specification*: Micro-payout ledger for neighborhood Community Pickup Point Managers accruing basis-point commissions per parcel received, staged, and scanned out via buyer QR verification pass.
+

@@ -116,6 +116,33 @@ report export) with **no deploy**. See `03-users-and-rbac.md`.
 
 ---
 
+## Master Architectural Blueprint (2026 Edition) Gap Analysis & Flagged Implementations
+
+The following back-office capabilities from `plan/gemini/comprehensive_architectural_blueprint_2026_10_28.md` are not yet built in `apps/admin` and are formally flagged for subsequent iterations:
+
+1. **[FLAGGED - Missing Implementation] Shadow Product Review Diff UI (Blueprint Entity 8)**:
+   - *Current State*: Pre-publication moderation modal disables all fields and provides Approve/Reject buttons (`ProductFormModal` in review mode).
+   - *Blueprint Specification*: A dedicated side-by-side visual diff modal displaying the currently active live product attributes alongside the seller's proposed shadow draft changes. Highlight modified rows (e.g. green for additions, amber for modifications) and allow granular partial approvals.
+
+2. **[FLAGGED - Missing Implementation] Fraud, Misinformation & Counterfeit Triage Queue (Blueprint Entity 3.9)**:
+   - *Current State*: Audit log viewer and staff/seller directory exist; no buyer report triage queue.
+   - *Blueprint Specification*: Dedicated Service Admin console for triaging incoming buyer and brand owner reports (`review.misinformation_report`). Enables admins to inspect evidence, preview flagged listings, issue warnings to sellers, or execute immediate listing suppression.
+
+3. **[FLAGGED - Missing Implementation] A-to-Z Dispute Mediation Console (Blueprint Entity 3.13)**:
+   - *Current State*: No dispute handling interface.
+   - *Blueprint Specification*: Comprehensive mediation interface for support staff to manage open claims (`review.dispute_case`):
+     - Timeline view showing buyer complaint, tracking proof, and seller rebuttal.
+     - SLA countdown tracking the 72-hour seller response window.
+     - One-click discretionary refund issuance (up to staff cap) triggering payment gateway reversal and seller escrow debit.
+
+4. **[FLAGGED - Missing Implementation] Executive Platform BI & GMV Analytics Dashboard (Blueprint Entity 6.1)**:
+   - *Current State*: Admin app lands on a placeholder dashboard or catalog list.
+   - *Blueprint Specification*: High-level executive reporting dashboard displaying real-time platform GMV, net revenue, gross margin, order volume, cancellation rates, category sales distribution, and seller growth charts across customizable date ranges with exportable PDF/CSV summaries.
+
+---
+
+---
+
 ## UI Tests Specification (Staff, Sessions, Audit Log & Seller Management)
 
 ### Comprehensive Back Office UI Test Suite (Sorted & Grouped)

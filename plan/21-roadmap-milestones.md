@@ -131,14 +131,33 @@ intervention for daily work.
 ## Phase 4 — Scale & expansion (P0+28w →)
 
 - Multi-currency, multi-locale storefront (i18n hooks already in place).
-- Additional regions / payment methods / tax jurisdictions (marketplace
-  facilitator handling).
-- Advanced personalization / ML ranking, sponsored listings (labeled).
-- Seller API + webhooks for external integrations, app ecosystem.
+- Cross-border tax & VAT engine (Avalara / TaxJar live quoting, marketplace facilitator compliance, inclusive vs exclusive display) (`plan/33`).
+- Advanced multi-channel promotion engine (BOGO, tiered spend, stackability rules, loyalty points) (`plan/34`).
+- Comprehensive reviews, ratings, community Q&A, and A-to-Z dispute mediation center (`plan/35`).
 - Analytics warehouse (ClickHouse/BigQuery) + self-serve dashboards.
 - Read/write DB split per context where load demands; table partitioning.
-- Possible: platform logistics, subscriptions, digital goods — each its own
-  scoped project.
+- Possible: platform logistics, subscriptions, digital goods — each its own scoped project.
+
+---
+
+## Phase 5 — Social, Immersive & AI-Driven Commerce (P0+40w →) [Blueprint 2026 Edition]
+
+**Goal:** next-generation consumer engagement and intelligent automation.
+
+- **In-Stream Live Shopping & Shoppable Feeds**: Live video broadcasts with 1-click buy overlays and vertical shoppable video feeds (`plan/36`).
+- **Immersive 3D & Augmented Reality**: `<model-viewer>` 360-degree rotation, AR "View in Your Room" scale placement, and virtual try-ons (`plan/36`).
+- **Conversational AI Shopping Assistant**: RAG-powered "Personal Shopper" parsing multi-constraint prompts into instant checkout bundles (`plan/37`).
+- **Multimodal Visual Search & Image Hotspots**: "Snap & Find" image-based catalog discovery and automated "Shop the Look" hotspot overlays (`plan/37`).
+- **AI Sizing & Catalog Automation**: AI Size & Fit predictor, automatic background removal, and AI SEO product description generator (`plan/37`).
+- **Collaborative Group Carts ("Cart Splits")**: Real-time group shopping sessions with split payment settlements (`plan/36`).
+- **Crowdsourced Group Carts & Split-Pay Links**: Public shareable payment links for event gifting and milestone escrow releases (`plan/38`).
+- **DDP Landed Cost & Customs Clearance Guarantee**: 100% upfront landed cost calculation and zero-surprise customs duty insurance (`plan/38`, `plan/33`).
+- **Neighborhood Drop-Points & Community Group Buys**: P2P pickup point manager network and geofenced pooled bulk tier discounts (`plan/38`).
+- **Instant AI Trade-In at Checkout**: On-device hardware diagnostics and camera condition appraisal with simultaneous courier exchange (`plan/38`, `plan/37`).
+- **Central Cross-Docking & Eco-Box Consolidation**: Multi-vendor order merging into single delivery boxes at regional sorting hubs (`plan/38`, `plan/12`).
+- **Automated Price Drop Protection**: Post-delivery price monitoring with automatic store credit wallet refunds (`plan/38`, `plan/34`).
+- **Factory-to-Doorline Provenance Badges**: Audited supply chain milestone journeys and ESG certification badges on PDPs (`plan/38`, `plan/26`).
+- **Gamification Loops**: Daily check-in streaks, interactive quizzes, and spin-the-wheel voucher generation (`plan/34`).
 
 ---
 
