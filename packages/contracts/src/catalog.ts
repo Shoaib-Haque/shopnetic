@@ -564,7 +564,14 @@ export const variantSelectionSchema = z.object({
 });
 export type VariantSelection = z.infer<typeof variantSelectionSchema>;
 
-const dimsSchema = z.record(z.string(), z.unknown());
+export const variantDimsSchema = z
+  .object({
+    length: z.number().int().positive().optional(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+  })
+  .strict();
+export type VariantDims = z.infer<typeof variantDimsSchema>;
 
 export const variantSchema = z.object({
   id: z.string(),
@@ -572,7 +579,7 @@ export const variantSchema = z.object({
   skuCode: z.string().nullable(),
   gtin: z.string().nullable(),
   weightG: z.number().int().nullable(),
-  dims: dimsSchema.nullable(),
+  dims: variantDimsSchema.nullable(),
   comboSignature: z.string(),
   status: variantStatusSchema,
   position: z.number().int(),
@@ -604,7 +611,7 @@ export const createVariantRequestSchema = z.object({
     .regex(/^[0-9]{8,14}$/, '8–14 digits')
     .nullish(),
   weightG: z.number().int().min(0).max(10_000_000).nullish(),
-  dims: dimsSchema.nullish(),
+  dims: variantDimsSchema.nullish(),
   status: variantStatusSchema.optional(),
   position: positionField.optional(),
   selections: z
@@ -628,7 +635,7 @@ export const updateVariantRequestSchema = z
       .regex(/^[0-9]{8,14}$/, '8–14 digits')
       .nullable(),
     weightG: z.number().int().min(0).max(10_000_000).nullable(),
-    dims: dimsSchema.nullable(),
+    dims: variantDimsSchema.nullable(),
     status: variantStatusSchema,
     position: positionField,
     expectedUpdatedAt: z.string().optional(),

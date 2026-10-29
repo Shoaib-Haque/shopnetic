@@ -431,7 +431,6 @@ export function ProductOptionsDialog({
       await deleteProductOption(product.id, optionTypeId);
       setProductOptions((prev) => prev.filter((po) => po.optionTypeId !== optionTypeId));
       notify.saved(t('products.options.toast.optionRemoved', { name }));
-      setDeleteTarget(null);
     } catch (e) {
       if (e instanceof AdminApiError && e.code === 'CONFLICT') {
         setActionError(t('products.options.inUseByVariant'));
@@ -439,6 +438,7 @@ export function ProductOptionsDialog({
         setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
       }
     } finally {
+      setDeleteTarget(null);
       setRemovingId(null);
     }
   };
@@ -648,7 +648,9 @@ export function ProductOptionsDialog({
                           <TableHead className="w-32">Type</TableHead>
                           <TableHead>Offered Values</TableHead>
                           <TableHead className="w-48">Single Value Skip</TableHead>
-                          <TableHead className="w-20 text-right">Actions</TableHead>
+                          {!isReadOnly && (
+                            <TableHead className="w-20 text-right">Actions</TableHead>
+                          )}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -789,8 +791,8 @@ export function ProductOptionsDialog({
                                   <span className="text-xs text-muted-foreground">—</span>
                                 )}
                               </TableCell>
-                              <TableCell className="text-right">
-                                {!isReadOnly && (
+                              {!isReadOnly && (
+                                <TableCell className="text-right">
                                   <Button
                                     type="button"
                                     variant="ghost"
@@ -806,8 +808,8 @@ export function ProductOptionsDialog({
                                       <Trash2 className="size-4" />
                                     )}
                                   </Button>
-                                )}
-                              </TableCell>
+                                </TableCell>
+                              )}
                             </TableRow>
                           );
                         })}

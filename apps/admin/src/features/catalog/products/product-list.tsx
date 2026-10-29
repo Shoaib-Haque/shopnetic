@@ -251,6 +251,9 @@ export function ProductList() {
       deleteItem: deleteProduct,
       restoreItem: restoreProduct,
       resync,
+      onOptimisticRemove: (p) => list.setItems((prev) => prev.filter((x) => x.id !== p.id)),
+      onOptimisticRestore: (p) =>
+        list.setItems((prev) => (prev.some((x) => x.id === p.id) ? prev : [p, ...prev])),
       labelOf,
       onError: err,
       messages: {
@@ -342,6 +345,12 @@ export function ProductList() {
           <>
             <DropdownMenuItem onSelect={() => setModal({ mode: 'view', product: p })}>
               {t('products.view')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setOptionsProduct(p)}>
+              {t('products.optionsAction')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setVariantsProduct(p)}>
+              {t('products.variantsAction')}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setMediaProduct(p)}>
               {t('products.mediaAction')}

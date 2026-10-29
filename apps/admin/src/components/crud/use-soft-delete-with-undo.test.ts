@@ -113,6 +113,23 @@ describe('useSoftDeleteWithUndo', () => {
       await expect(act(() => onUndo!())).rejects.toThrow('name taken');
       expect(opts.onError).toHaveBeenCalledWith(boom);
     });
+
+    it('invokes onOptimisticRemove synchronously on delete and onOptimisticRestore synchronously on undo', async () => {
+      const onOptimisticRemove = vi.fn();
+      const onOptimisticRestore = vi.fn();
+      const target = item('opt-1', 'Optimistic Item');
+      const opts = options({ onOptimisticRemove, onOptimisticRestore });
+      const { result } = renderHook(() => useSoftDeleteWithUndo<Item>(opts));
+
+      await act(() => result.current.doDelete(target));
+      expect(onOptimisticRemove).toHaveBeenCalledWith(target);
+
+      const onUndo = mockedNotify.undo.mock.calls[0]?.[1]?.onUndo;
+      expect(onUndo).toBeTypeOf('function');
+
+      await act(() => onUndo!());
+      expect(onOptimisticRestore).toHaveBeenCalledWith(target);
+    });
   });
 
   describe('confirmRestore', () => {

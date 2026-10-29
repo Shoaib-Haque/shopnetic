@@ -200,7 +200,7 @@ export class ProductOptionService {
   ): Promise<void> {
     await this.productOrThrow(productId);
     const usedByVariant = await this.prisma.variantOptionValue.count({
-      where: { optionTypeId, variant: { productId } },
+      where: { optionTypeId, variant: { productId, deletedAt: null } },
     });
     if (usedByVariant > 0) {
       throw new AppError('CONFLICT', 409, {
@@ -226,6 +226,15 @@ export class ProductOptionService {
         where: {
           optionTypeId,
           mediaAsset: { ownerType: 'product', ownerId: productId },
+        },
+      });
+      // Purge soft-deleted variants that used this removed option so they don't linger
+      // as un-restorable ghost records or collide with future variant generation/recreation
+      await tx.variant.deleteMany({
+        where: {
+          productId,
+          deletedAt: { not: null },
+          optionValues: { some: { optionTypeId } },
         },
       });
       await writeCatalogOutbox(tx, 'product', 'product.options_changed', productId, {

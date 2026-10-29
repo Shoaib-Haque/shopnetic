@@ -12,7 +12,12 @@ import {
 } from 'react';
 import * as RDialog from '@radix-ui/react-dialog';
 import { cn } from '../lib/cn';
-import { DialogHeader, DialogTitle, OverlayCloseButton } from '../lib/overlay-parts';
+import {
+  DialogHeader,
+  DialogTitle,
+  OverlayCloseButton,
+  isToastInteraction,
+} from '../lib/overlay-parts';
 
 export const ModalBoundaryContext = createContext<HTMLElement | null>(null);
 
@@ -107,6 +112,18 @@ export const ModalContent = forwardRef<ElementRef<typeof RDialog.Content>, Modal
                 className,
               )}
               {...props}
+              onPointerDownOutside={(e) => {
+                if (isToastInteraction(e)) {
+                  e.preventDefault();
+                }
+                props.onPointerDownOutside?.(e);
+              }}
+              onInteractOutside={(e) => {
+                if (isToastInteraction(e)) {
+                  e.preventDefault();
+                }
+                props.onInteractOutside?.(e);
+              }}
               onCloseAutoFocus={(e) => {
                 props.onCloseAutoFocus?.(e);
                 if (typeof document !== 'undefined') {

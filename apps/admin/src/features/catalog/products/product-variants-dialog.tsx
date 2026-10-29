@@ -495,7 +495,7 @@ const variantFormSchema = z.object({
     .string()
     .trim()
     .refine(
-      (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 0),
+      (v) => v === '' || (/^\d+$/.test(v) && Number(v) > 0),
       'products.variants.form.err.dimensionInvalid',
     )
     .optional()
@@ -504,7 +504,7 @@ const variantFormSchema = z.object({
     .string()
     .trim()
     .refine(
-      (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 0),
+      (v) => v === '' || (/^\d+$/.test(v) && Number(v) > 0),
       'products.variants.form.err.dimensionInvalid',
     )
     .optional()
@@ -513,7 +513,7 @@ const variantFormSchema = z.object({
     .string()
     .trim()
     .refine(
-      (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 0),
+      (v) => v === '' || (/^\d+$/.test(v) && Number(v) > 0),
       'products.variants.form.err.dimensionInvalid',
     )
     .optional()
@@ -994,42 +994,47 @@ export function ProductVariantsDialog({
     };
   }, []);
 
-  const loadData = useCallback(async () => {
-    if (!product) return;
-    const pId = product.id;
-    const cId = product.categoryId;
-    setLoading(true);
-    setLoadError(null);
-    setActionError(null);
-    try {
-      const [vars, pOpts, cOpts, otLive, otArch] = await Promise.all([
-        listVariants(pId),
-        listProductOptions(pId),
-        listCategoryOptions(cId),
-        listOptionTypesPage({ limit: 100 }),
-        listOptionTypesPage({ archived: true, limit: 100 }).catch(() => ({ optionTypes: [] })),
-      ]);
-      if (mounted.current && product.id === pId) {
-        setVariants(vars);
-        setProductOptions(pOpts);
-        setCategoryOptions(cOpts);
-        const map = new Map<string, OptionType>();
-        for (const ot of otLive.optionTypes) map.set(ot.id, ot);
-        for (const ot of otArch.optionTypes) {
-          if (!map.has(ot.id)) map.set(ot.id, ot);
+  const loadData = useCallback(
+    async ({ background = false }: { background?: boolean } = {}) => {
+      if (!product) return;
+      const pId = product.id;
+      const cId = product.categoryId;
+      if (!background) {
+        setLoading(true);
+        setLoadError(null);
+      }
+      setActionError(null);
+      try {
+        const [vars, pOpts, cOpts, otLive, otArch] = await Promise.all([
+          listVariants(pId),
+          listProductOptions(pId),
+          listCategoryOptions(cId),
+          listOptionTypesPage({ limit: 100 }),
+          listOptionTypesPage({ archived: true, limit: 100 }).catch(() => ({ optionTypes: [] })),
+        ]);
+        if (mounted.current && product.id === pId) {
+          setVariants(vars);
+          setProductOptions(pOpts);
+          setCategoryOptions(cOpts);
+          const map = new Map<string, OptionType>();
+          for (const ot of otLive.optionTypes) map.set(ot.id, ot);
+          for (const ot of otArch.optionTypes) {
+            if (!map.has(ot.id)) map.set(ot.id, ot);
+          }
+          setOptionTypes(Array.from(map.values()));
         }
-        setOptionTypes(Array.from(map.values()));
+      } catch (e) {
+        if (mounted.current && product.id === pId) {
+          setLoadError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+        }
+      } finally {
+        if (mounted.current && product.id === pId && !background) {
+          setLoading(false);
+        }
       }
-    } catch (e) {
-      if (mounted.current && product.id === pId) {
-        setLoadError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
-      }
-    } finally {
-      if (mounted.current && product.id === pId) {
-        setLoading(false);
-      }
-    }
-  }, [product, t]);
+    },
+    [product, t],
+  );
 
   useEffect(() => {
     if (!open || !product) {
@@ -1055,11 +1060,24 @@ export function ProductVariantsDialog({
   const labelOfVariant = (v: Variant | null | undefined): string =>
     v?.skuCode || (v?.comboSignature ? v.comboSignature : '');
 
+  const resyncVariants = useCallback(async () => {
+    if (!product || !mounted.current) return;
+    try {
+      const vars = await listVariants(product.id);
+      if (mounted.current) setVariants(vars);
+    } catch {
+      // best-effort silent resync
+    }
+  }, [product]);
+
   const { doDelete: doDeleteVariant } = useSoftDeleteWithUndo<Variant>({
     deleteItem: (variantId) => (product ? deleteVariant(product.id, variantId) : Promise.resolve()),
     restoreItem: (variantId) =>
       product ? restoreVariant(product.id, variantId) : Promise.resolve(),
-    resync: () => void loadData(),
+    resync: () => void resyncVariants(),
+    onOptimisticRemove: (v) => setVariants((prev) => prev.filter((x) => x.id !== v.id)),
+    onOptimisticRestore: (v) =>
+      setVariants((prev) => [...prev, v].sort((a, b) => a.position - b.position)),
     labelOf: labelOfVariant,
     onError: (e) =>
       setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined))),

@@ -30,6 +30,12 @@ export interface UseSoftDeleteWithUndoOptions<T extends { id: string }> {
   messages: SoftDeleteMessages;
   /** Surfaces anything that isn't the calm "already X" `NOT_FOUND` case. */
   onError: (e: unknown) => void;
+  /** Called synchronously at the start of `doDelete` so the caller can
+   * optimistically remove the item from local state without flashing a full list reload. */
+  onOptimisticRemove?: (item: T) => void;
+  /** Called synchronously at the start of `onUndo` so the caller can
+   * optimistically restore the item in local state without waiting for a re-fetch. */
+  onOptimisticRestore?: (item: T) => void;
 }
 
 export interface UseSoftDeleteWithUndo<T> {
@@ -61,7 +67,16 @@ export interface UseSoftDeleteWithUndo<T> {
 export function useSoftDeleteWithUndo<T extends { id: string }>(
   opts: UseSoftDeleteWithUndoOptions<T>,
 ): UseSoftDeleteWithUndo<T> {
-  const { deleteItem, restoreItem, resync, labelOf, messages, onError } = opts;
+  const {
+    deleteItem,
+    restoreItem,
+    resync,
+    labelOf,
+    messages,
+    onError,
+    onOptimisticRemove,
+    onOptimisticRestore,
+  } = opts;
 
   const [restoreTarget, setRestoreTarget] = useState<T | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -69,6 +84,7 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
 
   const doDelete = useCallback(
     async (item: T): Promise<void> => {
+      onOptimisticRemove?.(item);
       try {
         await deleteItem(item.id);
         pendingUndoId.current = item.id;
@@ -76,12 +92,14 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
           undoLabel: messages.undoLabel,
           undoneMessage: messages.restored(labelOf(item)),
           onUndo: async () => {
+            onOptimisticRestore?.(item);
             try {
               await restoreItem(item.id);
               if (pendingUndoId.current === item.id) pendingUndoId.current = null;
               resync();
             } catch (e) {
               onError(e); // surface the real reason (name now taken, parent archived…)
+              resync();
               throw e; // and skip the "restored" confirmation toast
             }
           },
@@ -99,7 +117,16 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
         resync();
       }
     },
-    [deleteItem, restoreItem, resync, labelOf, messages, onError],
+    [
+      deleteItem,
+      restoreItem,
+      resync,
+      labelOf,
+      messages,
+      onError,
+      onOptimisticRemove,
+      onOptimisticRestore,
+    ],
   );
 
   const confirmRestore = useCallback(async (): Promise<void> => {

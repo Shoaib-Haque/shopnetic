@@ -671,7 +671,7 @@
           "err": {
             "skuLong": "SKU code cannot exceed 80 characters.",
             "weightInvalid": "Weight must be a non-negative whole number.",
-            "dimensionInvalid": "Dimensions must be non-negative whole numbers."
+            "dimensionInvalid": "Dimensions must be positive whole numbers (greater than 0)."
           }
         },
         "deleteConfirmTitle": "Delete variant?",

@@ -347,6 +347,37 @@ describe('ProductVariantsDialog', () => {
     expect(mockedUpdateVariant).not.toHaveBeenCalled();
   });
 
+  it('validates dimensions are positive numbers (>0) and blocks saving 0', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit variant' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit variant' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Variant')).toBeInTheDocument();
+    });
+
+    // Enter 0 for width
+    fireEvent.change(screen.getByDisplayValue('200'), {
+      target: { value: '0' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Variant' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Dimensions must be positive whole numbers (greater than 0).'),
+      ).toBeInTheDocument();
+    });
+
+    expect(mockedUpdateVariant).not.toHaveBeenCalled();
+  });
+
   it('deletes a variant', async () => {
     mockedDeleteVariant.mockResolvedValue(undefined);
     mockedListVariants.mockResolvedValueOnce([sampleVariant]).mockResolvedValue([]);

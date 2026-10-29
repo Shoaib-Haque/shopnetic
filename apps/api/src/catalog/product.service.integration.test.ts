@@ -368,6 +368,11 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     await variants.update(v.id, { status: 'inactive' }, actor, {});
     await variants.remove(v.id, actor, {});
     expect(await variants.list(p.id)).toHaveLength(0);
+
+    // after all variants are deleted (soft-deleted), removing the option succeeds
+    await expect(productOptions.remove(p.id, sizeTypeId, actor, {})).resolves.toBeUndefined();
+    const remaining = await productOptions.list(p.id);
+    expect(remaining.map((o) => o.optionTypeId)).not.toContain(sizeTypeId);
   });
 
   it('supports the degenerate no-option product (one empty variant)', async () => {

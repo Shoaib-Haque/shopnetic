@@ -219,6 +219,9 @@ export function ValueSetList() {
       deleteItem: deleteValueSet,
       restoreItem: restoreValueSet,
       resync,
+      onOptimisticRemove: (vs) => setItems((prev) => prev.filter((x) => x.id !== vs.id)),
+      onOptimisticRestore: (vs) =>
+        setItems((prev) => (prev.some((x) => x.id === vs.id) ? prev : [vs, ...prev])),
       labelOf,
       onError: err,
       messages: {

@@ -174,6 +174,9 @@ export function BrandList() {
       deleteItem: deleteBrand,
       restoreItem: restoreBrand,
       resync,
+      onOptimisticRemove: (b) => list.setItems((prev) => prev.filter((x) => x.id !== b.id)),
+      onOptimisticRestore: (b) =>
+        list.setItems((prev) => (prev.some((x) => x.id === b.id) ? prev : [b, ...prev])),
       labelOf,
       onError: err,
       messages: {

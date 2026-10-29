@@ -61,6 +61,7 @@ export {
   PopoverContent,
   type PopoverContentProps,
 } from './components/popover';
+export { isToastInteraction } from './lib/overlay-parts';
 export {
   Select,
   SelectGroup,

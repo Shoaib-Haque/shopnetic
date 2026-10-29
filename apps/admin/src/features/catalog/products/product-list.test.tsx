@@ -521,6 +521,26 @@ describe('ProductList', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
   });
 
+  it('renders Configure Options and Manage Variants in row menu for archived products', async () => {
+    const validCatId = mockCategories[0]!.id;
+    const archivedItem = sampleProduct('p-archived-sub', 'Archived Sweatshirt', {
+      categoryId: validCatId,
+      status: 'archived',
+      archivedAt: '2026-02-01T00:00:00.000Z',
+    });
+    mockSearchParams = new URLSearchParams('tab=archived');
+    mockedListProductsPage.mockResolvedValue({ products: [archivedItem], nextCursor: undefined });
+
+    renderAdmin(<ProductList />);
+
+    expect(await screen.findAllByText('Archived Sweatshirt')).not.toHaveLength(0);
+
+    openFirstRowMenu();
+
+    expect(await screen.findByRole('menuitem', { name: 'Configure Options' })).toBeInTheDocument();
+    expect(await screen.findByRole('menuitem', { name: 'Manage Variants' })).toBeInTheDocument();
+  });
+
   it('opens offers & stock dialog from row menu', async () => {
     const item = sampleProduct('p-1', 'Platform Hoodie');
     mockedListProductsPage.mockResolvedValue({ products: [item], nextCursor: undefined });

@@ -118,10 +118,15 @@ export function ProductOffersDialog({
 
   // Load all initial data for product
   const loadData = useCallback(
-    async ({ preserveSelected = false }: { preserveSelected?: boolean } = {}) => {
+    async ({
+      preserveSelected = false,
+      background = false,
+    }: { preserveSelected?: boolean; background?: boolean } = {}) => {
       if (!product) return;
-      setLoading(true);
-      setLoadError(null);
+      if (!background) {
+        setLoading(true);
+        setLoadError(null);
+      }
 
       try {
         const [fetchedVariants, fetchedOffers, fetchedSellers, fetchedWarehouses] =
@@ -158,7 +163,7 @@ export function ProductOffersDialog({
       } catch (err) {
         setLoadError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
       } finally {
-        setLoading(false);
+        if (!background) setLoading(false);
       }
     },
     [product, initialVariantId, t],
@@ -219,10 +224,13 @@ export function ProductOffersDialog({
     deleteItem: (id) => deleteOffer(id),
     restoreItem: (id) => restoreOffer(id),
     resync: () => {
-      if (product) void loadData({ preserveSelected: true });
+      if (product) void loadData({ preserveSelected: true, background: true });
       const currentVid = selectedVariantIdRef.current;
       if (currentVid) void loadBuybox(currentVid);
     },
+    onOptimisticRemove: (o) => setOffers((prev) => prev.filter((x) => x.id !== o.id)),
+    onOptimisticRestore: (o) =>
+      setOffers((prev) => (prev.some((x) => x.id === o.id) ? prev : [o, ...prev])),
     labelOf: (o) => (o ? `${o.sellerName} (${o.skuCode})` : 'Offer'),
     messages: {
       deleted: () => t('products.offers.toast.offerDeleted'),

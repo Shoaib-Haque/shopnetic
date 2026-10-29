@@ -66,3 +66,17 @@ export const DialogTitle = forwardRef<
     <RDialog.Title ref={ref} className={cn('text-base font-semibold', className)} {...props} />
   );
 });
+
+/**
+ * Detects whether an outside interaction event originated from inside an active
+ * Sonner toast container (e.g. clicking an 'Undo' button). Used by Modal and Drawer
+ * to prevent accidental closure when interacting with toasts.
+ */
+export function isToastInteraction(event: { detail?: { originalEvent?: Event } }): boolean {
+  const target = event.detail?.originalEvent?.target as Element | null | undefined;
+  return Boolean(
+    target &&
+      typeof target.closest === 'function' &&
+      target.closest('[data-sonner-toaster], [data-sonner-toast]'),
+  );
+}

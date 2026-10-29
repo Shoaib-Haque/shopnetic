@@ -6,6 +6,7 @@ import {
   type LocalizedText,
   type UpdateVariantRequest,
   type Variant,
+  type VariantDims,
   type VariantSelection,
 } from '@shopnetic/contracts';
 import { Prisma } from '@shopnetic/db';
@@ -82,7 +83,7 @@ export class VariantService {
     const signature = computeComboSignature(selections);
 
     const dupe = await this.prisma.variant.findFirst({
-      where: { productId, comboSignature: signature },
+      where: { productId, comboSignature: signature, deletedAt: null },
       select: { id: true },
     });
     if (dupe) {
@@ -93,6 +94,17 @@ export class VariantService {
     if (input.skuCode) await this.assertSkuFree(productId, input.skuCode, null);
 
     const created = await this.prisma.$transaction(async (tx) => {
+      // Purge any soft-deleted tombstone variant with the same combo signature or SKU
+      await tx.variant.deleteMany({
+        where: {
+          productId,
+          deletedAt: { not: null },
+          OR: [
+            { comboSignature: signature },
+            ...(input.skuCode ? [{ skuCode: input.skuCode }] : []),
+          ],
+        },
+      });
       const row = await tx.variant.create({
         data: {
           productId,
@@ -240,6 +252,13 @@ export class VariantService {
         detail: 'cannot restore variant on a pending product',
       });
     }
+
+    // Validate that the variant's selections are still valid options on the product
+    const selections = current.optionValues.map((v) => ({
+      optionTypeId: v.optionTypeId,
+      optionValueId: v.optionValueId,
+    }));
+    await this.validateSelections(product.id, product.categoryId, selections);
 
     const dupe = await this.prisma.variant.findFirst({
       where: {
@@ -417,7 +436,12 @@ export class VariantService {
     exceptId: string | null,
   ): Promise<void> {
     const clash = await this.prisma.variant.findFirst({
-      where: { productId, skuCode, ...(exceptId ? { id: { not: exceptId } } : {}) },
+      where: {
+        productId,
+        skuCode,
+        deletedAt: null,
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
       select: { id: true },
     });
     if (clash) {
@@ -435,7 +459,7 @@ function toView(row: VariantRow): Variant {
     skuCode: row.skuCode,
     gtin: row.gtin,
     weightG: row.weightG,
-    dims: (row.dims as Record<string, unknown> | null) ?? null,
+    dims: (row.dims as VariantDims | null) ?? null,
     comboSignature: row.comboSignature,
     status: row.status,
     position: row.position,

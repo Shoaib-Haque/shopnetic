@@ -160,6 +160,9 @@ export function OptionTypeList() {
       deleteItem: deleteOptionType,
       restoreItem: restoreOptionType,
       resync,
+      onOptimisticRemove: (ot) => list.setItems((prev) => prev.filter((x) => x.id !== ot.id)),
+      onOptimisticRestore: (ot) =>
+        list.setItems((prev) => (prev.some((x) => x.id === ot.id) ? prev : [ot, ...prev])),
       labelOf,
       onError: err,
       messages: {

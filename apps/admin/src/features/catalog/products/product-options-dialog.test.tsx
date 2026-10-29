@@ -337,6 +337,7 @@ describe('ProductOptionsDialog', () => {
           'Cannot remove this option because existing variants are currently using it. Delete those variants first.',
         ),
       ).toBeInTheDocument();
+      expect(screen.queryByText('Remove option from product?')).not.toBeInTheDocument();
     });
   });
 
@@ -451,12 +452,13 @@ describe('ProductOptionsDialog', () => {
       ).toBeInTheDocument();
     });
 
-    // Add option toolbar and remove button should not be present
+    // Add option toolbar, remove button, and Actions header should not be present
     expect(
       screen.queryByRole('combobox', { name: 'Select an option axis…' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove option' })).not.toBeInTheDocument();
     expect(screen.queryByText('Select Values (2)')).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument();
   });
 
   it('renders view-only mode for pending review product', async () => {
@@ -477,5 +479,6 @@ describe('ProductOptionsDialog', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove option' })).not.toBeInTheDocument();
     expect(screen.queryByText('Select Values (2)')).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument();
   });
 });

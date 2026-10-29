@@ -8,7 +8,12 @@ import {
 } from 'react';
 import * as RDialog from '@radix-ui/react-dialog';
 import { cn } from '../lib/cn';
-import { DialogHeader, DialogTitle, OverlayCloseButton } from '../lib/overlay-parts';
+import {
+  DialogHeader,
+  DialogTitle,
+  OverlayCloseButton,
+  isToastInteraction,
+} from '../lib/overlay-parts';
 
 /**
  * Slide-in side panel over the same Radix primitive `Modal` uses (focus
@@ -51,6 +56,18 @@ export const DrawerContent = forwardRef<ElementRef<typeof RDialog.Content>, Draw
             className,
           )}
           {...props}
+          onPointerDownOutside={(e) => {
+            if (isToastInteraction(e)) {
+              e.preventDefault();
+            }
+            props.onPointerDownOutside?.(e);
+          }}
+          onInteractOutside={(e) => {
+            if (isToastInteraction(e)) {
+              e.preventDefault();
+            }
+            props.onInteractOutside?.(e);
+          }}
           onCloseAutoFocus={(e) => {
             props.onCloseAutoFocus?.(e);
             if (typeof document !== 'undefined') {

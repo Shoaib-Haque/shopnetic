@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import type { Actor } from '@shopnetic/auth';
+import { createVariantRequestSchema, updateVariantRequestSchema } from '@shopnetic/contracts';
 import { AuditService } from '../audit/audit.service.js';
 import { OptionTypeService } from './option-type.service.js';
 import { CategoryOptionService } from './category-option.service.js';
@@ -447,6 +448,7 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
     );
     await variants.remove(v1.id, actor, {});
 
+    const origFindFirst = prisma.variant.findFirst;
     const spy = vi
       .spyOn(prisma.variant, 'findFirst')
       .mockResolvedValueOnce({ id: 'existing-active-id' } as never);
@@ -458,6 +460,106 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
       });
     } finally {
       spy.mockRestore();
+      prisma.variant.findFirst = origFindFirst;
+    }
+  });
+
+  it('throws VARIANT_SELECTION_INVALID when restoring a variant whose offered values are no longer configured', async () => {
+    const tempProd = await prisma.product.create({
+      data: {
+        categoryId,
+        titleI18n: t('Temp Prod For Restore Validation Test'),
+        slug: s('temp-prod-restore-val-test'),
+        status: 'draft',
+      },
+    });
+
+    try {
+      await productOptions.put(tempProd.id, sizeTypeId, { position: 0 }, actor, {});
+      await productOptions.setValues(
+        tempProd.id,
+        sizeTypeId,
+        {
+          values: [
+            { optionValueId: sizeValues['s']!, position: 0 },
+            { optionValueId: sizeValues['m']!, position: 1 },
+          ],
+        },
+        actor,
+        {},
+      );
+
+      await productOptions.put(tempProd.id, colorTypeId, { position: 1 }, actor, {});
+      await productOptions.setValues(
+        tempProd.id,
+        colorTypeId,
+        {
+          values: [
+            { optionValueId: colorValues['red']!, position: 0 },
+            { optionValueId: colorValues['blue']!, position: 1 },
+          ],
+        },
+        actor,
+        {},
+      );
+
+      const v = await variants.create(
+        tempProd.id,
+        {
+          selections: [
+            { optionTypeId: sizeTypeId, optionValueId: sizeValues['s']! },
+            { optionTypeId: colorTypeId, optionValueId: colorValues['red']! },
+          ],
+          skuCode: s('RUN-TEMP-S-RED'),
+        },
+        actor,
+        {},
+      );
+
+      // Soft-delete the variant
+      await variants.remove(v.id, actor, {});
+      expect((await variants.list(tempProd.id)).some((x) => x.id === v.id)).toBe(false);
+
+      // Remove "Red" from the product's offered values (now only "Blue" is offered)
+      await productOptions.setValues(
+        tempProd.id,
+        colorTypeId,
+        { values: [{ optionValueId: colorValues['blue']!, position: 0 }] },
+        actor,
+        {},
+      );
+
+      // Attempting to restore the variant should now be blocked by validateSelections
+      await expect(variants.restore(v.id, actor, {})).rejects.toMatchObject({
+        code: 'VARIANT_SELECTION_INVALID',
+        status: 422,
+      });
+
+      // Re-add "Red" back to offered values
+      await productOptions.setValues(
+        tempProd.id,
+        colorTypeId,
+        {
+          values: [
+            { optionValueId: colorValues['red']!, position: 0 },
+            { optionValueId: colorValues['blue']!, position: 1 },
+          ],
+        },
+        actor,
+        {},
+      );
+
+      // Restoring the variant now succeeds
+      const restored = await variants.restore(v.id, actor, {});
+      expect(restored.id).toBe(v.id);
+      expect((await variants.list(tempProd.id)).some((x) => x.id === v.id)).toBe(true);
+    } finally {
+      await prisma.variant.deleteMany({ where: { productId: tempProd.id } });
+      await prisma.productOptionValue.deleteMany({
+        where: { productOption: { productId: tempProd.id } },
+      });
+      await prisma.productOption.deleteMany({ where: { productId: tempProd.id } });
+      await prisma.product.delete({ where: { id: tempProd.id } });
     }
   });
 
@@ -534,5 +636,34 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
     } finally {
       await prisma.product.delete({ where: { id: archivedProd.id } });
     }
+  });
+
+  it('enforces dimensions to be positive integers (>0) at the boundary schema', () => {
+    const invalidZeroLength = createVariantRequestSchema.safeParse({
+      selections: [
+        {
+          optionTypeId: 'a0000000-0000-0000-0000-000000000001',
+          optionValueId: 'b0000000-0000-0000-0000-000000000001',
+        },
+      ],
+      dims: { length: 0, width: 10, height: 10 },
+    });
+    expect(invalidZeroLength.success).toBe(false);
+
+    const invalidZeroWidth = updateVariantRequestSchema.safeParse({
+      dims: { length: 10, width: 0, height: 10 },
+    });
+    expect(invalidZeroWidth.success).toBe(false);
+
+    const validPositive = createVariantRequestSchema.safeParse({
+      selections: [
+        {
+          optionTypeId: 'a0000000-0000-0000-0000-000000000001',
+          optionValueId: 'b0000000-0000-0000-0000-000000000001',
+        },
+      ],
+      dims: { length: 10, width: 20, height: 30 },
+    });
+    expect(validPositive.success).toBe(true);
   });
 });
