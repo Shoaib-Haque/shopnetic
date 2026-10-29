@@ -17,6 +17,7 @@ import {
   listProductOptions,
   putMediaTag,
   reorderProductMedia,
+  updateMedia,
 } from './api';
 import { ProductMediaDialog } from './product-media-dialog';
 
@@ -27,6 +28,7 @@ vi.mock('./api', async () => {
     listProductMedia: vi.fn(),
     listProductOptions: vi.fn(),
     createProductMedia: vi.fn(),
+    updateMedia: vi.fn(),
     deleteMedia: vi.fn(),
     putMediaTag: vi.fn(),
     deleteMediaTag: vi.fn(),
@@ -41,6 +43,7 @@ vi.mock('@/features/catalog/option-types/api', () => ({
 const mockedListProductMedia = vi.mocked(listProductMedia);
 const mockedListProductOptions = vi.mocked(listProductOptions);
 const mockedCreateProductMedia = vi.mocked(createProductMedia);
+const mockedUpdateMedia = vi.mocked(updateMedia);
 const mockedDeleteMedia = vi.mocked(deleteMedia);
 const mockedPutMediaTag = vi.mocked(putMediaTag);
 const mockedDeleteMediaTag = vi.mocked(deleteMediaTag);
@@ -231,7 +234,12 @@ describe('ProductMediaDialog', () => {
           status: 'active',
         }),
       );
+      // New asset immediately appears in the gallery in-place
+      expect(screen.getByText('“Back View”')).toBeInTheDocument();
     });
+
+    // Zero redundant full-list network requests
+    expect(mockedListProductMedia).toHaveBeenCalledTimes(1);
   });
 
   it('validates required fields inline (fileKey and video posterKey) and blocks submit', async () => {
@@ -978,5 +986,238 @@ describe('ProductMediaDialog', () => {
     // Playback rate on DOM element and state should reset to 1
     expect(videoEl.playbackRate).toBe(1);
     expect(screen.getByRole('button', { name: '1x' })).toHaveClass('bg-primary');
+  });
+
+  it('displays human-friendly 1-based position numbers in card headers', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+    expect(screen.getByText('pos 1')).toBeInTheDocument();
+    expect(screen.getByText('pos 2')).toBeInTheDocument();
+    expect(screen.queryByText('pos 0')).not.toBeInTheDocument();
+  });
+
+  it('hides Edit details button in video preview modal when product is archived', async () => {
+    const archivedProduct: Product = {
+      ...sampleProduct,
+      status: 'archived',
+    };
+    const videoAsset: MediaAsset = {
+      id: 'media_v1',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/video-1.mp4',
+      posterKey: 'products/poster-1.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 30,
+      blurhash: null,
+      alt: { en: 'Product Demo Reel' },
+      position: 0,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListProductMedia.mockResolvedValue([videoAsset]);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={archivedProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const playBtn = screen.getByRole('button', { name: /Play video preview/i });
+    fireEvent.click(playBtn);
+
+    expect(await screen.findByTestId('video-preview-player')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit details/i })).not.toBeInTheDocument();
+  });
+
+  it('closes Edit Media Asset without API call when submitted without changes', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const editBtns = screen.getAllByRole('button', { name: /Edit/i });
+    fireEvent.click(editBtns[0]!);
+
+    expect(await screen.findByRole('heading', { name: /Edit Media Asset/i })).toBeInTheDocument();
+
+    // Click Save Media without modifying any fields
+    const saveBtn = screen.getByRole('button', { name: /Save Media/i });
+    fireEvent.click(saveBtn);
+
+    // Modal should close immediately without calling updateMedia
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: /Edit Media Asset/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('prompts with discard confirmation dialog when closing form modal with dirty changes', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const addBtn = screen.getByRole('button', { name: /Add Media/i });
+    fireEvent.click(addBtn);
+
+    expect(await screen.findByRole('heading', { name: /Add Media Asset/i })).toBeInTheDocument();
+
+    const fileInput = screen.getByLabelText(/File Key \/ Asset URL/i);
+    fireEvent.change(fileInput, { target: { value: 'products/unsaved.jpg' } });
+
+    // Click Cancel while form is dirty
+    const cancelBtn = screen.getByRole('button', { name: /Cancel/i });
+    fireEvent.click(cancelBtn);
+
+    // Should prompt with discard confirmation dialog
+    expect(await screen.findByText(/Discard changes\?/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/You have unsaved changes\. If you close now, they will be lost\./i),
+    ).toBeInTheDocument();
+
+    // Confirm discard
+    const discardConfirmBtn = screen.getByRole('button', { name: /Discard/i });
+    fireEvent.click(discardConfirmBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: /Add Media Asset/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('closes delete confirm modal and displays error message if delete fails', async () => {
+    const { AdminApiError } = await import('@/features/admin-api/client');
+    mockedDeleteMedia.mockRejectedValueOnce(new AdminApiError('CONFLICT', 409));
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const deleteBtns = screen.getAllByRole('button', { name: 'Delete' });
+    fireEvent.click(deleteBtns[0]!);
+
+    const confirmDialog = await screen.findByRole('dialog', {
+      name: /Permanently delete this media asset/i,
+    });
+    expect(confirmDialog).toBeInTheDocument();
+
+    const confirmDeleteBtn = within(confirmDialog).getByRole('button', { name: 'Delete' });
+    fireEvent.click(confirmDeleteBtn);
+
+    // Confirm modal should close
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: /Permanently delete this media asset/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    // Error banner should be visible in parent gallery
+    expect(
+      await screen.findByText(/That action conflicts with the current state/i),
+    ).toBeInTheDocument();
+  });
+
+  it('hides reorder controls when viewing filtered tabs (General or Variant-Specific)', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    // On All tab, move buttons are present
+    expect(screen.getByRole('button', { name: 'Move Right' })).toBeInTheDocument();
+
+    // Switch to General tab
+    const generalTab = screen.getByRole('button', { name: /General/i });
+    fireEvent.click(generalTab);
+
+    // On General tab, move controls should be hidden
+    expect(screen.queryByRole('button', { name: 'Move Right' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Move Left' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Set as Cover/i })).not.toBeInTheDocument();
+  });
+
+  it('only displays Set as Cover button for untagged assets on the All tab', async () => {
+    // sampleAssets has media_1 (untagged, isCover=true) and media_2 (tagged, isCover=false)
+    // Add a third untagged asset at pos 2
+    const threeAssets: MediaAsset[] = [
+      ...sampleAssets,
+      {
+        id: 'media_3',
+        ownerType: 'product',
+        ownerId: 'prod_1',
+        kind: 'image',
+        fileKey: 'products/tee-back.jpg',
+        posterKey: null,
+        width: 800,
+        height: 800,
+        durationS: null,
+        blurhash: null,
+        alt: { en: 'Back view' },
+        position: 2,
+        status: 'active',
+        tags: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+    mockedListProductMedia.mockResolvedValueOnce(threeAssets);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    // media_1 is already cover -> no Make Cover button
+    // media_2 is tagged (Variant Lead) -> MUST NOT have Make Cover button
+    // media_3 is untagged and not cover -> MUST have Make Cover button
+    const setCoverButtons = screen.getAllByRole('button', { name: /Make Cover/i });
+    expect(setCoverButtons).toHaveLength(1);
+
+    const media3Card = document.querySelector('[data-media-id="media_3"]')!;
+    expect(
+      within(media3Card as HTMLElement).getByRole('button', { name: /Make Cover/i }),
+    ).toBeInTheDocument();
+
+    const media2Card = document.querySelector('[data-media-id="media_2"]')!;
+    expect(
+      within(media2Card as HTMLElement).queryByRole('button', { name: /Make Cover/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('updates edited media asset in-place without triggering full list reload', async () => {
+    const updatedAsset: MediaAsset = {
+      ...sampleAssets[0]!,
+      alt: { en: 'Updated Front View' },
+    };
+    mockedUpdateMedia.mockResolvedValueOnce(updatedAsset);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+    expect(screen.getByText('“Organic Tee Front View”')).toBeInTheDocument();
+
+    const editBtns = screen.getAllByRole('button', { name: 'Edit Media' });
+    fireEvent.click(editBtns[0]!);
+
+    expect(await screen.findByText('Edit Media Asset')).toBeInTheDocument();
+
+    const altInput = screen.getByPlaceholderText(/Descriptive text for screen readers/i);
+    fireEvent.change(altInput, { target: { value: 'Updated Front View' } });
+
+    const saveBtn = screen.getByRole('button', { name: 'Save Media' });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mockedUpdateMedia).toHaveBeenCalledWith(
+        'media_1',
+        expect.objectContaining({
+          alt: { en: 'Updated Front View' },
+        }),
+      );
+      // DOM updates in-place to new value
+      expect(screen.getByText('“Updated Front View”')).toBeInTheDocument();
+    });
+
+    // Zero redundant full-list network requests
+    expect(mockedListProductMedia).toHaveBeenCalledTimes(1);
   });
 });

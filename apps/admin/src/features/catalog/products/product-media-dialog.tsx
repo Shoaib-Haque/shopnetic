@@ -55,6 +55,7 @@ import {
   Spinner,
   StatusBadge,
 } from '@shopnetic/ui';
+import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { integerKeyDownHandler, integerPasteHandler } from '@/lib/numeric-input';
@@ -78,6 +79,8 @@ interface MediaFormModalProps {
   productId: string;
   asset: MediaAsset | null;
   onSaved: (asset: MediaAsset) => void;
+  readOnly?: boolean;
+  onConflict?: () => void;
 }
 
 const mediaFormSchema = z
@@ -109,11 +112,21 @@ const mediaFormSchema = z
 
 type MediaFormValues = z.infer<typeof mediaFormSchema>;
 
-function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: MediaFormModalProps) {
+function MediaFormModal({
+  open,
+  onOpenChange,
+  productId,
+  asset,
+  onSaved,
+  readOnly = false,
+  onConflict,
+}: MediaFormModalProps) {
   const t = useTranslations('catalog');
+  const tAdmin = useTranslations('admin');
   const isEdit = asset !== null;
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const {
     register,
@@ -122,9 +135,11 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
     reset,
     setValue,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<MediaFormValues>({
     resolver: zodResolver(mediaFormSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onSubmit',
     defaultValues: {
       kind: 'image',
       fileKey: '',
@@ -143,6 +158,14 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
     return err.message?.startsWith('products.') ? t(err.message) : err.message;
   }
 
+  function requestClose(next: boolean): void {
+    if (!next && isDirty && !isSubmitting && !readOnly) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onOpenChange(next);
+  }
+
   useEffect(() => {
     if (!open) {
       reset({
@@ -154,6 +177,7 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
         status: 'active',
       });
       setFormError(null);
+      setConfirmDiscard(false);
       return;
     }
 
@@ -177,9 +201,20 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
       });
     }
     setFormError(null);
+    setConfirmDiscard(false);
   }, [open, asset, reset]);
 
   const onValidSubmit = async (data: MediaFormValues) => {
+    if (readOnly) {
+      onOpenChange(false);
+      return;
+    }
+
+    if (isEdit && !isDirty) {
+      onOpenChange(false);
+      return;
+    }
+
     setFormError(null);
 
     const cleanFileKey = data.fileKey.trim();
@@ -214,176 +249,210 @@ function MediaFormModal({ open, onOpenChange, productId, asset, onSaved }: Media
         onOpenChange(false);
       }
     } catch (err) {
+      if (err instanceof AdminApiError && err.code === 'CONFLICT') {
+        onConflict?.();
+      }
       setFormError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
     }
   };
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-md max-h-[85vh] flex flex-col">
-        <form onSubmit={handleSubmit(onValidSubmit)} className="flex min-h-0 flex-1 flex-col">
-          <ModalHeader className="shrink-0 border-b border-border pb-4">
-            <ModalTitle>
-              {isEdit ? t('products.media.form.editTitle') : t('products.media.form.addTitle')}
-            </ModalTitle>
-            <ModalDescription>{t('products.media.dialogSubtitle')}</ModalDescription>
-          </ModalHeader>
+    <>
+      <Modal open={open} onOpenChange={requestClose}>
+        <ModalContent className="max-w-md max-h-[85vh] flex flex-col">
+          <form
+            onSubmit={handleSubmit(onValidSubmit)}
+            noValidate
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <ModalHeader className="shrink-0 border-b border-border pb-4">
+              <ModalTitle>
+                {isEdit ? t('products.media.form.editTitle') : t('products.media.form.addTitle')}
+              </ModalTitle>
+              <ModalDescription>{t('products.media.dialogSubtitle')}</ModalDescription>
+            </ModalHeader>
 
-          <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
-            {/* Kind Selector */}
-            {!isEdit && (
-              <Field label={t('products.media.form.kind')} htmlFor="media-kind">
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={selectedKind === 'image' ? 'primary' : 'outline'}
-                    size="sm"
-                    onClick={() => setValue('kind', 'image', { shouldValidate: true })}
-                    className="flex-1 gap-1.5"
-                  >
-                    <ImageIcon className="size-4" />
-                    {t('products.media.kindImage')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={selectedKind === 'video' ? 'primary' : 'outline'}
-                    size="sm"
-                    onClick={() => setValue('kind', 'video', { shouldValidate: true })}
-                    className="flex-1 gap-1.5"
-                  >
-                    <Film className="size-4" />
-                    {t('products.media.kindVideo')}
-                  </Button>
-                </div>
-              </Field>
-            )}
-
-            {/* File Key / URL */}
-            <Field
-              label={t('products.media.form.fileKey')}
-              htmlFor="media-file-key"
-              error={fieldError('fileKey')}
-            >
-              <Input
-                id="media-file-key"
-                {...register('fileKey')}
-                placeholder={t('products.media.form.fileKeyPlaceholder')}
-                invalid={Boolean(errors.fileKey)}
-              />
-            </Field>
-
-            {/* Poster Key (Videos only) */}
-            {selectedKind === 'video' && (
-              <Field
-                label={t('products.media.form.posterKey')}
-                htmlFor="media-poster-key"
-                hint={t('products.media.form.posterKeyHint')}
-                error={fieldError('posterKey')}
-              >
-                <Input
-                  id="media-poster-key"
-                  {...register('posterKey')}
-                  placeholder={t('products.media.form.posterKeyPlaceholder')}
-                  invalid={Boolean(errors.posterKey)}
-                />
-              </Field>
-            )}
-
-            {/* Alt Text */}
-            <Field
-              label={t('products.media.form.alt')}
-              htmlFor="media-alt"
-              error={fieldError('alt')}
-            >
-              <Input
-                id="media-alt"
-                {...register('alt')}
-                placeholder={t('products.media.form.altPlaceholder')}
-                invalid={Boolean(errors.alt)}
-              />
-            </Field>
-
-            {/* Duration (Videos only) */}
-            {selectedKind === 'video' && (
-              <Field
-                label={t('products.media.form.durationS')}
-                htmlFor="media-duration"
-                error={fieldError('durationS')}
-              >
-                <Input
-                  id="media-duration"
-                  type="number"
-                  min="1"
-                  max="86400"
-                  {...register('durationS')}
-                  placeholder={t('products.media.form.durationPlaceholder')}
-                  invalid={Boolean(errors.durationS)}
-                  onKeyDown={integerKeyDownHandler}
-                  onPaste={(e) =>
-                    integerPasteHandler(e, (val) =>
-                      setValue('durationS', val, { shouldValidate: true, shouldDirty: true }),
-                    )
-                  }
-                />
-              </Field>
-            )}
-
-            {/* Status (active / pending / rejected) */}
-            <Field label={t('products.media.form.status')} htmlFor="media-status">
-              <Controller
-                control={control}
-                name="status"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="media-status">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">
-                        {t('products.media.form.statusActive')}
-                      </SelectItem>
-                      <SelectItem value="pending">
-                        {t('products.media.form.statusPending')}
-                      </SelectItem>
-                      <SelectItem value="rejected">
-                        {t('products.media.form.statusRejected')}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+            <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
+              <fieldset disabled={isSubmitting || readOnly} className="contents">
+                {/* Kind Selector */}
+                {!isEdit && (
+                  <Field label={t('products.media.form.kind')} htmlFor="media-kind">
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant={selectedKind === 'image' ? 'primary' : 'outline'}
+                        size="sm"
+                        disabled={readOnly}
+                        onClick={() => setValue('kind', 'image', { shouldValidate: false })}
+                        className="flex-1 gap-1.5"
+                      >
+                        <ImageIcon className="size-4" />
+                        {t('products.media.kindImage')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={selectedKind === 'video' ? 'primary' : 'outline'}
+                        size="sm"
+                        disabled={readOnly}
+                        onClick={() => setValue('kind', 'video', { shouldValidate: false })}
+                        className="flex-1 gap-1.5"
+                      >
+                        <Film className="size-4" />
+                        {t('products.media.kindVideo')}
+                      </Button>
+                    </div>
+                  </Field>
                 )}
-              />
-            </Field>
 
-            {formError && (
-              <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
-                {formError}
-              </div>
-            )}
-          </ModalBody>
+                {/* File Key / URL */}
+                <Field
+                  label={t('products.media.form.fileKey')}
+                  htmlFor="media-file-key"
+                  error={fieldError('fileKey')}
+                >
+                  <Input
+                    id="media-file-key"
+                    {...register('fileKey')}
+                    placeholder={t('products.media.form.fileKeyPlaceholder')}
+                    invalid={Boolean(errors.fileKey)}
+                    disabled={readOnly}
+                  />
+                </Field>
 
-          <ModalFooter className="shrink-0 border-t border-border pt-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isSubmitting}
-              onClick={() => onOpenChange(false)}
-            >
-              {t('products.media.form.cancel')}
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              size="sm"
-              loading={isSubmitting}
-              disabled={isSubmitting}
-            >
-              {isEdit ? t('products.media.form.save') : t('products.media.form.add')}
-            </Button>
-          </ModalFooter>
-        </form>
-      </ModalContent>
-    </Modal>
+                {/* Poster Key (Videos only) */}
+                {selectedKind === 'video' && (
+                  <Field
+                    label={t('products.media.form.posterKey')}
+                    htmlFor="media-poster-key"
+                    hint={t('products.media.form.posterKeyHint')}
+                    error={fieldError('posterKey')}
+                  >
+                    <Input
+                      id="media-poster-key"
+                      {...register('posterKey')}
+                      placeholder={t('products.media.form.posterKeyPlaceholder')}
+                      invalid={Boolean(errors.posterKey)}
+                      disabled={readOnly}
+                    />
+                  </Field>
+                )}
+
+                {/* Alt Text */}
+                <Field
+                  label={t('products.media.form.alt')}
+                  htmlFor="media-alt"
+                  error={fieldError('alt')}
+                >
+                  <Input
+                    id="media-alt"
+                    {...register('alt')}
+                    placeholder={t('products.media.form.altPlaceholder')}
+                    invalid={Boolean(errors.alt)}
+                    disabled={readOnly}
+                  />
+                </Field>
+
+                {/* Duration (Videos only) */}
+                {selectedKind === 'video' && (
+                  <Field
+                    label={t('products.media.form.durationS')}
+                    htmlFor="media-duration"
+                    error={fieldError('durationS')}
+                  >
+                    <Input
+                      id="media-duration"
+                      type="number"
+                      {...register('durationS')}
+                      placeholder={t('products.media.form.durationPlaceholder')}
+                      invalid={Boolean(errors.durationS)}
+                      disabled={readOnly}
+                      onKeyDown={integerKeyDownHandler}
+                      onPaste={(e) =>
+                        integerPasteHandler(e, (val) =>
+                          setValue('durationS', val, { shouldValidate: false, shouldDirty: true }),
+                        )
+                      }
+                    />
+                  </Field>
+                )}
+
+                {/* Status (active / pending / rejected) */}
+                <Field label={t('products.media.form.status')} htmlFor="media-status">
+                  <Controller
+                    control={control}
+                    name="status"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={readOnly}
+                      >
+                        <SelectTrigger id="media-status">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">
+                            {t('products.media.form.statusActive')}
+                          </SelectItem>
+                          <SelectItem value="pending">
+                            {t('products.media.form.statusPending')}
+                          </SelectItem>
+                          <SelectItem value="rejected">
+                            {t('products.media.form.statusRejected')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+              </fieldset>
+
+              {formError && (
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
+                  {formError}
+                </div>
+              )}
+            </ModalBody>
+
+            <ModalFooter className="shrink-0 border-t border-border pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isSubmitting}
+                onClick={() => requestClose(false)}
+              >
+                {t(readOnly ? 'products.media.close' : 'products.media.form.cancel')}
+              </Button>
+              {!readOnly && (
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  loading={isSubmitting}
+                  disabled={isSubmitting}
+                >
+                  {isEdit ? t('products.media.form.save') : t('products.media.form.add')}
+                </Button>
+              )}
+            </ModalFooter>
+          </form>
+        </ModalContent>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        onOpenChange={setConfirmDiscard}
+        title={tAdmin('form.discardTitle')}
+        message={tAdmin('form.discardMessage')}
+        confirmLabel={tAdmin('form.discardConfirm')}
+        cancelLabel={tAdmin('actions.cancel')}
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          onOpenChange(false);
+        }}
+      />
+    </>
   );
 }
 
@@ -448,6 +517,7 @@ interface VideoPreviewModalProps {
   onOpenChange: (open: boolean) => void;
   asset: MediaAsset | null;
   videoAssets?: MediaAsset[];
+  readOnly?: boolean;
   onSelectAsset?: (asset: MediaAsset) => void;
   onEditAsset?: (asset: MediaAsset) => void;
 }
@@ -457,6 +527,7 @@ function VideoPreviewModal({
   onOpenChange,
   asset,
   videoAssets = [],
+  readOnly = false,
   onSelectAsset,
   onEditAsset,
 }: VideoPreviewModalProps) {
@@ -536,7 +607,7 @@ function VideoPreviewModal({
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
-        <ModalHeader className="p-4 border-b border-border shrink-0 flex flex-row items-center justify-between">
+        <ModalHeader className="p-4 pr-12 border-b border-border shrink-0 flex flex-row items-center justify-between">
           <div className="flex flex-col min-w-0 pr-4">
             <ModalTitle className="truncate pr-4">{title}</ModalTitle>
             <ModalDescription className="text-xs font-mono text-muted-foreground truncate">
@@ -588,7 +659,7 @@ function VideoPreviewModal({
               <Maximize className="size-3.5" />
               <span className="hidden sm:inline">{t('products.media.fullscreen')}</span>
             </Button>
-            {onEditAsset && (
+            {!readOnly && onEditAsset && (
               <Button
                 type="button"
                 variant="outline"
@@ -644,7 +715,7 @@ function VideoPreviewModal({
           )}
         </ModalBody>
 
-        <ModalFooter className="p-3 border-t border-border flex items-center justify-between shrink-0 bg-background">
+        <ModalFooter className="p-3 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0 bg-background">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground mr-1">
@@ -668,7 +739,12 @@ function VideoPreviewModal({
             </div>
           </div>
 
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => onOpenChange(false)}
+          >
             {t('products.media.close')}
           </Button>
         </ModalFooter>
@@ -728,6 +804,7 @@ export function ProductMediaDialog({
   // Tagging in-progress state
   const [taggingId, setTaggingId] = useState<string | null>(null);
 
+  const hadConflictRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -740,39 +817,46 @@ export function ProductMediaDialog({
   const isPending = product?.status === 'pending';
   const isReadOnly = isArchived || isPending;
 
-  const loadData = useCallback(async () => {
-    if (!product) return;
-    const pId = product.id;
-    setLoading(true);
-    setLoadError(null);
-    setActionError(null);
-    try {
-      const [mediaList, optList, otLive, otArch] = await Promise.all([
-        listProductMedia(pId),
-        listProductOptions(pId),
-        listOptionTypesPage({ limit: 100 }),
-        listOptionTypesPage({ archived: true, limit: 100 }).catch(() => ({ optionTypes: [] })),
-      ]);
-      if (mounted.current && product.id === pId) {
-        setMediaAssets(mediaList);
-        setProductOptions(optList);
-        const map = new Map<string, OptionType>();
-        for (const ot of otLive.optionTypes) map.set(ot.id, ot);
-        for (const ot of otArch.optionTypes) {
-          if (!map.has(ot.id)) map.set(ot.id, ot);
+  const loadData = useCallback(
+    async ({ background = false }: { background?: boolean } = {}) => {
+      if (!product) return;
+      const pId = product.id;
+      if (!background) {
+        setLoading(true);
+        setLoadError(null);
+      }
+      setActionError(null);
+      try {
+        const [mediaList, optList, otLive, otArch] = await Promise.all([
+          listProductMedia(pId),
+          listProductOptions(pId),
+          listOptionTypesPage({ limit: 100 }),
+          listOptionTypesPage({ archived: true, limit: 100 }).catch(() => ({ optionTypes: [] })),
+        ]);
+        if (mounted.current && product.id === pId) {
+          setMediaAssets(mediaList);
+          setProductOptions(optList);
+          const map = new Map<string, OptionType>();
+          for (const ot of otLive.optionTypes) map.set(ot.id, ot);
+          for (const ot of otArch.optionTypes) {
+            if (!map.has(ot.id)) map.set(ot.id, ot);
+          }
+          setOptionTypes(Array.from(map.values()));
         }
-        setOptionTypes(Array.from(map.values()));
+      } catch (e) {
+        if (mounted.current && product.id === pId) {
+          setLoadError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+        }
+      } finally {
+        if (mounted.current && product.id === pId) {
+          if (!background) {
+            setLoading(false);
+          }
+        }
       }
-    } catch (e) {
-      if (mounted.current && product.id === pId) {
-        setLoadError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
-      }
-    } finally {
-      if (mounted.current && product.id === pId) {
-        setLoading(false);
-      }
-    }
-  }, [product, t]);
+    },
+    [product, t],
+  );
 
   useEffect(() => {
     if (!open || !product) {
@@ -840,8 +924,9 @@ export function ProductMediaDialog({
     if (!moved) return;
     reordered.splice(targetIndex, 0, moved);
 
-    // Optimistic UI update
-    setMediaAssets(reordered);
+    // Optimistic UI update with refreshed 0-indexed positions
+    const updatedPositions = reordered.map((m, idx) => ({ ...m, position: idx }));
+    setMediaAssets(updatedPositions);
     setReordering(true);
     setActionError(null);
 
@@ -870,7 +955,8 @@ export function ProductMediaDialog({
     if (!moved) return;
     reordered.unshift(moved);
 
-    setMediaAssets(reordered);
+    const updatedPositions = reordered.map((m, idx) => ({ ...m, position: idx }));
+    setMediaAssets(updatedPositions);
     setReordering(true);
     setActionError(null);
 
@@ -888,21 +974,38 @@ export function ProductMediaDialog({
     }
   };
 
+  // ── Save / Update Handler (in-place state update without full-list reload) ─────
+
+  const handleMediaSaved = (savedAsset: MediaAsset) => {
+    setMediaAssets((prev) => {
+      const idx = prev.findIndex((m) => m.id === savedAsset.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = savedAsset;
+        return next;
+      }
+      return [...prev, savedAsset].sort(
+        (a, b) => a.position - b.position || a.id.localeCompare(b.id),
+      );
+    });
+  };
+
   // ── Delete Handler ────────────────────────────────────────────────────────────
 
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
+    const targetId = deleteTarget.id;
     setDeleting(true);
     setActionError(null);
     try {
-      await deleteMedia(deleteTarget.id);
-      setMediaAssets((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+      await deleteMedia(targetId);
+      setMediaAssets((prev) => prev.filter((m) => m.id !== targetId));
       notify.saved(t('products.media.toast.deleted'));
-      setDeleteTarget(null);
     } catch (e) {
       setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
     } finally {
       setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -1047,7 +1150,7 @@ export function ProductMediaDialog({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={loadData}
+                  onClick={() => void loadData()}
                   className="mt-4"
                 >
                   Retry
@@ -1080,8 +1183,11 @@ export function ProductMediaDialog({
                   const isCover = asset.id === productCoverId;
                   const isVariantLead = variantLeadIds.has(asset.id);
                   const isHighlighted = targetAssetId === asset.id;
-                  const canMoveLeft = index > 0 && !isReadOnly;
-                  const canMoveRight = index < mediaAssets.length - 1 && !isReadOnly;
+                  const isAllTab = activeFilter === 'all';
+                  const canMoveLeft = isAllTab && index > 0 && !isReadOnly;
+                  const canMoveRight = isAllTab && index < mediaAssets.length - 1 && !isReadOnly;
+                  const canSetCover =
+                    isAllTab && !isCover && asset.tags.length === 0 && !isReadOnly;
 
                   return (
                     <div
@@ -1192,7 +1298,7 @@ export function ProductMediaDialog({
                                 <ChevronLeft className="size-4" />
                               </Button>
                             )}
-                            {!isCover && (
+                            {canSetCover && (
                               <Button
                                 type="button"
                                 variant="outline"
@@ -1254,7 +1360,7 @@ export function ProductMediaDialog({
                               )}
                               {asset.kind}
                             </span>
-                            <span>pos {asset.position}</span>
+                            <span>pos {asset.position + 1}</span>
                           </div>
                           {asset.alt?.en && (
                             <p className="mt-1 line-clamp-1 text-muted-foreground italic">
@@ -1316,15 +1422,24 @@ export function ProductMediaDialog({
                                     >
                                       <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent align="end" className="min-w-[7rem]">
+                                    <SelectContent
+                                      align="end"
+                                      className="w-auto min-w-[9rem] max-w-[20rem]"
+                                    >
                                       <SelectItem value="__none__">
                                         {t('products.media.untagged')}
                                       </SelectItem>
-                                      {po.values.map((v) => (
-                                        <SelectItem key={v.optionValueId} value={v.optionValueId}>
-                                          {v.code}
-                                        </SelectItem>
-                                      ))}
+                                      {po.values.map((v) => {
+                                        const ov = ot?.values.find(
+                                          (val) => val.id === v.optionValueId,
+                                        );
+                                        const displayLabel = ov?.label.en ?? v.code;
+                                        return (
+                                          <SelectItem key={v.optionValueId} value={v.optionValueId}>
+                                            {displayLabel}
+                                          </SelectItem>
+                                        );
+                                      })}
                                     </SelectContent>
                                   </Select>
                                 </div>
@@ -1390,17 +1505,23 @@ export function ProductMediaDialog({
       {product && (
         <MediaFormModal
           open={formModalState.open}
-          onOpenChange={(isOpen) =>
+          onOpenChange={(isOpen) => {
+            if (!isOpen && hadConflictRef.current) {
+              hadConflictRef.current = false;
+              void loadData({ background: true });
+            }
             setFormModalState((prev) => ({
               ...prev,
               open: isOpen,
-            }))
-          }
+            }));
+          }}
           productId={product.id}
           asset={formModalState.asset}
-          onSaved={() => {
-            void loadData();
+          readOnly={isReadOnly}
+          onConflict={() => {
+            hadConflictRef.current = true;
           }}
+          onSaved={handleMediaSaved}
         />
       )}
 
@@ -1421,6 +1542,7 @@ export function ProductMediaDialog({
         }}
         asset={previewVideoAsset}
         videoAssets={mediaAssets.filter((a) => a.kind === 'video')}
+        readOnly={isReadOnly}
         onSelectAsset={(a) => setPreviewVideoAsset(a)}
         onEditAsset={(a) => setFormModalState({ open: true, asset: a })}
       />
