@@ -77,6 +77,8 @@ export function WarehouseFormModal({
     formState: { errors, isSubmitting, isDirty },
   } = useForm<WarehouseFormValues>({
     resolver: zodResolver(warehouseFormSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onSubmit',
     defaultValues: {
       sellerId: sellerId ?? '',
       name: '',
@@ -158,7 +160,11 @@ export function WarehouseFormModal({
         }}
       >
         <ModalContent className="max-w-lg max-h-[85vh] flex flex-col p-0">
-          <form onSubmit={handleSubmit(onValidSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <form
+            noValidate
+            onSubmit={handleSubmit(onValidSubmit)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
             <ModalHeader className="shrink-0 border-b border-border pb-4">
               <ModalTitle>{t('products.offers.warehouseModal.title')}</ModalTitle>
               <ModalDescription>

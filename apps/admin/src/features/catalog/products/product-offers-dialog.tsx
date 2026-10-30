@@ -686,10 +686,10 @@ export function ProductOffersDialog({
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setStockAdjustState({ open: true, offer })}
-                                    className="h-8 gap-1 text-xs"
+                                    className="h-8 w-8 p-0"
+                                    aria-label={t('products.offers.adjustStock')}
                                   >
                                     <Boxes className="size-3.5" />
-                                    {t('products.offers.adjustStock')}
                                   </Button>
                                   <Button
                                     type="button"

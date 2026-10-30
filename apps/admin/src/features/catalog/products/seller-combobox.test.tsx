@@ -211,6 +211,8 @@ describe('SellerCombobox', () => {
       expect(
         screen.getByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' }),
       ).toBeInTheDocument();
+      // Displays distinct legal name as secondary confirmation text
+      expect(screen.getByText('Acme Apparel LLC')).toBeInTheDocument();
       expect(
         screen.getByRole('option', { name: 'Shopnetic Retail (1P) • @shopnetic-retail' }),
       ).toBeInTheDocument();

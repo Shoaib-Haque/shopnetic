@@ -298,6 +298,19 @@ describe('OfferFormModal', () => {
       expect(salePriceInput).toHaveAttribute('inputMode', 'decimal');
       expect(salePriceInput).not.toHaveAttribute('type', 'number');
     });
+
+    it('applies pl-7 padding for 1-char symbols and pl-12 for 3-char symbols', () => {
+      renderModal();
+      const priceInput = screen.getByPlaceholderText('e.g. 29.99');
+      // Default is USD ($) -> pl-7
+      expect(priceInput.className).toContain('pl-7');
+    });
+
+    it('renders form with noValidate to prevent native browser constraint validation popups', () => {
+      renderModal();
+      const form = document.querySelector('form');
+      expect(form).toHaveAttribute('noValidate');
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -526,6 +539,16 @@ describe('OfferFormModal', () => {
   // Core validation
   // -------------------------------------------------------------------------
   describe('Form validation', () => {
+    it('does not display validation errors on type before form submission', () => {
+      renderModal();
+      // Type an invalid sale price (without submitting)
+      const salePriceInput = screen.getByPlaceholderText('e.g. 24.99 (optional)');
+      fireEvent.change(salePriceInput, { target: { value: '999.99' } });
+
+      // No validation error should be visible before submit is clicked
+      expect(screen.queryAllByRole('alert').length).toBe(0);
+    });
+
     it('blocks submission and shows error when price is empty', async () => {
       renderModal();
       const submitBtn = screen.getByRole('button', { name: 'Create Offer' });

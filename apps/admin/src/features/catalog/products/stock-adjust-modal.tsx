@@ -157,17 +157,13 @@ export function StockAdjustModal({
       const updatedFieldErrors = { ...current.fieldErrors };
       if (field === 'onHand') {
         const strVal = String(value ?? '').trim();
-        if (strVal === '' || !/^\d+$/.test(strVal)) {
-          updatedFieldErrors.onHand = t('products.offers.stockModal.err.onHandInvalid');
-        } else {
+        if (strVal !== '' && /^\d+$/.test(strVal)) {
           delete updatedFieldErrors.onHand;
         }
       }
       if (field === 'safetyStock') {
         const strVal = String(value ?? '').trim();
-        if (strVal === '' || !/^\d+$/.test(strVal)) {
-          updatedFieldErrors.safetyStock = t('products.offers.stockModal.err.safetyStockInvalid');
-        } else {
+        if (strVal !== '' && /^\d+$/.test(strVal)) {
           delete updatedFieldErrors.safetyStock;
         }
       }
@@ -415,7 +411,6 @@ export function StockAdjustModal({
                         </div>
                         <Input
                           type="number"
-                          min={0}
                           value={row.onHand}
                           onChange={(e) => handleFieldChange(wh.id, 'onHand', e.target.value)}
                           onKeyDown={integerKeyDownHandler}
@@ -446,7 +441,6 @@ export function StockAdjustModal({
                         </div>
                         <Input
                           type="number"
-                          min={0}
                           value={row.safetyStock}
                           onChange={(e) => handleFieldChange(wh.id, 'safetyStock', e.target.value)}
                           onKeyDown={integerKeyDownHandler}

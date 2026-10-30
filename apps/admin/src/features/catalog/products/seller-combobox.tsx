@@ -140,17 +140,26 @@ export function SellerCombobox({
                   }`}
                   title={fullText}
                 >
-                  <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
-                    <span className="truncate">{name}</span>
-                    <StatusBadge
-                      tone={tag === '1P' ? 'neutral' : 'warning'}
-                      className="text-[9px] px-1 py-0 shrink-0"
-                    >
-                      {tag}
-                    </StatusBadge>
-                    <span className="text-[11px] text-muted-foreground shrink-0 font-mono">
-                      {handle}
-                    </span>
+                  <div className="flex flex-col min-w-0 flex-1 mr-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate">{name}</span>
+                      <StatusBadge
+                        tone={tag === '1P' ? 'neutral' : 'warning'}
+                        className="text-[9px] px-1 py-0 shrink-0"
+                      >
+                        {tag}
+                      </StatusBadge>
+                      <span className="text-[11px] text-muted-foreground shrink-0 font-mono">
+                        {handle}
+                      </span>
+                    </div>
+                    {s.legalName &&
+                    s.shop?.displayName &&
+                    s.legalName.toLowerCase() !== s.shop.displayName.toLowerCase() ? (
+                      <span className="truncate text-[10px] text-muted-foreground">
+                        {s.legalName}
+                      </span>
+                    ) : null}
                   </div>
                   {isSelected && <Check className="size-3.5 shrink-0 text-primary" />}
                 </button>

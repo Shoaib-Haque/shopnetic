@@ -309,6 +309,32 @@ describe('StockAdjustModal', () => {
     });
   });
 
+  it('does not display validation errors while typing, only displays errors upon clicking Update Stock', () => {
+    renderAdmin(
+      <StockAdjustModal
+        open={true}
+        onOpenChange={vi.fn()}
+        offer={sampleOffer}
+        warehouses={[sampleWarehouse1]}
+        onStockUpdated={vi.fn()}
+      />,
+    );
+
+    const onHandInput = screen.getByDisplayValue('50');
+    // Clear the on-hand input while typing
+    fireEvent.change(onHandInput, { target: { value: '' } });
+
+    // Should NOT show error immediately on type
+    expect(screen.queryByText('Enter a valid non-negative integer.')).not.toBeInTheDocument();
+
+    // Now click Update Stock
+    const updateBtn = screen.getByRole('button', { name: 'Update Stock' });
+    fireEvent.click(updateBtn);
+
+    // Error appears after submit
+    expect(screen.getByText('Enter a valid non-negative integer.')).toBeInTheDocument();
+  });
+
   it('calls onOpenChange(false) when cancel button is clicked', () => {
     const handleOpenChange = vi.fn();
     renderAdmin(

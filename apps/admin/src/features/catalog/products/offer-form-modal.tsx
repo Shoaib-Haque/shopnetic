@@ -246,6 +246,8 @@ export function OfferFormModal({
     formState: { errors, isSubmitting, isDirty },
   } = useForm<OfferFormValues>({
     resolver: zodResolver(offerFormSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onSubmit',
     defaultValues: {
       sellerId: '',
       variantId: '',
@@ -271,6 +273,12 @@ export function OfferFormModal({
   const currencyExponent = getCurrencyExponent(currentCurrency);
   const currencySymbol =
     SUPPORTED_CURRENCIES.find((c) => c.code === currentCurrency)?.symbol ?? '$';
+  const currencyPaddingClass = useMemo(() => {
+    const len = currencySymbol.length;
+    if (len >= 3) return 'pl-12';
+    if (len === 2) return 'pl-9';
+    return 'pl-7';
+  }, [currencySymbol]);
 
   function fieldError(field: Path<OfferFormValues>): string | undefined {
     const err = errors[field];
@@ -461,7 +469,11 @@ export function OfferFormModal({
         }}
       >
         <ModalContent className="max-w-xl max-h-[85vh] flex flex-col p-0">
-          <form onSubmit={handleSubmit(onValidSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <form
+            noValidate
+            onSubmit={handleSubmit(onValidSubmit)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
             <ModalHeader className="shrink-0 border-b border-border pb-4">
               <ModalTitle>
                 {isEditing
@@ -569,7 +581,7 @@ export function OfferFormModal({
                         {...register('price')}
                         placeholder={t('products.offers.form.pricePlaceholder')}
                         disabled={isSubmitting}
-                        className="pl-7 font-mono"
+                        className={`${currencyPaddingClass} font-mono`}
                         invalid={Boolean(errors.price)}
                         onKeyDown={(e) => decimalKeyDownHandler(e, currencyExponent)}
                         onPaste={(e) =>
@@ -628,7 +640,7 @@ export function OfferFormModal({
                       {...register('salePrice')}
                       placeholder={t('products.offers.form.salePricePlaceholder')}
                       disabled={isSubmitting}
-                      className="pl-7 font-mono"
+                      className={`${currencyPaddingClass} font-mono`}
                       invalid={Boolean(errors.salePrice)}
                       onKeyDown={(e) => decimalKeyDownHandler(e, currencyExponent)}
                       onPaste={(e) =>
@@ -740,8 +752,6 @@ export function OfferFormModal({
                   <Input
                     id="offer-handling-days"
                     type="number"
-                    min={0}
-                    max={30}
                     {...register('handlingDays')}
                     disabled={isSubmitting}
                     invalid={Boolean(errors.handlingDays)}
@@ -762,7 +772,6 @@ export function OfferFormModal({
                   <Input
                     id="offer-min-qty"
                     type="number"
-                    min={1}
                     {...register('minQty')}
                     disabled={isSubmitting}
                     invalid={Boolean(errors.minQty)}
@@ -783,7 +792,6 @@ export function OfferFormModal({
                   <Input
                     id="offer-max-qty"
                     type="number"
-                    min={1}
                     {...register('maxQty')}
                     placeholder="Unlimited"
                     disabled={isSubmitting}
@@ -830,7 +838,6 @@ export function OfferFormModal({
                       <Input
                         id="offer-initial-stock"
                         type="number"
-                        min={0}
                         {...register('initialStock')}
                         disabled={isSubmitting}
                         className="font-mono"
