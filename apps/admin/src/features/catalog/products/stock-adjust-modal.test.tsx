@@ -292,6 +292,9 @@ describe('StockAdjustModal', () => {
       />,
     );
 
+    const onHandInput = screen.getByDisplayValue('50');
+    fireEvent.change(onHandInput, { target: { value: '55' } });
+
     const saveBtn = screen.getByRole('button', { name: /Update Stock/i });
     fireEvent.click(saveBtn);
 

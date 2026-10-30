@@ -276,10 +276,10 @@ describe('ProductOffersDialog', () => {
     renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
 
     await waitFor(() => {
-      expect(screen.getByText('$19.99')).toBeInTheDocument();
+      expect(screen.getAllByText('$19.99').length).toBeGreaterThan(0);
     });
 
-    const deleteBtn = screen.getByLabelText('Delete Offer');
+    const deleteBtn = screen.getAllByLabelText('Delete Offer')[0]!;
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {
@@ -445,10 +445,10 @@ describe('ProductOffersDialog', () => {
     renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Adjust Stock')).toBeInTheDocument();
+      expect(screen.getAllByLabelText('Adjust Stock')[0]).toBeInTheDocument();
     });
 
-    const stockBtn = screen.getByLabelText('Adjust Stock');
+    const stockBtn = screen.getAllByLabelText('Adjust Stock')[0]!;
     fireEvent.click(stockBtn);
 
     await waitFor(() => {
@@ -585,10 +585,10 @@ describe('ProductOffersDialog', () => {
     renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Edit Offer')).toBeInTheDocument();
+      expect(screen.getAllByLabelText('Edit Offer')[0]).toBeInTheDocument();
     });
 
-    const editBtn = screen.getByLabelText('Edit Offer');
+    const editBtn = screen.getAllByLabelText('Edit Offer')[0]!;
     fireEvent.click(editBtn);
 
     await waitFor(() => {
@@ -631,16 +631,20 @@ describe('ProductOffersDialog', () => {
     renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Adjust Stock')).toBeInTheDocument();
+      expect(screen.getAllByLabelText('Adjust Stock')[0]).toBeInTheDocument();
     });
 
-    const stockBtn = screen.getByLabelText('Adjust Stock');
+    const stockBtn = screen.getAllByLabelText('Adjust Stock')[0]!;
     fireEvent.click(stockBtn);
 
     await waitFor(() => {
       expect(screen.getByText('Adjust Stock Levels — Acme Apparel')).toBeInTheDocument();
       expect(screen.getByText('Main Fulfillment Center')).toBeInTheDocument();
     });
+
+    // Change on-hand stock
+    const onHandInput = screen.getByDisplayValue('50');
+    fireEvent.change(onHandInput, { target: { value: '60' } });
 
     // Save stock update
     const updateStockBtn = screen.getByRole('button', { name: 'Update Stock' });
@@ -652,7 +656,7 @@ describe('ProductOffersDialog', () => {
         'wh_1',
         expect.objectContaining({
           expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
-          onHand: 50,
+          onHand: 60,
         }),
       );
     });
@@ -662,10 +666,10 @@ describe('ProductOffersDialog', () => {
     renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Adjust Stock')).toBeInTheDocument();
+      expect(screen.getAllByLabelText('Adjust Stock')[0]).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText('Adjust Stock'));
+    fireEvent.click(screen.getAllByLabelText('Adjust Stock')[0]!);
 
     await waitFor(() => {
       expect(screen.getByDisplayValue('50')).toBeInTheDocument();
@@ -714,7 +718,7 @@ describe('ProductOffersDialog', () => {
     renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Backorder Available')).toBeInTheDocument();
+      expect(screen.getAllByText('Backorder Available').length).toBeGreaterThan(0);
     });
   });
 
@@ -751,8 +755,8 @@ describe('ProductOffersDialog', () => {
     expect(tabVar1).not.toHaveClass('bg-primary');
 
     // Delete offer on TEE-M
-    const deleteBtn = await screen.findByLabelText('Delete Offer');
-    fireEvent.click(deleteBtn);
+    const deleteBtns = await screen.findAllByLabelText('Delete Offer');
+    fireEvent.click(deleteBtns[0]!);
 
     await waitFor(() => {
       expect(mockedDeleteOffer).toHaveBeenCalledWith('offer_var2');
@@ -791,8 +795,8 @@ describe('ProductOffersDialog', () => {
     expect(tabVar1).toHaveClass('bg-primary');
 
     // 1. Delete offer on Variant 1 (TEE-S)
-    const deleteBtn = await screen.findByLabelText('Delete Offer');
-    fireEvent.click(deleteBtn);
+    const deleteBtns = await screen.findAllByLabelText('Delete Offer');
+    fireEvent.click(deleteBtns[0]!);
 
     await waitFor(() => {
       expect(mockedDeleteOffer).toHaveBeenCalledWith('offer_1');

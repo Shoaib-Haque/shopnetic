@@ -864,7 +864,9 @@
             "saleEndBeforeStart": "Sale end date must be after the start date.",
             "handlingDaysInvalid": "Handling days must be between 0 and 30.",
             "minQtyInvalid": "Minimum order quantity must be at least 1.",
-            "maxQtyInvalid": "Maximum order quantity must be at least 1.",
+            "maxQtyMin": "Maximum order quantity must be at least 1.",
+            "maxQtyMax": "Maximum order quantity cannot exceed 999,999.",
+            "maxQtyInvalid": "Maximum order quantity must be a valid number.",
             "maxLessThanMin": "Maximum quantity cannot be less than minimum quantity.",
             "initialStockInvalid": "Initial stock cannot be negative.",
             "warehouseRequired": "Warehouse is required when setting initial stock."

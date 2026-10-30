@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -39,6 +39,7 @@ import {
   SelectValue,
   notify,
 } from '@shopnetic/ui';
+import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import {
@@ -50,6 +51,7 @@ import {
   sanitizeDecimalString,
 } from '@/lib/numeric-input';
 import { createOffer, updateOffer } from './api';
+import { SellerCombobox } from './seller-combobox';
 
 export interface OfferFormModalProps {
   open: boolean;
@@ -62,6 +64,7 @@ export interface OfferFormModalProps {
   warehouses: Warehouse[];
   onSaved: (saved: Offer) => void;
   onNewWarehouseRequested?: (sellerId: string) => void;
+  onConflict?: () => void;
 }
 
 const CONDITIONS: OfferCondition[] = [
@@ -116,10 +119,9 @@ const offerFormSchema = z
     maxQty: z
       .string()
       .trim()
-      .refine(
-        (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 999999),
-        'products.offers.form.err.maxQtyInvalid',
-      )
+      .refine((v) => v === '' || /^\d+$/.test(v), 'products.offers.form.err.maxQtyInvalid')
+      .refine((v) => v === '' || Number(v) >= 1, 'products.offers.form.err.maxQtyMin')
+      .refine((v) => v === '' || Number(v) <= 999999, 'products.offers.form.err.maxQtyMax')
       .optional()
       .or(z.literal('')),
     initialStock: z
@@ -219,8 +221,10 @@ export function OfferFormModal({
   warehouses,
   onSaved,
   onNewWarehouseRequested,
+  onConflict,
 }: OfferFormModalProps) {
   const t = useTranslations('catalog');
+  const tAdmin = useTranslations('admin');
   const isEditing = Boolean(offer);
 
   const defaultSeller = useMemo(() => {
@@ -228,6 +232,8 @@ export function OfferFormModal({
   }, [sellers]);
 
   const [serverError, setServerError] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const hadConflictRef = useRef(false);
 
   const {
     register,
@@ -237,7 +243,7 @@ export function OfferFormModal({
     setValue,
     getValues,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<OfferFormValues>({
     resolver: zodResolver(offerFormSchema),
     defaultValues: {
@@ -361,8 +367,29 @@ export function OfferFormModal({
     }
   }, [open, isEditing, sellerWarehouses, currentWarehouseId, setValue]);
 
+  const handleAttemptClose = () => {
+    if (isDirty) {
+      setConfirmDiscard(true);
+      return;
+    }
+    if (hadConflictRef.current) {
+      hadConflictRef.current = false;
+      onConflict?.();
+    }
+    onOpenChange(false);
+  };
+
   const onValidSubmit = async (data: OfferFormValues) => {
     setServerError(null);
+
+    if (isEditing && offer && !isDirty) {
+      if (hadConflictRef.current) {
+        hadConflictRef.current = false;
+        onConflict?.();
+      }
+      onOpenChange(false);
+      return;
+    }
 
     const priceMinor = decimalToMinor(data.price, data.currency);
     if (!priceMinor || BigInt(priceMinor) <= 0n) {
@@ -417,445 +444,92 @@ export function OfferFormModal({
         onOpenChange(false);
       }
     } catch (err) {
+      if (err instanceof AdminApiError && err.status === 409) {
+        hadConflictRef.current = true;
+      }
       setServerError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
     }
   };
 
   return (
-    <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-xl max-h-[85vh] flex flex-col">
-        <form onSubmit={handleSubmit(onValidSubmit)} className="flex min-h-0 flex-1 flex-col">
-          <ModalHeader className="shrink-0 border-b border-border pb-4">
-            <ModalTitle>
-              {isEditing ? t('products.offers.form.editTitle') : t('products.offers.form.addTitle')}
-            </ModalTitle>
-            <ModalDescription>
-              {isEditing
-                ? `${offer?.sellerName} — ${offer?.skuCode}`
-                : (product.title?.en ?? product.slug)}
-            </ModalDescription>
-          </ModalHeader>
+    <>
+      <Modal
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) handleAttemptClose();
+          else onOpenChange(true);
+        }}
+      >
+        <ModalContent className="max-w-xl max-h-[85vh] flex flex-col p-0">
+          <form onSubmit={handleSubmit(onValidSubmit)} className="flex min-h-0 flex-1 flex-col">
+            <ModalHeader className="shrink-0 border-b border-border pb-4">
+              <ModalTitle>
+                {isEditing
+                  ? t('products.offers.form.editTitle')
+                  : t('products.offers.form.addTitle')}
+              </ModalTitle>
+              <ModalDescription>
+                {isEditing
+                  ? `${offer?.sellerName} — ${offer?.skuCode}`
+                  : (product.title?.en ?? product.slug)}
+              </ModalDescription>
+            </ModalHeader>
 
-          <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
-            {serverError && (
-              <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
-                {serverError}
-              </div>
-            )}
-
-            {/* Seller & Variant selection */}
-            {!isEditing ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field
-                  label={t('products.offers.form.seller')}
-                  htmlFor="offer-seller"
-                  error={fieldError('sellerId')}
-                >
-                  <Controller
-                    control={control}
-                    name="sellerId"
-                    render={({ field }) => (
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={isSubmitting}
-                      >
-                        <SelectTrigger id="offer-seller" invalid={Boolean(errors.sellerId)}>
-                          <SelectValue placeholder={t('products.offers.form.selectSeller')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {sellers.map((s) => {
-                            const is1P = s.shop?.slug === 'shopnetic-retail';
-                            const typeTag = is1P ? '1P' : '3P';
-                            const name = s.shop?.displayName ?? s.legalName ?? s.id;
-                            const handle = s.shop?.slug
-                              ? `@${s.shop.slug}`
-                              : `#${s.id.slice(0, 8)}`;
-                            const label = `${name} (${typeTag}) • ${handle}`;
-                            return (
-                              <SelectItem key={s.id} value={s.id} title={label}>
-                                {label}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </Field>
-
-                <Field
-                  label={t('products.offers.form.variant')}
-                  htmlFor="offer-variant"
-                  error={fieldError('variantId')}
-                >
-                  <Controller
-                    control={control}
-                    name="variantId"
-                    render={({ field }) => (
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={isSubmitting}
-                      >
-                        <SelectTrigger id="offer-variant" invalid={Boolean(errors.variantId)}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {variants.map((v) => {
-                            const label = `${v.skuCode || 'Variant'} ${v.status === 'inactive' ? '(inactive)' : ''}`;
-                            return (
-                              <SelectItem key={v.id} value={v.id} title={label}>
-                                {label}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </Field>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
-                <span>
-                  Seller: <strong className="text-foreground">{offer?.sellerName}</strong>
-                </span>
-                <span>•</span>
-                <span>
-                  SKU: <strong className="font-mono text-foreground">{offer?.skuCode}</strong>
-                </span>
-              </div>
-            )}
-
-            {/* Pricing & Currency Section */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-2">
-                <Field
-                  label={t('products.offers.form.price', { currency: currentCurrency })}
-                  error={fieldError('price')}
-                >
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">
-                      {currencySymbol}
-                    </span>
-                    <Input
-                      type="number"
-                      step={currencyExponent === 0 ? '1' : '0.01'}
-                      min={currencyExponent === 0 ? '1' : '0.01'}
-                      {...register('price')}
-                      placeholder={t('products.offers.form.pricePlaceholder')}
-                      disabled={isSubmitting}
-                      className="pl-7 font-mono"
-                      invalid={Boolean(errors.price)}
-                      onKeyDown={(e) => decimalKeyDownHandler(e, currencyExponent)}
-                      onPaste={(e) =>
-                        decimalPasteHandler(
-                          e,
-                          (val) =>
-                            setValue('price', val, { shouldValidate: true, shouldDirty: true }),
-                          currencyExponent,
-                        )
-                      }
-                    />
-                  </div>
-                </Field>
-              </div>
-
-              <div>
-                <Field label={t('products.form.currency')} error={fieldError('currency')}>
-                  <Controller
-                    control={control}
-                    name="currency"
-                    render={({ field }) => (
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={isSubmitting}
-                      >
-                        <SelectTrigger id="offer-currency" invalid={Boolean(errors.currency)}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SUPPORTED_CURRENCIES.map((c) => (
-                            <SelectItem key={c.code} value={c.code}>
-                              {c.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </Field>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field
-                label={t('products.offers.form.salePrice', { currency: currentCurrency })}
-                error={fieldError('salePrice')}
-              >
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">
-                    {currencySymbol}
-                  </span>
-                  <Input
-                    type="number"
-                    step={currencyExponent === 0 ? '1' : '0.01'}
-                    min="0"
-                    {...register('salePrice')}
-                    placeholder={t('products.offers.form.salePricePlaceholder')}
-                    disabled={isSubmitting}
-                    className="pl-7 font-mono"
-                    invalid={Boolean(errors.salePrice)}
-                    onKeyDown={(e) => decimalKeyDownHandler(e, currencyExponent)}
-                    onPaste={(e) =>
-                      decimalPasteHandler(
-                        e,
-                        (val) =>
-                          setValue('salePrice', val, { shouldValidate: true, shouldDirty: true }),
-                        currencyExponent,
-                      )
-                    }
-                  />
+            <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
+              {serverError && (
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
+                  {serverError}
                 </div>
-              </Field>
-            </div>
+              )}
 
-            {/* Promotional Sale Window (optional) */}
-            <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-2.5">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                <Sparkles className="size-3.5 text-primary" />
-                <span>{t('products.offers.form.saleDates')}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field
-                  label={t('products.offers.form.saleStartsAt')}
-                  htmlFor="offer-sale-starts-at"
-                  error={fieldError('saleStartsAt')}
-                >
-                  <Input
-                    id="offer-sale-starts-at"
-                    type="datetime-local"
-                    {...register('saleStartsAt')}
-                    disabled={isSubmitting}
-                    className="text-xs"
-                    invalid={Boolean(errors.saleStartsAt)}
-                  />
-                </Field>
-                <Field
-                  label={t('products.offers.form.saleEndsAt')}
-                  htmlFor="offer-sale-ends-at"
-                  error={fieldError('saleEndsAt')}
-                >
-                  <Input
-                    id="offer-sale-ends-at"
-                    type="datetime-local"
-                    {...register('saleEndsAt')}
-                    disabled={isSubmitting}
-                    className="text-xs"
-                    invalid={Boolean(errors.saleEndsAt)}
-                  />
-                </Field>
-              </div>
-            </div>
-
-            {/* Condition & Notes */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Field
-                label={t('products.offers.form.condition')}
-                htmlFor="offer-condition"
-                error={fieldError('condition')}
-              >
-                <Controller
-                  control={control}
-                  name="condition"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={isSubmitting}
-                    >
-                      <SelectTrigger id="offer-condition" invalid={Boolean(errors.condition)}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CONDITIONS.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {t(`products.offers.condition.${c}`)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </Field>
-
-              <div className="sm:col-span-2">
-                <Field
-                  label={t('products.offers.form.conditionNotes')}
-                  error={fieldError('conditionNotes')}
-                >
-                  <Input
-                    {...register('conditionNotes')}
-                    placeholder={t('products.offers.form.conditionNotesPlaceholder')}
-                    disabled={isSubmitting}
-                    maxLength={500}
-                    invalid={Boolean(errors.conditionNotes)}
-                  />
-                </Field>
-              </div>
-            </div>
-
-            {/* Fulfillment & Quantities */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Field
-                label={t('products.offers.form.handlingDays')}
-                htmlFor="offer-handling-days"
-                hint={t('products.offers.form.handlingDaysHint')}
-                error={fieldError('handlingDays')}
-              >
-                <Input
-                  id="offer-handling-days"
-                  type="number"
-                  min={0}
-                  max={30}
-                  {...register('handlingDays')}
-                  disabled={isSubmitting}
-                  invalid={Boolean(errors.handlingDays)}
-                  onKeyDown={integerKeyDownHandler}
-                  onPaste={(e) =>
-                    integerPasteHandler(e, (val) =>
-                      setValue('handlingDays', val, { shouldValidate: true, shouldDirty: true }),
-                    )
-                  }
-                />
-              </Field>
-
-              <Field
-                label={t('products.offers.form.minQty')}
-                htmlFor="offer-min-qty"
-                error={fieldError('minQty')}
-              >
-                <Input
-                  id="offer-min-qty"
-                  type="number"
-                  min={1}
-                  {...register('minQty')}
-                  disabled={isSubmitting}
-                  invalid={Boolean(errors.minQty)}
-                  onKeyDown={integerKeyDownHandler}
-                  onPaste={(e) =>
-                    integerPasteHandler(e, (val) =>
-                      setValue('minQty', val, { shouldValidate: true, shouldDirty: true }),
-                    )
-                  }
-                />
-              </Field>
-
-              <Field
-                label={t('products.offers.form.maxQty')}
-                htmlFor="offer-max-qty"
-                error={fieldError('maxQty')}
-              >
-                <Input
-                  id="offer-max-qty"
-                  type="number"
-                  min={1}
-                  {...register('maxQty')}
-                  placeholder="Unlimited"
-                  disabled={isSubmitting}
-                  invalid={Boolean(errors.maxQty)}
-                  onKeyDown={integerKeyDownHandler}
-                  onPaste={(e) =>
-                    integerPasteHandler(e, (val) =>
-                      setValue('maxQty', val, { shouldValidate: true, shouldDirty: true }),
-                    )
-                  }
-                />
-              </Field>
-            </div>
-
-            {/* Initial Stock (create mode only) */}
-            {!isEditing && (
-              <div className="rounded-md border border-border/80 bg-card p-3 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                    <Building2 className="size-3.5 text-muted-foreground" />
-                    <span>Initial Inventory Fulfillment</span>
-                  </div>
-                  {onNewWarehouseRequested && selectedSellerId && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onNewWarehouseRequested(selectedSellerId)}
-                      className="h-6 text-[11px] gap-1 px-1.5"
-                    >
-                      <Plus className="size-3" />
-                      {t('products.offers.addWarehouse')}
-                    </Button>
-                  )}
-                </div>
-
+              {/* Seller & Variant selection */}
+              {!isEditing ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field
-                    label={t('products.offers.form.initialStock')}
-                    htmlFor="offer-initial-stock"
-                    hint={t('products.offers.form.initialStockHint')}
-                    error={fieldError('initialStock')}
+                    label={t('products.offers.form.seller')}
+                    htmlFor="offer-seller"
+                    error={fieldError('sellerId')}
                   >
-                    <Input
-                      id="offer-initial-stock"
-                      type="number"
-                      min={0}
-                      {...register('initialStock')}
-                      disabled={isSubmitting}
-                      className="font-mono"
-                      invalid={Boolean(errors.initialStock)}
-                      onKeyDown={integerKeyDownHandler}
-                      onPaste={(e) =>
-                        integerPasteHandler(e, (val) =>
-                          setValue('initialStock', val, {
-                            shouldValidate: true,
-                            shouldDirty: true,
-                          }),
-                        )
-                      }
+                    <Controller
+                      control={control}
+                      name="sellerId"
+                      render={({ field }) => (
+                        <SellerCombobox
+                          id="offer-seller"
+                          value={field.value}
+                          onChange={field.onChange}
+                          sellers={sellers}
+                          disabled={isSubmitting}
+                          invalid={Boolean(errors.sellerId)}
+                          placeholder={t('products.offers.form.selectSeller')}
+                          ariaLabel="Seller"
+                        />
+                      )}
                     />
                   </Field>
 
                   <Field
-                    label={t('products.offers.form.targetWarehouse')}
-                    htmlFor="offer-target-warehouse"
-                    error={fieldError('warehouseId')}
+                    label={t('products.offers.form.variant')}
+                    htmlFor="offer-variant"
+                    error={fieldError('variantId')}
                   >
                     <Controller
                       control={control}
-                      name="warehouseId"
+                      name="variantId"
                       render={({ field }) => (
                         <Select
                           value={field.value}
                           onValueChange={field.onChange}
-                          disabled={isSubmitting || sellerWarehouses.length === 0}
+                          disabled={isSubmitting}
                         >
-                          <SelectTrigger
-                            id="offer-target-warehouse"
-                            invalid={Boolean(errors.warehouseId)}
-                          >
-                            <SelectValue
-                              placeholder={
-                                sellerWarehouses.length === 0
-                                  ? t('products.offers.form.noWarehouses')
-                                  : t('products.offers.form.selectWarehouse')
-                              }
-                            />
+                          <SelectTrigger id="offer-variant" invalid={Boolean(errors.variantId)}>
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {sellerWarehouses.map((wh) => {
-                              const label = `${wh.name} ${wh.isDefault ? '(Default)' : ''}`;
+                            {variants.map((v) => {
+                              const label = `${v.skuCode || 'Variant'} ${v.status === 'inactive' ? '(inactive)' : ''}`;
                               return (
-                                <SelectItem key={wh.id} value={wh.id} title={label}>
+                                <SelectItem key={v.id} value={v.id} title={label}>
                                   {label}
                                 </SelectItem>
                               );
@@ -866,64 +540,432 @@ export function OfferFormModal({
                     />
                   </Field>
                 </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
+                  <span>
+                    Seller: <strong className="text-foreground">{offer?.sellerName}</strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    SKU: <strong className="font-mono text-foreground">{offer?.skuCode}</strong>
+                  </span>
+                </div>
+              )}
+
+              {/* Pricing & Currency Section */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <Field
+                    label={t('products.offers.form.price', { currency: currentCurrency })}
+                    error={fieldError('price')}
+                  >
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">
+                        {currencySymbol}
+                      </span>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        {...register('price')}
+                        placeholder={t('products.offers.form.pricePlaceholder')}
+                        disabled={isSubmitting}
+                        className="pl-7 font-mono"
+                        invalid={Boolean(errors.price)}
+                        onKeyDown={(e) => decimalKeyDownHandler(e, currencyExponent)}
+                        onPaste={(e) =>
+                          decimalPasteHandler(
+                            e,
+                            (val) =>
+                              setValue('price', val, { shouldValidate: true, shouldDirty: true }),
+                            currencyExponent,
+                          )
+                        }
+                      />
+                    </div>
+                  </Field>
+                </div>
+
+                <div>
+                  <Field label={t('products.form.currency')} error={fieldError('currency')}>
+                    <Controller
+                      control={control}
+                      name="currency"
+                      render={({ field }) => (
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          disabled={isSubmitting}
+                        >
+                          <SelectTrigger id="offer-currency" invalid={Boolean(errors.currency)}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SUPPORTED_CURRENCIES.map((c) => (
+                              <SelectItem key={c.code} value={c.code}>
+                                {c.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </Field>
+                </div>
               </div>
-            )}
 
-            {/* Listing Status (edit mode) */}
-            {isEditing && (
-              <Field
-                label={t('products.offers.form.status')}
-                htmlFor="offer-status"
-                error={fieldError('status')}
-              >
-                <Controller
-                  control={control}
-                  name="status"
-                  render={({ field }) => (
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field
+                  label={t('products.offers.form.salePrice', { currency: currentCurrency })}
+                  error={fieldError('salePrice')}
+                >
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">
+                      {currencySymbol}
+                    </span>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      {...register('salePrice')}
+                      placeholder={t('products.offers.form.salePricePlaceholder')}
                       disabled={isSubmitting}
-                    >
-                      <SelectTrigger id="offer-status" invalid={Boolean(errors.status)}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active (Available on storefront)</SelectItem>
-                        <SelectItem value="paused">Paused</SelectItem>
-                        <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-                        <SelectItem value="under_review">Under Review</SelectItem>
-                        <SelectItem value="suppressed">Suppressed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </Field>
-            )}
-          </ModalBody>
+                      className="pl-7 font-mono"
+                      invalid={Boolean(errors.salePrice)}
+                      onKeyDown={(e) => decimalKeyDownHandler(e, currencyExponent)}
+                      onPaste={(e) =>
+                        decimalPasteHandler(
+                          e,
+                          (val) =>
+                            setValue('salePrice', val, { shouldValidate: true, shouldDirty: true }),
+                          currencyExponent,
+                        )
+                      }
+                    />
+                  </div>
+                </Field>
+              </div>
 
-          <ModalFooter className="shrink-0 border-t border-border pt-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isSubmitting}
-              onClick={() => onOpenChange(false)}
-            >
-              {t('products.offers.form.cancel')}
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              size="sm"
-              loading={isSubmitting}
-              disabled={isSubmitting}
-            >
-              {isEditing ? t('products.offers.form.save') : t('products.offers.form.create')}
-            </Button>
-          </ModalFooter>
-        </form>
-      </ModalContent>
-    </Modal>
+              {/* Promotional Sale Window (optional) */}
+              <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  <Sparkles className="size-3.5 text-primary" />
+                  <span>{t('products.offers.form.saleDates')}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field
+                    label={t('products.offers.form.saleStartsAt')}
+                    htmlFor="offer-sale-starts-at"
+                    error={fieldError('saleStartsAt')}
+                  >
+                    <Input
+                      id="offer-sale-starts-at"
+                      type="datetime-local"
+                      {...register('saleStartsAt')}
+                      disabled={isSubmitting}
+                      className="text-xs"
+                      invalid={Boolean(errors.saleStartsAt)}
+                    />
+                  </Field>
+                  <Field
+                    label={t('products.offers.form.saleEndsAt')}
+                    htmlFor="offer-sale-ends-at"
+                    error={fieldError('saleEndsAt')}
+                  >
+                    <Input
+                      id="offer-sale-ends-at"
+                      type="datetime-local"
+                      {...register('saleEndsAt')}
+                      disabled={isSubmitting}
+                      className="text-xs"
+                      invalid={Boolean(errors.saleEndsAt)}
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              {/* Condition & Notes */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Field
+                  label={t('products.offers.form.condition')}
+                  htmlFor="offer-condition"
+                  error={fieldError('condition')}
+                >
+                  <Controller
+                    control={control}
+                    name="condition"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger id="offer-condition" invalid={Boolean(errors.condition)}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CONDITIONS.map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {t(`products.offers.condition.${c}`)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+
+                <div className="sm:col-span-2">
+                  <Field
+                    label={t('products.offers.form.conditionNotes')}
+                    error={fieldError('conditionNotes')}
+                  >
+                    <Input
+                      {...register('conditionNotes')}
+                      placeholder={t('products.offers.form.conditionNotesPlaceholder')}
+                      disabled={isSubmitting}
+                      maxLength={500}
+                      invalid={Boolean(errors.conditionNotes)}
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              {/* Fulfillment & Quantities */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Field
+                  label={t('products.offers.form.handlingDays')}
+                  htmlFor="offer-handling-days"
+                  hint={t('products.offers.form.handlingDaysHint')}
+                  error={fieldError('handlingDays')}
+                >
+                  <Input
+                    id="offer-handling-days"
+                    type="number"
+                    min={0}
+                    max={30}
+                    {...register('handlingDays')}
+                    disabled={isSubmitting}
+                    invalid={Boolean(errors.handlingDays)}
+                    onKeyDown={integerKeyDownHandler}
+                    onPaste={(e) =>
+                      integerPasteHandler(e, (val) =>
+                        setValue('handlingDays', val, { shouldValidate: true, shouldDirty: true }),
+                      )
+                    }
+                  />
+                </Field>
+
+                <Field
+                  label={t('products.offers.form.minQty')}
+                  htmlFor="offer-min-qty"
+                  error={fieldError('minQty')}
+                >
+                  <Input
+                    id="offer-min-qty"
+                    type="number"
+                    min={1}
+                    {...register('minQty')}
+                    disabled={isSubmitting}
+                    invalid={Boolean(errors.minQty)}
+                    onKeyDown={integerKeyDownHandler}
+                    onPaste={(e) =>
+                      integerPasteHandler(e, (val) =>
+                        setValue('minQty', val, { shouldValidate: true, shouldDirty: true }),
+                      )
+                    }
+                  />
+                </Field>
+
+                <Field
+                  label={t('products.offers.form.maxQty')}
+                  htmlFor="offer-max-qty"
+                  error={fieldError('maxQty')}
+                >
+                  <Input
+                    id="offer-max-qty"
+                    type="number"
+                    min={1}
+                    {...register('maxQty')}
+                    placeholder="Unlimited"
+                    disabled={isSubmitting}
+                    invalid={Boolean(errors.maxQty)}
+                    onKeyDown={integerKeyDownHandler}
+                    onPaste={(e) =>
+                      integerPasteHandler(e, (val) =>
+                        setValue('maxQty', val, { shouldValidate: true, shouldDirty: true }),
+                      )
+                    }
+                  />
+                </Field>
+              </div>
+
+              {/* Initial Stock (create mode only) */}
+              {!isEditing && (
+                <div className="rounded-md border border-border/80 bg-card p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <Building2 className="size-3.5 text-muted-foreground" />
+                      <span>Initial Inventory Fulfillment</span>
+                    </div>
+                    {onNewWarehouseRequested && selectedSellerId && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onNewWarehouseRequested(selectedSellerId)}
+                        className="h-6 text-[11px] gap-1 px-1.5"
+                      >
+                        <Plus className="size-3" />
+                        {t('products.offers.addWarehouse')}
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field
+                      label={t('products.offers.form.initialStock')}
+                      htmlFor="offer-initial-stock"
+                      hint={t('products.offers.form.initialStockHint')}
+                      error={fieldError('initialStock')}
+                    >
+                      <Input
+                        id="offer-initial-stock"
+                        type="number"
+                        min={0}
+                        {...register('initialStock')}
+                        disabled={isSubmitting}
+                        className="font-mono"
+                        invalid={Boolean(errors.initialStock)}
+                        onKeyDown={integerKeyDownHandler}
+                        onPaste={(e) =>
+                          integerPasteHandler(e, (val) =>
+                            setValue('initialStock', val, {
+                              shouldValidate: true,
+                              shouldDirty: true,
+                            }),
+                          )
+                        }
+                      />
+                    </Field>
+
+                    <Field
+                      label={t('products.offers.form.targetWarehouse')}
+                      htmlFor="offer-target-warehouse"
+                      error={fieldError('warehouseId')}
+                    >
+                      <Controller
+                        control={control}
+                        name="warehouseId"
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={isSubmitting || sellerWarehouses.length === 0}
+                          >
+                            <SelectTrigger
+                              id="offer-target-warehouse"
+                              invalid={Boolean(errors.warehouseId)}
+                            >
+                              <SelectValue
+                                placeholder={
+                                  sellerWarehouses.length === 0
+                                    ? t('products.offers.form.noWarehouses')
+                                    : t('products.offers.form.selectWarehouse')
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {sellerWarehouses.map((wh) => {
+                                const label = `${wh.name} ${wh.isDefault ? '(Default)' : ''}`;
+                                return (
+                                  <SelectItem key={wh.id} value={wh.id} title={label}>
+                                    {label}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              )}
+
+              {/* Listing Status (edit mode) */}
+              {isEditing && (
+                <Field
+                  label={t('products.offers.form.status')}
+                  htmlFor="offer-status"
+                  error={fieldError('status')}
+                >
+                  <Controller
+                    control={control}
+                    name="status"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger id="offer-status" invalid={Boolean(errors.status)}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active (Available on storefront)</SelectItem>
+                          <SelectItem value="paused">Paused</SelectItem>
+                          <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                          <SelectItem value="under_review">Under Review</SelectItem>
+                          <SelectItem value="suppressed">Suppressed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+              )}
+            </ModalBody>
+
+            <ModalFooter className="shrink-0 border-t border-border pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isSubmitting}
+                onClick={handleAttemptClose}
+              >
+                {t('products.offers.form.cancel')}
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                loading={isSubmitting}
+                disabled={isSubmitting}
+              >
+                {isEditing ? t('products.offers.form.save') : t('products.offers.form.create')}
+              </Button>
+            </ModalFooter>
+          </form>
+        </ModalContent>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        onOpenChange={setConfirmDiscard}
+        title={tAdmin('form.discardTitle')}
+        message={tAdmin('form.discardMessage')}
+        confirmLabel={tAdmin('form.discardConfirm')}
+        cancelLabel={tAdmin('actions.cancel')}
+        tone="danger"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          reset();
+          if (hadConflictRef.current) {
+            hadConflictRef.current = false;
+            onConflict?.();
+          }
+          onOpenChange(false);
+        }}
+      />
+    </>
   );
 }
