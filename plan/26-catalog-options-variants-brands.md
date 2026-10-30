@@ -27,7 +27,8 @@ aspect ratio) and render-time gallery resolution (section 5).
 Batch/lot/expiry tracking, FIFO/LIFO/FEFO inventory valuation, standardized continuous measurement
 units & unit-price calculations, backorders/pre-orders, shadow draft versioning for live active
 product updates, 3-tier update sensitivity classification, automated media transcoding pipelines (WebP/AVIF/HLS),
-and 360-spin/3D assets (see Section 9.1).
+360-spin/3D assets, a formal product/fulfillment class taxonomy (physical vs. digital vs. service vs.
+bundle), and pre-cart personalization attributes (see Section 9.1).
 
 This is the hardest modeling problem in the platform. Reference screenshots:
 `tmp/amazon/amazon_shirt_options.png` (Color + Size + pack qty), `tmp/amazon/amazon_iphone_options.png`
@@ -567,6 +568,61 @@ The following specifications from `plan/gemini/comprehensive_architectural_bluep
 11. **[FLAGGED - Missing Implementation] Factory-to-Doorline Provenance Badges & Supply Chain Journey (Blueprint Differentiator 7, Plan 38)**:
     - *Current State*: Products track category, brand, options, variants, offers, and media assets; no supply chain origin or certification milestones are tracked.
     - *Blueprint Specification*: Verified supply chain timeline attached to products (`catalog.supply_chain_node`) detailing raw materials source, manufacturing facility certifications (BSCI, SMETA, ISO 14001, OEKO-TEX), quality assurance inspection, and domestic logistics routing, complete with audit documents and verified ESG badges on PDP headers.
+
+12. **[FLAGGED - Missing Implementation, 2026-10-30] Formal Product/Fulfillment Class Taxonomy
+    (`plan/gemini/GEMINI_PRODUCT_IMPLEMENTATION_REQUIREMENTS_2026_10_28.md` section 4)**:
+    - *Current State*: Every variant is modeled as the same kind of physical good — `length_mm`/
+      `width_mm`/`height_mm`/`weight_g` are present on every `Variant` row, and (as of the 2026-10-29
+      Group 3 fix round, item 20) are now **required to be positive integers whenever provided**. There
+      is no `product_class`/`fulfillment_type` field anywhere, and no notion of a digital/virtual SKU
+      (skips warehouse allocation, issues an instant key/entitlement), a service/warranty SKU (logically
+      attached to a physical SKU, fulfilled via voucher), or a bundle/kit SKU (atomically decrements
+      stock from multiple *component* SKUs rather than carrying its own stock). Freight/landed-cost
+      language exists only at checkout/tax time (`12`, `33`, `38`), never as a catalog-level
+      classification the product/variant itself carries.
+    - *Blueprint Specification*: A `ProductClass` enum (Standard Physical / Bulky-Freight / Digital &
+      Virtual / Service & Warranty / Bundles & Kits / Multi-Packs) driving whether dims/weight are
+      required at all, whether the item occupies warehouse stock, and how fulfillment is routed.
+    - *Why this matters now, not just later*: the dims-positive validation added this session
+      (`variantDimsSchema`, `packages/contracts/src/catalog.ts`) implicitly assumes every variant is a
+      measurable physical object. That's correct for 100% of today's catalog, but is the kind of
+      assumption that becomes a real bug the day a digital/service SKU is introduced without a
+      corresponding class field to exempt it. Worth keeping in mind as a forward-compatibility note on
+      that validation, not just a someday-feature.
+    - Note: the *readiness matrix* in the source document above claims this domain is "**Implemented**
+      (Dims > 0 validated, classes mapped)" — the dims-positive half is now true, but "classes mapped" is
+      not; no such taxonomy exists in `packages/db/prisma/schema.prisma`. Flagging the overstatement here
+      rather than editing that document, which stays as a frozen historical reference.
+
+13. **[FLAGGED - Missing Implementation, 2026-10-30] Pre-Cart Personalization Attributes
+    (`plan/gemini/GEMINI_PRODUCT_IMPLEMENTATION_REQUIREMENTS_2026_10_28.md` section 2.3)**:
+    - *Current State*: No mechanism anywhere in the catalog, cart, or order-line schema for a
+      buyer-supplied customization that doesn't generate a distinct SKU/variant (e.g. a laser-engraved
+      name on a watch back, custom text/upload for a printed canvas). Every current purchasable
+      distinction is modeled as a `Variant` (a real, pre-existing SKU row) or an `Offer` attribute — there
+      is no "free-text/asset the buyer supplies at add-to-cart time, validated and preserved on the order
+      line" concept.
+    - *Blueprint Specification*: A per-product (or per-category-option) flag marking certain attributes
+      as personalization inputs rather than variant axes; validated at the Cart API boundary (length
+      limits, profanity/content checks, file-type/size limits for uploads) and copied verbatim onto the
+      order line item at checkout (never re-derived later, same immutability principle as `32`'s Order
+      Invariant).
+    - *Scope note*: genuinely new — not a restatement of anything already flagged in this file or in
+      `12-cart-checkout-orders.md`.
+
+> **Readiness-matrix path corrections** (same source document as items 12–13, section 13 "Comprehensive
+> Implementation & Readiness Matrix"): the matrix cites `plan/12-reviews-ratings.md` for Reviews &
+> Q&A — that file is actually `12-cart-checkout-orders.md`; the real home is
+> `35-reviews-ratings-and-disputes.md` (already a substantially fleshed-out spec, further along than
+> "Planned" might suggest, though not yet implemented in code). It also cites
+> `plan/28-search-recommendations.md` for Related Product Algorithms — `28` is actually
+> `page-loading-and-rendering.md`; the real home is `27-merchandising-and-ranking.md` (collaborative-
+> filtering co-purchase matrix already specced there), with the `pgvector`/semantic-embedding half of
+> that domain covered separately in `37-artificial-intelligence-and-machine-learning.md`. Everything
+> else in that document's 12 domains (structural hierarchy, option matrices, buy box, multi-warehouse,
+> batch/lot, pricing, media, governance/shadow-drafts, search ranking/BM25) is already accurately
+> reflected in this file, `32-catalog-lifecycle-and-product-guards.md` section 6, or
+> `37-artificial-intelligence-and-machine-learning.md` — no further action needed there.
 
 ---
 
