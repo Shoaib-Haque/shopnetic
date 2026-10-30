@@ -8,7 +8,7 @@
  * `fixtures/catalog/products.ts` so 3P-origin products can reference these
  * shop slugs. Dev / CI only.
  */
-import { Role } from '@shopnetic/auth';
+import { hashPassword, Role } from '@shopnetic/auth';
 import type { PrismaClient } from '../../../src/index.js';
 import type { SeedCtx, SeedLog } from '../ctx.js';
 import { upsertAccount, upsertSeller, upsertWarehouse } from '../factories.js';
@@ -29,6 +29,80 @@ export const DEFAULT_WAREHOUSE_NAME: Record<string, string> = {
   'fx-seller-closed': 'Shuttered Supply Inc. — Reno DC',
 };
 
+export const VOLUME_SELLER_COUNT = 200;
+export const VOLUME_SELLER_SLUGS: string[] = Array.from(
+  { length: VOLUME_SELLER_COUNT },
+  (_, i) => `fx-seller-${String(i + 1).padStart(3, '0')}`,
+);
+
+type VolumeCountry = {
+  readonly code: string;
+  readonly city: string;
+  readonly state?: string;
+  readonly zip: string;
+};
+
+const VOLUME_COUNTRIES: readonly VolumeCountry[] = [
+  { code: 'US', city: 'New York', state: 'NY', zip: '10001' },
+  { code: 'US', city: 'Chicago', state: 'IL', zip: '60601' },
+  { code: 'US', city: 'Houston', state: 'TX', zip: '77001' },
+  { code: 'GB', city: 'London', zip: 'EC1A 1BB' },
+  { code: 'GB', city: 'Manchester', zip: 'M1 1AE' },
+  { code: 'DE', city: 'Berlin', zip: '10115' },
+  { code: 'DE', city: 'Munich', zip: '80331' },
+  { code: 'FR', city: 'Paris', zip: '75001' },
+  { code: 'CA', city: 'Toronto', state: 'ON', zip: 'M5B 2H1' },
+  { code: 'AU', city: 'Sydney', state: 'NSW', zip: '2000' },
+  { code: 'JP', city: 'Tokyo', zip: '100-0001' },
+  { code: 'NL', city: 'Amsterdam', zip: '1012 JS' },
+];
+
+const VOLUME_PREFIXES = [
+  'Apex',
+  'Summit',
+  'Vanguard',
+  'Pinnacle',
+  'Horizon',
+  'Atlas',
+  'Echo',
+  'Zenith',
+  'Nova',
+  'Beacon',
+  'Aurora',
+  'Meridian',
+  'Sol',
+  'Terra',
+  'Pacific',
+  'Atlantic',
+  'Crest',
+  'Harbor',
+  'Prism',
+  'Nordic',
+];
+
+const VOLUME_SUFFIXES = [
+  'Supply',
+  'Trading',
+  'Merchants',
+  'Retail',
+  'Goods',
+  'Enterprises',
+  'Direct',
+  'Commerce',
+  'Ventures',
+  'Logistics',
+];
+
+for (let i = 1; i <= VOLUME_SELLER_COUNT; i++) {
+  const slug = `fx-seller-${String(i).padStart(3, '0')}`;
+  const prefix = VOLUME_PREFIXES[(i - 1) % VOLUME_PREFIXES.length]!;
+  const suffix =
+    VOLUME_SUFFIXES[Math.floor((i - 1) / VOLUME_PREFIXES.length) % VOLUME_SUFFIXES.length]!;
+  const loc = VOLUME_COUNTRIES[(i - 1) % VOLUME_COUNTRIES.length]!;
+  const name = `${prefix} ${suffix} ${i}`;
+  DEFAULT_WAREHOUSE_NAME[slug] = `${name} — ${loc.city} DC`;
+}
+
 /** `fx-many-warehouse-seller`'s 5 warehouse names, in creation order. */
 export const MANY_WAREHOUSE_NAMES = [
   'FX Hub 1 (Dallas)',
@@ -43,6 +117,7 @@ export async function seedFixtureSellers(
   ctx: SeedCtx,
   log: SeedLog,
 ): Promise<void> {
+  const sharedPasswordHash = await hashPassword('12345678');
   const seller = async (spec: {
     slug: string;
     legalName: string;
@@ -54,7 +129,7 @@ export async function seedFixtureSellers(
     await upsertAccount(prisma, ctx, {
       email,
       plane: 'marketplace',
-      password: '12345678',
+      passwordHash: sharedPasswordHash,
       roles: [Role.SELLER],
     });
     await upsertSeller(prisma, ctx, {
@@ -191,6 +266,40 @@ export async function seedFixtureSellers(
       name: `${s.legalName} — ${s.city} DC`,
       isDefault: true,
       address: { line1: '1 Warehouse Row', city: s.city, postalCode: '00000', country: s.country },
+    });
+  }
+
+  // ── 200 volume sellers — offer/seller combobox stress testing ─────────────
+  for (let i = 1; i <= VOLUME_SELLER_COUNT; i++) {
+    const slug = `fx-seller-${String(i).padStart(3, '0')}`;
+    const prefix = VOLUME_PREFIXES[(i - 1) % VOLUME_PREFIXES.length]!;
+    const suffix =
+      VOLUME_SUFFIXES[Math.floor((i - 1) / VOLUME_PREFIXES.length) % VOLUME_SUFFIXES.length]!;
+    const loc = VOLUME_COUNTRIES[(i - 1) % VOLUME_COUNTRIES.length]!;
+    const displayName = `${prefix} ${suffix} ${i}`;
+    const legalSuffix = loc.code === 'DE' ? 'GmbH' : loc.code === 'GB' ? 'Ltd.' : 'LLC';
+    const legalName = `${displayName} ${legalSuffix}`;
+
+    await seller({
+      slug,
+      legalName,
+      country: loc.code,
+      status: 'approved',
+      displayName,
+    });
+
+    const warehouseName = DEFAULT_WAREHOUSE_NAME[slug]!;
+    await upsertWarehouse(prisma, ctx, {
+      sellerSlug: slug,
+      name: warehouseName,
+      isDefault: true,
+      address: {
+        line1: `${i * 10} Commerce Parkway`,
+        city: loc.city,
+        ...(loc.state ? { state: loc.state } : {}),
+        postalCode: loc.zip,
+        country: loc.code,
+      },
     });
   }
 

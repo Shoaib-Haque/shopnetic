@@ -20,6 +20,7 @@ export async function upsertAccount(
     email: string;
     plane: 'staff' | 'marketplace';
     password?: string;
+    passwordHash?: string;
     status?: 'active' | 'locked' | 'disabled' | 'anonymized';
     emailVerified?: boolean;
     /** Global-scope role grants. Scoped grants land when seller/category scopes exist. */
@@ -30,7 +31,8 @@ export async function upsertAccount(
   // change a seeded account's password — a plain `update: { status }` left
   // an already-created account's credential untouched forever, so changing
   // a seed password here silently did nothing until the next `db:reset`.
-  const passwordHash = spec.password ? await hashPassword(spec.password) : undefined;
+  const passwordHash =
+    spec.passwordHash ?? (spec.password ? await hashPassword(spec.password) : undefined);
   const account = await prisma.account.upsert({
     where: { email: spec.email },
     update: {

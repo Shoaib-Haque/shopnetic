@@ -15,7 +15,7 @@ import type { PrismaClient } from '../../../src/index.js';
 import type { SeedCtx, SeedLog } from '../ctx.js';
 import { recomputeBuyboxes, upsertMediaAsset, upsertOffer } from '../factories.js';
 import { SEED_PHOTO, type SeedPhotoKey } from './seed-media.js';
-import { DEFAULT_WAREHOUSE_NAME, MANY_WAREHOUSE_NAMES } from './sellers.js';
+import { DEFAULT_WAREHOUSE_NAME, MANY_WAREHOUSE_NAMES, VOLUME_SELLER_SLUGS } from './sellers.js';
 
 const COMPETING_SELLERS = [
   'shopnetic-retail',
@@ -46,7 +46,15 @@ const CONDITIONS = [
   'used_fair',
 ] as const;
 
-const STATUSES = ['active', 'active', 'active', 'paused', 'under_review', 'suppressed'] as const;
+const STATUSES = [
+  'active',
+  'active',
+  'active',
+  'paused',
+  'out_of_stock',
+  'under_review',
+  'suppressed',
+] as const;
 
 export async function seedFixtureInventory(
   prisma: PrismaClient,
@@ -80,6 +88,29 @@ export async function seedFixtureInventory(
     });
     offerCount++;
   };
+
+  // ── Classic Cotton Tee: TEE-BLK-M volume stress testing (200+ offers) ──────
+  // Demo seeds 2 baseline offers ('shopnetic-retail' @ $19.99 and 'apex-sellers' @ $17.99).
+  // In dev/fixtures profile, all 200 volume sellers place competing offers on TEE-BLK-M
+  // with varied prices ($15.00 to $35.00), realistic stock levels, conditions, and statuses.
+  for (const [i, sellerSlug] of VOLUME_SELLER_SLUGS.entries()) {
+    const priceMinor = 1599 + ((i * 17) % 1900); // $15.99 to $34.99 spread
+    const salePriceMinor = i % 8 === 0 ? Math.max(1399, priceMinor - 200) : undefined;
+    const condition = i % 6 === 0 ? CONDITIONS[(i % (CONDITIONS.length - 1)) + 1]! : 'new';
+    const status = i % 25 === 0 ? 'paused' : i % 25 === 24 ? 'out_of_stock' : 'active';
+    const onHand = status === 'out_of_stock' ? 0 : 5 + ((i * 9) % 115);
+
+    await place({
+      sellerSlug,
+      sku: 'TEE-BLK-M',
+      priceMinor,
+      salePriceMinor,
+      condition,
+      status,
+      warehouseName: WAREHOUSE_FOR[sellerSlug],
+      onHand,
+    });
+  }
 
   // ── fx-combinatorial: FXC-BLA-S gets 8 competing offers (Offers dialog
   // scroll); a handful of siblings get 2-3; the rest stay offer-less. SKU
