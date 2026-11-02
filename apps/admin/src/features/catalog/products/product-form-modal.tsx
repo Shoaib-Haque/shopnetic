@@ -16,6 +16,8 @@ import {
   getCurrencyExponent,
   normalizeCurrency,
   productDescriptionDocSchema,
+  PRODUCT_BASE_PRICE_MAX_MINOR,
+  PRODUCT_REJECTION_NOTE_MAX,
 } from '@shopnetic/contracts';
 import {
   Button,
@@ -87,12 +89,15 @@ const formSchema = z
           message: 'products.form.err.priceInvalid',
           path: ['basePrice'],
         });
-      } else if (parseFloat(data.basePrice) > 999_999) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'products.form.err.priceMax',
-          path: ['basePrice'],
-        });
+      } else {
+        const minor = decimalToMinor(data.basePrice, data.currency || 'USD');
+        if (minor !== null && Number(minor) > PRODUCT_BASE_PRICE_MAX_MINOR) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'products.form.err.priceMax',
+            path: ['basePrice'],
+          });
+        }
       }
     }
   });
@@ -768,7 +773,7 @@ export function ProductFormModal({
                 id="rejection-note"
                 className={textareaCls}
                 rows={3}
-                maxLength={2000}
+                maxLength={PRODUCT_REJECTION_NOTE_MAX}
                 placeholder={t('products.form.rejectionNotePlaceholder')}
                 value={rejectionNote}
                 onChange={(e) => setRejectionNote(e.target.value)}
@@ -776,7 +781,7 @@ export function ProductFormModal({
               />
               <div className="flex justify-end pt-1">
                 <span className="text-[11px] text-muted-foreground">
-                  {rejectionNote.length} / 2,000
+                  {rejectionNote.length} / {PRODUCT_REJECTION_NOTE_MAX.toLocaleString()}
                 </span>
               </div>
             </Field>

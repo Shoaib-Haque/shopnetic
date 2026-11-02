@@ -53,6 +53,16 @@ export class VariantController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ): Promise<Envelope<Variant[]>> {
+    // If no query parameters were provided, return the full unbounded list for backward compatibility with existing callers (e.g. Offers & Stock variant tabs)
+    if (status === undefined && q === undefined && cursor === undefined && limit === undefined) {
+      const items = await this.variants.list(productId);
+      const base = ok(req, items);
+      return {
+        data: base.data,
+        meta: { ...base.meta, count: items.length, total: items.length },
+      };
+    }
+
     const raw: Record<string, unknown> = {};
     if (status) raw.status = status;
     if (q) raw.q = q;

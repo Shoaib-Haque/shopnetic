@@ -652,7 +652,7 @@ export type UpdateVariantRequest = z.infer<typeof updateVariantRequestSchema>;
 
 export const listVariantsQuerySchema = z.object({
   status: z.enum(['active', 'inactive', 'all']).default('all'),
-  limit: z.coerce.number().int().min(1).max(100).default(30),
+  limit: z.coerce.number().int().min(1).max(VARIANT_BULK_GENERATE_MAX).default(30),
   cursor: z.string().trim().optional(),
   q: z.string().trim().max(100).optional(),
 });

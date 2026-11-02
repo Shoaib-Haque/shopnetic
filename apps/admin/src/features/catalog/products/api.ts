@@ -133,7 +133,7 @@ export async function listVariantsPage(
   if (opts?.status && opts.status !== 'all') params.set('status', opts.status);
   if (opts?.q) params.set('q', opts.q);
   if (opts?.cursor) params.set('cursor', opts.cursor);
-  if (opts?.limit) params.set('limit', String(opts.limit));
+  params.set('limit', String(opts?.limit ?? 30));
 
   const queryStr = params.toString();
   const path = `/products/${productId}/variants${queryStr ? `?${queryStr}` : ''}`;

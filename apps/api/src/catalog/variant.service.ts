@@ -9,6 +9,7 @@ import {
   type Variant,
   type VariantDims,
   type VariantSelection,
+  VARIANT_BULK_GENERATE_MAX,
 } from '@shopnetic/contracts';
 import { Prisma } from '@shopnetic/db';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -73,7 +74,7 @@ export class VariantService {
     }
 
     await this.productOrThrow(productId, true);
-    const limit = clampLimit(query.limit ?? 30, 1, 100);
+    const limit = clampLimit(query.limit ?? 30, 1, VARIANT_BULK_GENERATE_MAX);
     const offset = query.cursor ? (rankedOffsetFromCursor(query.cursor) ?? 0) : 0;
 
     const where: Prisma.VariantWhereInput = {

@@ -17,6 +17,7 @@ import { OptionTypeService } from './option-type.service.js';
 import { CategoryOptionService } from './category-option.service.js';
 import { ProductOptionService } from './product-option.service.js';
 import { VariantService } from './variant.service.js';
+import { VariantController } from './variant.controller.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
@@ -747,5 +748,17 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
       const searchRes = await variants.list(productId, { q: existing.skuCode });
       expect(searchRes.items.some((v) => v.id === existing.id)).toBe(true);
     }
+  });
+
+  it('VariantController returns full unbounded list when no query params are provided (Offers & Stock compatibility)', async () => {
+    const controller = new VariantController(variants);
+    const req = {
+      headers: { 'x-request-id': 'itest-req-id' },
+    } as object as import('express').Request;
+    const res = await controller.list(req, productId);
+    expect(Array.isArray(res.data)).toBe(true);
+    expect(res.data.length).toBeGreaterThanOrEqual(1);
+    expect(res.meta.total).toBe(res.data.length);
+    expect(res.meta.nextCursor).toBeUndefined();
   });
 });
