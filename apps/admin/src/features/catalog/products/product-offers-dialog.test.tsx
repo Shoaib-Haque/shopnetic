@@ -21,6 +21,8 @@ import {
   restoreOffer,
   updateOffer,
   updateStock,
+  listOffersPage,
+  getVariantOfferCounts,
 } from './api';
 import { ProductOffersDialog } from './product-offers-dialog';
 
@@ -31,6 +33,8 @@ vi.mock('./api', async () => {
     createOffer: vi.fn(),
     listVariants: vi.fn(),
     listProductOffers: vi.fn(),
+    listOffersPage: vi.fn(),
+    getVariantOfferCounts: vi.fn(),
     listSellers: vi.fn(),
     listWarehouses: vi.fn(),
     getVariantBuybox: vi.fn(),
@@ -45,6 +49,8 @@ const mockedCreateOffer = vi.mocked(createOffer);
 
 const mockedListVariants = vi.mocked(listVariants);
 const mockedListProductOffers = vi.mocked(listProductOffers);
+const mockedListOffersPage = vi.mocked(listOffersPage);
+const mockedGetVariantOfferCounts = vi.mocked(getVariantOfferCounts);
 const mockedListSellers = vi.mocked(listSellers);
 const mockedListWarehouses = vi.mocked(listWarehouses);
 const mockedGetVariantBuybox = vi.mocked(getVariantBuybox);
@@ -202,6 +208,23 @@ describe('ProductOffersDialog', () => {
     vi.clearAllMocks();
     mockedListVariants.mockResolvedValue([sampleVariant1, sampleVariant2]);
     mockedListProductOffers.mockResolvedValue([sampleOffer]);
+    mockedGetVariantOfferCounts.mockImplementation(async () => {
+      const offers = await mockedListProductOffers('prod_1');
+      const counts: Record<string, number> = { var_1: 0, var_2: 0 };
+      for (const o of offers) {
+        counts[o.variantId] = (counts[o.variantId] ?? 0) + 1;
+      }
+      return counts;
+    });
+    mockedListOffersPage.mockImplementation(async (opts) => {
+      const allOffers = await mockedListProductOffers('prod_1');
+      const matching = allOffers.filter((o) => {
+        if (opts.variantId && o.variantId !== opts.variantId) return false;
+        if (opts.q && !o.sellerName.toLowerCase().includes(opts.q.toLowerCase())) return false;
+        return true;
+      });
+      return { offers: matching, total: matching.length, nextCursor: undefined };
+    });
     mockedListSellers.mockResolvedValue([sampleSeller]);
     mockedListWarehouses.mockResolvedValue([sampleWarehouse]);
     mockedGetVariantBuybox.mockResolvedValue(sampleBuybox);
@@ -304,9 +327,7 @@ describe('ProductOffersDialog', () => {
     });
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
-    expect(
-      screen.getByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Acme Apparel (3P)' })).toBeInTheDocument();
   });
 
   it('validates offer form fields inline (e.g. sale price >= price) and blocks submit', async () => {
@@ -682,7 +703,7 @@ describe('ProductOffersDialog', () => {
     fireEvent.click(updateStockBtn);
 
     await waitFor(() => {
-      expect(screen.getByText('Enter a valid non-negative integer.')).toBeInTheDocument();
+      expect(screen.getByText('On-hand units must be a whole number.')).toBeInTheDocument();
     });
 
     expect(mockedUpdateStock).not.toHaveBeenCalled();
@@ -697,8 +718,10 @@ describe('ProductOffersDialog', () => {
 
     const modalHeader = document.querySelector('[class*="pr-12"]');
     expect(modalHeader).toBeInTheDocument();
-    const minWTable = document.querySelector('.min-w-\\[680px\\]');
-    expect(minWTable).toBeInTheDocument();
+    await waitFor(() => {
+      const minWTable = document.querySelector('.min-w-\\[680px\\]');
+      expect(minWTable).toBeInTheDocument();
+    });
     const overflowTabs = document.querySelector('.overflow-x-auto');
     expect(overflowTabs).toBeInTheDocument();
   });
@@ -829,5 +852,76 @@ describe('ProductOffersDialog', () => {
     // And active tab remains Variant 2
     expect(tabVar2).toHaveClass('bg-primary');
     expect(tabVar1).not.toHaveClass('bg-primary');
+  });
+
+  it('paginates 30 offers at a time and filters by seller search when >30 offers exist', async () => {
+    // Generate 45 offers
+    const manyOffers: Offer[] = Array.from({ length: 45 }, (_, i) => ({
+      ...sampleOffer,
+      id: `offer_${i + 1}`,
+      sellerName: i === 42 ? 'Nordic Pending Supply' : `Seller ${i + 1}`,
+      priceMinor: `${(15 + i) * 100}`,
+    }));
+
+    mockedGetVariantOfferCounts.mockResolvedValue({ var_1: 45, var_2: 0 });
+    mockedListOffersPage.mockImplementation(async (opts) => {
+      if (opts.q) {
+        const matches = manyOffers.filter((o) =>
+          o.sellerName.toLowerCase().includes(opts.q!.toLowerCase()),
+        );
+        return { offers: matches, total: matches.length, nextCursor: undefined };
+      }
+      if (opts.cursor === '30') {
+        return { offers: manyOffers.slice(30, 45), total: 45, nextCursor: undefined };
+      }
+      return { offers: manyOffers.slice(0, 30), total: 45, nextCursor: '30' };
+    });
+
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Offers & Stock')).toBeInTheDocument();
+    });
+
+    // Should display search bar
+    const searchInput = await screen.findByPlaceholderText('Search sellers in offers…');
+    expect(searchInput).toBeInTheDocument();
+
+    // Showing 30 of 45 offers
+    await waitFor(() => {
+      expect(screen.getByText('Showing 30 of 45 offers')).toBeInTheDocument();
+    });
+
+    // Load more button exists
+    const loadMoreBtn = screen.getByRole('button', { name: 'Load more offers' });
+    expect(loadMoreBtn).toBeInTheDocument();
+
+    // Clicking load more shows all 45
+    fireEvent.click(loadMoreBtn);
+    await waitFor(() => {
+      expect(screen.getByText('Showing 45 of 45 offers')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Load more offers' })).not.toBeInTheDocument();
+    });
+
+    // Test word-match search
+    fireEvent.change(searchInput, { target: { value: 'nordic pending' } });
+    await waitFor(
+      () => {
+        expect(screen.getByText('Showing 1 of 1 offers')).toBeInTheDocument();
+        expect(screen.getAllByText('Nordic Pending Supply').length).toBeGreaterThan(0);
+      },
+      { timeout: 1500 },
+    );
+
+    // Clear search
+    const clearBtn = screen.getByLabelText('Clear search');
+    fireEvent.click(clearBtn);
+    expect(searchInput).toHaveValue('');
+    await waitFor(
+      () => {
+        expect(screen.getByText('Showing 30 of 45 offers')).toBeInTheDocument();
+      },
+      { timeout: 1500 },
+    );
   });
 });

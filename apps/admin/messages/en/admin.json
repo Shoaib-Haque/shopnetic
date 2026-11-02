@@ -69,6 +69,15 @@
       "loadError": "Couldn’t load the list.",
       "retry": "Try again",
       "showingCount": "{count, plural, one {# item} other {# items}}"
+    },
+    "datePicker": {
+      "clearDate": "Clear date",
+      "openCalendar": "Open calendar",
+      "previousMonth": "Previous month",
+      "nextMonth": "Next month",
+      "timeLabel": "Time:",
+      "done": "Done",
+      "placeholder": "Select date…"
     }
   }
 }

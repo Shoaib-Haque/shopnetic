@@ -230,14 +230,14 @@ describe('OfferFormModal', () => {
       // 3P seller option
       expect(
         screen.getByRole('option', {
-          name: 'Acme Apparel (3P) • @acme-apparel',
+          name: 'Acme Apparel (3P)',
         }),
       ).toBeInTheDocument();
 
       // 1P seller option
       expect(
         screen.getByRole('option', {
-          name: 'Shopnetic Retail (1P) • @shopnetic-retail',
+          name: 'Shopnetic Retail (1P)',
         }),
       ).toBeInTheDocument();
     });
@@ -253,11 +253,9 @@ describe('OfferFormModal', () => {
       fireEvent.change(searchInput, { target: { value: 'acme' } });
 
       await waitFor(() => {
+        expect(screen.getByRole('option', { name: 'Acme Apparel (3P)' })).toBeInTheDocument();
         expect(
-          screen.getByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' }),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByRole('option', { name: 'Shopnetic Retail (1P) • @shopnetic-retail' }),
+          screen.queryByRole('option', { name: 'Shopnetic Retail (1P)' }),
         ).not.toBeInTheDocument();
       });
     });
@@ -632,6 +630,57 @@ describe('OfferFormModal', () => {
         expect(
           screen.getByText('Maximum quantity cannot be less than minimum quantity.'),
         ).toBeInTheDocument();
+      });
+    });
+
+    it('validates minQty max limit (999,999) with distinct error message', async () => {
+      renderModal();
+
+      const priceInput = screen.getByPlaceholderText('e.g. 29.99');
+      fireEvent.change(priceInput, { target: { value: '19.99' } });
+
+      const minQtyLabel = screen.getByText('Min Order Qty');
+      const minQtyField = minQtyLabel.closest('div')?.querySelector('input');
+      if (minQtyField) fireEvent.change(minQtyField, { target: { value: '1000000' } });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Minimum order quantity cannot exceed 999,999.'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('validates initialStock max limit (999,999) with distinct error message', async () => {
+      renderModal();
+
+      const priceInput = screen.getByPlaceholderText('e.g. 29.99');
+      fireEvent.change(priceInput, { target: { value: '19.99' } });
+
+      const stockInput = screen.getByLabelText('Initial Stock');
+      fireEvent.change(stockInput, { target: { value: '1000000' } });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Initial stock cannot exceed 999,999.')).toBeInTheDocument();
+      });
+    });
+
+    it('validates list price ceiling against OFFER_PRICE_MAX_MINOR', async () => {
+      renderModal();
+
+      const priceInput = screen.getByPlaceholderText('e.g. 29.99');
+      fireEvent.change(priceInput, { target: { value: '1000000.00' } });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('List price cannot exceed $999,999.00.')).toBeInTheDocument();
       });
     });
   });

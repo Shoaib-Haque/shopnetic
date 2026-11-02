@@ -1,11 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import type { CreateWarehouseRequest, SellerWithShop, Warehouse } from '@shopnetic/contracts';
+import { Check, ChevronsUpDown, Search } from 'lucide-react';
+import {
+  COUNTRIES,
+  isValidPostalCode,
+  WAREHOUSE_CITY_MAX,
+  WAREHOUSE_LINE1_MAX,
+  WAREHOUSE_LINE2_MAX,
+  WAREHOUSE_NAME_MAX,
+  WAREHOUSE_POSTAL_MAX,
+  WAREHOUSE_STATE_MAX,
+  type CreateWarehouseRequest,
+  type SellerWithShop,
+  type Warehouse,
+} from '@shopnetic/contracts';
 import {
   Button,
   Checkbox,
@@ -18,6 +31,9 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   notify,
 } from '@shopnetic/ui';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
@@ -35,24 +51,178 @@ export interface WarehouseFormModalProps {
   onCreated: (warehouse: Warehouse) => void;
 }
 
-const warehouseFormSchema = z.object({
-  sellerId: z.string().trim().uuid('products.offers.warehouseModal.err.sellerRequired'),
-  name: z
-    .string()
-    .trim()
-    .min(1, 'products.offers.warehouseModal.err.nameRequired')
-    .max(100, 'products.offers.warehouseModal.err.nameLong'),
-  isDefault: z.boolean(),
-  line1: z.string().trim().min(1, 'products.offers.warehouseModal.err.line1Required'),
-  line2: z.string().trim().optional().or(z.literal('')),
-  city: z.string().trim().min(1, 'products.offers.warehouseModal.err.cityRequired'),
-  state: z.string().trim().optional().or(z.literal('')),
-  postalCode: z.string().trim().min(1, 'products.offers.warehouseModal.err.postalCodeRequired'),
-  country: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z]{2}$/, 'products.offers.warehouseModal.err.countryFormat'),
-});
+export function CountryCombobox({
+  id,
+  value,
+  onChange,
+  disabled = false,
+  invalid = false,
+  placeholder = 'Select country…',
+  searchPlaceholder = 'Search countries…',
+  emptyText = 'No countries found',
+}: {
+  id?: string;
+  value: string;
+  onChange: (code: string) => void;
+  disabled?: boolean;
+  invalid?: boolean;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const selectedCountry = useMemo(
+    () => COUNTRIES.find((c) => c.code.toLowerCase() === (value ?? '').toLowerCase()),
+    [value],
+  );
+
+  const filteredCountries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return COUNTRIES;
+    return COUNTRIES.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
+    );
+  }, [search]);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setSearch('');
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          id={id}
+          role="combobox"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-label={
+            selectedCountry ? `${selectedCountry.name} (${selectedCountry.code})` : placeholder
+          }
+          disabled={disabled}
+          className={`flex h-9 w-full items-center justify-between rounded-md border bg-background px-3 py-1.5 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+            invalid ? 'border-destructive' : 'border-border'
+          }`}
+        >
+          <span
+            className={`truncate text-left ${
+              selectedCountry ? 'text-foreground' : 'text-muted-foreground'
+            }`}
+          >
+            {selectedCountry ? `${selectedCountry.name} (${selectedCountry.code})` : placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-muted-foreground opacity-70" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={4}
+        hideClose
+        className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] max-w-[22rem] p-2 shadow-lg z-[60]"
+        onWheel={(e) => e.stopPropagation()}
+      >
+        <div className="relative mb-2">
+          <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="h-8 pl-8 text-xs"
+            autoFocus
+          />
+        </div>
+        <div
+          role="listbox"
+          className="max-h-56 overflow-y-auto space-y-0.5 pr-1"
+          onWheel={(e) => e.stopPropagation()}
+        >
+          {filteredCountries.length === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">{emptyText}</div>
+          ) : (
+            filteredCountries.map((c) => {
+              const isSelected = c.code.toLowerCase() === (value ?? '').toLowerCase();
+              return (
+                <button
+                  key={c.code}
+                  type="button"
+                  role="option"
+                  aria-label={`${c.name} (${c.code})`}
+                  aria-selected={isSelected}
+                  onClick={() => {
+                    onChange(c.code);
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                  className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors text-left ${
+                    isSelected
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="font-semibold text-[11px] text-muted-foreground w-6">
+                      {c.code}
+                    </span>
+                    <span className="truncate">{c.name}</span>
+                  </div>
+                  {isSelected && <Check className="size-3.5 shrink-0 text-primary" />}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+const warehouseFormSchema = z
+  .object({
+    sellerId: z.string().trim().uuid('products.offers.warehouseModal.err.sellerRequired'),
+    name: z
+      .string()
+      .trim()
+      .min(1, 'products.offers.warehouseModal.err.nameRequired')
+      .max(WAREHOUSE_NAME_MAX, 'products.offers.warehouseModal.err.nameLong'),
+    isDefault: z.boolean(),
+    country: z.string().trim().min(1, 'products.offers.warehouseModal.err.countryRequired'),
+    line1: z
+      .string()
+      .trim()
+      .min(1, 'products.offers.warehouseModal.err.line1Required')
+      .max(WAREHOUSE_LINE1_MAX, 'products.offers.warehouseModal.err.line1Long'),
+    line2: z
+      .string()
+      .trim()
+      .max(WAREHOUSE_LINE2_MAX, 'products.offers.warehouseModal.err.line2Long')
+      .optional()
+      .or(z.literal('')),
+    city: z
+      .string()
+      .trim()
+      .min(1, 'products.offers.warehouseModal.err.cityRequired')
+      .max(WAREHOUSE_CITY_MAX, 'products.offers.warehouseModal.err.cityLong'),
+    state: z
+      .string()
+      .trim()
+      .max(WAREHOUSE_STATE_MAX, 'products.offers.warehouseModal.err.stateLong')
+      .optional()
+      .or(z.literal('')),
+    postalCode: z
+      .string()
+      .trim()
+      .min(1, 'products.offers.warehouseModal.err.postalCodeRequired')
+      .max(WAREHOUSE_POSTAL_MAX, 'products.offers.warehouseModal.err.postalCodeLong'),
+  })
+  .refine((data) => isValidPostalCode(data.postalCode, data.country), {
+    path: ['postalCode'],
+    message: 'products.offers.warehouseModal.err.postalCodeInvalid',
+  });
 
 type WarehouseFormValues = z.infer<typeof warehouseFormSchema>;
 
@@ -83,12 +253,12 @@ export function WarehouseFormModal({
       sellerId: sellerId ?? '',
       name: '',
       isDefault: false,
+      country: 'US',
       line1: '',
       line2: '',
       city: '',
       state: '',
       postalCode: '',
-      country: 'US',
     },
   });
 
@@ -99,73 +269,80 @@ export function WarehouseFormModal({
   }
 
   useEffect(() => {
-    reset({
-      sellerId: sellerId ?? '',
-      name: '',
-      isDefault: false,
-      line1: '',
-      line2: '',
-      city: '',
-      state: '',
-      postalCode: '',
-      country: 'US',
-    });
-    setServerError(null);
+    if (open) {
+      reset({
+        sellerId: sellerId ?? '',
+        name: '',
+        isDefault: false,
+        country: 'US',
+        line1: '',
+        line2: '',
+        city: '',
+        state: '',
+        postalCode: '',
+      });
+      setServerError(null);
+      setConfirmDiscard(false);
+    }
   }, [open, sellerId, reset]);
 
-  const onValidSubmit = async (data: WarehouseFormValues) => {
-    setServerError(null);
-
-    const body: CreateWarehouseRequest = {
-      sellerId: data.sellerId,
-      name: data.name.trim(),
-      isDefault: data.isDefault,
-      address: {
-        line1: data.line1.trim(),
-        line2: data.line2?.trim() || undefined,
-        city: data.city.trim(),
-        state: data.state?.trim() || undefined,
-        postalCode: data.postalCode.trim(),
-        country: data.country.trim().toUpperCase(),
-      },
-    };
-
-    try {
-      const created = await createWarehouse(body);
-      notify.saved(t('products.offers.toast.warehouseCreated', { name: created.name }));
-      onCreated(created);
-      reset();
+  const handleClose = () => {
+    if (isDirty) {
+      setConfirmDiscard(true);
+    } else {
       onOpenChange(false);
-    } catch (err) {
-      setServerError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
     }
   };
 
-  const handleAttemptClose = () => {
-    if (isDirty) {
-      setConfirmDiscard(true);
-      return;
+  const onSubmit = async (values: WarehouseFormValues) => {
+    setServerError(null);
+    try {
+      const payload: CreateWarehouseRequest = {
+        sellerId: values.sellerId,
+        name: values.name,
+        isDefault: values.isDefault,
+        address: {
+          line1: values.line1,
+          line2: values.line2 ? values.line2 : undefined,
+          city: values.city,
+          state: values.state ? values.state : undefined,
+          postalCode: values.postalCode,
+          country: values.country.toUpperCase(),
+        },
+      };
+
+      const created = await createWarehouse(payload);
+      notify.saved(t('products.offers.toast.warehouseCreated', { name: created.name }));
+      onCreated(created);
+      onOpenChange(false);
+    } catch (err) {
+      if (err instanceof AdminApiError) {
+        setServerError(t(catalogErrorKey(err.code)));
+      } else {
+        setServerError(t('errors.generic'));
+      }
     }
-    reset();
-    onOpenChange(false);
   };
 
   return (
     <>
       <Modal
         open={open}
-        onOpenChange={(v) => {
-          if (!v) handleAttemptClose();
-          else onOpenChange(true);
+        onOpenChange={(next) => {
+          if (!next) {
+            handleClose();
+          } else {
+            onOpenChange(true);
+          }
         }}
       >
-        <ModalContent className="max-w-lg max-h-[85vh] flex flex-col p-0">
+        <ModalContent size="md" className="max-h-[90vh] flex flex-col p-0">
           <form
+            onSubmit={handleSubmit(onSubmit)}
             noValidate
-            onSubmit={handleSubmit(onValidSubmit)}
-            className="flex min-h-0 flex-1 flex-col"
+            className="flex flex-col min-h-0 flex-1"
           >
-            <ModalHeader className="shrink-0 border-b border-border pb-4">
+            <ModalHeader className="shrink-0 border-b border-border pb-3 pr-12">
               <ModalTitle>{t('products.offers.warehouseModal.title')}</ModalTitle>
               <ModalDescription>
                 {sellerName
@@ -174,13 +351,14 @@ export function WarehouseFormModal({
               </ModalDescription>
             </ModalHeader>
 
-            <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
+            <ModalBody className="flex-1 overflow-y-auto space-y-4 py-4 min-h-0">
               {serverError && (
-                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
+                <div className="rounded-md bg-destructive/10 p-3 text-xs text-destructive">
                   {serverError}
                 </div>
               )}
 
+              {/* Seller Selector (if not preselected) */}
               {!sellerId && (
                 <Field
                   label={t('products.offers.warehouseModal.seller')}
@@ -199,13 +377,13 @@ export function WarehouseFormModal({
                         disabled={isSubmitting}
                         invalid={Boolean(errors.sellerId)}
                         placeholder={t('products.offers.warehouseModal.selectSellerPlaceholder')}
-                        ariaLabel="Seller"
                       />
                     )}
                   />
                 </Field>
               )}
 
+              {/* Warehouse Name */}
               <Field
                 label={t('products.offers.warehouseModal.name')}
                 htmlFor="wh-name"
@@ -220,6 +398,7 @@ export function WarehouseFormModal({
                 />
               </Field>
 
+              {/* Is Default Checkbox */}
               <div className="flex items-center gap-2 pt-1">
                 <Controller
                   control={control}
@@ -241,7 +420,31 @@ export function WarehouseFormModal({
                 </label>
               </div>
 
+              {/* Address Fields - Reordered: Country first, Line1, Line2, City, State, Postal */}
               <div className="space-y-3 pt-2">
+                <Field
+                  label={t('products.offers.warehouseModal.country')}
+                  htmlFor="wh-country"
+                  error={fieldError('country')}
+                >
+                  <Controller
+                    control={control}
+                    name="country"
+                    render={({ field }) => (
+                      <CountryCombobox
+                        id="wh-country"
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={isSubmitting}
+                        invalid={Boolean(errors.country)}
+                        placeholder={t('products.offers.warehouseModal.selectCountry')}
+                        searchPlaceholder={t('products.offers.warehouseModal.searchCountry')}
+                        emptyText={t('products.offers.warehouseModal.noCountries')}
+                      />
+                    )}
+                  />
+                </Field>
+
                 <Field
                   label={t('products.offers.warehouseModal.line1')}
                   htmlFor="wh-line1"
@@ -297,54 +500,27 @@ export function WarehouseFormModal({
                   </Field>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field
-                    label={t('products.offers.warehouseModal.postalCode')}
-                    htmlFor="wh-postal-code"
-                    error={fieldError('postalCode')}
-                  >
-                    <Input
-                      id="wh-postal-code"
-                      {...register('postalCode')}
-                      disabled={isSubmitting}
-                      invalid={Boolean(errors.postalCode)}
-                    />
-                  </Field>
-                  <Field
-                    label={t('products.offers.warehouseModal.country')}
-                    htmlFor="wh-country"
-                    error={fieldError('country')}
-                  >
-                    <Input
-                      id="wh-country"
-                      {...register('country')}
-                      maxLength={2}
-                      disabled={isSubmitting}
-                      invalid={Boolean(errors.country)}
-                    />
-                  </Field>
-                </div>
+                <Field
+                  label={t('products.offers.warehouseModal.postalCode')}
+                  htmlFor="wh-postal-code"
+                  error={fieldError('postalCode')}
+                >
+                  <Input
+                    id="wh-postal-code"
+                    {...register('postalCode')}
+                    disabled={isSubmitting}
+                    invalid={Boolean(errors.postalCode)}
+                  />
+                </Field>
               </div>
             </ModalBody>
 
             <ModalFooter className="shrink-0 border-t border-border pt-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isSubmitting}
-                onClick={handleAttemptClose}
-              >
+              <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
                 {t('products.offers.warehouseModal.cancel')}
               </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                size="sm"
-                loading={isSubmitting}
-                disabled={isSubmitting}
-              >
-                {t('products.offers.warehouseModal.save')}
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? tAdmin('actions.saving') : t('products.offers.warehouseModal.save')}
               </Button>
             </ModalFooter>
           </form>
@@ -361,7 +537,6 @@ export function WarehouseFormModal({
         tone="danger"
         onConfirm={() => {
           setConfirmDiscard(false);
-          reset();
           onOpenChange(false);
         }}
       />

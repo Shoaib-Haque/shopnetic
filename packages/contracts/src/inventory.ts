@@ -1,6 +1,16 @@
 import { z } from 'zod';
 import { currencySchema } from './catalog.js';
 
+export const OFFER_PRICE_MAX_MINOR = 99_999_900n; // $999,999.00
+export const OFFER_QTY_MAX = 999_999;
+export const STOCK_UNITS_MAX = 999_999;
+export const WAREHOUSE_NAME_MAX = 100;
+export const WAREHOUSE_LINE1_MAX = 200;
+export const WAREHOUSE_LINE2_MAX = 200;
+export const WAREHOUSE_CITY_MAX = 100;
+export const WAREHOUSE_STATE_MAX = 100;
+export const WAREHOUSE_POSTAL_MAX = 20;
+
 export const offerConditionSchema = z.enum([
   'new',
   'refurbished_like_new',
@@ -21,11 +31,11 @@ export const offerStatusSchema = z.enum([
 export type OfferStatus = z.infer<typeof offerStatusSchema>;
 
 export const warehouseAddressSchema = z.object({
-  line1: z.string().trim().min(1).max(200),
-  line2: z.string().trim().max(200).optional(),
-  city: z.string().trim().min(1).max(100),
-  state: z.string().trim().max(100).optional(),
-  postalCode: z.string().trim().min(1).max(20),
+  line1: z.string().trim().min(1).max(WAREHOUSE_LINE1_MAX),
+  line2: z.string().trim().max(WAREHOUSE_LINE2_MAX).optional(),
+  city: z.string().trim().min(1).max(WAREHOUSE_CITY_MAX),
+  state: z.string().trim().max(WAREHOUSE_STATE_MAX).optional(),
+  postalCode: z.string().trim().min(1).max(WAREHOUSE_POSTAL_MAX),
   country: z.string().trim().length(2).toUpperCase(),
 });
 export type WarehouseAddress = z.infer<typeof warehouseAddressSchema>;
@@ -33,7 +43,7 @@ export type WarehouseAddress = z.infer<typeof warehouseAddressSchema>;
 export const warehouseSchema = z.object({
   id: z.string().uuid(),
   sellerId: z.string().uuid(),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(WAREHOUSE_NAME_MAX),
   isDefault: z.boolean(),
   address: warehouseAddressSchema,
   createdAt: z.string().datetime(),
@@ -44,7 +54,7 @@ export type Warehouse = z.infer<typeof warehouseSchema>;
 
 export const createWarehouseRequestSchema = z.object({
   sellerId: z.string().uuid().optional(),
-  name: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(WAREHOUSE_NAME_MAX),
   isDefault: z.boolean().default(false),
   address: warehouseAddressSchema,
 });
@@ -52,7 +62,7 @@ export type CreateWarehouseRequest = z.input<typeof createWarehouseRequestSchema
 
 export const updateWarehouseRequestSchema = z
   .object({
-    name: z.string().trim().min(1).max(100),
+    name: z.string().trim().min(1).max(WAREHOUSE_NAME_MAX),
     isDefault: z.boolean(),
     address: warehouseAddressSchema,
     expectedUpdatedAt: z.string().optional(),
@@ -106,44 +116,81 @@ export type Offer = z.infer<typeof offerSchema>;
 export const createOfferRequestSchema = z.object({
   sellerId: z.string().uuid().optional(),
   variantId: z.string().uuid(),
-  priceMinor: z.string().regex(/^\d+$/, 'price in minor units must be positive digits'),
+  priceMinor: z
+    .string()
+    .regex(/^\d+$/, 'price in minor units must be positive digits')
+    .refine((v) => BigInt(v) <= OFFER_PRICE_MAX_MINOR, {
+      message: 'price exceeds maximum allowed value',
+    }),
   currency: currencySchema,
-  salePriceMinor: z.string().regex(/^\d+$/).optional(),
+  salePriceMinor: z
+    .string()
+    .regex(/^\d+$/)
+    .refine((v) => BigInt(v) <= OFFER_PRICE_MAX_MINOR, {
+      message: 'sale price exceeds maximum allowed value',
+    })
+    .optional(),
   saleStartsAt: z.string().datetime().optional(),
   saleEndsAt: z.string().datetime().optional(),
-  compareAtMinor: z.string().regex(/^\d+$/).optional(),
+  compareAtMinor: z
+    .string()
+    .regex(/^\d+$/)
+    .refine((v) => BigInt(v) <= OFFER_PRICE_MAX_MINOR, {
+      message: 'compare at price exceeds maximum allowed value',
+    })
+    .optional(),
   condition: offerConditionSchema.default('new'),
   conditionNotes: z.string().trim().max(500).optional(),
   handlingDays: z.number().int().min(0).max(30).default(1),
-  minQty: z.number().int().min(1).max(999999).default(1),
-  maxQty: z.number().int().min(1).max(999999).optional(),
-  initialStock: z.number().int().min(0).max(999999).default(0),
+  minQty: z.number().int().min(1).max(OFFER_QTY_MAX).default(1),
+  maxQty: z.number().int().min(1).max(OFFER_QTY_MAX).optional(),
+  initialStock: z.number().int().min(0).max(STOCK_UNITS_MAX).default(0),
   warehouseId: z.string().uuid().optional(),
 });
 export type CreateOfferRequest = z.input<typeof createOfferRequestSchema>;
 
 export const updateOfferRequestSchema = z.object({
-  priceMinor: z.string().regex(/^\d+$/).optional(),
+  priceMinor: z
+    .string()
+    .regex(/^\d+$/)
+    .refine((v) => BigInt(v) <= OFFER_PRICE_MAX_MINOR, {
+      message: 'price exceeds maximum allowed value',
+    })
+    .optional(),
   currency: currencySchema.optional(),
-  salePriceMinor: z.string().regex(/^\d+$/).nullable().optional(),
+  salePriceMinor: z
+    .string()
+    .regex(/^\d+$/)
+    .refine((v) => BigInt(v) <= OFFER_PRICE_MAX_MINOR, {
+      message: 'sale price exceeds maximum allowed value',
+    })
+    .nullable()
+    .optional(),
   saleStartsAt: z.string().datetime().nullable().optional(),
   saleEndsAt: z.string().datetime().nullable().optional(),
-  compareAtMinor: z.string().regex(/^\d+$/).nullable().optional(),
+  compareAtMinor: z
+    .string()
+    .regex(/^\d+$/)
+    .refine((v) => BigInt(v) <= OFFER_PRICE_MAX_MINOR, {
+      message: 'compare at price exceeds maximum allowed value',
+    })
+    .nullable()
+    .optional(),
   condition: offerConditionSchema.optional(),
   conditionNotes: z.string().trim().max(500).nullable().optional(),
   handlingDays: z.number().int().min(0).max(30).optional(),
   status: offerStatusSchema.optional(),
-  minQty: z.number().int().min(1).max(999999).optional(),
-  maxQty: z.number().int().min(1).max(999999).nullable().optional(),
+  minQty: z.number().int().min(1).max(OFFER_QTY_MAX).optional(),
+  maxQty: z.number().int().min(1).max(OFFER_QTY_MAX).nullable().optional(),
   expectedUpdatedAt: z.string().optional(),
 });
 export type UpdateOfferRequest = z.infer<typeof updateOfferRequestSchema>;
 
 export const updateStockRequestSchema = z
   .object({
-    onHand: z.number().int().min(0).optional(),
+    onHand: z.number().int().min(0).max(STOCK_UNITS_MAX).optional(),
     delta: z.number().int().optional(),
-    safetyStock: z.number().int().min(0).default(0),
+    safetyStock: z.number().int().min(0).max(STOCK_UNITS_MAX).default(0),
     backorder: z.boolean().default(false),
     restockEta: z.string().datetime().nullable().optional(),
     expectedUpdatedAt: z.string().optional(),
@@ -172,7 +219,8 @@ export const listOffersQuerySchema = z.object({
   productId: z.string().uuid().optional(),
   sellerId: z.string().uuid().optional(),
   status: z.enum(['active', 'all']).default('active'),
-  cursor: z.string().uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  q: z.string().trim().max(100).optional(),
+  cursor: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
 });
 export type ListOffersQuery = z.infer<typeof listOffersQuerySchema>;

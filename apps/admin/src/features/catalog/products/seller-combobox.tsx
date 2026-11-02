@@ -1,15 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Check, ChevronsUpDown, Search } from 'lucide-react';
-import type { SellerWithShop } from '@shopnetic/contracts';
+import { useEffect, useMemo, useState } from 'react';
+import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react';
+import type { SellerStatus, SellerWithShop } from '@shopnetic/contracts';
 import { Input, Popover, PopoverContent, PopoverTrigger, StatusBadge } from '@shopnetic/ui';
+import { listSellersPage } from '@/features/sellers/api';
 
 export interface SellerComboboxProps {
   id?: string;
   value: string;
   onChange: (sellerId: string) => void;
   sellers: SellerWithShop[];
+  statusFilter?: SellerStatus;
   disabled?: boolean;
   invalid?: boolean;
   placeholder?: string;
@@ -19,18 +21,15 @@ export interface SellerComboboxProps {
 export function formatSellerLabel(s: SellerWithShop): {
   name: string;
   tag: '1P' | '3P';
-  handle: string;
   fullText: string;
 } {
   const is1P = s.shop?.slug === 'shopnetic-retail';
   const tag: '1P' | '3P' = is1P ? '1P' : '3P';
-  const name = s.shop?.displayName ?? s.legalName ?? s.id;
-  const handle = s.shop?.slug ? `@${s.shop.slug}` : `#${s.id.slice(0, 8)}`;
+  const name = s.shop?.displayName || s.legalName || s.id;
   return {
     name,
     tag,
-    handle,
-    fullText: `${name} (${tag}) • ${handle}`,
+    fullText: `${name} (${tag})`,
   };
 }
 
@@ -39,6 +38,7 @@ export function SellerCombobox({
   value,
   onChange,
   sellers,
+  statusFilter = 'approved',
   disabled = false,
   invalid = false,
   placeholder = 'Select seller…',
@@ -46,33 +46,90 @@ export function SellerCombobox({
 }: SellerComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SellerWithShop[] | null>(null);
+  const [searching, setSearching] = useState(false);
 
-  const selectedSeller = useMemo(() => sellers.find((s) => s.id === value), [sellers, value]);
+  const knownSellers = useMemo(() => {
+    const map = new Map<string, SellerWithShop>();
+    for (const s of sellers) map.set(s.id, s);
+    if (searchResults) {
+      for (const s of searchResults) map.set(s.id, s);
+    }
+    return Array.from(map.values());
+  }, [sellers, searchResults]);
+
+  const selectedSeller = useMemo(
+    () => knownSellers.find((s) => s.id === value),
+    [knownSellers, value],
+  );
 
   const selectedLabel = useMemo(
     () => (selectedSeller ? formatSellerLabel(selectedSeller).fullText : null),
     [selectedSeller],
   );
 
-  const filteredSellers = useMemo(() => {
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!open) {
+      setSearchResults(null);
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await listSellersPage({
+          q: trimmed || undefined,
+          status: statusFilter,
+          limit: 50,
+        });
+        if (active) {
+          setSearchResults(res.sellers);
+        }
+      } catch {
+        if (active) {
+          setSearchResults(null);
+        }
+      } finally {
+        if (active) setSearching(false);
+      }
+    }, 200);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [open, query, statusFilter]);
+
+  const displayedSellers = useMemo(() => {
+    if (searchResults !== null) {
+      return searchResults;
+    }
     const q = query.trim().toLowerCase();
-    if (!q) return sellers;
-    return sellers.filter((s) => {
-      const { name, handle } = formatSellerLabel(s);
+    const filteredByStatus = statusFilter
+      ? sellers.filter((s) => s.status === statusFilter)
+      : sellers;
+    if (!q) return filteredByStatus;
+    return filteredByStatus.filter((s) => {
+      const { name } = formatSellerLabel(s);
       return (
         name.toLowerCase().includes(q) ||
-        handle.toLowerCase().includes(q) ||
+        s.shop?.slug?.toLowerCase().includes(q) ||
         s.legalName?.toLowerCase().includes(q)
       );
     });
-  }, [sellers, query]);
+  }, [searchResults, sellers, query, statusFilter]);
 
   return (
     <Popover
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setQuery('');
+        if (!next) {
+          setQuery('');
+          setSearchResults(null);
+        }
       }}
     >
       <PopoverTrigger asChild>
@@ -103,9 +160,14 @@ export function SellerCombobox({
         sideOffset={4}
         hideClose
         className="w-[var(--radix-popover-trigger-width)] min-w-[18rem] max-w-[28rem] p-2 shadow-lg z-[60]"
+        onWheel={(e) => e.stopPropagation()}
       >
         <div className="relative mb-2">
-          <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+          {searching ? (
+            <Loader2 className="absolute left-2.5 top-2.5 size-3.5 animate-spin text-muted-foreground" />
+          ) : (
+            <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+          )}
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -114,12 +176,16 @@ export function SellerCombobox({
             autoFocus
           />
         </div>
-        <div role="listbox" className="max-h-56 overflow-y-auto space-y-0.5 pr-1">
-          {filteredSellers.length === 0 ? (
+        <div
+          role="listbox"
+          className="max-h-56 overflow-y-auto space-y-0.5 pr-1"
+          onWheel={(e) => e.stopPropagation()}
+        >
+          {displayedSellers.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">No sellers found</div>
           ) : (
-            filteredSellers.map((s) => {
-              const { name, tag, handle, fullText } = formatSellerLabel(s);
+            displayedSellers.map((s) => {
+              const { name, tag, fullText } = formatSellerLabel(s);
               const isSelected = s.id === value;
               return (
                 <button
@@ -149,9 +215,6 @@ export function SellerCombobox({
                       >
                         {tag}
                       </StatusBadge>
-                      <span className="text-[11px] text-muted-foreground shrink-0 font-mono">
-                        {handle}
-                      </span>
                     </div>
                     {s.legalName &&
                     s.shop?.displayName &&

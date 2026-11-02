@@ -51,7 +51,10 @@ const updateStockBody = new ZodBodyPipe(updateStockRequestSchema);
 const createWarehouseBody = new ZodBodyPipe(createWarehouseRequestSchema);
 const updateWarehouseBody = new ZodBodyPipe(updateWarehouseRequestSchema);
 
-type Envelope<T> = { data: T; meta: { requestId: string; nextCursor?: string; count?: number } };
+type Envelope<T> = {
+  data: T;
+  meta: { requestId: string; nextCursor?: string; count?: number; total?: number };
+};
 
 @Controller('admin/v1/offers')
 @UseGuards(StaffAuthGuard, PermissionGuard)
@@ -88,6 +91,15 @@ export class AdminOfferController {
     return ok(req, res);
   }
 
+  @Get('products/:productId/counts')
+  async getProductOfferCounts(
+    @Req() req: Request,
+    @Param('productId') productId: string,
+  ): Promise<Envelope<Record<string, number>>> {
+    const counts = await this.offers.getVariantOfferCounts(productId);
+    return ok(req, counts);
+  }
+
   @Get()
   async list(
     @Req() req: Request,
@@ -95,31 +107,30 @@ export class AdminOfferController {
     @Query('productId') productId?: string,
     @Query('sellerId') sellerId?: string,
     @Query('status') status?: string,
+    @Query('q') q?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ): Promise<Envelope<Offer[]>> {
-    if (productId && !variantId) {
-      const items = await this.offers.listByProduct(productId);
-      const base = ok(req, items);
-      return {
-        data: base.data,
-        meta: { ...base.meta, count: items.length },
-      };
-    }
-
     const rawQuery: Record<string, unknown> = {};
     if (variantId) rawQuery.variantId = variantId;
+    if (productId) rawQuery.productId = productId;
     if (sellerId) rawQuery.sellerId = sellerId;
     if (status) rawQuery.status = status;
+    if (q) rawQuery.q = q;
     if (cursor) rawQuery.cursor = cursor;
     if (limit) rawQuery.limit = limit;
 
     const parsed = listOffersQuerySchema.parse(rawQuery);
-    const { items, nextCursor } = await this.offers.list(parsed);
+    const { items, nextCursor, total } = await this.offers.list(parsed);
     const base = ok(req, items);
     return {
       data: base.data,
-      meta: { ...base.meta, count: items.length, ...(nextCursor ? { nextCursor } : {}) },
+      meta: {
+        ...base.meta,
+        count: items.length,
+        total,
+        ...(nextCursor ? { nextCursor } : {}),
+      },
     };
   }
 

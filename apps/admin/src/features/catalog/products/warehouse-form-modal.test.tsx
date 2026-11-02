@@ -88,7 +88,7 @@ describe('WarehouseFormModal', () => {
     expect(screen.getByText('Address Line 1')).toBeInTheDocument();
     expect(screen.getByText('City')).toBeInTheDocument();
     expect(screen.getByText('Postal / ZIP Code')).toBeInTheDocument();
-    expect(screen.getByText('Country Code (ISO 2-letter)')).toBeInTheDocument();
+    expect(screen.getByText('Country')).toBeInTheDocument();
   });
 
   it('renders seller dropdown when sellerId is not provided and validates seller selection', async () => {
@@ -134,7 +134,7 @@ describe('WarehouseFormModal', () => {
 
     // Pick seller from combobox
     fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Apex Logistics (3P) • @apex-logistics' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Apex Logistics (3P)' }));
 
     fireEvent.change(screen.getByPlaceholderText('e.g. Austin Regional Depot'), {
       target: { value: 'Austin Regional Depot' },
@@ -146,15 +146,11 @@ describe('WarehouseFormModal', () => {
       target: { value: 'Suite 400' },
     });
 
-    const inputs = screen.getAllByRole('textbox');
-    // inputs: name, line1, line2, city, state, postalCode, country
-    const cityInput = inputs[3]!;
-    const stateInput = inputs[4]!;
-    const postalCodeInput = inputs[5]!;
-
-    fireEvent.change(cityInput, { target: { value: 'Austin' } });
-    fireEvent.change(stateInput, { target: { value: 'TX' } });
-    fireEvent.change(postalCodeInput, { target: { value: '78701' } });
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Austin' } });
+    fireEvent.change(screen.getByLabelText('State / Province (optional)'), {
+      target: { value: 'TX' },
+    });
+    fireEvent.change(screen.getByLabelText('Postal / ZIP Code'), { target: { value: '78701' } });
 
     const submitBtn = screen.getByRole('button', { name: 'Create Warehouse' });
     fireEvent.click(submitBtn);
@@ -229,16 +225,11 @@ describe('WarehouseFormModal', () => {
       target: { value: 'Suite 400' },
     });
 
-    // City, State, Postal code inputs
-    const inputs = screen.getAllByRole('textbox');
-    // inputs: name, line1, line2, city, state, postalCode, country
-    const cityInput = inputs[3]!;
-    const stateInput = inputs[4]!;
-    const postalCodeInput = inputs[5]!;
-
-    fireEvent.change(cityInput, { target: { value: 'Austin' } });
-    fireEvent.change(stateInput, { target: { value: 'TX' } });
-    fireEvent.change(postalCodeInput, { target: { value: '78701' } });
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Austin' } });
+    fireEvent.change(screen.getByLabelText('State / Province (optional)'), {
+      target: { value: 'TX' },
+    });
+    fireEvent.change(screen.getByLabelText('Postal / ZIP Code'), { target: { value: '78701' } });
 
     // Click default warehouse checkbox
     const defaultCheckbox = screen.getByRole('checkbox');
@@ -264,5 +255,146 @@ describe('WarehouseFormModal', () => {
       expect(onCreated).toHaveBeenCalledWith(sampleWarehouse);
       expect(onOpenChange).toHaveBeenCalledWith(false);
     });
+  });
+
+  it('searches and selects country from CountryCombobox', async () => {
+    renderAdmin(
+      <WarehouseFormModal
+        open={true}
+        onOpenChange={vi.fn()}
+        sellerId={testSellerId}
+        sellerName="Acme Retail"
+        onCreated={vi.fn()}
+      />,
+    );
+
+    // Default country is United States (US)
+    const countryTrigger = screen.getByRole('combobox', { name: /United States \(US\)/i });
+    expect(countryTrigger).toBeInTheDocument();
+
+    // Open CountryCombobox
+    fireEvent.click(countryTrigger);
+
+    // Search input should appear
+    const searchInput = screen.getByPlaceholderText('Search countries…');
+    expect(searchInput).toBeInTheDocument();
+
+    // Search for Canada
+    fireEvent.change(searchInput, { target: { value: 'Canada' } });
+    const canadaOption = screen.getByRole('option', { name: /Canada \(CA\)/i });
+    expect(canadaOption).toBeInTheDocument();
+
+    // Select Canada
+    fireEvent.click(canadaOption);
+
+    // Combobox trigger should now display Canada (CA)
+    expect(screen.getByRole('combobox', { name: /Canada \(CA\)/i })).toBeInTheDocument();
+  });
+
+  it('validates postal code format per selected country', async () => {
+    renderAdmin(
+      <WarehouseFormModal
+        open={true}
+        onOpenChange={vi.fn()}
+        sellerId={testSellerId}
+        sellerName="Acme Retail"
+        onCreated={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. Austin Regional Depot'), {
+      target: { value: 'Austin Regional Depot' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g. 100 Industrial Blvd'), {
+      target: { value: '100 Industrial Blvd' },
+    });
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Austin' } });
+
+    // 1. Invalid US postal code
+    fireEvent.change(screen.getByLabelText('Postal / ZIP Code'), { target: { value: 'ABCDE' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Warehouse' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Enter a valid postal / ZIP code for the selected country.'),
+      ).toBeInTheDocument();
+    });
+
+    // 2. Select Canada (CA) and enter a US zip (invalid for Canada)
+    const countryTrigger = screen.getByRole('combobox', { name: /United States \(US\)/i });
+    fireEvent.click(countryTrigger);
+    fireEvent.click(screen.getByRole('option', { name: /Canada \(CA\)/i }));
+
+    fireEvent.change(screen.getByLabelText('Postal / ZIP Code'), { target: { value: '78701' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Warehouse' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Enter a valid postal / ZIP code for the selected country.'),
+      ).toBeInTheDocument();
+    });
+
+    // 3. Enter valid Canadian postal code
+    fireEvent.change(screen.getByLabelText('Postal / ZIP Code'), { target: { value: 'K1A 0B1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Warehouse' }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Enter a valid postal / ZIP code for the selected country.'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('enforces maximum length boundaries on warehouse name and address fields', async () => {
+    renderAdmin(
+      <WarehouseFormModal
+        open={true}
+        onOpenChange={vi.fn()}
+        sellerId={testSellerId}
+        sellerName="Acme Retail"
+        onCreated={vi.fn()}
+      />,
+    );
+
+    // Enter strings that exceed length limits
+    fireEvent.change(screen.getByPlaceholderText('e.g. Austin Regional Depot'), {
+      target: { value: 'A'.repeat(101) },
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g. 100 Industrial Blvd'), {
+      target: { value: 'B'.repeat(201) },
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g. Suite 400'), {
+      target: { value: 'C'.repeat(201) },
+    });
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'D'.repeat(101) } });
+    fireEvent.change(screen.getByLabelText('State / Province (optional)'), {
+      target: { value: 'E'.repeat(101) },
+    });
+    fireEvent.change(screen.getByLabelText('Postal / ZIP Code'), {
+      target: { value: 'F'.repeat(25) },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Warehouse' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Warehouse name must be 100 characters or fewer.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Street address line 1 cannot exceed 200 characters.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Street address line 2 cannot exceed 200 characters.'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('City cannot exceed 100 characters.')).toBeInTheDocument();
+      expect(
+        screen.getByText('State / Province cannot exceed 100 characters.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Postal / ZIP code cannot exceed 20 characters.'),
+      ).toBeInTheDocument();
+    });
+
+    expect(mockedCreateWarehouse).not.toHaveBeenCalled();
   });
 });

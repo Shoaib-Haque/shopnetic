@@ -212,6 +212,44 @@ export function reorderProductMedia(
 
 // ── Offers & Inventory (plan/26 §6, plan/07) ────────────────────────────────
 
+export interface OfferListPage {
+  offers: Offer[];
+  nextCursor: string | undefined;
+  total: number;
+}
+
+export function listOffersPage(opts: {
+  productId?: string | undefined;
+  variantId?: string | undefined;
+  sellerId?: string | undefined;
+  status?: 'active' | 'all' | undefined;
+  q?: string | undefined;
+  cursor?: string | undefined;
+  limit?: number | undefined;
+}): Promise<OfferListPage> {
+  const params = new URLSearchParams();
+  if (opts.productId) params.set('productId', opts.productId);
+  if (opts.variantId) params.set('variantId', opts.variantId);
+  if (opts.sellerId) params.set('sellerId', opts.sellerId);
+  if (opts.status) params.set('status', opts.status);
+  if (opts.q) params.set('q', opts.q);
+  if (opts.cursor) params.set('cursor', opts.cursor);
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  return adminApi<{ data: Offer[]; meta: { nextCursor?: string; total?: number } }>(
+    `/offers${qs ? `?${qs}` : ''}`,
+    { raw: true },
+  ).then((r) => ({
+    offers: r.data,
+    nextCursor: r.meta.nextCursor,
+    total: r.meta.total ?? r.data.length,
+  }));
+}
+
+export function getVariantOfferCounts(productId: string): Promise<Record<string, number>> {
+  return adminApi<Record<string, number>>(`/offers/products/${productId}/counts`);
+}
+
 export function listProductOffers(productId: string): Promise<Offer[]> {
   return adminApi<Offer[]>(`/offers?productId=${productId}`);
 }

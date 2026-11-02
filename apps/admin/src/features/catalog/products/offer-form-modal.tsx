@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Building2, Plus, Sparkles } from 'lucide-react';
 import {
+  OFFER_PRICE_MAX_MINOR,
+  OFFER_QTY_MAX,
   type CreateOfferRequest,
   type Offer,
   type OfferCondition,
@@ -23,6 +25,8 @@ import {
 } from '@shopnetic/contracts';
 import {
   Button,
+  DatePicker,
+  type DatePickerLabels,
   Field,
   Input,
   Modal,
@@ -112,24 +116,25 @@ const offerFormSchema = z
     minQty: z
       .string()
       .trim()
-      .refine(
-        (v) => /^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 999999,
-        'products.offers.form.err.minQtyInvalid',
-      ),
+      .refine((v) => /^\d+$/.test(v), 'products.offers.form.err.minQtyInvalid')
+      .refine((v) => Number(v) >= 1, 'products.offers.form.err.minQtyMin')
+      .refine((v) => Number(v) <= OFFER_QTY_MAX, 'products.offers.form.err.minQtyMax'),
     maxQty: z
       .string()
       .trim()
       .refine((v) => v === '' || /^\d+$/.test(v), 'products.offers.form.err.maxQtyInvalid')
       .refine((v) => v === '' || Number(v) >= 1, 'products.offers.form.err.maxQtyMin')
-      .refine((v) => v === '' || Number(v) <= 999999, 'products.offers.form.err.maxQtyMax')
+      .refine((v) => v === '' || Number(v) <= OFFER_QTY_MAX, 'products.offers.form.err.maxQtyMax')
       .optional()
       .or(z.literal('')),
     initialStock: z
       .string()
       .trim()
+      .refine((v) => v === '' || /^\d+$/.test(v), 'products.offers.form.err.initialStockInvalid')
+      .refine((v) => v === '' || Number(v) >= 0, 'products.offers.form.err.initialStockMin')
       .refine(
-        (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 0 && Number(v) <= 999999),
-        'products.offers.form.err.initialStockInvalid',
+        (v) => v === '' || Number(v) <= OFFER_QTY_MAX,
+        'products.offers.form.err.initialStockMax',
       )
       .optional()
       .or(z.literal('')),
@@ -148,6 +153,12 @@ const offerFormSchema = z
         message: 'products.offers.form.err.priceRequired',
         path: ['price'],
       });
+    } else if (BigInt(priceMinor) > OFFER_PRICE_MAX_MINOR) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'products.offers.form.err.priceMax',
+        path: ['price'],
+      });
     }
 
     if (exponent === 0 && data.price.includes('.')) {
@@ -158,7 +169,7 @@ const offerFormSchema = z
       });
     }
 
-    // 1. Sale price must be strictly less than list price
+    // 1. Sale price must be strictly less than list price and not exceed max
     if (data.salePrice && data.salePrice.trim() !== '') {
       if (exponent === 0 && data.salePrice.includes('.')) {
         ctx.addIssue({
@@ -168,6 +179,13 @@ const offerFormSchema = z
         });
       }
       const salePriceMinor = decimalToMinor(data.salePrice, cur);
+      if (salePriceMinor && BigInt(salePriceMinor) > OFFER_PRICE_MAX_MINOR) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'products.offers.form.err.salePriceMax',
+          path: ['salePrice'],
+        });
+      }
       if (salePriceMinor && priceMinor && BigInt(salePriceMinor) >= BigInt(priceMinor)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -225,7 +243,21 @@ export function OfferFormModal({
 }: OfferFormModalProps) {
   const t = useTranslations('catalog');
   const tAdmin = useTranslations('admin');
+  const locale = useLocale();
   const isEditing = Boolean(offer);
+
+  const datePickerLabels = useMemo<DatePickerLabels>(
+    () => ({
+      clearDate: t('products.offers.datePicker.clearDate'),
+      openCalendar: t('products.offers.datePicker.openCalendar'),
+      previousMonth: t('products.offers.datePicker.previousMonth'),
+      nextMonth: t('products.offers.datePicker.nextMonth'),
+      timeLabel: t('products.offers.datePicker.timeLabel'),
+      done: t('products.offers.datePicker.done'),
+      placeholder: t('products.offers.datePicker.placeholder'),
+    }),
+    [t],
+  );
 
   const defaultSeller = useMemo(() => {
     return sellers.find((s) => s.shop?.slug === 'shopnetic-retail') ?? sellers[0];
@@ -668,13 +700,24 @@ export function OfferFormModal({
                     htmlFor="offer-sale-starts-at"
                     error={fieldError('saleStartsAt')}
                   >
-                    <Input
-                      id="offer-sale-starts-at"
-                      type="datetime-local"
-                      {...register('saleStartsAt')}
-                      disabled={isSubmitting}
-                      className="text-xs"
-                      invalid={Boolean(errors.saleStartsAt)}
+                    <Controller
+                      control={control}
+                      name="saleStartsAt"
+                      render={({ field }) => (
+                        <DatePicker
+                          id="offer-sale-starts-at"
+                          locale={locale}
+                          labels={datePickerLabels}
+                          showTime
+                          value={field.value || null}
+                          onChange={(val) => field.onChange(val)}
+                          disabled={isSubmitting}
+                          invalid={Boolean(errors.saleStartsAt)}
+                          placeholder={t('products.offers.form.saleStartsAtPlaceholder')}
+                          className="text-xs"
+                          ariaLabel={t('products.offers.form.saleStartsAt')}
+                        />
+                      )}
                     />
                   </Field>
                   <Field
@@ -682,13 +725,24 @@ export function OfferFormModal({
                     htmlFor="offer-sale-ends-at"
                     error={fieldError('saleEndsAt')}
                   >
-                    <Input
-                      id="offer-sale-ends-at"
-                      type="datetime-local"
-                      {...register('saleEndsAt')}
-                      disabled={isSubmitting}
-                      className="text-xs"
-                      invalid={Boolean(errors.saleEndsAt)}
+                    <Controller
+                      control={control}
+                      name="saleEndsAt"
+                      render={({ field }) => (
+                        <DatePicker
+                          id="offer-sale-ends-at"
+                          locale={locale}
+                          labels={datePickerLabels}
+                          showTime
+                          value={field.value || null}
+                          onChange={(val) => field.onChange(val)}
+                          disabled={isSubmitting}
+                          invalid={Boolean(errors.saleEndsAt)}
+                          placeholder={t('products.offers.form.saleEndsAtPlaceholder')}
+                          className="text-xs"
+                          ariaLabel={t('products.offers.form.saleEndsAt')}
+                        />
+                      )}
                     />
                   </Field>
                 </div>

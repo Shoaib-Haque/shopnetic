@@ -9,10 +9,12 @@ import {
   Building2,
   Edit2,
   Plus,
+  Search,
   ShoppingBag,
   Sparkles,
   Trash2,
   Trophy,
+  X,
 } from 'lucide-react';
 import {
   type Buybox,
@@ -26,6 +28,7 @@ import {
 } from '@shopnetic/contracts';
 import {
   Button,
+  Input,
   Modal,
   ModalBody,
   ModalContent,
@@ -53,7 +56,8 @@ import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-un
 import {
   deleteOffer,
   getVariantBuybox,
-  listProductOffers,
+  getVariantOfferCounts,
+  listOffersPage,
   listSellers,
   listVariants,
   listWarehouses,
@@ -87,12 +91,22 @@ export function ProductOffersDialog({
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [variants, setVariants] = useState<Variant[]>([]);
+  const [variantCounts, setVariantCounts] = useState<Record<string, number>>({});
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [totalOffers, setTotalOffers] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [offersLoading, setOffersLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const [sellers, setSellers] = useState<SellerWithShop[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [buybox, setBuybox] = useState<Buybox | null>(null);
   const [buyboxLoading, setBuyboxLoading] = useState(false);
+
+  // Search query & genuine debounced query (250ms)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const selectedVariantIdRef = useRef<string | null>(null);
   selectedVariantIdRef.current = selectedVariantId;
@@ -116,7 +130,7 @@ export function ProductOffersDialog({
     sellerName: string;
   }>({ open: false, sellerId: '', sellerName: '' });
 
-  // Load all initial data for product
+  // Load all initial structure data for product (variants, offer counts, sellers, warehouses)
   const loadData = useCallback(
     async ({
       preserveSelected = false,
@@ -129,16 +143,16 @@ export function ProductOffersDialog({
       }
 
       try {
-        const [fetchedVariants, fetchedOffers, fetchedSellers, fetchedWarehouses] =
+        const [fetchedVariants, fetchedCounts, fetchedSellers, fetchedWarehouses] =
           await Promise.all([
             listVariants(product.id),
-            listProductOffers(product.id),
+            getVariantOfferCounts(product.id),
             listSellers(),
             listWarehouses(),
           ]);
 
         setVariants(fetchedVariants);
-        setOffers(fetchedOffers);
+        setVariantCounts(fetchedCounts);
         setSellers(fetchedSellers);
         setWarehouses(fetchedWarehouses);
 
@@ -212,11 +226,76 @@ export function ProductOffersDialog({
     }
   }, [selectedVariantId, loadBuybox]);
 
-  // Filter offers for active variant
-  const activeOffers = useMemo(() => {
-    if (!selectedVariantId) return offers;
-    return offers.filter((o) => o.variantId === selectedVariantId);
-  }, [offers, selectedVariantId]);
+  // 250ms search debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim());
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset search when active variant tab changes
+  useEffect(() => {
+    setSearchQuery('');
+    setDebouncedQuery('');
+  }, [selectedVariantId]);
+
+  // Genuine server-side pagination & search for active variant offers
+  const loadVariantOffers = useCallback(
+    async (vId: string, q?: string, cursor?: string, append = false) => {
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setOffersLoading(true);
+      }
+      try {
+        const res = await listOffersPage({
+          variantId: vId,
+          q: q || undefined,
+          cursor,
+          limit: 30,
+        });
+        if (append) {
+          setOffers((prev) => [...prev, ...res.offers]);
+        } else {
+          setOffers(res.offers);
+        }
+        setTotalOffers(res.total);
+        setNextCursor(res.nextCursor);
+      } catch (err) {
+        notify.error(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
+      } finally {
+        if (append) {
+          setLoadingMore(false);
+        } else {
+          setOffersLoading(false);
+        }
+      }
+    },
+    [t],
+  );
+
+  useEffect(() => {
+    if (open && selectedVariantId) {
+      void loadVariantOffers(selectedVariantId, debouncedQuery);
+    }
+  }, [open, selectedVariantId, debouncedQuery, loadVariantOffers]);
+
+  const handleLoadMore = () => {
+    if (!selectedVariantId || !nextCursor || loadingMore) return;
+    void loadVariantOffers(selectedVariantId, debouncedQuery, nextCursor, true);
+  };
+
+  const refreshActiveVariant = useCallback(async () => {
+    if (!product) return;
+    const counts = await getVariantOfferCounts(product.id).catch(() => ({}));
+    setVariantCounts(counts);
+    const currentVid = selectedVariantIdRef.current;
+    if (currentVid) {
+      void loadVariantOffers(currentVid, debouncedQuery);
+      void loadBuybox(currentVid);
+    }
+  }, [product, debouncedQuery, loadVariantOffers, loadBuybox]);
 
   // Soft-delete hook with undo
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -224,13 +303,28 @@ export function ProductOffersDialog({
     deleteItem: (id) => deleteOffer(id),
     restoreItem: (id) => restoreOffer(id),
     resync: () => {
-      if (product) void loadData({ preserveSelected: true, background: true });
-      const currentVid = selectedVariantIdRef.current;
-      if (currentVid) void loadBuybox(currentVid);
+      void refreshActiveVariant();
     },
-    onOptimisticRemove: (o) => setOffers((prev) => prev.filter((x) => x.id !== o.id)),
-    onOptimisticRestore: (o) =>
-      setOffers((prev) => (prev.some((x) => x.id === o.id) ? prev : [o, ...prev])),
+    onOptimisticRemove: (o) => {
+      setOffers((prev) => prev.filter((x) => x.id !== o.id));
+      setTotalOffers((prev) => Math.max(0, prev - 1));
+      if (selectedVariantId) {
+        setVariantCounts((prev) => ({
+          ...prev,
+          [selectedVariantId]: Math.max(0, (prev[selectedVariantId] ?? 1) - 1),
+        }));
+      }
+    },
+    onOptimisticRestore: (o) => {
+      setOffers((prev) => (prev.some((x) => x.id === o.id) ? prev : [o, ...prev]));
+      setTotalOffers((prev) => prev + 1);
+      if (selectedVariantId) {
+        setVariantCounts((prev) => ({
+          ...prev,
+          [selectedVariantId]: (prev[selectedVariantId] ?? 0) + 1,
+        }));
+      }
+    },
     labelOf: (o) => (o ? `${o.sellerName} (${o.skuCode})` : 'Offer'),
     messages: {
       deleted: () => t('products.offers.toast.offerDeleted'),
@@ -254,25 +348,13 @@ export function ProductOffersDialog({
   };
 
   // Handlers for saved / updated items
-  const handleOfferSaved = (saved: Offer) => {
-    setOffers((prev) => {
-      const idx = prev.findIndex((o) => o.id === saved.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = saved;
-        return next;
-      }
-      return [saved, ...prev];
-    });
-    const currentVid = selectedVariantIdRef.current;
-    if (currentVid) void loadBuybox(currentVid);
+  const handleOfferSaved = () => {
+    void refreshActiveVariant();
   };
 
   const handleConflictResync = useCallback(() => {
-    if (product) void loadData({ preserveSelected: true, background: true });
-    const currentVid = selectedVariantIdRef.current;
-    if (currentVid) void loadBuybox(currentVid);
-  }, [product, loadData, loadBuybox]);
+    void refreshActiveVariant();
+  }, [refreshActiveVariant]);
 
   const handleStockUpdated = (offerId: string, level: StockLevel) => {
     setOffers((prev) =>
@@ -410,7 +492,7 @@ export function ProductOffersDialog({
               <div className="mt-4 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 {variants.map((v) => {
                   const isSelected = v.id === selectedVariantId;
-                  const vOffersCount = offers.filter((o) => o.variantId === v.id).length;
+                  const vOffersCount = variantCounts[v.id] ?? 0;
                   return (
                     <button
                       key={v.id}
@@ -535,420 +617,510 @@ export function ProductOffersDialog({
                 )}
 
                 {/* Offers Table */}
-                {activeOffers.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border py-12 text-center">
-                    <Boxes className="mx-auto size-9 text-muted-foreground/60" aria-hidden />
-                    <p className="mt-2 text-sm font-semibold text-foreground">
-                      {t('products.offers.emptyTitle')}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t('products.offers.emptySubtitle')}
-                    </p>
-                    {!isReadOnly && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => setOfferFormState({ open: true, offer: null })}
-                        className="mt-4 gap-1.5"
-                      >
-                        <Plus className="size-3.5" />
-                        {t('products.offers.createOffer')}
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    {/* Mobile Card View (sm:hidden) */}
-                    <div className="sm:hidden space-y-3">
-                      {activeOffers.map((offer) => {
-                        const isWinner = Boolean(
-                          buybox?.winningOfferId && offer.id === buybox.winningOfferId,
-                        );
-                        const now = new Date();
-                        const hasSale = Boolean(
-                          offer.salePriceMinor &&
-                            (!offer.saleStartsAt || new Date(offer.saleStartsAt) <= now) &&
-                            (!offer.saleEndsAt || new Date(offer.saleEndsAt) >= now),
-                        );
-                        const isDeleting = deletingId === offer.id;
+                {(() => {
+                  const totalForSelected =
+                    (selectedVariantId ? variantCounts[selectedVariantId] : undefined) ??
+                    totalOffers;
 
-                        return (
-                          <div
-                            key={offer.id}
-                            className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm"
+                  if (totalForSelected === 0 && !offersLoading && !searchQuery) {
+                    return (
+                      <div className="rounded-xl border border-dashed border-border py-12 text-center">
+                        <Boxes className="mx-auto size-9 text-muted-foreground/60" aria-hidden />
+                        <p className="mt-2 text-sm font-semibold text-foreground">
+                          {t('products.offers.emptyTitle')}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {t('products.offers.emptySubtitle')}
+                        </p>
+                        {!isReadOnly && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => setOfferFormState({ open: true, offer: null })}
+                            className="mt-4 gap-1.5"
                           >
-                            {/* Top Row: Seller name, badges, status */}
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-semibold text-sm text-foreground">
-                                    {offer.sellerName}
-                                  </span>
-                                  <StatusBadge
-                                    tone={
-                                      offer.shopSlug === 'shopnetic-retail' ? 'neutral' : 'warning'
-                                    }
-                                    className="text-[9px]"
-                                  >
-                                    {offer.shopSlug === 'shopnetic-retail' ? '1P' : '3P'}
-                                  </StatusBadge>
-                                  {isWinner ? (
-                                    <StatusBadge tone="success" className="gap-1 text-[10px]">
-                                      <Trophy className="size-3" />
-                                      {t('products.offers.badges.winner')}
-                                    </StatusBadge>
-                                  ) : (
-                                    <StatusBadge tone="neutral" className="text-[10px]">
-                                      {t('products.offers.badges.competing')}
-                                    </StatusBadge>
-                                  )}
-                                </div>
-                                <span className="text-xs text-muted-foreground font-mono">
-                                  /{offer.shopSlug}
-                                </span>
-                              </div>
-                              <StatusBadge
-                                tone={offer.status === 'active' ? 'success' : 'neutral'}
-                                className="text-[10px] capitalize shrink-0"
-                              >
-                                {offer.status}
-                              </StatusBadge>
-                            </div>
+                            <Plus className="size-3.5" />
+                            {t('products.offers.createOffer')}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  }
 
-                            {/* Metrics Grid: Price, Stock */}
-                            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50 text-xs">
-                              <div>
-                                <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
-                                  {t('products.offers.table.price')}
-                                </span>
-                                <div className="flex flex-col gap-0.5 mt-0.5 font-mono">
-                                  {hasSale ? (
-                                    <>
-                                      <span className="font-semibold text-primary text-sm">
-                                        {formatMoney(offer.salePriceMinor, offer.currency)}
+                  return (
+                    <>
+                      {/* Search bar when >30 offers exist or search is active */}
+                      {(totalForSelected > 30 || Boolean(searchQuery)) && (
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                          <Input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder={t('products.offers.searchOffersPlaceholder')}
+                            className="pl-8.5 pr-8 h-9 text-xs"
+                          />
+                          {searchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setSearchQuery('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground"
+                              aria-label="Clear search"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {offersLoading ? (
+                        <div className="space-y-3 py-4">
+                          <Skeleton className="h-16 w-full rounded-xl" />
+                          <Skeleton className="h-16 w-full rounded-xl" />
+                          <Skeleton className="h-16 w-full rounded-xl" />
+                        </div>
+                      ) : offers.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border py-10 text-center">
+                          <p className="text-sm font-medium text-foreground">
+                            No offers match &ldquo;{searchQuery}&rdquo;.
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSearchQuery('')}
+                            className="mt-3 text-xs"
+                          >
+                            Clear search
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Mobile Card View (md:hidden) */}
+                          <div className="md:hidden space-y-3">
+                            {offers.map((offer) => {
+                              const isWinner = Boolean(
+                                buybox?.winningOfferId && offer.id === buybox.winningOfferId,
+                              );
+                              const now = new Date();
+                              const hasSale = Boolean(
+                                offer.salePriceMinor &&
+                                  (!offer.saleStartsAt || new Date(offer.saleStartsAt) <= now) &&
+                                  (!offer.saleEndsAt || new Date(offer.saleEndsAt) >= now),
+                              );
+                              const isDeleting = deletingId === offer.id;
+
+                              return (
+                                <div
+                                  key={offer.id}
+                                  className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm"
+                                >
+                                  {/* Top Row: Seller name, badges, status */}
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-semibold text-sm text-foreground">
+                                          {offer.sellerName}
+                                        </span>
+                                        <StatusBadge
+                                          tone={
+                                            offer.shopSlug === 'shopnetic-retail'
+                                              ? 'neutral'
+                                              : 'warning'
+                                          }
+                                          className="text-[9px]"
+                                        >
+                                          {offer.shopSlug === 'shopnetic-retail' ? '1P' : '3P'}
+                                        </StatusBadge>
+                                        {isWinner ? (
+                                          <StatusBadge tone="success" className="gap-1 text-[10px]">
+                                            <Trophy className="size-3" />
+                                            {t('products.offers.badges.winner')}
+                                          </StatusBadge>
+                                        ) : (
+                                          <StatusBadge tone="neutral" className="text-[10px]">
+                                            {t('products.offers.badges.competing')}
+                                          </StatusBadge>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <StatusBadge
+                                      tone={offer.status === 'active' ? 'success' : 'neutral'}
+                                      className="text-[10px] capitalize shrink-0"
+                                    >
+                                      {offer.status}
+                                    </StatusBadge>
+                                  </div>
+
+                                  {/* Metrics Grid: Price, Stock */}
+                                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50 text-xs">
+                                    <div>
+                                      <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
+                                        {t('products.offers.table.price')}
                                       </span>
-                                      <span className="text-[11px] text-muted-foreground line-through">
-                                        {formatMoney(offer.priceMinor, offer.currency)}
+                                      <div className="flex flex-col gap-0.5 mt-0.5 font-mono">
+                                        {hasSale ? (
+                                          <>
+                                            <span className="font-semibold text-primary text-sm">
+                                              {formatMoney(offer.salePriceMinor, offer.currency)}
+                                            </span>
+                                            <span className="text-[11px] text-muted-foreground line-through">
+                                              {formatMoney(offer.priceMinor, offer.currency)}
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 text-[10px] text-primary font-sans w-fit">
+                                              <Sparkles className="size-2.5" />
+                                              {t('products.offers.table.sale')}
+                                            </span>
+                                          </>
+                                        ) : (
+                                          <span className="font-semibold text-foreground text-sm">
+                                            {formatMoney(offer.priceMinor, offer.currency)}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="text-right">
+                                      <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
+                                        {t('products.offers.table.stock')}
                                       </span>
-                                      <span className="inline-flex items-center gap-1 text-[10px] text-primary font-sans w-fit">
-                                        <Sparkles className="size-2.5" />
-                                        {t('products.offers.table.sale')}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <span className="font-semibold text-foreground text-sm">
-                                      {formatMoney(offer.priceMinor, offer.currency)}
+                                      <div className="flex flex-col items-end gap-0.5 mt-0.5">
+                                        <span
+                                          className={`font-semibold font-mono ${
+                                            offer.totalAvailable > 0
+                                              ? 'text-success'
+                                              : 'text-destructive'
+                                          }`}
+                                        >
+                                          {offer.totalAvailable} avail
+                                        </span>
+                                        <span className="text-muted-foreground text-[11px]">
+                                          ({offer.totalOnHand} on hand)
+                                        </span>
+                                        <span className="text-[11px] text-muted-foreground">
+                                          {offer.stocks.length} warehouses
+                                        </span>
+                                        {offer.stocks.some((s) => s.backorder) && (
+                                          <StatusBadge
+                                            tone="neutral"
+                                            className="text-[9px] w-fit mt-0.5"
+                                          >
+                                            {t('products.offers.badges.backorderAvailable')}
+                                          </StatusBadge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Footer: Condition & Actions */}
+                                  <div className="flex items-center justify-between pt-2 border-t border-border/50 text-xs">
+                                    <span className="text-muted-foreground">
+                                      Condition:{' '}
+                                      <strong className="text-foreground capitalize">
+                                        {t(`products.offers.condition.${offer.condition}`)}
+                                      </strong>
                                     </span>
-                                  )}
-                                </div>
-                              </div>
 
-                              <div>
-                                <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
-                                  {t('products.offers.table.stock')}
-                                </span>
-                                <div className="flex flex-col gap-0.5 mt-0.5">
-                                  <span
-                                    className={`font-semibold font-mono ${
-                                      offer.totalAvailable > 0 ? 'text-success' : 'text-destructive'
-                                    }`}
-                                  >
-                                    {offer.totalAvailable} avail
-                                  </span>
-                                  <span className="text-muted-foreground text-[11px]">
-                                    ({offer.totalOnHand} on hand)
-                                  </span>
-                                  <span className="text-[11px] text-muted-foreground">
-                                    {offer.stocks.length} warehouses
-                                  </span>
-                                  {offer.stocks.some((s) => s.backorder) && (
-                                    <StatusBadge tone="neutral" className="text-[9px] w-fit mt-0.5">
-                                      {t('products.offers.badges.backorderAvailable')}
-                                    </StatusBadge>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Footer: Condition & Actions */}
-                            <div className="flex items-center justify-between pt-2 border-t border-border/50 text-xs">
-                              <span className="text-muted-foreground">
-                                Condition:{' '}
-                                <strong className="text-foreground capitalize">
-                                  {t(`products.offers.condition.${offer.condition}`)}
-                                </strong>
-                              </span>
-
-                              {!isReadOnly && (
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setStockAdjustState({ open: true, offer })}
-                                    className="h-8 w-8 p-0"
-                                    aria-label={t('products.offers.adjustStock')}
-                                  >
-                                    <Boxes className="size-3.5" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setOfferFormState({ open: true, offer })}
-                                    className="h-8 w-8 p-0"
-                                    aria-label={t('products.offers.editOffer')}
-                                  >
-                                    <Edit2 className="size-3.5" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={isDeleting}
-                                    onClick={() => void handleDeleteOffer(offer)}
-                                    className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                    aria-label={t('products.offers.deleteOffer')}
-                                  >
-                                    {isDeleting ? (
-                                      <Spinner className="size-3.5" />
-                                    ) : (
-                                      <Trash2 className="size-3.5" />
+                                    {!isReadOnly && (
+                                      <div className="flex items-center gap-1">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => setStockAdjustState({ open: true, offer })}
+                                          className="h-8 w-8 p-0"
+                                          aria-label={t('products.offers.adjustStock')}
+                                        >
+                                          <Boxes className="size-3.5" />
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => setOfferFormState({ open: true, offer })}
+                                          className="h-8 w-8 p-0"
+                                          aria-label={t('products.offers.editOffer')}
+                                        >
+                                          <Edit2 className="size-3.5" />
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          disabled={isDeleting}
+                                          onClick={() => void handleDeleteOffer(offer)}
+                                          className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                          aria-label={t('products.offers.deleteOffer')}
+                                        >
+                                          {isDeleting ? (
+                                            <Spinner className="size-3.5" />
+                                          ) : (
+                                            <Trash2 className="size-3.5" />
+                                          )}
+                                        </Button>
+                                      </div>
                                     )}
-                                  </Button>
+                                  </div>
                                 </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Desktop Table View (hidden md:block) */}
+                          <div className="hidden md:block rounded-xl border border-border overflow-x-auto">
+                            <Table className="min-w-[680px]">
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>{t('products.offers.table.seller')}</TableHead>
+                                  <TableHead className="w-36">
+                                    {t('products.offers.table.price')}
+                                  </TableHead>
+                                  <TableHead className="w-28">
+                                    {t('products.offers.table.condition')}
+                                  </TableHead>
+                                  <TableHead className="w-44">
+                                    {t('products.offers.table.stock')}
+                                  </TableHead>
+                                  <TableHead className="w-28">
+                                    {t('products.offers.table.buybox')}
+                                  </TableHead>
+                                  <TableHead className="w-24">
+                                    {t('products.offers.table.status')}
+                                  </TableHead>
+                                  {!isReadOnly && (
+                                    <TableHead className="w-24 text-right">
+                                      {t('products.offers.table.actions')}
+                                    </TableHead>
+                                  )}
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {offers.map((offer) => {
+                                  const isWinner = Boolean(
+                                    buybox?.winningOfferId && offer.id === buybox.winningOfferId,
+                                  );
+                                  const now = new Date();
+                                  const hasSale = Boolean(
+                                    offer.salePriceMinor &&
+                                      (!offer.saleStartsAt ||
+                                        new Date(offer.saleStartsAt) <= now) &&
+                                      (!offer.saleEndsAt || new Date(offer.saleEndsAt) >= now),
+                                  );
+                                  const isDeleting = deletingId === offer.id;
+
+                                  return (
+                                    <TableRow key={offer.id}>
+                                      <TableCell>
+                                        <div className="flex flex-col gap-0.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="font-medium text-foreground">
+                                              {offer.sellerName}
+                                            </span>
+                                            {offer.shopSlug === 'shopnetic-retail' ? (
+                                              <StatusBadge tone="neutral" className="text-[10px]">
+                                                1P
+                                              </StatusBadge>
+                                            ) : (
+                                              <StatusBadge tone="warning" className="text-[10px]">
+                                                3P
+                                              </StatusBadge>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </TableCell>
+
+                                      <TableCell>
+                                        <div className="flex flex-col gap-0.5 text-xs font-mono">
+                                          {hasSale ? (
+                                            <>
+                                              <span className="font-semibold text-primary">
+                                                {formatMoney(offer.salePriceMinor, offer.currency)}
+                                              </span>
+                                              <span className="text-[11px] text-muted-foreground line-through">
+                                                {formatMoney(offer.priceMinor, offer.currency)}
+                                              </span>
+                                              <span className="inline-flex items-center gap-1 text-[10px] text-primary w-fit font-sans">
+                                                <Sparkles className="size-2.5" />
+                                                {t('products.offers.table.sale')}
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <span className="font-semibold text-foreground">
+                                              {formatMoney(offer.priceMinor, offer.currency)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </TableCell>
+
+                                      <TableCell>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="cursor-default text-xs capitalize text-foreground">
+                                              {t(`products.offers.condition.${offer.condition}`)}
+                                            </span>
+                                          </TooltipTrigger>
+                                          {offer.conditionNotes && (
+                                            <TooltipContent>
+                                              <p className="max-w-xs text-xs">
+                                                {offer.conditionNotes}
+                                              </p>
+                                            </TooltipContent>
+                                          )}
+                                        </Tooltip>
+                                      </TableCell>
+
+                                      <TableCell>
+                                        <div className="flex flex-col gap-0.5 text-xs">
+                                          <span
+                                            className={`font-semibold font-mono ${
+                                              offer.totalAvailable > 0
+                                                ? 'text-success'
+                                                : 'text-destructive'
+                                            }`}
+                                          >
+                                            {offer.totalAvailable} avail
+                                          </span>
+                                          <span className="text-muted-foreground">
+                                            ({offer.totalOnHand} on hand)
+                                          </span>
+                                          <span className="text-[11px] text-muted-foreground">
+                                            {offer.stocks.length} warehouses
+                                          </span>
+                                          {offer.stocks.some((s) => s.backorder) && (
+                                            <StatusBadge
+                                              tone="neutral"
+                                              className="text-[10px] w-fit mt-0.5"
+                                            >
+                                              {t('products.offers.badges.backorderAvailable')}
+                                            </StatusBadge>
+                                          )}
+                                        </div>
+                                      </TableCell>
+
+                                      <TableCell>
+                                        {isWinner ? (
+                                          <StatusBadge tone="success" className="gap-1 text-[10px]">
+                                            <Trophy className="size-3" />
+                                            {t('products.offers.badges.winner')}
+                                          </StatusBadge>
+                                        ) : (
+                                          <StatusBadge tone="neutral" className="text-[10px]">
+                                            {t('products.offers.badges.competing')}
+                                          </StatusBadge>
+                                        )}
+                                      </TableCell>
+
+                                      <TableCell>
+                                        <StatusBadge
+                                          tone={offer.status === 'active' ? 'success' : 'neutral'}
+                                          className="text-[10px] capitalize"
+                                        >
+                                          {offer.status}
+                                        </StatusBadge>
+                                      </TableCell>
+
+                                      {!isReadOnly && (
+                                        <TableCell className="text-right">
+                                          <div className="flex items-center justify-end gap-1">
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Button
+                                                  type="button"
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() =>
+                                                    setStockAdjustState({ open: true, offer })
+                                                  }
+                                                  aria-label={t('products.offers.adjustStock')}
+                                                >
+                                                  <Boxes className="size-3.5" />
+                                                </Button>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                {t('products.offers.adjustStock')}
+                                              </TooltipContent>
+                                            </Tooltip>
+
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Button
+                                                  type="button"
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() =>
+                                                    setOfferFormState({ open: true, offer })
+                                                  }
+                                                  aria-label={t('products.offers.editOffer')}
+                                                >
+                                                  <Edit2 className="size-3.5" />
+                                                </Button>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                {t('products.offers.editOffer')}
+                                              </TooltipContent>
+                                            </Tooltip>
+
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Button
+                                                  type="button"
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  disabled={isDeleting}
+                                                  onClick={() => void handleDeleteOffer(offer)}
+                                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                  aria-label={t('products.offers.deleteOffer')}
+                                                >
+                                                  {isDeleting ? (
+                                                    <Spinner className="size-3.5" />
+                                                  ) : (
+                                                    <Trash2 className="size-3.5" />
+                                                  )}
+                                                </Button>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                {t('products.offers.deleteOffer')}
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </div>
+                                        </TableCell>
+                                      )}
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+
+                          {/* Pagination & Count footer */}
+                          {(totalForSelected > 30 || Boolean(searchQuery)) && (
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs text-muted-foreground">
+                              <span>
+                                {t('products.offers.showingOffers', {
+                                  count: offers.length,
+                                  total: totalOffers,
+                                })}
+                              </span>
+                              {Boolean(nextCursor) && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={loadingMore}
+                                  onClick={handleLoadMore}
+                                  className="w-full sm:w-auto text-xs h-8 gap-1.5"
+                                >
+                                  {loadingMore && <Spinner className="size-3.5" />}
+                                  {t('products.offers.loadMore')}
+                                </Button>
                               )}
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Desktop Table View (hidden sm:block) */}
-                    <div className="hidden sm:block rounded-xl border border-border overflow-x-auto">
-                      <Table className="min-w-[680px]">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{t('products.offers.table.seller')}</TableHead>
-                            <TableHead className="w-36">
-                              {t('products.offers.table.price')}
-                            </TableHead>
-                            <TableHead className="w-28">
-                              {t('products.offers.table.condition')}
-                            </TableHead>
-                            <TableHead className="w-44">
-                              {t('products.offers.table.stock')}
-                            </TableHead>
-                            <TableHead className="w-28">
-                              {t('products.offers.table.buybox')}
-                            </TableHead>
-                            <TableHead className="w-24">
-                              {t('products.offers.table.status')}
-                            </TableHead>
-                            {!isReadOnly && (
-                              <TableHead className="w-24 text-right">
-                                {t('products.offers.table.actions')}
-                              </TableHead>
-                            )}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {activeOffers.map((offer) => {
-                            const isWinner = Boolean(
-                              buybox?.winningOfferId && offer.id === buybox.winningOfferId,
-                            );
-                            const now = new Date();
-                            const hasSale = Boolean(
-                              offer.salePriceMinor &&
-                                (!offer.saleStartsAt || new Date(offer.saleStartsAt) <= now) &&
-                                (!offer.saleEndsAt || new Date(offer.saleEndsAt) >= now),
-                            );
-                            const isDeleting = deletingId === offer.id;
-
-                            return (
-                              <TableRow key={offer.id}>
-                                <TableCell>
-                                  <div className="flex flex-col gap-0.5">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-medium text-foreground">
-                                        {offer.sellerName}
-                                      </span>
-                                      {offer.shopSlug === 'shopnetic-retail' ? (
-                                        <StatusBadge tone="neutral" className="text-[10px]">
-                                          1P
-                                        </StatusBadge>
-                                      ) : (
-                                        <StatusBadge tone="warning" className="text-[10px]">
-                                          3P
-                                        </StatusBadge>
-                                      )}
-                                    </div>
-                                    <span className="text-xs text-muted-foreground font-mono">
-                                      /{offer.shopSlug}
-                                    </span>
-                                  </div>
-                                </TableCell>
-
-                                <TableCell>
-                                  <div className="flex flex-col gap-0.5 text-xs font-mono">
-                                    {hasSale ? (
-                                      <>
-                                        <span className="font-semibold text-primary">
-                                          {formatMoney(offer.salePriceMinor, offer.currency)}
-                                        </span>
-                                        <span className="text-[11px] text-muted-foreground line-through">
-                                          {formatMoney(offer.priceMinor, offer.currency)}
-                                        </span>
-                                        <span className="inline-flex items-center gap-1 text-[10px] text-primary w-fit font-sans">
-                                          <Sparkles className="size-2.5" />
-                                          {t('products.offers.table.sale')}
-                                        </span>
-                                      </>
-                                    ) : (
-                                      <span className="font-semibold text-foreground">
-                                        {formatMoney(offer.priceMinor, offer.currency)}
-                                      </span>
-                                    )}
-                                  </div>
-                                </TableCell>
-
-                                <TableCell>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="cursor-default text-xs capitalize text-foreground">
-                                        {t(`products.offers.condition.${offer.condition}`)}
-                                      </span>
-                                    </TooltipTrigger>
-                                    {offer.conditionNotes && (
-                                      <TooltipContent>
-                                        <p className="max-w-xs text-xs">{offer.conditionNotes}</p>
-                                      </TooltipContent>
-                                    )}
-                                  </Tooltip>
-                                </TableCell>
-
-                                <TableCell>
-                                  <div className="flex flex-col gap-0.5 text-xs">
-                                    <span
-                                      className={`font-semibold font-mono ${
-                                        offer.totalAvailable > 0
-                                          ? 'text-success'
-                                          : 'text-destructive'
-                                      }`}
-                                    >
-                                      {offer.totalAvailable} avail
-                                    </span>
-                                    <span className="text-muted-foreground">
-                                      ({offer.totalOnHand} on hand)
-                                    </span>
-                                    <span className="text-[11px] text-muted-foreground">
-                                      {offer.stocks.length} warehouses
-                                    </span>
-                                    {offer.stocks.some((s) => s.backorder) && (
-                                      <StatusBadge
-                                        tone="neutral"
-                                        className="text-[10px] w-fit mt-0.5"
-                                      >
-                                        {t('products.offers.badges.backorderAvailable')}
-                                      </StatusBadge>
-                                    )}
-                                  </div>
-                                </TableCell>
-
-                                <TableCell>
-                                  {isWinner ? (
-                                    <StatusBadge tone="success" className="gap-1 text-[10px]">
-                                      <Trophy className="size-3" />
-                                      {t('products.offers.badges.winner')}
-                                    </StatusBadge>
-                                  ) : (
-                                    <StatusBadge tone="neutral" className="text-[10px]">
-                                      {t('products.offers.badges.competing')}
-                                    </StatusBadge>
-                                  )}
-                                </TableCell>
-
-                                <TableCell>
-                                  <StatusBadge
-                                    tone={offer.status === 'active' ? 'success' : 'neutral'}
-                                    className="text-[10px] capitalize"
-                                  >
-                                    {offer.status}
-                                  </StatusBadge>
-                                </TableCell>
-
-                                {!isReadOnly && (
-                                  <TableCell className="text-right">
-                                    <div className="flex items-center justify-end gap-1">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() =>
-                                              setStockAdjustState({ open: true, offer })
-                                            }
-                                            aria-label={t('products.offers.adjustStock')}
-                                          >
-                                            <Boxes className="size-3.5" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {t('products.offers.adjustStock')}
-                                        </TooltipContent>
-                                      </Tooltip>
-
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setOfferFormState({ open: true, offer })}
-                                            aria-label={t('products.offers.editOffer')}
-                                          >
-                                            <Edit2 className="size-3.5" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {t('products.offers.editOffer')}
-                                        </TooltipContent>
-                                      </Tooltip>
-
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            disabled={isDeleting}
-                                            onClick={() => void handleDeleteOffer(offer)}
-                                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                            aria-label={t('products.offers.deleteOffer')}
-                                          >
-                                            {isDeleting ? (
-                                              <Spinner className="size-3.5" />
-                                            ) : (
-                                              <Trash2 className="size-3.5" />
-                                            )}
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {t('products.offers.deleteOffer')}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </div>
-                                  </TableCell>
-                                )}
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                )}
+                          )}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </>
             )}
           </ModalBody>

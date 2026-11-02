@@ -36,6 +36,7 @@ export {
 } from './components/modal';
 export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './components/table';
 export { StatusBadge, type StatusTone } from './components/status-badge';
+export { DatePicker, type DatePickerProps, type DatePickerLabels } from './components/date-picker';
 export { Checkbox } from './components/checkbox';
 export { Switch } from './components/switch';
 export {

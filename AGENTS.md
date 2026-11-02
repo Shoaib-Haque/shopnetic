@@ -377,19 +377,20 @@ When modifying or writing code, **strictly adhere** to the locked rules in `plan
 
 When deep-diving into specific domains, consult the respective document in `plan/`:
 
-| Topic                   | Primary Plan Document                        | Key Concerns Addressed                                 |
-| ----------------------- | -------------------------------------------- | ------------------------------------------------------ |
-| **Coding Standards**    | `plan/CODING-RULES.md`                       | Working agreements, TS/Next.js/UI/API/DB/Log rules     |
-| **System Architecture** | `plan/02-architecture.md`                    | Monolith-first, bounded contexts, topology, outbox     |
-| **RBAC & Auth**         | `plan/03-users-and-rbac.md`                  | Actors, roles, permission matrix, token contracts      |
-| **Data Model**          | `plan/07-data-model.md`                      | Schemas, relations, constraints, deletion strategies   |
-| **API Conventions**     | `plan/08-api-design.md`                      | REST conventions, RFC-9457 error envelopes, pagination |
-| **Frontend Strategy**   | `plan/09-frontend-architecture.md`           | App Router structure, RSC boundaries, state, forms     |
-| **SEO Strategy**        | `plan/10-seo-strategy.md`                    | Metadata, JSON-LD, sitemaps, CWV budgets               |
-| **Catalog & Variants**  | `plan/26-catalog-options-variants-brands.md` | Options, SKUs, combinations, brands, media tags        |
-| **Cart & Checkout**     | `plan/12-cart-checkout-orders.md`            | Cart merge, order splitting, checkout saga, refunds    |
-| **Payments & Escrow**   | `plan/13-payments-and-payouts.md`            | Gateways, double-entry ledger, escrow, payouts         |
-| **Background Queues**   | `plan/31-background-jobs-and-queues.md`      | BullMQ architecture, outbox relay, job catalog         |
-| **Database Safety**     | `plan/25-database-conventions.md`            | Expand/contract migrations, soft deletion rules        |
-| **Roadmap & Gates**     | `plan/21-roadmap-milestones.md`              | Delivery phases, MVP cut lines, launch criteria        |
-| **Risks & Open Decs**   | `plan/22-risks-and-open-questions.md`        | Risk register, open architectural decisions            |
+| Topic                   | Primary Plan Document                        | Key Concerns Addressed                                                         |
+| ----------------------- | -------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Coding Standards**    | `plan/CODING-RULES.md`                       | Working agreements, TS/Next.js/UI/API/DB/Log rules                             |
+| **Input Validation**    | `plan/VALIDATION-RULES.md`                   | Field-hardening checklist: FE/BE/DB bound parity, one message per failure mode |
+| **System Architecture** | `plan/02-architecture.md`                    | Monolith-first, bounded contexts, topology, outbox                             |
+| **RBAC & Auth**         | `plan/03-users-and-rbac.md`                  | Actors, roles, permission matrix, token contracts                              |
+| **Data Model**          | `plan/07-data-model.md`                      | Schemas, relations, constraints, deletion strategies                           |
+| **API Conventions**     | `plan/08-api-design.md`                      | REST conventions, RFC-9457 error envelopes, pagination                         |
+| **Frontend Strategy**   | `plan/09-frontend-architecture.md`           | App Router structure, RSC boundaries, state, forms                             |
+| **SEO Strategy**        | `plan/10-seo-strategy.md`                    | Metadata, JSON-LD, sitemaps, CWV budgets                                       |
+| **Catalog & Variants**  | `plan/26-catalog-options-variants-brands.md` | Options, SKUs, combinations, brands, media tags                                |
+| **Cart & Checkout**     | `plan/12-cart-checkout-orders.md`            | Cart merge, order splitting, checkout saga, refunds                            |
+| **Payments & Escrow**   | `plan/13-payments-and-payouts.md`            | Gateways, double-entry ledger, escrow, payouts                                 |
+| **Background Queues**   | `plan/31-background-jobs-and-queues.md`      | BullMQ architecture, outbox relay, job catalog                                 |
+| **Database Safety**     | `plan/25-database-conventions.md`            | Expand/contract migrations, soft deletion rules                                |
+| **Roadmap & Gates**     | `plan/21-roadmap-milestones.md`              | Delivery phases, MVP cut lines, launch criteria                                |
+| **Risks & Open Decs**   | `plan/22-risks-and-open-questions.md`        | Risk register, open architectural decisions                                    |

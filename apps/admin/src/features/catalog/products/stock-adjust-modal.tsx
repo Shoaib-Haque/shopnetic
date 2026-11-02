@@ -1,11 +1,19 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
-import { Building2, Check, Plus } from 'lucide-react';
-import type { Offer, StockLevel, UpdateStockRequest, Warehouse } from '@shopnetic/contracts';
+import { useLocale, useTranslations } from 'next-intl';
+import { Building2, Check, Info, Plus } from 'lucide-react';
+import {
+  type Offer,
+  STOCK_UNITS_MAX,
+  type StockLevel,
+  type UpdateStockRequest,
+  type Warehouse,
+} from '@shopnetic/contracts';
 import {
   Button,
+  DatePicker,
+  type DatePickerLabels,
   Input,
   Modal,
   ModalBody,
@@ -17,6 +25,9 @@ import {
   Spinner,
   StatusBadge,
   Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   notify,
 } from '@shopnetic/ui';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
@@ -42,6 +53,7 @@ interface WarehouseStockRowState {
   restockEta: string;
   saving: boolean;
   saved: boolean;
+  noChanges?: boolean;
   error: string | null;
   fieldErrors: {
     onHand?: string | undefined;
@@ -60,6 +72,20 @@ export function StockAdjustModal({
 }: StockAdjustModalProps) {
   const t = useTranslations('catalog');
   const tAdmin = useTranslations('admin');
+  const locale = useLocale();
+
+  const datePickerLabels = useMemo<DatePickerLabels>(
+    () => ({
+      clearDate: t('products.offers.datePicker.clearDate'),
+      openCalendar: t('products.offers.datePicker.openCalendar'),
+      previousMonth: t('products.offers.datePicker.previousMonth'),
+      nextMonth: t('products.offers.datePicker.nextMonth'),
+      timeLabel: t('products.offers.datePicker.timeLabel'),
+      done: t('products.offers.datePicker.done'),
+      placeholder: t('products.offers.datePicker.placeholder'),
+    }),
+    [t],
+  );
 
   const [rowStates, setRowStates] = useState<Record<string, WarehouseStockRowState>>({});
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -157,13 +183,13 @@ export function StockAdjustModal({
       const updatedFieldErrors = { ...current.fieldErrors };
       if (field === 'onHand') {
         const strVal = String(value ?? '').trim();
-        if (strVal !== '' && /^\d+$/.test(strVal)) {
+        if (strVal !== '' && /^\d+$/.test(strVal) && Number(strVal) <= STOCK_UNITS_MAX) {
           delete updatedFieldErrors.onHand;
         }
       }
       if (field === 'safetyStock') {
         const strVal = String(value ?? '').trim();
-        if (strVal !== '' && /^\d+$/.test(strVal)) {
+        if (strVal !== '' && /^\d+$/.test(strVal) && Number(strVal) <= STOCK_UNITS_MAX) {
           delete updatedFieldErrors.safetyStock;
         }
       }
@@ -175,6 +201,7 @@ export function StockAdjustModal({
           [field]: value,
           fieldErrors: updatedFieldErrors,
           saved: false,
+          noChanges: false,
           error: null,
         },
       };
@@ -187,19 +214,29 @@ export function StockAdjustModal({
 
     const cleanOnHand = String(row.onHand ?? '').trim();
     const cleanSafety = String(row.safetyStock ?? '').trim();
-    const onHandInvalid = cleanOnHand === '' || !/^\d+$/.test(cleanOnHand);
-    const safetyInvalid = cleanSafety === '' || !/^\d+$/.test(cleanSafety);
 
-    if (onHandInvalid || safetyInvalid) {
+    let onHandError: string | undefined;
+    if (cleanOnHand === '' || !/^\d+$/.test(cleanOnHand)) {
+      onHandError = t('products.offers.stockModal.err.onHandInvalid');
+    } else if (parseInt(cleanOnHand, 10) > STOCK_UNITS_MAX) {
+      onHandError = t('products.offers.stockModal.err.onHandMax');
+    }
+
+    let safetyError: string | undefined;
+    if (cleanSafety === '' || !/^\d+$/.test(cleanSafety)) {
+      safetyError = t('products.offers.stockModal.err.safetyStockInvalid');
+    } else if (parseInt(cleanSafety, 10) > STOCK_UNITS_MAX) {
+      safetyError = t('products.offers.stockModal.err.safetyStockMax');
+    }
+
+    if (onHandError || safetyError) {
       setRowStates((prev) => ({
         ...prev,
         [warehouse.id]: {
           ...(prev[warehouse.id] as WarehouseStockRowState),
           fieldErrors: {
-            onHand: onHandInvalid ? t('products.offers.stockModal.err.onHandInvalid') : undefined,
-            safetyStock: safetyInvalid
-              ? t('products.offers.stockModal.err.safetyStockInvalid')
-              : undefined,
+            onHand: onHandError,
+            safetyStock: safetyError,
           },
         },
       }));
@@ -238,10 +275,12 @@ export function StockAdjustModal({
         [warehouse.id]: {
           ...(prev[warehouse.id] as WarehouseStockRowState),
           saving: false,
-          saved: true,
+          saved: false,
+          noChanges: true,
           error: null,
         },
       }));
+      notify.info(t('products.offers.stockModal.noChanges'));
       return;
     }
 
@@ -405,9 +444,26 @@ export function StockAdjustModal({
                       {/* On-Hand Column */}
                       <div className="flex flex-col gap-1.5">
                         <div className="min-h-[2.5rem] flex flex-col justify-end">
-                          <label className="text-xs font-semibold text-foreground">
-                            {t('products.offers.stockModal.onHand')}
-                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-xs font-semibold text-foreground">
+                              {t('products.offers.stockModal.onHand')}
+                            </label>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  className="text-muted-foreground hover:text-foreground cursor-help p-0.5 rounded"
+                                  aria-label={t('products.offers.stockModal.onHandHint')}
+                                >
+                                  <Info className="size-3" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {t('products.offers.stockModal.onHandHint')}
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
                         </div>
                         <Input
                           type="number"
@@ -421,23 +477,36 @@ export function StockAdjustModal({
                           invalid={Boolean(row.fieldErrors.onHand)}
                           className="font-mono text-sm h-9"
                         />
-                        <p className="text-[11px] text-muted-foreground line-clamp-1">
-                          {row.fieldErrors.onHand ? (
-                            <span className="text-destructive font-medium">
-                              {row.fieldErrors.onHand}
-                            </span>
-                          ) : (
-                            t('products.offers.stockModal.onHandHint')
-                          )}
-                        </p>
+                        {row.fieldErrors.onHand && (
+                          <p className="text-[11px] text-destructive font-medium">
+                            {row.fieldErrors.onHand}
+                          </p>
+                        )}
                       </div>
 
                       {/* Safety Stock Column */}
                       <div className="flex flex-col gap-1.5">
                         <div className="min-h-[2.5rem] flex flex-col justify-end">
-                          <label className="text-xs font-semibold text-foreground leading-tight">
-                            {t('products.offers.stockModal.safetyStock')}
-                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-xs font-semibold text-foreground leading-tight">
+                              {t('products.offers.stockModal.safetyStock')}
+                            </label>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  className="text-muted-foreground hover:text-foreground cursor-help p-0.5 rounded"
+                                  aria-label={t('products.offers.stockModal.safetyStockHint')}
+                                >
+                                  <Info className="size-3" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {t('products.offers.stockModal.safetyStockHint')}
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
                         </div>
                         <Input
                           type="number"
@@ -453,35 +522,48 @@ export function StockAdjustModal({
                           invalid={Boolean(row.fieldErrors.safetyStock)}
                           className="font-mono text-sm h-9"
                         />
-                        <p className="text-[11px] text-muted-foreground line-clamp-1">
-                          {row.fieldErrors.safetyStock ? (
-                            <span className="text-destructive font-medium">
-                              {row.fieldErrors.safetyStock}
-                            </span>
-                          ) : (
-                            t('products.offers.stockModal.safetyStockHint')
-                          )}
-                        </p>
+                        {row.fieldErrors.safetyStock && (
+                          <p className="text-[11px] text-destructive font-medium">
+                            {row.fieldErrors.safetyStock}
+                          </p>
+                        )}
                       </div>
 
                       {/* Restock ETA Column */}
                       <div className="flex flex-col gap-1.5">
                         <div className="min-h-[2.5rem] flex flex-col justify-end">
-                          <label className="text-xs font-semibold text-foreground">
-                            {t('products.offers.stockModal.restockEta')}
-                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-xs font-semibold text-foreground">
+                              {t('products.offers.stockModal.restockEta')}
+                            </label>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  className="text-muted-foreground hover:text-foreground cursor-help p-0.5 rounded"
+                                  aria-label={t('products.offers.stockModal.restockEtaHint')}
+                                >
+                                  <Info className="size-3" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {t('products.offers.stockModal.restockEtaHint')}
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
                         </div>
-                        <Input
-                          type="date"
-                          min={new Date().toISOString().slice(0, 10)}
-                          value={row.restockEta}
-                          onChange={(e) => handleFieldChange(wh.id, 'restockEta', e.target.value)}
+                        <DatePicker
+                          locale={locale}
+                          labels={datePickerLabels}
+                          value={row.restockEta || null}
+                          onChange={(val) => handleFieldChange(wh.id, 'restockEta', val)}
+                          minDate={new Date().toISOString().slice(0, 10)}
                           disabled={row.saving}
-                          className="text-xs h-9"
+                          placeholder={t('products.offers.stockModal.restockEtaPlaceholder')}
+                          className="h-9 text-xs"
+                          ariaLabel={t('products.offers.stockModal.restockEta')}
                         />
-                        <p className="text-[11px] text-muted-foreground line-clamp-1">
-                          Optional ETA
-                        </p>
                       </div>
 
                       {/* Backorder Switch + Update Button Column */}
@@ -520,12 +602,18 @@ export function StockAdjustModal({
                               <Check className="size-3.5 text-success" />
                               <span>Updated</span>
                             </>
+                          ) : row.noChanges ? (
+                            <span>{t('products.offers.stockModal.noChanges')}</span>
                           ) : (
                             <span>{t('products.offers.stockModal.save')}</span>
                           )}
                         </Button>
-                        <p className="text-[11px] text-muted-foreground line-clamp-1 text-right">
-                          {row.saved ? 'Changes saved' : 'Per-warehouse'}
+                        <p className="text-[11px] text-muted-foreground text-right">
+                          {row.saved
+                            ? 'Changes saved'
+                            : row.noChanges
+                              ? t('products.offers.stockModal.noChanges')
+                              : 'Per-warehouse'}
                         </p>
                       </div>
                     </div>

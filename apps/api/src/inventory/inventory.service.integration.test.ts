@@ -873,5 +873,202 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
         data: { status: 'active', deletedAt: null },
       });
     });
+
+    it('orders offers by price ascending and supports offset pagination and seller search', async () => {
+      // 1. Create a dedicated test variant
+      const cat = await prisma.category.findFirstOrThrow({ where: { slug: s('inv-cat') } });
+      const product = await prisma.product.create({
+        data: {
+          slug: s('paging-product'),
+          categoryId: cat.id,
+          titleI18n: { en: 'Paging Test Product' },
+          currency: 'USD',
+          status: 'active',
+        },
+      });
+      const variant = await prisma.variant.create({
+        data: {
+          productId: product.id,
+          skuCode: s('SKU-PAGING'),
+          comboSignature: '',
+          status: 'active',
+        },
+      });
+
+      // 2. Create 3 offers with distinct sellers & prices
+      const sellerAccount3 = await prisma.account.create({
+        data: {
+          email: `${s('seller3')}@shopnetic.test`,
+          plane: 'marketplace',
+          status: 'active',
+        },
+      });
+      const s3 = await sellerService.create(
+        {
+          legalName: 'Test Seller Gamma LLC',
+          type: 'business',
+          country: 'US',
+          shop: {
+            slug: s('gamma-shop'),
+            displayName: 'Gamma Store',
+          },
+        },
+        { accountId: sellerAccount3.id, plane: 'marketplace', grants: [] },
+        {},
+      );
+
+      const o1 = await offerService.create(
+        testSeller1Id,
+        {
+          variantId: variant.id,
+          priceMinor: '2500', // $25.00
+          currency: 'USD',
+        },
+        staffActor,
+        {},
+      );
+      const o2 = await offerService.create(
+        testSeller2Id,
+        {
+          variantId: variant.id,
+          priceMinor: '1500', // $15.00
+          currency: 'USD',
+        },
+        staffActor,
+        {},
+      );
+      const o3 = await offerService.create(
+        s3.id,
+        {
+          variantId: variant.id,
+          priceMinor: '2000', // $20.00
+          currency: 'USD',
+          condition: 'used_like_new',
+        },
+        staffActor,
+        {},
+      );
+
+      // Page 1 with limit = 2
+      const page1 = await offerService.list({
+        status: 'active',
+        variantId: variant.id,
+        limit: 2,
+      });
+
+      expect(page1.total).toBe(3);
+      expect(page1.items).toHaveLength(2);
+      expect(page1.items[0]?.id).toBe(o2.id); // $15.00 first
+      expect(page1.items[1]?.id).toBe(o3.id); // $20.00 second
+      expect(page1.nextCursor).toBe('2');
+
+      // Page 2 with cursor = '2'
+      const page2 = await offerService.list({
+        status: 'active',
+        variantId: variant.id,
+        cursor: page1.nextCursor,
+        limit: 2,
+      });
+
+      expect(page2.total).toBe(3);
+      expect(page2.items).toHaveLength(1);
+      expect(page2.items[0]?.id).toBe(o1.id); // $25.00 third
+      expect(page2.nextCursor).toBeUndefined();
+
+      // Search by seller 2 legal name or shop
+      const seller2 = await prisma.seller.findUniqueOrThrow({
+        where: { id: testSeller2Id },
+        include: { shop: true },
+      });
+      const searchTarget = seller2.shop?.displayName ?? seller2.legalName;
+      const searchResult = await offerService.list({
+        status: 'active',
+        variantId: variant.id,
+        q: searchTarget,
+        limit: 10,
+      });
+
+      expect(searchResult.total).toBe(1);
+      expect(searchResult.items[0]?.id).toBe(o2.id);
+
+      // Offer counts helper
+      const counts = await offerService.getVariantOfferCounts(product.id);
+      expect(counts[variant.id]).toBe(3);
+    });
+
+    it('scopes Buy-Box winner competition to product reference currency, preventing raw cross-currency comparison', async () => {
+      const cat = await prisma.category.findFirstOrThrow({ where: { slug: s('inv-cat') } });
+      const product = await prisma.product.create({
+        data: {
+          slug: s('currency-bb-product'),
+          categoryId: cat.id,
+          titleI18n: { en: 'Currency Buybox Product' },
+          currency: 'USD', // Reference currency is USD
+          status: 'active',
+        },
+      });
+      const variant = await prisma.variant.create({
+        data: {
+          productId: product.id,
+          skuCode: s('SKU-CURR-BB'),
+          comboSignature: '',
+          status: 'active',
+        },
+      });
+
+      const whSeller2 = await warehouseService.create(
+        testSeller2Id,
+        {
+          name: 'Seller 2 Warehouse',
+          isDefault: true,
+          address: {
+            line1: '456 West Ave',
+            city: 'Portland',
+            postalCode: '97201',
+            country: 'US',
+          },
+        },
+        staffActor,
+        {},
+      );
+
+      // Offer 1: USD $10.00 (1000 minor units) with stock
+      const usdOffer = await offerService.create(
+        testSeller1Id,
+        {
+          variantId: variant.id,
+          priceMinor: '1000',
+          currency: 'USD',
+          warehouseId: warehouse1Id,
+          initialStock: 10,
+        },
+        staffActor,
+        {},
+      );
+
+      // Offer 2: JPY 500 (500 minor units, which numerically is < 1000) with stock
+      await offerService.create(
+        testSeller2Id,
+        {
+          variantId: variant.id,
+          priceMinor: '500',
+          currency: 'JPY',
+          warehouseId: whSeller2.id,
+          initialStock: 10,
+        },
+        staffActor,
+        {},
+      );
+
+      const buybox = await buyboxService.recalculate(variant.id);
+
+      // The USD offer must win because product currency is USD; raw 500 JPY < 1000 USD comparison is blocked
+      expect(buybox.winningOfferId).toBe(usdOffer.id);
+      expect(buybox.winningCurrency).toBe('USD');
+      expect(buybox.winningPriceMinor).toBe('1000');
+      // Price range is scoped strictly to USD
+      expect(buybox.minPriceMinor).toBe('1000');
+      expect(buybox.maxPriceMinor).toBe('1000');
+    });
   });
 });

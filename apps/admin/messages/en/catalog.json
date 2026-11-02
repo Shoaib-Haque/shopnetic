@@ -775,6 +775,9 @@
         "singleVariant": "Single Variant",
         "createOffer": "Add Offer",
         "addWarehouse": "New Warehouse",
+        "searchOffersPlaceholder": "Search sellers in offers…",
+        "loadMore": "Load more offers",
+        "showingOffers": "Showing {count} of {total} offers",
         "emptyTitle": "No offers for this variant.",
         "emptySubtitle": "Add a 1P or 3P listing to enable live pricing and purchasing.",
         "buybox": {
@@ -826,6 +829,15 @@
           "stockUpdated": "Stock levels updated for {warehouse}.",
           "warehouseCreated": "Warehouse “{name}” created."
         },
+        "datePicker": {
+          "clearDate": "Clear date",
+          "openCalendar": "Open calendar",
+          "previousMonth": "Previous month",
+          "nextMonth": "Next month",
+          "timeLabel": "Time:",
+          "done": "Done",
+          "placeholder": "Select date…"
+        },
         "form": {
           "addTitle": "Create Seller Offer",
           "editTitle": "Edit Offer Listing",
@@ -839,7 +851,9 @@
           "salePricePlaceholder": "e.g. 24.99 (optional)",
           "saleDates": "Promotional Window",
           "saleStartsAt": "Sale Starts",
+          "saleStartsAtPlaceholder": "Select start date & time…",
           "saleEndsAt": "Sale Ends",
+          "saleEndsAtPlaceholder": "Select end date & time…",
           "condition": "Condition",
           "conditionNotes": "Condition Notes",
           "conditionNotesPlaceholder": "e.g. Open box, original packaging included",
@@ -858,17 +872,23 @@
           "cancel": "Cancel",
           "err": {
             "priceRequired": "A valid positive price is required.",
+            "priceMax": "List price cannot exceed $999,999.00.",
             "sellerRequired": "Please select a seller.",
             "variantRequired": "Please select a variant.",
             "salePriceGtePrice": "Sale price must be strictly less than list price.",
+            "salePriceMax": "Sale price cannot exceed $999,999.00.",
             "saleEndBeforeStart": "Sale end date must be after the start date.",
             "handlingDaysInvalid": "Handling days must be between 0 and 30.",
-            "minQtyInvalid": "Minimum order quantity must be at least 1.",
+            "minQtyInvalid": "Minimum order quantity must be a whole number.",
+            "minQtyMin": "Minimum order quantity must be at least 1.",
+            "minQtyMax": "Minimum order quantity cannot exceed 999,999.",
             "maxQtyMin": "Maximum order quantity must be at least 1.",
             "maxQtyMax": "Maximum order quantity cannot exceed 999,999.",
             "maxQtyInvalid": "Maximum order quantity must be a valid number.",
             "maxLessThanMin": "Maximum quantity cannot be less than minimum quantity.",
-            "initialStockInvalid": "Initial stock cannot be negative.",
+            "initialStockInvalid": "Initial stock must be a whole number.",
+            "initialStockMin": "Initial stock cannot be negative.",
+            "initialStockMax": "Initial stock cannot exceed 999,999.",
             "warehouseRequired": "Warehouse is required when setting initial stock."
           }
         },
@@ -886,13 +906,20 @@
           "backorder": "Allow Backorders",
           "backorderHint": "Permit purchases when on-hand is depleted.",
           "restockEta": "Restock ETA Date",
+          "restockEtaPlaceholder": "Select ETA…",
+          "restockEtaHint": "Optional estimated date when new stock arrives.",
           "save": "Update Stock",
+          "noChanges": "No changes to save",
           "cancel": "Cancel",
           "emptyWarehouses": "No warehouses configured for this seller yet.",
           "addWarehouse": "Add Warehouse",
           "err": {
-            "onHandInvalid": "Enter a valid non-negative integer.",
-            "safetyStockInvalid": "Enter a valid non-negative integer."
+            "onHandInvalid": "On-hand units must be a whole number.",
+            "onHandMin": "On-hand units cannot be negative.",
+            "onHandMax": "On-hand units cannot exceed 999,999.",
+            "safetyStockInvalid": "Safety stock threshold must be a whole number.",
+            "safetyStockMin": "Safety stock threshold cannot be negative.",
+            "safetyStockMax": "Safety stock threshold cannot exceed 999,999."
           }
         },
         "warehouseModal": {
@@ -904,6 +931,10 @@
           "name": "Warehouse Name",
           "namePlaceholder": "e.g. Austin Regional Depot",
           "isDefault": "Set as default fulfillment warehouse",
+          "country": "Country",
+          "selectCountry": "Select country…",
+          "searchCountry": "Search countries…",
+          "noCountries": "No countries found",
           "line1": "Address Line 1",
           "line1Placeholder": "e.g. 100 Industrial Blvd",
           "line2": "Address Line 2 (optional)",
@@ -911,7 +942,6 @@
           "city": "City",
           "state": "State / Province (optional)",
           "postalCode": "Postal / ZIP Code",
-          "country": "Country Code (ISO 2-letter)",
           "save": "Create Warehouse",
           "cancel": "Cancel",
           "err": {
@@ -919,8 +949,15 @@
             "nameRequired": "Warehouse name is required.",
             "nameLong": "Warehouse name must be 100 characters or fewer.",
             "line1Required": "Street address line 1 is required.",
+            "line1Long": "Street address line 1 cannot exceed 200 characters.",
+            "line2Long": "Street address line 2 cannot exceed 200 characters.",
             "cityRequired": "City is required.",
+            "cityLong": "City cannot exceed 100 characters.",
+            "stateLong": "State / Province cannot exceed 100 characters.",
             "postalCodeRequired": "Postal / ZIP code is required.",
+            "postalCodeLong": "Postal / ZIP code cannot exceed 20 characters.",
+            "postalCodeInvalid": "Enter a valid postal / ZIP code for the selected country.",
+            "countryRequired": "Please select a country.",
             "countryFormat": "Enter a valid 2-letter country code (e.g. US)."
           }
         }

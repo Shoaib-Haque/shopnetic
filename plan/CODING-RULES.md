@@ -873,7 +873,7 @@ endpoints. No tokens, passwords, card data, full addresses, KYC contents.
 
 ---
 
-## P. Validation & verification  (see `08` section 9, `16` section 4)
+## P. Validation & verification  (see `08` section 9, `16` section 4, `VALIDATION-RULES.md`)
 
 ### P1. One schema, both sides
 The Zod schema for a form/endpoint lives in `@shopnetic/contracts` and is used
@@ -895,6 +895,15 @@ the user saw it (`29`). "Well-formed" ≠ "true".
 Disable submit until the form is valid *and* not already pending. On server
 rejection, map field errors back to inputs, keep the user's input, show a
 form-level message.
+
+### P5. Every bounded field passes the field-hardening checklist
+P1 says one schema in principle; in practice a frontend form's local schema
+and the `@shopnetic/contracts` request schema drift apart field by field. For
+every new or changed input, fill out `VALIDATION-RULES.md` section 6: matching
+min/max on both sides, sourced from shared constants (not retyped numbers), a
+confirmed DB column ceiling, one accurate message per distinct failure
+reason, and a mapped error code for anything foreseeable. See that doc's
+section 0 for what shipping without this checklist actually breaks.
 
 ---
 

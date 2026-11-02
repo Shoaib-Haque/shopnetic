@@ -325,14 +325,59 @@ describe('StockAdjustModal', () => {
     fireEvent.change(onHandInput, { target: { value: '' } });
 
     // Should NOT show error immediately on type
-    expect(screen.queryByText('Enter a valid non-negative integer.')).not.toBeInTheDocument();
+    expect(screen.queryByText('On-hand units must be a whole number.')).not.toBeInTheDocument();
 
     // Now click Update Stock
     const updateBtn = screen.getByRole('button', { name: 'Update Stock' });
     fireEvent.click(updateBtn);
 
     // Error appears after submit
-    expect(screen.getByText('Enter a valid non-negative integer.')).toBeInTheDocument();
+    expect(screen.getByText('On-hand units must be a whole number.')).toBeInTheDocument();
+  });
+
+  it('validates onHand and safetyStock upper bounds against STOCK_UNITS_MAX (999,999)', async () => {
+    renderAdmin(
+      <StockAdjustModal
+        open={true}
+        onOpenChange={vi.fn()}
+        offer={sampleOffer}
+        warehouses={[sampleWarehouse1]}
+        onStockUpdated={vi.fn()}
+      />,
+    );
+
+    const inputs = screen.getAllByRole('spinbutton');
+    const onHandInput = inputs[0]!;
+    const safetyStockInput = inputs[1]!;
+
+    // Set beyond 999,999
+    fireEvent.change(onHandInput, { target: { value: '1000000' } });
+    fireEvent.change(safetyStockInput, { target: { value: '2000000' } });
+
+    const updateBtn = screen.getByRole('button', { name: 'Update Stock' });
+    fireEvent.click(updateBtn);
+
+    expect(screen.getByText('On-hand units cannot exceed 999,999.')).toBeInTheDocument();
+    expect(screen.getByText('Safety stock threshold cannot exceed 999,999.')).toBeInTheDocument();
+    expect(mockedUpdateStock).not.toHaveBeenCalled();
+  });
+
+  it('shows neutral "No changes to save" state when Update Stock is clicked without any changes', async () => {
+    renderAdmin(
+      <StockAdjustModal
+        open={true}
+        onOpenChange={vi.fn()}
+        offer={sampleOffer}
+        warehouses={[sampleWarehouse1]}
+        onStockUpdated={vi.fn()}
+      />,
+    );
+
+    const updateBtn = screen.getByRole('button', { name: 'Update Stock' });
+    fireEvent.click(updateBtn);
+
+    expect(mockedUpdateStock).not.toHaveBeenCalled();
+    expect(screen.getAllByText('No changes to save').length).toBeGreaterThanOrEqual(1);
   });
 
   it('calls onOpenChange(false) when cancel button is clicked', () => {

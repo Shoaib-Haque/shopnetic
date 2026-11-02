@@ -4,6 +4,7 @@ import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from 'reac
 import * as RPopover from '@radix-ui/react-popover';
 import { cn } from '../lib/cn';
 import { OverlayCloseButton } from '../lib/overlay-parts';
+import { useModalBoundary } from './modal';
 
 /**
  * Anchored panel over Radix `Popover` (plan/CODING-RULES.md D1) — non-modal:
@@ -31,6 +32,8 @@ export interface PopoverContentProps extends ComponentPropsWithoutRef<typeof RPo
   closeLabel?: string;
   /** Hide the built-in close (×). Useful for action menus that dismiss on selection. */
   hideClose?: boolean;
+  /** Custom portal container. When omitted inside a Modal, portals inside the modal to preserve wheel scroll. */
+  container?: HTMLElement | null;
 }
 
 export const PopoverContent = forwardRef<ElementRef<typeof RPopover.Content>, PopoverContentProps>(
@@ -42,12 +45,16 @@ export const PopoverContent = forwardRef<ElementRef<typeof RPopover.Content>, Po
       sideOffset = 8,
       closeLabel = 'Close',
       hideClose = false,
+      container,
       ...props
     },
     ref,
   ) {
+    const modalBoundary = useModalBoundary();
+    const portalContainer = container ?? modalBoundary ?? undefined;
+
     return (
-      <RPopover.Portal>
+      <RPopover.Portal container={portalContainer}>
         <RPopover.Content
           ref={ref}
           align={align}

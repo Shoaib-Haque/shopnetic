@@ -36,6 +36,11 @@ export class BuyboxService {
     // Serialize concurrent recalculations for this variant via transaction-scoped advisory lock
     await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`buybox:${variantId}`}))`;
 
+    const variant = await client.variant.findUnique({
+      where: { id: variantId },
+      include: { product: true },
+    });
+
     const offers = await client.offer.findMany({
       where: {
         variantId,
@@ -77,9 +82,41 @@ export class BuyboxService {
       (item) => item.totalAvailable > 0 || item.allowsBackorder,
     );
 
-    // Candidates: in-stock or backorder-tolerant active offers qualify for the buybox.
+    // Buy-Box currency scoping & normalization:
+    // Raw prices in different currencies (e.g. 500 JPY vs 500 USD cents) cannot be compared
+    // directly as identical minor units without FX rates. Competition is scoped to the product's
+    // catalog reference currency (defaulting to 'USD'). If no qualifying offers exist in the
+    // reference currency, fallback to the currency with the most qualifying active offers.
+    const productCurrency = variant?.product?.currency ?? 'USD';
+    const activeCurrencies = qualifyingOffers.map((q) => q.offer.currency);
+    const hasProductCurrencyOffers = activeCurrencies.includes(productCurrency);
+
+    let targetCurrency: string | null = null;
+    if (qualifyingOffers.length > 0) {
+      if (hasProductCurrencyOffers) {
+        targetCurrency = productCurrency;
+      } else {
+        const currencyCounts = new Map<string, number>();
+        for (const curr of activeCurrencies) {
+          currencyCounts.set(curr, (currencyCounts.get(curr) ?? 0) + 1);
+        }
+        let maxCount = 0;
+        for (const [curr, count] of currencyCounts.entries()) {
+          if (count > maxCount) {
+            maxCount = count;
+            targetCurrency = curr;
+          }
+        }
+      }
+    }
+
+    const sameCurrencyQualifying = targetCurrency
+      ? qualifyingOffers.filter((item) => item.offer.currency === targetCurrency)
+      : [];
+
+    // Candidates: in-stock or backorder-tolerant active offers in targetCurrency qualify for the buybox.
     // If no active offer qualifies, there is no winning offer.
-    const sorted = [...qualifyingOffers].sort((a, b) => {
+    const sorted = [...sameCurrencyQualifying].sort((a, b) => {
       if (a.effectivePrice < b.effectivePrice) return -1;
       if (a.effectivePrice > b.effectivePrice) return 1;
       // Secondary: higher total available
@@ -93,7 +130,10 @@ export class BuyboxService {
 
     const winner = sorted[0];
 
-    const allPrices = offers.map(getEffectivePrice);
+    const sameCurrencyOffers = targetCurrency
+      ? offers.filter((o) => o.currency === targetCurrency)
+      : offers;
+    const allPrices = sameCurrencyOffers.map(getEffectivePrice);
     const minPriceMinor = allPrices.length > 0 ? allPrices.reduce((m, p) => (p < m ? p : m)) : null;
     const maxPriceMinor = allPrices.length > 0 ? allPrices.reduce((m, p) => (p > m ? p : m)) : null;
     const sellerCount = new Set(offers.map((o) => o.sellerId)).size;

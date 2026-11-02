@@ -6,5 +6,6 @@ export * from './identity.js';
 export * from './staff.js';
 export * from './catalog.js';
 export * from './currency.js';
+export * from './country.js';
 export * from './seller.js';
 export * from './inventory.js';

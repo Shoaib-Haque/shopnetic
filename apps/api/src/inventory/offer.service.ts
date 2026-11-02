@@ -21,6 +21,7 @@ import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import { clampLimit } from '../common/pagination.js';
+import { rankedNextCursor, rankedOffsetFromCursor, tokenizeForSql } from '../common/text-search.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { BuyboxService } from './buybox.service.js';
 import { writeInventoryOutbox } from './inventory-outbox.js';
@@ -29,7 +30,7 @@ type OfferWithRelations = OfferRow & {
   stocks: (StockRow & { warehouse: WarehouseRow })[];
 };
 
-const DEFAULT_LIMIT = 25;
+const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
 
 @Injectable()
@@ -117,16 +118,66 @@ export class OfferService {
     return this.serialize(offer);
   }
 
-  async list(query: ListOffersQuery): Promise<{ items: Offer[]; nextCursor?: string }> {
+  async list(
+    query: Partial<ListOffersQuery> = {},
+  ): Promise<{ items: Offer[]; total: number; nextCursor?: string }> {
     const limit = clampLimit(query.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT);
     const where: Prisma.OfferWhereInput = {
       deletedAt: null,
-      ...(query.variantId ? { variantId: query.variantId } : {}),
-      ...(query.sellerId ? { sellerId: query.sellerId } : {}),
       ...(query.status === 'active' ? { status: 'active' } : {}),
+      ...(query.sellerId ? { sellerId: query.sellerId } : {}),
     };
 
-    const offers = await this.prisma.offer.findMany({
+    if (query.variantId) {
+      where.variantId = query.variantId;
+    } else if (query.productId) {
+      const variants = await this.prisma.variant.findMany({
+        where: { productId: query.productId, deletedAt: null },
+        select: { id: true },
+      });
+      if (variants.length === 0) {
+        return { items: [], total: 0 };
+      }
+      where.variantId = { in: variants.map((v) => v.id) };
+    }
+
+    if (query.q) {
+      const tokens = tokenizeForSql(query.q);
+      if (tokens.length > 0) {
+        const matchingSellers = await this.prisma.seller.findMany({
+          where: {
+            deletedAt: null,
+            AND: tokens.map((token) => ({
+              OR: [
+                { legalName: { contains: token, mode: 'insensitive' } },
+                { shop: { displayName: { contains: token, mode: 'insensitive' } } },
+              ],
+            })),
+          },
+          select: { id: true },
+        });
+        if (matchingSellers.length === 0) {
+          return { items: [], total: 0 };
+        }
+        const matchingSellerIds = matchingSellers.map((s) => s.id);
+        if (where.sellerId) {
+          if (!matchingSellerIds.includes(where.sellerId as string)) {
+            return { items: [], total: 0 };
+          }
+        } else {
+          where.sellerId = { in: matchingSellerIds };
+        }
+      }
+    }
+
+    const total = await this.prisma.offer.count({ where });
+
+    const isOffsetCursor = Boolean(query.cursor && /^\d+$/.test(query.cursor));
+    const offset = isOffsetCursor ? rankedOffsetFromCursor(query.cursor) : 0;
+
+    const findArgs: Prisma.OfferFindManyArgs & {
+      include: { stocks: { include: { warehouse: true } } };
+    } = {
       where,
       include: {
         stocks: {
@@ -134,19 +185,55 @@ export class OfferService {
         },
       },
       take: limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { createdAt: 'desc' },
-    });
+      orderBy: [{ priceMinor: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    };
+    if (offset > 0) {
+      findArgs.skip = offset;
+    } else if (query.cursor && !isOffsetCursor) {
+      findArgs.cursor = { id: query.cursor };
+      findArgs.skip = 1;
+    }
+
+    const offers = (await this.prisma.offer.findMany(findArgs)) as OfferWithRelations[];
 
     const hasMore = offers.length > limit;
     const items = hasMore ? offers.slice(0, limit) : offers;
-    const nextCursor = hasMore ? items[items.length - 1]?.id : undefined;
+    const nextCursor = hasMore ? rankedNextCursor(offers.length, limit, offset) : undefined;
 
     const serialized = await Promise.all(items.map((o) => this.serialize(o)));
     return {
       items: serialized,
+      total,
       ...(nextCursor ? { nextCursor } : {}),
     };
+  }
+
+  async getVariantOfferCounts(productId: string): Promise<Record<string, number>> {
+    const variants = await this.prisma.variant.findMany({
+      where: { productId, deletedAt: null },
+      select: { id: true },
+    });
+    if (variants.length === 0) return {};
+
+    const variantIds = variants.map((v) => v.id);
+    const grouped = await this.prisma.offer.groupBy({
+      by: ['variantId'],
+      where: {
+        variantId: { in: variantIds },
+        status: 'active',
+        deletedAt: null,
+      },
+      _count: { id: true },
+    });
+
+    const counts: Record<string, number> = {};
+    for (const vId of variantIds) {
+      counts[vId] = 0;
+    }
+    for (const g of grouped) {
+      counts[g.variantId] = g._count.id;
+    }
+    return counts;
   }
 
   async listByVariant(variantId: string): Promise<Offer[]> {
@@ -185,6 +272,7 @@ export class OfferService {
           include: { warehouse: true },
         },
       },
+      orderBy: [{ priceMinor: 'asc' }, { createdAt: 'asc' }],
     });
     return Promise.all(offers.map((o) => this.serialize(o)));
   }

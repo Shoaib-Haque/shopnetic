@@ -100,35 +100,32 @@ describe('formatSellerLabel', () => {
     const label = formatSellerLabel(shopneticSeller);
     expect(label.tag).toBe('1P');
     expect(label.name).toBe('Shopnetic Retail');
-    expect(label.handle).toBe('@shopnetic-retail');
-    expect(label.fullText).toBe('Shopnetic Retail (1P) • @shopnetic-retail');
+    expect(label.fullText).toBe('Shopnetic Retail (1P)');
   });
 
   it('marks any other seller as 3P', () => {
     const label = formatSellerLabel(acmeSeller);
     expect(label.tag).toBe('3P');
     expect(label.name).toBe('Acme Apparel');
-    expect(label.handle).toBe('@acme-apparel');
-    expect(label.fullText).toBe('Acme Apparel (3P) • @acme-apparel');
+    expect(label.fullText).toBe('Acme Apparel (3P)');
   });
 
-  it('falls back to legalName and #id[:8] handle when seller has no shop', () => {
+  it('falls back to legalName when seller has no shop', () => {
     const label = formatSellerLabel(noShopSeller);
     expect(label.tag).toBe('3P');
     expect(label.name).toBe('No Shop Seller');
-    expect(label.handle).toBe('#abcdef12'); // id is 8 chars, slice(0,8) = full id
-    expect(label.fullText).toBe('No Shop Seller (3P) • #abcdef12');
+    expect(label.fullText).toBe('No Shop Seller (3P)');
   });
 
-  it('slices seller id to 8 chars for the handle fallback when seller has no shop', () => {
+  it('formats seller id fallback when seller has no shop or legalName', () => {
     const longIdSeller: SellerWithShop = {
       ...noShopSeller,
+      legalName: '',
       id: '12345678-abcd-ef01-2345-6789abcdef01',
     };
     const label = formatSellerLabel(longIdSeller);
-    expect(label.name).toBe('No Shop Seller');
-    expect(label.handle).toBe('#12345678');
-    expect(label.fullText).toBe('No Shop Seller (3P) • #12345678');
+    expect(label.name).toBe('12345678-abcd-ef01-2345-6789abcdef01');
+    expect(label.fullText).toBe('12345678-abcd-ef01-2345-6789abcdef01 (3P)');
   });
 });
 
@@ -164,7 +161,7 @@ describe('SellerCombobox', () => {
 
     it('shows selected seller fullText when a value is set', () => {
       renderCombobox({ value: 'seller_acme' });
-      expect(screen.getByText('Acme Apparel (3P) • @acme-apparel')).toBeInTheDocument();
+      expect(screen.getByText('Acme Apparel (3P)')).toBeInTheDocument();
     });
 
     it('renders trigger as disabled when disabled=true', () => {
@@ -208,14 +205,10 @@ describe('SellerCombobox', () => {
 
       await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
 
-      expect(
-        screen.getByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Acme Apparel (3P)' })).toBeInTheDocument();
       // Displays distinct legal name as secondary confirmation text
       expect(screen.getByText('Acme Apparel LLC')).toBeInTheDocument();
-      expect(
-        screen.getByRole('option', { name: 'Shopnetic Retail (1P) • @shopnetic-retail' }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Shopnetic Retail (1P)' })).toBeInTheDocument();
     });
   });
 
@@ -230,7 +223,7 @@ describe('SellerCombobox', () => {
       fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
       await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
 
-      const option = screen.getByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' });
+      const option = screen.getByRole('option', { name: 'Acme Apparel (3P)' });
       fireEvent.click(option);
 
       expect(onChange).toHaveBeenCalledWith('seller_acme');
@@ -247,12 +240,12 @@ describe('SellerCombobox', () => {
       await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
 
       const selected = screen.getByRole('option', {
-        name: 'Acme Apparel (3P) • @acme-apparel',
+        name: 'Acme Apparel (3P)',
       });
       expect(selected).toHaveAttribute('aria-selected', 'true');
 
       const unselected = screen.getByRole('option', {
-        name: 'Shopnetic Retail (1P) • @shopnetic-retail',
+        name: 'Shopnetic Retail (1P)',
       });
       expect(unselected).toHaveAttribute('aria-selected', 'false');
     });
@@ -272,11 +265,9 @@ describe('SellerCombobox', () => {
       });
 
       await waitFor(() => {
+        expect(screen.getByRole('option', { name: 'Acme Apparel (3P)' })).toBeInTheDocument();
         expect(
-          screen.getByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' }),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByRole('option', { name: 'Shopnetic Retail (1P) • @shopnetic-retail' }),
+          screen.queryByRole('option', { name: 'Shopnetic Retail (1P)' }),
         ).not.toBeInTheDocument();
       });
     });
@@ -287,16 +278,12 @@ describe('SellerCombobox', () => {
       await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
 
       fireEvent.change(screen.getByPlaceholderText('Search sellers…'), {
-        target: { value: '@shopnetic' },
+        target: { value: 'shopnetic' },
       });
 
       await waitFor(() => {
-        expect(
-          screen.getByRole('option', { name: 'Shopnetic Retail (1P) • @shopnetic-retail' }),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' }),
-        ).not.toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Shopnetic Retail (1P)' })).toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: 'Acme Apparel (3P)' })).not.toBeInTheDocument();
       });
     });
 
@@ -310,12 +297,8 @@ describe('SellerCombobox', () => {
       });
 
       await waitFor(() => {
-        expect(
-          screen.getByRole('option', { name: 'Shopnetic Retail (1P) • @shopnetic-retail' }),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' }),
-        ).not.toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Shopnetic Retail (1P)' })).toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: 'Acme Apparel (3P)' })).not.toBeInTheDocument();
       });
     });
 
@@ -329,9 +312,7 @@ describe('SellerCombobox', () => {
       });
 
       await waitFor(() => {
-        expect(
-          screen.getByRole('option', { name: 'Acme Apparel (3P) • @acme-apparel' }),
-        ).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'Acme Apparel (3P)' })).toBeInTheDocument();
       });
     });
 
