@@ -137,9 +137,10 @@ function GeneratorModal({
   const variantAxes = useMemo(() => {
     return productOptions.filter((po) => {
       const co = categoryOptionMap.get(po.optionTypeId);
-      return co?.isVariantAxis === true;
+      if (co) return co.isVariantAxis === true;
+      return categoryOptions.length === 0;
     });
-  }, [productOptions, categoryOptionMap]);
+  }, [productOptions, categoryOptionMap, categoryOptions.length]);
 
   const emptyAxes = useMemo(() => {
     return variantAxes.filter((axis) => axis.values.length === 0);
@@ -685,9 +686,10 @@ function VariantFormModal({
   const variantAxes = useMemo(() => {
     return productOptions.filter((po) => {
       const co = categoryOptionMap.get(po.optionTypeId);
-      return co?.isVariantAxis === true;
+      if (co) return co.isVariantAxis === true;
+      return categoryOptions.length === 0;
     });
-  }, [productOptions, categoryOptionMap]);
+  }, [productOptions, categoryOptionMap, categoryOptions.length]);
 
   useEffect(() => {
     if (variant) {
@@ -1221,9 +1223,10 @@ export function ProductVariantsDialog({
   const variantAxes = useMemo(() => {
     return productOptions.filter((po) => {
       const co = categoryOptionMap.get(po.optionTypeId);
-      return co?.isVariantAxis ?? false;
+      if (co) return co.isVariantAxis === true;
+      return categoryOptions.length === 0;
     });
-  }, [productOptions, categoryOptionMap]);
+  }, [productOptions, categoryOptionMap, categoryOptions.length]);
 
   const maxCombos = useMemo(() => {
     if (variantAxes.length === 0) return 1;
@@ -1716,32 +1719,34 @@ export function ProductVariantsDialog({
                           </StatusBadge>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div>
+                        <div className="flex items-start justify-between gap-4 text-xs">
+                          <div className="min-w-0">
                             <span className="text-muted-foreground">
                               {t('products.variants.table.sku')}:{' '}
                             </span>
                             <span className="font-mono text-foreground">{v.skuCode || '—'}</span>
                           </div>
-                          <div>
-                            <span className="text-muted-foreground">
-                              {t('products.variants.table.gtin')}:{' '}
-                            </span>
-                            <span className="font-mono text-foreground">{v.gtin || '—'}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">
-                              {t('products.variants.table.weight')}:{' '}
-                            </span>
-                            <span className="text-foreground">
-                              {v.weightG != null ? `${v.weightG}g` : '—'}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">
-                              {t('products.variants.table.dimensions')}:{' '}
-                            </span>
-                            <span className="text-foreground">{formatDims(v.dims)}</span>
+                          <div className="text-right space-y-0.5 shrink-0">
+                            <div>
+                              <span className="text-muted-foreground">
+                                {t('products.variants.table.gtin')}:{' '}
+                              </span>
+                              <span className="font-mono text-foreground">{v.gtin || '—'}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">
+                                {t('products.variants.table.weight')}:{' '}
+                              </span>
+                              <span className="text-foreground">
+                                {v.weightG != null ? `${v.weightG}g` : '—'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">
+                                {t('products.variants.table.dimensions')}:{' '}
+                              </span>
+                              <span className="text-foreground">{formatDims(v.dims)}</span>
+                            </div>
                           </div>
                         </div>
 

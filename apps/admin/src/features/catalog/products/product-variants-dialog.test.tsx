@@ -915,4 +915,156 @@ describe('ProductVariantsDialog', () => {
       expect(screen.getAllByText('TEE-M')[0]).toBeInTheDocument();
     });
   });
+
+  it('renders card view with right-aligned metrics (GTIN, weight, dimensions) under status badge', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('TEE-S')[0]).toBeInTheDocument();
+    });
+
+    const card = document.querySelector('.lg\\:hidden .rounded-lg');
+    expect(card).toBeInTheDocument();
+    const rightCol = card?.querySelector('.text-right');
+    expect(rightCol).toBeInTheDocument();
+    expect(rightCol?.textContent).toContain('123456789012');
+    expect(rightCol?.textContent).toContain('180g');
+  });
+
+  it('enables Generate Variants and Add Variant buttons when a combination is deleted from a fully-generated matrix', async () => {
+    // 2 variants existing out of 2 max combinations
+    const variant1: Variant = {
+      ...sampleVariant,
+      id: 'var-1',
+      skuCode: 'TEE-S',
+      comboSignature: 'color:black',
+    };
+    const variant2: Variant = {
+      ...sampleVariant,
+      id: 'var-2',
+      skuCode: 'TEE-M',
+      comboSignature: 'color:white',
+    };
+
+    mockedListVariantsPage.mockResolvedValueOnce({
+      variants: [variant1, variant2],
+      total: 2,
+      nextCursor: undefined,
+    });
+    mockedListProductOptions.mockResolvedValueOnce([
+      {
+        productId: sampleProduct.id,
+        optionTypeId: 'ot-1',
+        optionTypeCode: 'color',
+        requiredValueId: null,
+        position: 0,
+        values: [
+          {
+            optionValueId: 'ov-1',
+            code: 'black',
+            position: 0,
+          },
+          {
+            optionValueId: 'ov-2',
+            code: 'white',
+            position: 1,
+          },
+        ],
+      },
+    ]);
+    mockedListCategoryOptions.mockResolvedValueOnce([
+      {
+        categoryId: sampleProduct.categoryId,
+        optionTypeId: 'ot-1',
+        optionTypeCode: 'color',
+        applicability: 'required',
+        isVariantAxis: true,
+        valueSource: 'open',
+        valueSetId: null,
+        priceImpact: false,
+        position: 0,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    // Initial state: all 2 combinations generated -> buttons disabled, banner visible
+    await waitFor(() => {
+      expect(
+        screen.getByText('All possible variant combinations have already been generated.'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Add Variant' })).toBeDisabled();
+    });
+
+    // Mock delete of variant 1
+    mockedDeleteVariant.mockResolvedValueOnce(undefined);
+    mockedListVariantsPage.mockResolvedValueOnce({
+      variants: [variant2],
+      total: 1,
+      nextCursor: undefined,
+    });
+
+    const deleteButtons = screen.getAllByRole('button', { name: 'Delete variant' });
+    fireEvent.click(deleteButtons[0]!);
+
+    // After deleting 1 variant: 1 of 2 combinations remain -> buttons get enabled, banner disappears!
+    await waitFor(() => {
+      expect(
+        screen.queryByText('All possible variant combinations have already been generated.'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Add Variant' })).not.toBeDisabled();
+    });
+  });
+
+  it('falls back to treating product options as variant axes when categoryOptions has no mappings', async () => {
+    // Category has NO category options configured ([]), but product has 2 options with 2 values each (max 4 combos)
+    mockedListVariantsPage.mockResolvedValueOnce({
+      variants: [sampleVariant],
+      total: 1,
+      nextCursor: undefined,
+    });
+    mockedListProductOptions.mockResolvedValueOnce([
+      {
+        productId: sampleProduct.id,
+        optionTypeId: 'ot-1',
+        optionTypeCode: 'color',
+        requiredValueId: null,
+        position: 0,
+        values: [
+          {
+            optionValueId: 'ov-1',
+            code: 'black',
+            position: 0,
+          },
+          {
+            optionValueId: 'ov-2',
+            code: 'white',
+            position: 1,
+          },
+        ],
+      },
+    ]);
+    mockedListCategoryOptions.mockResolvedValueOnce([]); // empty category options!
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    // With total=1 and maxCombos=2 (from fallback), buttons must NOT be disabled as allCombosGenerated is false
+    await waitFor(() => {
+      expect(
+        screen.queryByText('All possible variant combinations have already been generated.'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Add Variant' })).not.toBeDisabled();
+    });
+  });
 });

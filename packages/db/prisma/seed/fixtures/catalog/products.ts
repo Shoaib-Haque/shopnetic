@@ -10,7 +10,7 @@
  */
 import type { PrismaClient } from '../../../../src/index.js';
 import type { SeedCtx } from '../../ctx.js';
-import { upsertProduct } from '../../factories.js';
+import { putCategoryOption, upsertProduct } from '../../factories.js';
 
 const COMBO_COLORS = ['black', 'white', 'blue', 'red', 'green'] as const;
 const COMBO_SIZES = ['s', 'm', 'l', 'xl'] as const;
@@ -211,6 +211,23 @@ export async function seedFixtureProducts(prisma: PrismaClient, ctx: SeedCtx): P
         select: [{ typeCode: 'color', valueCode: 'black' }],
       },
     ],
+  });
+
+  await putCategoryOption(prisma, ctx, {
+    categorySlug: 'fx-rtx-series',
+    optionTypeCode: 'color',
+    applicability: 'optional',
+    isVariantAxis: true,
+    valueSource: 'open',
+    position: 0,
+  });
+  await putCategoryOption(prisma, ctx, {
+    categorySlug: 'fx-rtx-series',
+    optionTypeCode: 'size',
+    applicability: 'optional',
+    isVariantAxis: true,
+    valueSource: 'open',
+    position: 1,
   });
 
   await upsertProduct(prisma, ctx, {

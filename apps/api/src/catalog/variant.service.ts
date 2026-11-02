@@ -419,7 +419,13 @@ export class VariantService {
       },
       select: { optionTypeId: true },
     });
-    const axisTypeIds = new Set(axisRows.map((r) => r.optionTypeId));
+    const categoryOptionCount = await this.prisma.categoryOption.count({
+      where: { categoryId },
+    });
+    const axisTypeIds =
+      categoryOptionCount > 0
+        ? new Set(axisRows.map((r) => r.optionTypeId))
+        : new Set(options.map((o) => o.optionTypeId));
 
     const seen = new Set<string>();
     for (const sel of selections) {
