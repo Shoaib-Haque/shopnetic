@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Boxes,
+  CheckCircle2,
   Edit2,
   Grid,
   Image as ImageIcon,
@@ -645,7 +646,6 @@ function VariantFormModal({
   const t = useTranslations('catalog');
   const [manualSelections, setManualSelections] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const isEdit = variant !== null;
 
@@ -702,7 +702,6 @@ function VariantFormModal({
         status: variant.status,
       });
       setFormError(null);
-      setErrorCode(null);
     } else {
       reset({
         skuCode: '',
@@ -715,13 +714,11 @@ function VariantFormModal({
       });
       setManualSelections({});
       setFormError(null);
-      setErrorCode(null);
     }
   }, [variant, open, reset]);
 
   const onSubmit = async (values: VariantFormValues) => {
     setFormError(null);
-    setErrorCode(null);
 
     const dimsObj =
       values.length || values.width || values.height
@@ -772,7 +769,6 @@ function VariantFormModal({
       }
     } catch (err) {
       const code = err instanceof AdminApiError ? err.code : undefined;
-      setErrorCode(code ?? null);
       if (code === 'VARIANT_SKU_TAKEN' || code === 'SKU_TAKEN') {
         setError('skuCode', { type: 'server', message: t(catalogErrorKey(code)) });
       } else if (code === 'CONFLICT' || code === 'VARIANT_OCC_CONFLICT') {
@@ -802,6 +798,12 @@ function VariantFormModal({
           </ModalHeader>
 
           <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
+            {formError && (
+              <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-xs font-medium text-destructive">
+                {formError}
+              </div>
+            )}
+
             {/* Selections section */}
             {isEdit && variant ? (
               <div className="rounded-md bg-muted/50 p-2.5">
@@ -887,11 +889,6 @@ function VariantFormModal({
                     </Field>
                   );
                 })}
-                {errorCode === 'VARIANT_COMBO_EXISTS' && formError && (
-                  <div className="mt-2 rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-xs font-medium text-destructive">
-                    {formError}
-                  </div>
-                )}
               </div>
             ) : null}
 
@@ -1027,12 +1024,6 @@ function VariantFormModal({
                 )}
               />
             </div>
-
-            {formError && errorCode !== 'VARIANT_COMBO_EXISTS' && (
-              <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
-                {formError}
-              </div>
-            )}
           </ModalBody>
 
           <ModalFooter className="shrink-0 border-t border-border pt-3">
@@ -1221,6 +1212,32 @@ export function ProductVariantsDialog({
     return map;
   }, [optionTypes]);
 
+  const categoryOptionMap = useMemo(() => {
+    const map = new Map<string, CategoryOption>();
+    for (const co of categoryOptions) map.set(co.optionTypeId, co);
+    return map;
+  }, [categoryOptions]);
+
+  const variantAxes = useMemo(() => {
+    return productOptions.filter((po) => {
+      const co = categoryOptionMap.get(po.optionTypeId);
+      return co?.isVariantAxis ?? false;
+    });
+  }, [productOptions, categoryOptionMap]);
+
+  const maxCombos = useMemo(() => {
+    if (variantAxes.length === 0) return 1;
+    for (const axis of variantAxes) {
+      if (axis.values.length === 0) return 0;
+    }
+    return variantAxes.reduce((acc, axis) => acc * axis.values.length, 1);
+  }, [variantAxes]);
+
+  const allCombosGenerated = useMemo(() => {
+    if (loading || maxCombos === 0) return false;
+    return totalVariants >= maxCombos;
+  }, [loading, maxCombos, totalVariants]);
+
   const labelOfVariant = (v: Variant | null | undefined): string =>
     v?.skuCode || (v?.comboSignature ? v.comboSignature : '');
 
@@ -1268,10 +1285,12 @@ export function ProductVariantsDialog({
     resync: () => void resyncVariants(),
     onOptimisticRemove: (v) => {
       setVariants((prev) => prev.filter((x) => x.id !== v.id));
+      setAllExistingVariants((prev) => prev.filter((x) => x.id !== v.id));
       setTotalVariants((prev) => Math.max(0, prev - 1));
     },
     onOptimisticRestore: (v) => {
       setVariants((prev) => [...prev, v].sort((a, b) => a.position - b.position));
+      setAllExistingVariants((prev) => [...prev.filter((x) => x.id !== v.id), v]);
       setTotalVariants((prev) => prev + 1);
     },
     labelOf: labelOfVariant,
@@ -1365,7 +1384,12 @@ export function ProductVariantsDialog({
                     variant="outline"
                     size="sm"
                     onClick={() => setGeneratorOpen(true)}
-                    disabled={loading}
+                    disabled={loading || allCombosGenerated}
+                    title={
+                      allCombosGenerated
+                        ? t('products.variants.allCombosGeneratedTooltip')
+                        : undefined
+                    }
                     className="w-full sm:w-auto"
                   >
                     <Wand2 className="size-4" />
@@ -1375,7 +1399,12 @@ export function ProductVariantsDialog({
                     type="button"
                     size="sm"
                     onClick={() => setFormModalState({ open: true, variant: null })}
-                    disabled={loading}
+                    disabled={loading || allCombosGenerated}
+                    title={
+                      allCombosGenerated
+                        ? t('products.variants.allCombosGeneratedTooltip')
+                        : undefined
+                    }
                     className="w-full sm:w-auto"
                   >
                     <Plus className="size-4" />
@@ -1387,6 +1416,41 @@ export function ProductVariantsDialog({
           </ModalHeader>
 
           <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
+            {allCombosGenerated && !loading && (
+              <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
+                <CheckCircle2 className="size-4 shrink-0" />
+                <span>{t('products.variants.allCombosGenerated')}</span>
+              </div>
+            )}
+
+            {actionError && (
+              <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
+                {actionError}
+              </div>
+            )}
+
+            {/* Search Toolbar (Always mounted so focus is never lost on typing!) */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-sm">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('products.variants.searchPlaceholder')}
+                  className="h-9 pl-8"
+                />
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {t('products.variants.showingCount', {
+                  count: variants.length,
+                  total: totalVariants,
+                })}
+              </div>
+            </div>
+
             {loading ? (
               <div className="space-y-3 py-4">
                 <Skeleton className="h-10 w-full" />
@@ -1406,245 +1470,81 @@ export function ProductVariantsDialog({
                   Retry
                 </Button>
               </div>
-            ) : (
-              <>
-                {actionError && (
-                  <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
-                    {actionError}
-                  </div>
-                )}
-
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                  <div className="relative flex-1 max-w-sm">
-                    <Search
-                      className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <Input
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder={t('products.variants.searchPlaceholder')}
-                      className="h-9 pl-8"
-                    />
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {t('products.variants.showingCount', {
-                      count: variants.length,
-                      total: totalVariants,
-                    })}
+            ) : variants.length === 0 ? (
+              debouncedQuery ? (
+                <div className="rounded-lg border border-dashed border-border py-12 text-center">
+                  <Search className="mx-auto size-8 text-muted-foreground/60" aria-hidden />
+                  <p className="mt-2 text-sm font-medium text-foreground">
+                    No variants match your search
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Try adjusting your search terms.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border py-12 text-center">
+                  <Grid className="mx-auto size-8 text-muted-foreground/60" aria-hidden />
+                  <p className="mt-2 text-sm font-medium text-foreground">
+                    {t('products.variants.emptyTitle')}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t('products.variants.emptySubtitle')}
+                  </p>
+                  <div className="mt-4 flex items-center justify-center gap-3">
+                    {onBackToOptions && product && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          onOpenChange(false);
+                          onBackToOptions(product);
+                        }}
+                      >
+                        <ArrowLeft className="size-4" />
+                        {t('products.variants.backToOptions')}
+                      </Button>
+                    )}
+                    {!isReadOnly && !allCombosGenerated && (
+                      <Button type="button" size="sm" onClick={() => setGeneratorOpen(true)}>
+                        <Wand2 className="size-4" />
+                        {t('products.variants.generate')}
+                      </Button>
+                    )}
                   </div>
                 </div>
-
-                {variants.length === 0 ? (
-                  debouncedQuery ? (
-                    <div className="rounded-lg border border-dashed border-border py-12 text-center">
-                      <Search className="mx-auto size-8 text-muted-foreground/60" aria-hidden />
-                      <p className="mt-2 text-sm font-medium text-foreground">
-                        No variants match your search
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Try adjusting your search terms.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-border py-12 text-center">
-                      <Grid className="mx-auto size-8 text-muted-foreground/60" aria-hidden />
-                      <p className="mt-2 text-sm font-medium text-foreground">
-                        {t('products.variants.emptyTitle')}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {t('products.variants.emptySubtitle')}
-                      </p>
-                      <div className="mt-4 flex items-center justify-center gap-3">
-                        {onBackToOptions && product && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              onOpenChange(false);
-                              onBackToOptions(product);
-                            }}
-                          >
-                            <ArrowLeft className="size-4" />
-                            {t('products.variants.backToOptions')}
-                          </Button>
-                        )}
-                        {!isReadOnly && (
-                          <Button type="button" size="sm" onClick={() => setGeneratorOpen(true)}>
-                            <Wand2 className="size-4" />
-                            {t('products.variants.generate')}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                ) : (
-                  <>
-                    {/* Desktop Table View */}
-                    <div className="hidden md:block overflow-x-auto rounded-lg border border-border">
-                      <Table className="min-w-[700px]">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{t('products.variants.table.combination')}</TableHead>
-                            <TableHead className="w-36">
-                              {t('products.variants.table.sku')}
-                            </TableHead>
-                            <TableHead className="w-36">
-                              {t('products.variants.table.gtin')}
-                            </TableHead>
-                            <TableHead className="w-24">
-                              {t('products.variants.table.weight')}
-                            </TableHead>
-                            <TableHead className="w-32">
-                              {t('products.variants.table.dimensions')}
-                            </TableHead>
-                            <TableHead className="w-24">
-                              {t('products.variants.table.status')}
-                            </TableHead>
-                            <TableHead className="w-20 text-right">
-                              {t('products.variants.table.actions')}
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {variants.map((v) => {
-                            const isDeleting = deletingId === v.id;
-                            return (
-                              <TableRow key={v.id}>
-                                <TableCell>
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    {v.selections.length === 0 ? (
-                                      <span className="text-xs text-muted-foreground italic">
-                                        Single / Base Variant
-                                      </span>
-                                    ) : (
-                                      v.selections.map((sel) => {
-                                        const ot = optionTypeMap.get(sel.optionTypeId);
-                                        const ov = ot?.values.find(
-                                          (val) => val.id === sel.optionValueId,
-                                        );
-                                        const po = productOptions.find(
-                                          (p) => p.optionTypeId === sel.optionTypeId,
-                                        );
-                                        const pv = po?.values.find(
-                                          (val) => val.optionValueId === sel.optionValueId,
-                                        );
-
-                                        const typeName =
-                                          sel.optionTypeName?.en ||
-                                          sel.optionTypeCode ||
-                                          ot?.name.en ||
-                                          po?.optionTypeName?.en ||
-                                          po?.optionTypeCode ||
-                                          'Option';
-                                        const valLabel =
-                                          sel.optionValueLabel?.en ||
-                                          sel.optionValueCode ||
-                                          ov?.label.en ||
-                                          ov?.code ||
-                                          pv?.code ||
-                                          '—';
-
-                                        return (
-                                          <span
-                                            key={sel.optionTypeId}
-                                            className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
-                                          >
-                                            {typeName}: {valLabel}
-                                          </span>
-                                        );
-                                      })
-                                    )}
-                                  </div>
-                                </TableCell>
-                                <TableCell className="font-mono text-xs text-muted-foreground">
-                                  {v.skuCode || '—'}
-                                </TableCell>
-                                <TableCell className="font-mono text-xs text-muted-foreground">
-                                  {v.gtin || '—'}
-                                </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
-                                  {v.weightG != null ? `${v.weightG}g` : '—'}
-                                </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
-                                  {formatDims(v.dims)}
-                                </TableCell>
-                                <TableCell>
-                                  <StatusBadge tone={v.status === 'active' ? 'success' : 'neutral'}>
-                                    {v.status}
-                                  </StatusBadge>
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex items-center justify-end gap-1">
-                                    {onManageOffers && product && (
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => onManageOffers(product, v.id)}
-                                            aria-label={t('products.offersAction')}
-                                          >
-                                            <Boxes className="size-3.5" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {t('products.offersAction')}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    )}
-                                    {!isReadOnly && (
-                                      <>
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() =>
-                                            setFormModalState({ open: true, variant: v })
-                                          }
-                                          aria-label="Edit variant"
-                                        >
-                                          <Edit2 className="size-3.5" />
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          disabled={isDeleting}
-                                          onClick={() => handleDeleteVariant(v)}
-                                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                          aria-label="Delete variant"
-                                        >
-                                          {isDeleting ? (
-                                            <Spinner className="size-3.5" />
-                                          ) : (
-                                            <Trash2 className="size-3.5" />
-                                          )}
-                                        </Button>
-                                      </>
-                                    )}
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-
-                    {/* Mobile Card View */}
-                    <div className="md:hidden space-y-3">
+              )
+            ) : (
+              <>
+                {/* Desktop Table View */}
+                <div className="hidden lg:block overflow-x-auto rounded-lg border border-border">
+                  <Table className="min-w-[700px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t('products.variants.table.combination')}</TableHead>
+                        <TableHead className="w-36">{t('products.variants.table.sku')}</TableHead>
+                        <TableHead className="w-36">{t('products.variants.table.gtin')}</TableHead>
+                        <TableHead className="w-24">
+                          {t('products.variants.table.weight')}
+                        </TableHead>
+                        <TableHead className="w-32">
+                          {t('products.variants.table.dimensions')}
+                        </TableHead>
+                        <TableHead className="w-24">
+                          {t('products.variants.table.status')}
+                        </TableHead>
+                        <TableHead className="w-20 text-right">
+                          {t('products.variants.table.actions')}
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {variants.map((v) => {
                         const isDeleting = deletingId === v.id;
                         return (
-                          <div
-                            key={v.id}
-                            className="rounded-lg border border-border bg-card p-3.5 space-y-2.5 text-sm"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex flex-wrap items-center gap-1.5 flex-1">
+                          <TableRow key={v.id}>
+                            <TableCell>
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 {v.selections.length === 0 ? (
                                   <span className="text-xs text-muted-foreground italic">
                                     Single / Base Variant
@@ -1661,6 +1561,7 @@ export function ProductVariantsDialog({
                                     const pv = po?.values.find(
                                       (val) => val.optionValueId === sel.optionValueId,
                                     );
+
                                     const typeName =
                                       sel.optionTypeName?.en ||
                                       sel.optionTypeCode ||
@@ -1675,6 +1576,7 @@ export function ProductVariantsDialog({
                                       ov?.code ||
                                       pv?.code ||
                                       '—';
+
                                     return (
                                       <span
                                         key={sel.optionTypeId}
@@ -1686,110 +1588,229 @@ export function ProductVariantsDialog({
                                   })
                                 )}
                               </div>
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {v.skuCode || '—'}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {v.gtin || '—'}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {v.weightG != null ? `${v.weightG}g` : '—'}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {formatDims(v.dims)}
+                            </TableCell>
+                            <TableCell>
                               <StatusBadge tone={v.status === 'active' ? 'success' : 'neutral'}>
                                 {v.status}
                               </StatusBadge>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div>
-                                <span className="text-muted-foreground">
-                                  {t('products.variants.table.sku')}:{' '}
-                                </span>
-                                <span className="font-mono text-foreground">
-                                  {v.skuCode || '—'}
-                                </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {onManageOffers && product && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => onManageOffers(product, v.id)}
+                                        aria-label={t('products.offersAction')}
+                                      >
+                                        <Boxes className="size-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{t('products.offersAction')}</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {!isReadOnly && (
+                                  <>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setFormModalState({ open: true, variant: v })}
+                                      aria-label="Edit variant"
+                                    >
+                                      <Edit2 className="size-3.5" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      disabled={isDeleting}
+                                      onClick={() => handleDeleteVariant(v)}
+                                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      aria-label="Delete variant"
+                                    >
+                                      {isDeleting ? (
+                                        <Spinner className="size-3.5" />
+                                      ) : (
+                                        <Trash2 className="size-3.5" />
+                                      )}
+                                    </Button>
+                                  </>
+                                )}
                               </div>
-                              <div>
-                                <span className="text-muted-foreground">
-                                  {t('products.variants.table.gtin')}:{' '}
-                                </span>
-                                <span className="font-mono text-foreground">{v.gtin || '—'}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">
-                                  {t('products.variants.table.weight')}:{' '}
-                                </span>
-                                <span className="text-foreground">
-                                  {v.weightG != null ? `${v.weightG}g` : '—'}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">
-                                  {t('products.variants.table.dimensions')}:{' '}
-                                </span>
-                                <span className="text-foreground">{formatDims(v.dims)}</span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-end gap-1 pt-2 border-t border-border/50">
-                              {onManageOffers && product && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => onManageOffers(product, v.id)}
-                                  aria-label={t('products.offersAction')}
-                                >
-                                  <Boxes className="size-3.5" />
-                                </Button>
-                              )}
-                              {!isReadOnly && (
-                                <>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setFormModalState({ open: true, variant: v })}
-                                    aria-label="Edit variant"
-                                  >
-                                    <Edit2 className="size-3.5" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={isDeleting}
-                                    onClick={() => handleDeleteVariant(v)}
-                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                    aria-label="Delete variant"
-                                  >
-                                    {isDeleting ? (
-                                      <Spinner className="size-3.5" />
-                                    ) : (
-                                      <Trash2 className="size-3.5" />
-                                    )}
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </div>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
-                    </div>
+                    </TableBody>
+                  </Table>
+                </div>
 
-                    {/* Pagination - Load More */}
-                    {nextCursor && (
-                      <div className="flex justify-center pt-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void handleLoadMore()}
-                          disabled={loadingMore}
-                        >
-                          {loadingMore ? (
-                            <>
-                              <Spinner className="size-4" />
-                              <span>{t('products.variants.loadMore')}</span>
-                            </>
-                          ) : (
-                            <span>{t('products.variants.loadMore')}</span>
+                {/* Mobile Card View */}
+                <div className="lg:hidden space-y-3">
+                  {variants.map((v) => {
+                    const isDeleting = deletingId === v.id;
+                    return (
+                      <div
+                        key={v.id}
+                        className="rounded-lg border border-border bg-card p-3.5 space-y-2.5 text-sm"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5 flex-1">
+                            {v.selections.length === 0 ? (
+                              <span className="text-xs text-muted-foreground italic">
+                                Single / Base Variant
+                              </span>
+                            ) : (
+                              v.selections.map((sel) => {
+                                const ot = optionTypeMap.get(sel.optionTypeId);
+                                const ov = ot?.values.find((val) => val.id === sel.optionValueId);
+                                const po = productOptions.find(
+                                  (p) => p.optionTypeId === sel.optionTypeId,
+                                );
+                                const pv = po?.values.find(
+                                  (val) => val.optionValueId === sel.optionValueId,
+                                );
+                                const typeName =
+                                  sel.optionTypeName?.en ||
+                                  sel.optionTypeCode ||
+                                  ot?.name.en ||
+                                  po?.optionTypeName?.en ||
+                                  po?.optionTypeCode ||
+                                  'Option';
+                                const valLabel =
+                                  sel.optionValueLabel?.en ||
+                                  sel.optionValueCode ||
+                                  ov?.label.en ||
+                                  ov?.code ||
+                                  pv?.code ||
+                                  '—';
+                                return (
+                                  <span
+                                    key={sel.optionTypeId}
+                                    className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
+                                  >
+                                    {typeName}: {valLabel}
+                                  </span>
+                                );
+                              })
+                            )}
+                          </div>
+                          <StatusBadge tone={v.status === 'active' ? 'success' : 'neutral'}>
+                            {v.status}
+                          </StatusBadge>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-muted-foreground">
+                              {t('products.variants.table.sku')}:{' '}
+                            </span>
+                            <span className="font-mono text-foreground">{v.skuCode || '—'}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">
+                              {t('products.variants.table.gtin')}:{' '}
+                            </span>
+                            <span className="font-mono text-foreground">{v.gtin || '—'}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">
+                              {t('products.variants.table.weight')}:{' '}
+                            </span>
+                            <span className="text-foreground">
+                              {v.weightG != null ? `${v.weightG}g` : '—'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">
+                              {t('products.variants.table.dimensions')}:{' '}
+                            </span>
+                            <span className="text-foreground">{formatDims(v.dims)}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-1 pt-2 border-t border-border/50">
+                          {onManageOffers && product && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onManageOffers(product, v.id)}
+                              aria-label={t('products.offersAction')}
+                            >
+                              <Boxes className="size-3.5" />
+                            </Button>
                           )}
-                        </Button>
+                          {!isReadOnly && (
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setFormModalState({ open: true, variant: v })}
+                                aria-label="Edit variant"
+                              >
+                                <Edit2 className="size-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={isDeleting}
+                                onClick={() => handleDeleteVariant(v)}
+                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                aria-label="Delete variant"
+                              >
+                                {isDeleting ? (
+                                  <Spinner className="size-3.5" />
+                                ) : (
+                                  <Trash2 className="size-3.5" />
+                                )}
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </>
+                    );
+                  })}
+                </div>
+
+                {/* Pagination - Load More */}
+                {nextCursor && (
+                  <div className="flex justify-center pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleLoadMore()}
+                      disabled={loadingMore}
+                    >
+                      {loadingMore ? (
+                        <>
+                          <Spinner className="size-4" />
+                          <span>{t('products.variants.loadMore')}</span>
+                        </>
+                      ) : (
+                        <span>{t('products.variants.loadMore')}</span>
+                      )}
+                    </Button>
+                  </div>
                 )}
               </>
             )}
@@ -1805,7 +1826,7 @@ export function ProductVariantsDialog({
                     onOpenChange(false);
                     onBackToOptions(product);
                   }}
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   <ArrowLeft className="size-4" />
                   {t('products.variants.backToOptions')}
@@ -1819,7 +1840,7 @@ export function ProductVariantsDialog({
                     onOpenChange(false);
                     onManageMedia(product);
                   }}
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   <ImageIcon className="size-4" />
                   {t('products.mediaAction')}
@@ -1833,7 +1854,7 @@ export function ProductVariantsDialog({
                     onOpenChange(false);
                     onManageOffers(product);
                   }}
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   <Boxes className="size-4" />
                   {t('products.offersAction')}

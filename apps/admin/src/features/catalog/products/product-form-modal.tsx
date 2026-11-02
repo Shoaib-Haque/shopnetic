@@ -217,10 +217,35 @@ export function ProductFormModal({
     }
   }, [open, product, categories, reset]);
 
+  function extractErrorMessage(err: unknown): string | undefined {
+    if (!err || typeof err !== 'object') return undefined;
+    if ('message' in err && typeof err.message === 'string' && err.message.length > 0) {
+      return err.message;
+    }
+    if ('content' in err && err.content && typeof err.content === 'object') {
+      return extractErrorMessage(err.content);
+    }
+    return undefined;
+  }
+
   function fieldError(field: keyof FormValues): string | undefined {
-    const err = errors[field];
-    if (!err) return undefined;
-    return err.message?.startsWith('products.') ? t(err.message) : err.message;
+    const directErr = errors[field];
+    if (directErr?.message) {
+      return directErr.message.startsWith('products.') ? t(directErr.message) : directErr.message;
+    }
+    if (field === 'descriptionEn' && errors.descriptionEn) {
+      const msg = extractErrorMessage(errors.descriptionEn);
+      if (msg) {
+        if (msg.includes('exceeds maximum character limit')) {
+          return t('products.form.err.descriptionLong');
+        }
+        if (msg.includes('exceeds maximum size limit')) {
+          return t('products.form.err.descriptionSizeMax');
+        }
+        return msg.startsWith('products.') ? t(msg) : msg;
+      }
+    }
+    return undefined;
   }
 
   async function submitWithStatus(
@@ -363,6 +388,8 @@ export function ProductFormModal({
   const slugField = register('slug');
   const priceField = register('basePrice');
   const watchCurrency = watch('currency') || 'USD';
+  const watchTitle = watch('titleEn') || '';
+  const watchSlug = watch('slug') || '';
   const currencyExponent = getCurrencyExponent(watchCurrency);
 
   // Auto-sanitize basePrice when currency changes
@@ -574,13 +601,27 @@ export function ProductFormModal({
 
         {/* Title */}
         <Field
-          label={t('products.form.title')}
+          label={
+            <span className="flex items-center justify-between w-full">
+              <span>{t('products.form.title')}</span>
+              <span
+                className={`text-[11px] tabular-nums font-normal ${
+                  watchTitle.length > 200
+                    ? 'font-medium text-destructive'
+                    : watchTitle.length > 180
+                      ? 'font-medium text-amber-600 dark:text-amber-400'
+                      : 'text-muted-foreground'
+                }`}
+              >
+                {watchTitle.length}/200
+              </span>
+            </span>
+          }
           htmlFor="product-title"
           error={fieldError('titleEn')}
         >
           <Input
             id="product-title"
-            maxLength={200}
             placeholder={t('products.form.titlePlaceholder')}
             invalid={Boolean(errors.titleEn)}
             disabled={isFieldsDisabled}
@@ -609,14 +650,28 @@ export function ProductFormModal({
 
         {/* Slug */}
         <Field
-          label={t('products.form.slug')}
+          label={
+            <span className="flex items-center justify-between w-full">
+              <span>{t('products.form.slug')}</span>
+              <span
+                className={`text-[11px] tabular-nums font-normal ${
+                  watchSlug.length > 80
+                    ? 'font-medium text-destructive'
+                    : watchSlug.length > 70
+                      ? 'font-medium text-amber-600 dark:text-amber-400'
+                      : 'text-muted-foreground'
+                }`}
+              >
+                {watchSlug.length}/80
+              </span>
+            </span>
+          }
           htmlFor="product-slug"
           hint={mode === 'create' && !slugTouched ? t('products.form.slugAutoHint') : undefined}
           error={fieldError('slug')}
         >
           <Input
             id="product-slug"
-            maxLength={80}
             placeholder={t('products.form.slugPlaceholder')}
             invalid={Boolean(errors.slug)}
             disabled={isFieldsDisabled}

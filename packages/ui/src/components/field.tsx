@@ -6,7 +6,7 @@ import { cn } from '../lib/cn';
  * composes fine inside a client form. One shared field layout (plan/CODING-RULES.md section D3).
  */
 export interface FieldProps {
-  label: string;
+  label: ReactNode;
   htmlFor?: string;
   error?: string | undefined;
   hint?: string | undefined;

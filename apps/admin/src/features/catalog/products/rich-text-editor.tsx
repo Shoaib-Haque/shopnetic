@@ -44,6 +44,7 @@ import {
   getJsonByteLength,
   isDocEmpty,
   isValidDescriptionLinkHref,
+  MAX_PRODUCT_DESCRIPTION_CHARS,
   MAX_PRODUCT_DESCRIPTION_JSON_BYTES,
   productDescriptionDocSchema,
   type ProductDescriptionDoc,
@@ -1403,7 +1404,20 @@ export function RichTextEditor({
         <div className="flex items-center gap-2">
           <span>{t('products.form.editor.words', { count: stats.words })}</span>
           <span>•</span>
-          <span>{t('products.form.editor.characters', { count: stats.characters })}</span>
+          <span
+            className={
+              stats.characters > MAX_PRODUCT_DESCRIPTION_CHARS
+                ? 'font-semibold text-destructive'
+                : stats.characters > 9_000
+                  ? 'text-amber-600 dark:text-amber-400 font-medium'
+                  : 'text-muted-foreground'
+            }
+          >
+            {t('products.form.editor.charactersLimit', {
+              current: stats.characters.toLocaleString(),
+              max: MAX_PRODUCT_DESCRIPTION_CHARS.toLocaleString(),
+            })}
+          </span>
         </div>
         <div>
           <span

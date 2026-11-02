@@ -684,40 +684,213 @@ export function ProductOptionsDialog({
                     {t('products.options.noOptions')}
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border border-border">
-                    <Table className="min-w-[640px]">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-48">Option Axis</TableHead>
-                          <TableHead className="w-32">Type</TableHead>
-                          <TableHead>Offered Values</TableHead>
-                          <TableHead className="w-48">Single Value Skip</TableHead>
-                          {!isReadOnly && (
-                            <TableHead className="w-20 text-right">Actions</TableHead>
-                          )}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {productOptions.map((po) => {
-                          const co = categoryOptionMap.get(po.optionTypeId);
-                          const ot = optionTypeMap.get(po.optionTypeId);
-                          const name = optName(po.optionTypeId);
-                          const isReq = co?.applicability === 'required';
-                          const isAxis = co?.isVariantAxis ?? false;
-                          const isRemoving = removingId === po.optionTypeId;
+                  <>
+                    {/* Desktop Table View */}
+                    <div className="hidden lg:block overflow-x-auto rounded-lg border border-border">
+                      <Table className="min-w-[640px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-48">Option Axis</TableHead>
+                            <TableHead className="w-32">Type</TableHead>
+                            <TableHead>Offered Values</TableHead>
+                            <TableHead className="w-48">Single Value Skip</TableHead>
+                            {!isReadOnly && (
+                              <TableHead className="w-20 text-right">Actions</TableHead>
+                            )}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {productOptions.map((po) => {
+                            const co = categoryOptionMap.get(po.optionTypeId);
+                            const ot = optionTypeMap.get(po.optionTypeId);
+                            const name = optName(po.optionTypeId);
+                            const isReq = co?.applicability === 'required';
+                            const isAxis = co?.isVariantAxis ?? false;
+                            const isRemoving = removingId === po.optionTypeId;
 
-                          return (
-                            <TableRow key={po.optionTypeId}>
-                              <TableCell className="font-medium text-foreground">
-                                <div className="flex flex-col gap-0.5">
-                                  <span>{name}</span>
+                            return (
+                              <TableRow key={po.optionTypeId}>
+                                <TableCell className="font-medium text-foreground">
+                                  <div className="flex flex-col gap-0.5">
+                                    <span>{name}</span>
+                                    <span className="font-mono text-xs text-muted-foreground">
+                                      /{po.optionTypeCode}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col gap-1">
+                                    {isAxis ? (
+                                      <StatusBadge tone="success">
+                                        {t('products.options.variantAxis')}
+                                      </StatusBadge>
+                                    ) : (
+                                      <StatusBadge tone="neutral">
+                                        {t('products.options.informational')}
+                                      </StatusBadge>
+                                    )}
+                                    {isReq ? (
+                                      <StatusBadge tone="warning">
+                                        {t('products.options.requiredByCategory')}
+                                      </StatusBadge>
+                                    ) : (
+                                      <StatusBadge tone="neutral">
+                                        {t('products.options.optional')}
+                                      </StatusBadge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col gap-2">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {po.values.length === 0 ? (
+                                        isReq ? (
+                                          <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                                            {t('products.options.noValuesSelectedRequired')}
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground italic">
+                                            No values selected
+                                          </span>
+                                        )
+                                      ) : (
+                                        po.values.map((v) => {
+                                          const optVal = ot?.values.find(
+                                            (val) => val.id === v.optionValueId,
+                                          );
+                                          const valLabel = optVal?.label.en || v.code;
+                                          return (
+                                            <span
+                                              key={v.optionValueId}
+                                              className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
+                                            >
+                                              {optVal?.swatchHex && (
+                                                <span
+                                                  className="size-3 rounded-full border border-border shadow-xs shrink-0"
+                                                  style={{ backgroundColor: optVal.swatchHex }}
+                                                  title={optVal.swatchHex}
+                                                />
+                                              )}
+                                              <span>{valLabel}</span>
+                                            </span>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+                                    {!isReadOnly && (
+                                      <div>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          data-action="manage-values"
+                                          data-option-code={po.optionTypeCode}
+                                          onClick={() => setValueSelectTarget(po.optionTypeId)}
+                                        >
+                                          {t('products.options.manageValues')} ({po.values.length})
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="w-48 min-w-0">
+                                  {po.values.length > 0 ? (
+                                    <div className="flex items-center min-w-0 w-full">
+                                      <Select
+                                        value={po.requiredValueId ?? '__none__'}
+                                        disabled={isReadOnly}
+                                        onValueChange={(v) =>
+                                          handleSetRequiredValue(
+                                            po.optionTypeId,
+                                            v === '__none__' ? null : v,
+                                          )
+                                        }
+                                      >
+                                        <SelectTrigger
+                                          className="h-8 text-xs min-w-0 flex-1 w-full"
+                                          aria-label={t('products.options.requiredValue')}
+                                        >
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent align="end">
+                                          <SelectItem value="__none__">
+                                            {t('products.options.noneRequiredValue')}
+                                          </SelectItem>
+                                          {po.values.map((v) => {
+                                            const optVal = ot?.values.find(
+                                              (val) => val.id === v.optionValueId,
+                                            );
+                                            const label = optVal?.label.en || v.code;
+                                            return (
+                                              <SelectItem
+                                                key={v.optionValueId}
+                                                value={v.optionValueId}
+                                              >
+                                                {t('products.options.singleValueSkipItem', {
+                                                  label,
+                                                })}
+                                              </SelectItem>
+                                            );
+                                          })}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
+                                {!isReadOnly && (
+                                  <TableCell className="text-right">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      disabled={isRemoving}
+                                      onClick={() => setDeleteTarget(po.optionTypeId)}
+                                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      aria-label="Remove option"
+                                    >
+                                      {isRemoving ? (
+                                        <Spinner className="size-4" />
+                                      ) : (
+                                        <Trash2 className="size-4" />
+                                      )}
+                                    </Button>
+                                  </TableCell>
+                                )}
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Mobile/Tablet Card View (< lg) */}
+                    <div className="lg:hidden space-y-3">
+                      {productOptions.map((po) => {
+                        const co = categoryOptionMap.get(po.optionTypeId);
+                        const ot = optionTypeMap.get(po.optionTypeId);
+                        const name = optName(po.optionTypeId);
+                        const isReq = co?.applicability === 'required';
+                        const isAxis = co?.isVariantAxis ?? false;
+                        const isRemoving = removingId === po.optionTypeId;
+
+                        return (
+                          <div
+                            key={po.optionTypeId}
+                            className="rounded-lg border border-border bg-card p-3.5 space-y-3"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-foreground text-sm">
+                                    {name}
+                                  </span>
                                   <span className="font-mono text-xs text-muted-foreground">
                                     /{po.optionTypeCode}
                                   </span>
                                 </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex flex-col gap-1">
+                                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                   {isAxis ? (
                                     <StatusBadge tone="success">
                                       {t('products.options.variantAxis')}
@@ -737,129 +910,125 @@ export function ProductOptionsDialog({
                                     </StatusBadge>
                                   )}
                                 </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex flex-col gap-2">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    {po.values.length === 0 ? (
-                                      isReq ? (
-                                        <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                                          {t('products.options.noValuesSelectedRequired')}
-                                        </span>
-                                      ) : (
-                                        <span className="text-xs text-muted-foreground italic">
-                                          No values selected
-                                        </span>
-                                      )
-                                    ) : (
-                                      po.values.map((v) => {
-                                        const optVal = ot?.values.find(
-                                          (val) => val.id === v.optionValueId,
-                                        );
-                                        const valLabel = optVal?.label.en || v.code;
-                                        return (
-                                          <span
-                                            key={v.optionValueId}
-                                            className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
-                                          >
-                                            {optVal?.swatchHex && (
-                                              <span
-                                                className="size-3 rounded-full border border-border shadow-xs shrink-0"
-                                                style={{ backgroundColor: optVal.swatchHex }}
-                                                title={optVal.swatchHex}
-                                              />
-                                            )}
-                                            <span>{valLabel}</span>
-                                          </span>
-                                        );
-                                      })
-                                    )}
-                                  </div>
-                                  {!isReadOnly && (
-                                    <div>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        data-action="manage-values"
-                                        data-option-code={po.optionTypeCode}
-                                        onClick={() => setValueSelectTarget(po.optionTypeId)}
-                                      >
-                                        {t('products.options.manageValues')} ({po.values.length})
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="w-48 min-w-0">
-                                {po.values.length > 0 ? (
-                                  <div className="flex items-center min-w-0 w-full">
-                                    <Select
-                                      value={po.requiredValueId ?? '__none__'}
-                                      disabled={isReadOnly}
-                                      onValueChange={(v) =>
-                                        handleSetRequiredValue(
-                                          po.optionTypeId,
-                                          v === '__none__' ? null : v,
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger
-                                        className="h-8 text-xs min-w-0 flex-1 w-full"
-                                        aria-label={t('products.options.requiredValue')}
-                                      >
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent align="end">
-                                        <SelectItem value="__none__">
-                                          {t('products.options.noneRequiredValue')}
-                                        </SelectItem>
-                                        {po.values.map((v) => {
-                                          const optVal = ot?.values.find(
-                                            (val) => val.id === v.optionValueId,
-                                          );
-                                          const label = optVal?.label.en || v.code;
-                                          return (
-                                            <SelectItem
-                                              key={v.optionValueId}
-                                              value={v.optionValueId}
-                                            >
-                                              {t('products.options.singleValueSkipItem', { label })}
-                                            </SelectItem>
-                                          );
-                                        })}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">—</span>
-                                )}
-                              </TableCell>
+                              </div>
                               {!isReadOnly && (
-                                <TableCell className="text-right">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={isRemoving}
+                                  onClick={() => setDeleteTarget(po.optionTypeId)}
+                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0 size-8 p-0"
+                                  aria-label="Remove option"
+                                >
+                                  {isRemoving ? (
+                                    <Spinner className="size-4" />
+                                  ) : (
+                                    <Trash2 className="size-4" />
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+
+                            <div className="space-y-1.5 pt-1 border-t border-border/50">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Offered Values ({po.values.length})</span>
+                                {!isReadOnly && (
                                   <Button
                                     type="button"
-                                    variant="ghost"
+                                    variant="outline"
                                     size="sm"
-                                    disabled={isRemoving}
-                                    onClick={() => setDeleteTarget(po.optionTypeId)}
-                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                    aria-label="Remove option"
+                                    className="h-7 text-xs px-2.5"
+                                    data-action="manage-values"
+                                    data-option-code={po.optionTypeCode}
+                                    onClick={() => setValueSelectTarget(po.optionTypeId)}
                                   >
-                                    {isRemoving ? (
-                                      <Spinner className="size-4" />
-                                    ) : (
-                                      <Trash2 className="size-4" />
-                                    )}
+                                    {t('products.options.manageValues')}
                                   </Button>
-                                </TableCell>
-                              )}
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {po.values.length === 0 ? (
+                                  isReq ? (
+                                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                                      {t('products.options.noValuesSelectedRequired')}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground italic">
+                                      No values selected
+                                    </span>
+                                  )
+                                ) : (
+                                  po.values.map((v) => {
+                                    const optVal = ot?.values.find(
+                                      (val) => val.id === v.optionValueId,
+                                    );
+                                    const valLabel = optVal?.label.en || v.code;
+                                    return (
+                                      <span
+                                        key={v.optionValueId}
+                                        className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
+                                      >
+                                        {optVal?.swatchHex && (
+                                          <span
+                                            className="size-3 rounded-full border border-border shadow-xs shrink-0"
+                                            style={{ backgroundColor: optVal.swatchHex }}
+                                            title={optVal.swatchHex}
+                                          />
+                                        )}
+                                        <span>{valLabel}</span>
+                                      </span>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </div>
+
+                            {po.values.length > 0 && (
+                              <div className="pt-2 border-t border-border/50 space-y-1">
+                                <span className="text-xs text-muted-foreground">
+                                  Single Value Skip:
+                                </span>
+                                <Select
+                                  value={po.requiredValueId ?? '__none__'}
+                                  disabled={isReadOnly}
+                                  onValueChange={(v) =>
+                                    handleSetRequiredValue(
+                                      po.optionTypeId,
+                                      v === '__none__' ? null : v,
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger
+                                    className="h-8 text-xs w-full"
+                                    aria-label={t('products.options.requiredValue')}
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent align="end">
+                                    <SelectItem value="__none__">
+                                      {t('products.options.noneRequiredValue')}
+                                    </SelectItem>
+                                    {po.values.map((v) => {
+                                      const optVal = ot?.values.find(
+                                        (val) => val.id === v.optionValueId,
+                                      );
+                                      const label = optVal?.label.en || v.code;
+                                      return (
+                                        <SelectItem key={v.optionValueId} value={v.optionValueId}>
+                                          {t('products.options.singleValueSkipItem', { label })}
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </>
             )}

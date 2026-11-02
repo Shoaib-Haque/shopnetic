@@ -195,13 +195,13 @@ describe('ProductOptionsDialog', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Product Options & Attributes')).toBeInTheDocument();
-      expect(screen.getByText('Size')).toBeInTheDocument();
-      expect(screen.getByText('/size')).toBeInTheDocument();
+      expect(screen.getAllByText('Size')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('/size')[0]).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Variant Axis')).toBeInTheDocument();
-    expect(screen.getByText('Required by Category')).toBeInTheDocument();
-    expect(screen.getByText('Select Values (2)')).toBeInTheDocument();
+    expect(screen.getAllByText('Variant Axis')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Required by Category')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Select Values (2)')[0]).toBeInTheDocument();
   });
 
   it('adds an available category option to the product', async () => {
@@ -231,7 +231,7 @@ describe('ProductOptionsDialog', () => {
 
     await waitFor(() => {
       expect(mockedPutProductOption).toHaveBeenCalledWith('prod_1', 'ot_color', { position: 1 });
-      expect(screen.getByText('Color')).toBeInTheDocument();
+      expect(screen.getAllByText('Color')[0]).toBeInTheDocument();
     });
   });
 
@@ -307,13 +307,15 @@ describe('ProductOptionsDialog', () => {
     );
 
     await waitFor(() => {
-      const skipTrigger = screen.getByRole('combobox', { name: 'Single Value (Skip Picker)' });
+      const skipTrigger = screen.getAllByRole('combobox', {
+        name: 'Single Value (Skip Picker)',
+      })[0]!;
       expect(skipTrigger).toBeInTheDocument();
       expect(skipTrigger.className).toContain('min-w-0');
       expect(skipTrigger.className).toContain('flex-1');
     });
 
-    fireEvent.click(screen.getByRole('combobox', { name: 'Single Value (Skip Picker)' }));
+    fireEvent.click(screen.getAllByRole('combobox', { name: 'Single Value (Skip Picker)' })[0]!);
     fireEvent.click(screen.getByRole('option', { name: 'Only Small (Skip picker)' }));
 
     await waitFor(() => {
@@ -331,10 +333,10 @@ describe('ProductOptionsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Remove option' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Remove option' })[0]).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove option' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove option' })[0]!);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Option' }));
 
     await waitFor(() => {
@@ -351,10 +353,10 @@ describe('ProductOptionsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Remove option' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Remove option' })[0]).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove option' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove option' })[0]!);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Option' }));
 
     await waitFor(() => {
@@ -412,8 +414,8 @@ describe('ProductOptionsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Fabric (Archived)')).toBeInTheDocument();
-      expect(screen.getByText('/fabric')).toBeInTheDocument();
+      expect(screen.getAllByText('Fabric (Archived)')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('/fabric')[0]).toBeInTheDocument();
     });
 
     const modalHeader = document.querySelector('[class*="pr-10"]');
@@ -438,7 +440,7 @@ describe('ProductOptionsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Black')).toBeInTheDocument();
+      expect(screen.getAllByText('Black')[0]).toBeInTheDocument();
     });
 
     const swatchCircle = document.querySelector('span[title="#000000"]');
@@ -464,7 +466,7 @@ describe('ProductOptionsDialog', () => {
       expect(
         screen.getByText(/Required category axis “Size” has no values selected/i),
       ).toBeInTheDocument();
-      expect(screen.getByText('No values selected (Required)')).toBeInTheDocument();
+      expect(screen.getAllByText('No values selected (Required)')[0]).toBeInTheDocument();
     });
   });
 

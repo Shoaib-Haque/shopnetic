@@ -500,8 +500,8 @@ describe('ProductFormModal', () => {
     );
 
     expect(screen.getByRole('combobox', { name: 'Brand' })).toBeDisabled();
-    expect(screen.getByLabelText('Title')).toBeDisabled();
-    expect(screen.getByLabelText('Slug')).toBeDisabled();
+    expect(screen.getByLabelText(/Title/)).toBeDisabled();
+    expect(screen.getByLabelText(/Slug/)).toBeDisabled();
     expect(screen.getByRole('textbox', { name: 'Description' })).toHaveAttribute(
       'aria-disabled',
       'true',

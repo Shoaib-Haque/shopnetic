@@ -67,9 +67,12 @@ export type ProductDescriptionMark = z.infer<typeof productDescriptionMarkSchema
 
 // ── Inline Nodes ─────────────────────────────────────────────────────────────
 
+export const MAX_PRODUCT_DESCRIPTION_JSON_BYTES = 50_000;
+export const MAX_PRODUCT_DESCRIPTION_CHARS = 10_000;
+
 export const productDescriptionTextNodeSchema = z.object({
   type: z.literal('text'),
-  text: z.string().max(10_000),
+  text: z.string().max(MAX_PRODUCT_DESCRIPTION_CHARS),
   marks: z.array(productDescriptionMarkSchema).optional(),
 });
 
@@ -201,8 +204,6 @@ export const productDescriptionNodeSchema: z.ZodType<ProductDescriptionNode> = z
 
 // ── Top-level Document Schema ────────────────────────────────────────────────
 
-export const MAX_PRODUCT_DESCRIPTION_JSON_BYTES = 50_000;
-
 /**
  * Calculates the exact UTF-8 byte length of a JSON-serializable value or string.
  * Accurately measures multi-byte characters (CJK, emojis) rather than UTF-16 code units.
@@ -227,6 +228,50 @@ export function getJsonByteLength(val: unknown): number {
   }
 }
 
+/**
+ * Extracts plain-text content from a TipTap document AST.
+ * Useful for search indexing, fallback displays, and meta descriptions.
+ */
+export function docToPlainText(
+  doc:
+    | { content?: (ProductDescriptionNode | ProductDescriptionInlineNode)[] | undefined }
+    | null
+    | undefined,
+): string {
+  if (!doc || !Array.isArray(doc.content)) return '';
+
+  const chunks: string[] = [];
+
+  function walk(node: ProductDescriptionNode | ProductDescriptionInlineNode): void {
+    if ('text' in node && typeof node.text === 'string') {
+      chunks.push(node.text);
+      return;
+    }
+    if ('content' in node && Array.isArray(node.content)) {
+      for (const child of node.content) {
+        walk(child);
+      }
+      if (
+        node.type === 'paragraph' ||
+        node.type === 'heading' ||
+        node.type === 'listItem' ||
+        node.type === 'tableRow' ||
+        node.type === 'table'
+      ) {
+        chunks.push('\n');
+      } else if (node.type === 'tableCell' || node.type === 'tableHeader') {
+        chunks.push('\t');
+      }
+    }
+  }
+
+  for (const node of doc.content) {
+    walk(node);
+  }
+
+  return chunks.join('').trim();
+}
+
 export const productDescriptionDocSchema = z
   .object({
     type: z.literal('doc'),
@@ -238,6 +283,13 @@ export const productDescriptionDocSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `product description exceeds maximum size limit (${MAX_PRODUCT_DESCRIPTION_JSON_BYTES} bytes, received ${byteLength} bytes)`,
+      });
+    }
+    const plainText = docToPlainText(val as ProductDescriptionDoc);
+    if (plainText.length > MAX_PRODUCT_DESCRIPTION_CHARS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `product description exceeds maximum character limit (${MAX_PRODUCT_DESCRIPTION_CHARS} characters, received ${plainText.length})`,
       });
     }
   });
@@ -271,45 +323,6 @@ export function plainTextToDoc(text: string): ProductDescriptionDoc {
       content: [{ type: 'text', text: p }],
     })),
   };
-}
-
-/**
- * Extracts plain-text content from a TipTap document AST.
- * Useful for search indexing, fallback displays, and meta descriptions.
- */
-export function docToPlainText(doc: ProductDescriptionDoc | null | undefined): string {
-  if (!doc || !Array.isArray(doc.content)) return '';
-
-  const chunks: string[] = [];
-
-  function walk(node: ProductDescriptionNode | ProductDescriptionInlineNode): void {
-    if ('text' in node && typeof node.text === 'string') {
-      chunks.push(node.text);
-      return;
-    }
-    if ('content' in node && Array.isArray(node.content)) {
-      for (const child of node.content) {
-        walk(child);
-      }
-      if (
-        node.type === 'paragraph' ||
-        node.type === 'heading' ||
-        node.type === 'listItem' ||
-        node.type === 'tableRow' ||
-        node.type === 'table'
-      ) {
-        chunks.push('\n');
-      } else if (node.type === 'tableCell' || node.type === 'tableHeader') {
-        chunks.push('\t');
-      }
-    }
-  }
-
-  for (const node of doc.content) {
-    walk(node);
-  }
-
-  return chunks.join('').trim();
 }
 
 function hasMeaningfulContent(

@@ -500,6 +500,7 @@
           "linkRemove": "Remove",
           "words": "{count, plural, one {# word} other {# words}}",
           "characters": "{count, plural, one {# character} other {# characters}}",
+          "charactersLimit": "{current} / {max} characters",
           "fullscreen": "Full screen",
           "exitFullscreen": "Exit full screen",
           "superscript": "Superscript",
@@ -572,6 +573,8 @@
           "slugRequired": "Please enter a product slug.",
           "priceInvalid": "Enter a valid non-negative number.",
           "priceMax": "Base price cannot exceed $999,999.00.",
+          "descriptionLong": "Description cannot exceed 10,000 characters.",
+          "descriptionSizeMax": "Description exceeds maximum document size (50 KB).",
           "rejectionNoteMax": "Rejection note cannot exceed 2,000 characters."
         }
       },
@@ -637,6 +640,8 @@
         },
         "generate": "Generate Variants",
         "createSingle": "Add Variant",
+        "allCombosGenerated": "All possible variant combinations have already been generated.",
+        "allCombosGeneratedTooltip": "All combinations exist. To add more variants, configure additional options or values first.",
         "emptyTitle": "No variants generated yet.",
         "emptySubtitle": "Configure product options first, then generate or add variant combinations.",
         "backToOptions": "← Configure Options",

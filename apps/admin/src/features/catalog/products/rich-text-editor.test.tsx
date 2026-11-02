@@ -260,7 +260,7 @@ describe('RichTextEditor', () => {
     renderAdmin(<RichTextEditor value={doc} onChange={vi.fn()} />);
 
     expect(screen.getByText('7 words')).toBeInTheDocument();
-    expect(screen.getByText('37 characters')).toBeInTheDocument();
+    expect(screen.getByText(/37 \/ 10,000 characters/)).toBeInTheDocument();
     expect(screen.getByText(/0\.1 KB \/ 50 KB/)).toBeInTheDocument();
   });
 

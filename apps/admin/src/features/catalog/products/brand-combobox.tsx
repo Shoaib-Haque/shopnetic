@@ -38,6 +38,8 @@ export function BrandCombobox({
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Brand[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const knownBrands = useMemo(() => {
     const map = new Map<string, Brand>();
@@ -76,10 +78,12 @@ export function BrandCombobox({
         });
         if (active) {
           setSearchResults(res.brands);
+          setNextCursor(res.nextCursor);
         }
       } catch {
         if (active) {
           setSearchResults(null);
+          setNextCursor(undefined);
         }
       } finally {
         if (active) setSearching(false);
@@ -91,6 +95,32 @@ export function BrandCombobox({
       clearTimeout(timer);
     };
   }, [open, query]);
+
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore || searching) return;
+    setLoadingMore(true);
+    try {
+      const trimmed = query.trim();
+      const res = await listBrandsPage({
+        ...(trimmed ? { q: trimmed } : {}),
+        cursor: nextCursor,
+        limit: 30,
+      });
+      setSearchResults((prev) => [...(prev ?? brands), ...res.brands]);
+      setNextCursor(res.nextCursor);
+    } catch {
+      // Ignore pagination errors
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight < 40 && nextCursor && !loadingMore && !searching) {
+      void loadMore();
+    }
+  };
 
   const displayedBrands = useMemo(() => {
     if (searchResults !== null) {
@@ -184,6 +214,7 @@ export function BrandCombobox({
           role="listbox"
           className="max-h-56 overflow-y-auto space-y-0.5 pr-1"
           onWheel={(e) => e.stopPropagation()}
+          onScroll={handleScroll}
         >
           {/* None / Unbranded Option */}
           {(() => {
@@ -258,6 +289,12 @@ export function BrandCombobox({
                 </button>
               );
             })
+          )}
+          {loadingMore && (
+            <div className="flex items-center justify-center py-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin mr-1.5" />
+              <span>Loading more…</span>
+            </div>
           )}
         </div>
       </PopoverContent>
