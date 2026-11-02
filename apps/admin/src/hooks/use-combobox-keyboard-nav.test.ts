@@ -143,6 +143,100 @@ describe('useComboboxKeyboardNav', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('jumps to first item on Home and last item on End', () => {
+    const { result } = renderHook(() =>
+      useComboboxKeyboardNav({
+        open: true,
+        itemCount: 15,
+        onSelect: vi.fn(),
+        onClose: vi.fn(),
+      }),
+    );
+
+    const preventDefault = vi.fn();
+
+    // End jumps to index 14
+    act(() => {
+      result.current.handleKeyDown(makeKeyEvent('End', preventDefault));
+    });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(result.current.highlightIndex).toBe(14);
+
+    // Home jumps to index 0
+    act(() => {
+      result.current.handleKeyDown(makeKeyEvent('Home', preventDefault));
+    });
+    expect(result.current.highlightIndex).toBe(0);
+  });
+
+  it('navigates in steps of 10 on PageDown and PageUp', () => {
+    const { result } = renderHook(() =>
+      useComboboxKeyboardNav({
+        open: true,
+        itemCount: 25,
+        onSelect: vi.fn(),
+        onClose: vi.fn(),
+      }),
+    );
+
+    const preventDefault = vi.fn();
+
+    // From -1, PageDown jumps to 10
+    act(() => {
+      result.current.handleKeyDown(makeKeyEvent('PageDown', preventDefault));
+    });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(result.current.highlightIndex).toBe(10);
+
+    // PageDown again jumps to 20
+    act(() => {
+      result.current.handleKeyDown(makeKeyEvent('PageDown', preventDefault));
+    });
+    expect(result.current.highlightIndex).toBe(20);
+
+    // PageDown again caps at itemCount - 1 (24)
+    act(() => {
+      result.current.handleKeyDown(makeKeyEvent('PageDown', preventDefault));
+    });
+    expect(result.current.highlightIndex).toBe(24);
+
+    // PageUp jumps back down by 10 to 14
+    act(() => {
+      result.current.handleKeyDown(makeKeyEvent('PageUp', preventDefault));
+    });
+    expect(result.current.highlightIndex).toBe(14);
+
+    // PageUp floors at 0
+    act(() => {
+      result.current.handleKeyDown(makeKeyEvent('PageUp', preventDefault));
+    });
+    expect(result.current.highlightIndex).toBe(4);
+    act(() => {
+      result.current.handleKeyDown(makeKeyEvent('PageUp', preventDefault));
+    });
+    expect(result.current.highlightIndex).toBe(0);
+  });
+
+  it('calls onClose on Tab when dropdown is open without preventing default', () => {
+    const onClose = vi.fn();
+    const { result } = renderHook(() =>
+      useComboboxKeyboardNav({
+        open: true,
+        itemCount: 5,
+        onSelect: vi.fn(),
+        onClose,
+      }),
+    );
+
+    const preventDefault = vi.fn();
+
+    act(() => {
+      result.current.handleKeyDown(makeKeyEvent('Tab', preventDefault));
+    });
+    expect(onClose).toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
   it('provides getOptionProps with onMouseEnter and isHighlighted', () => {
     const { result } = renderHook(() =>
       useComboboxKeyboardNav({

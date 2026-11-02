@@ -200,21 +200,8 @@ export function StockAdjustModal({
         const strVal = String(value ?? '').trim();
         if (strVal === '') {
           delete updatedFieldErrors.restockEta;
-        } else {
-          const d = new Date(strVal);
-          if (
-            !Number.isNaN(d.getTime()) &&
-            /^\d{4}-\d{2}-\d{2}/.test(strVal) &&
-            d.getFullYear() >= 1970 &&
-            d.getFullYear() <= 2100
-          ) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-            if (target >= today) {
-              delete updatedFieldErrors.restockEta;
-            }
-          }
+        } else if (isValidDateYearRange(strVal) && !isDateInPastUtc(strVal)) {
+          delete updatedFieldErrors.restockEta;
         }
       }
 
