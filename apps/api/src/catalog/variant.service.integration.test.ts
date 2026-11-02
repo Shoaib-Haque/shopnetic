@@ -750,15 +750,51 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
     }
   });
 
-  it('VariantController returns full unbounded list when no query params are provided (Offers & Stock compatibility)', async () => {
+  it('VariantController returns full unbounded list (>30) when no query params are provided (Offers & Stock compatibility)', async () => {
+    // Create a product with 35 variants to strictly distinguish unbounded list from limit: 30 default
+    const testProd = await prisma.product.create({
+      data: {
+        titleI18n: t('Multi-Variant Tee'),
+        slug: s('multi-var-tee'),
+        categoryId,
+        status: 'active',
+      },
+    });
+
+    const dummyVariants = Array.from({ length: 35 }, (_, i) => ({
+      productId: testProd.id,
+      skuCode: s(`SKU-35-${i}`),
+      comboSignature: `sig-${i}`,
+      position: i,
+    }));
+    await prisma.variant.createMany({ data: dummyVariants });
+
     const controller = new VariantController(variants);
     const req = {
       headers: { 'x-request-id': 'itest-req-id' },
     } as object as import('express').Request;
-    const res = await controller.list(req, productId);
-    expect(Array.isArray(res.data)).toBe(true);
-    expect(res.data.length).toBeGreaterThanOrEqual(1);
-    expect(res.meta.total).toBe(res.data.length);
-    expect(res.meta.nextCursor).toBeUndefined();
+
+    // 1. Calling with limit: '30' returns exactly 30 items with nextCursor
+    const paginatedRes = await controller.list(
+      req,
+      testProd.id,
+      undefined,
+      undefined,
+      undefined,
+      '30',
+    );
+    expect(paginatedRes.data.length).toBe(30);
+    expect(paginatedRes.meta.total).toBe(35);
+    expect(paginatedRes.meta.nextCursor).toBeDefined();
+
+    // 2. Calling with no params returns ALL 35 items (>30) with no nextCursor
+    const unboundedRes = await controller.list(req, testProd.id);
+    expect(unboundedRes.data.length).toBe(35);
+    expect(unboundedRes.meta.total).toBe(35);
+    expect(unboundedRes.meta.nextCursor).toBeUndefined();
+
+    // Teardown
+    await prisma.variant.deleteMany({ where: { productId: testProd.id } });
+    await prisma.product.delete({ where: { id: testProd.id } });
   });
 });

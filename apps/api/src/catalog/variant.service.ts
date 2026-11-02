@@ -112,7 +112,7 @@ export class VariantService {
       where,
       include: withValues,
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
-      take: limit,
+      take: limit + 1,
     };
     if (offset > 0) {
       findArgs.skip = offset;
@@ -120,9 +120,10 @@ export class VariantService {
 
     const rows = (await this.prisma.variant.findMany(findArgs)) as VariantRow[];
     const nextCursor = rankedNextCursor(rows.length, limit, offset);
+    const pageRows = rows.slice(0, limit);
 
     return {
-      items: rows.map(toView),
+      items: pageRows.map(toView),
       total,
       ...(nextCursor ? { nextCursor } : {}),
     };
