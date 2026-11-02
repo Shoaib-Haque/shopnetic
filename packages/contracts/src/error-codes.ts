@@ -107,6 +107,7 @@ export const ErrorCode = {
   OFFER_WAREHOUSE_REQUIRED: 'OFFER_WAREHOUSE_REQUIRED',
   WAREHOUSE_NOT_FOUND: 'WAREHOUSE_NOT_FOUND',
   STOCK_INSUFFICIENT: 'STOCK_INSUFFICIENT',
+  RESTOCK_ETA_PAST: 'RESTOCK_ETA_PAST',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

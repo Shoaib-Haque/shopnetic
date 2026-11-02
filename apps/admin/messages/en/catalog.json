@@ -806,6 +806,7 @@
         "addWarehouse": "New Warehouse",
         "searchOffersPlaceholder": "Search sellers in offers…",
         "loadMore": "Load more offers",
+        "loadingMore": "Loading more offers…",
         "showingOffers": "Showing {count} of {total} offers",
         "emptyTitle": "No offers for this variant.",
         "emptySubtitle": "Add a 1P or 3P listing to enable live pricing and purchasing.",
@@ -906,6 +907,7 @@
             "variantRequired": "Please select a variant.",
             "salePriceGtePrice": "Sale price must be strictly less than list price.",
             "salePriceMax": "Sale price cannot exceed $999,999.00.",
+            "dateInvalid": "Enter a valid date.",
             "saleEndBeforeStart": "Sale end date must be after the start date.",
             "handlingDaysInvalid": "Handling days must be between 0 and 30.",
             "minQtyInvalid": "Minimum order quantity must be a whole number.",
@@ -948,7 +950,9 @@
             "onHandMax": "On-hand units cannot exceed 999,999.",
             "safetyStockInvalid": "Safety stock threshold must be a whole number.",
             "safetyStockMin": "Safety stock threshold cannot be negative.",
-            "safetyStockMax": "Safety stock threshold cannot exceed 999,999."
+            "safetyStockMax": "Safety stock threshold cannot exceed 999,999.",
+            "restockEtaInvalid": "Enter a valid date.",
+            "restockEtaPast": "Restock ETA date cannot be in the past."
           }
         },
         "warehouseModal": {
@@ -1041,6 +1045,7 @@
       "offerOrderLimitsInvalid": "Maximum order quantity cannot be less than minimum quantity.",
       "offerWarehouseRequired": "A warehouse must be specified when setting initial stock.",
       "warehouseNotFound": "The fulfillment warehouse was not found.",
+      "restockEtaPast": "Restock ETA date cannot be in the past.",
       "stockInsufficient": "Insufficient inventory available for this operation.",
       "notFound": "The requested item was not found or is unavailable.",
       "conflict": "That action conflicts with the current state — reload and try again.",

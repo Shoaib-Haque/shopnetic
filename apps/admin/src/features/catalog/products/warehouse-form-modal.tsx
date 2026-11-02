@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -72,6 +72,8 @@ export function CountryCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const listboxRef = useRef<HTMLDivElement | null>(null);
 
   const selectedCountry = useMemo(
     () => COUNTRIES.find((c) => c.code.toLowerCase() === (value ?? '').toLowerCase()),
@@ -85,6 +87,41 @@ export function CountryCombobox({
       (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
     );
   }, [search]);
+
+  useEffect(() => {
+    setHighlightIndex(-1);
+  }, [open, filteredCountries]);
+
+  useEffect(() => {
+    if (highlightIndex < 0 || !listboxRef.current) return;
+    const option = listboxRef.current.children[highlightIndex] as HTMLElement | undefined;
+    if (option?.scrollIntoView) {
+      option.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightIndex]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev < filteredCountries.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === 'Enter') {
+      if (highlightIndex >= 0 && highlightIndex < filteredCountries.length) {
+        e.preventDefault();
+        const selected = filteredCountries[highlightIndex];
+        if (selected) {
+          onChange(selected.code);
+          setOpen(false);
+          setSearch('');
+        }
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
 
   return (
     <Popover
@@ -131,12 +168,14 @@ export function CountryCombobox({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder={searchPlaceholder}
             className="h-8 pl-8 text-xs"
             autoFocus
           />
         </div>
         <div
+          ref={listboxRef}
           role="listbox"
           className="max-h-56 overflow-y-auto space-y-0.5 pr-1"
           onWheel={(e) => e.stopPropagation()}
@@ -144,8 +183,9 @@ export function CountryCombobox({
           {filteredCountries.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">{emptyText}</div>
           ) : (
-            filteredCountries.map((c) => {
+            filteredCountries.map((c, index) => {
               const isSelected = c.code.toLowerCase() === (value ?? '').toLowerCase();
+              const isHighlighted = index === highlightIndex;
               return (
                 <button
                   key={c.code}
@@ -153,6 +193,7 @@ export function CountryCombobox({
                   role="option"
                   aria-label={`${c.name} (${c.code})`}
                   aria-selected={isSelected}
+                  onMouseEnter={() => setHighlightIndex(index)}
                   onClick={() => {
                     onChange(c.code);
                     setOpen(false);
@@ -160,8 +201,12 @@ export function CountryCombobox({
                   }}
                   className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors text-left ${
                     isSelected
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-foreground hover:bg-muted'
+                      ? isHighlighted
+                        ? 'bg-primary/20 text-primary font-medium'
+                        : 'bg-primary/10 text-primary font-medium'
+                      : isHighlighted
+                        ? 'bg-muted text-foreground'
+                        : 'text-foreground hover:bg-muted'
                   }`}
                 >
                   <div className="flex items-center gap-2 truncate">

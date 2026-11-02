@@ -321,6 +321,23 @@ export class OfferService {
       });
     }
 
+    if (data.saleStartsAt) {
+      const d = new Date(data.saleStartsAt);
+      if (Number.isNaN(d.getTime()) || d.getFullYear() < 1970 || d.getFullYear() > 2100) {
+        throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
+          detail: 'invalid sale start date',
+        });
+      }
+    }
+    if (data.saleEndsAt) {
+      const d = new Date(data.saleEndsAt);
+      if (Number.isNaN(d.getTime()) || d.getFullYear() < 1970 || d.getFullYear() > 2100) {
+        throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
+          detail: 'invalid sale end date',
+        });
+      }
+    }
+
     if (data.saleStartsAt && data.saleEndsAt) {
       if (new Date(data.saleEndsAt) <= new Date(data.saleStartsAt)) {
         throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
@@ -458,6 +475,23 @@ export class OfferService {
       throw new AppError('OFFER_SALE_PRICE_INVALID', 422, {
         detail: 'sale price must be less than list price',
       });
+    }
+
+    if (data.saleStartsAt) {
+      const d = new Date(data.saleStartsAt);
+      if (Number.isNaN(d.getTime()) || d.getFullYear() < 1970 || d.getFullYear() > 2100) {
+        throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
+          detail: 'invalid sale start date',
+        });
+      }
+    }
+    if (data.saleEndsAt) {
+      const d = new Date(data.saleEndsAt);
+      if (Number.isNaN(d.getTime()) || d.getFullYear() < 1970 || d.getFullYear() > 2100) {
+        throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
+          detail: 'invalid sale end date',
+        });
+      }
     }
 
     const effectiveStartsAt =

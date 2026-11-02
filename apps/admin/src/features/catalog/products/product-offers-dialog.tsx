@@ -281,10 +281,30 @@ export function ProductOffersDialog({
     }
   }, [open, selectedVariantId, debouncedQuery, loadVariantOffers]);
 
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
     if (!selectedVariantId || !nextCursor || loadingMore) return;
     void loadVariantOffers(selectedVariantId, debouncedQuery, nextCursor, true);
-  };
+  }, [selectedVariantId, nextCursor, loadingMore, debouncedQuery, loadVariantOffers]);
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !nextCursor || loadingMore || offersLoading) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          handleLoadMore();
+        }
+      },
+      { rootMargin: '120px' },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [nextCursor, loadingMore, offersLoading, handleLoadMore]);
 
   const refreshActiveVariant = useCallback(async () => {
     if (!product) return;
@@ -658,7 +678,7 @@ export function ProductOffersDialog({
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder={t('products.offers.searchOffersPlaceholder')}
-                            className="pl-8.5 pr-8 h-9 text-xs"
+                            className="pl-9 pr-8 h-9 text-xs"
                           />
                           {searchQuery && (
                             <button
@@ -696,8 +716,8 @@ export function ProductOffersDialog({
                         </div>
                       ) : (
                         <>
-                          {/* Mobile Card View (md:hidden) */}
-                          <div className="md:hidden space-y-3">
+                          {/* Mobile Card View (lg:hidden) */}
+                          <div className="lg:hidden space-y-3">
                             {offers.map((offer) => {
                               const isWinner = Boolean(
                                 buybox?.winningOfferId && offer.id === buybox.winningOfferId,
@@ -866,8 +886,8 @@ export function ProductOffersDialog({
                             })}
                           </div>
 
-                          {/* Desktop Table View (hidden md:block) */}
-                          <div className="hidden md:block rounded-xl border border-border overflow-x-auto">
+                          {/* Desktop Table View (hidden lg:block) */}
+                          <div className="hidden lg:block rounded-xl border border-border overflow-x-auto">
                             <Table className="min-w-[680px]">
                               <TableHeader>
                                 <TableRow>
@@ -1101,16 +1121,28 @@ export function ProductOffersDialog({
                                   total: totalOffers,
                                 })}
                               </span>
-                              {Boolean(nextCursor) && (
+                            </div>
+                          )}
+
+                          {Boolean(nextCursor) && (
+                            <div
+                              ref={sentinelRef}
+                              data-testid="offers-scroll-sentinel"
+                              className="py-3 flex items-center justify-center"
+                            >
+                              {loadingMore ? (
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                  <Spinner className="size-3.5" />
+                                  <span>{t('products.offers.loadingMore')}</span>
+                                </div>
+                              ) : (
                                 <Button
                                   type="button"
-                                  variant="outline"
+                                  variant="ghost"
                                   size="sm"
-                                  disabled={loadingMore}
                                   onClick={handleLoadMore}
-                                  className="w-full sm:w-auto text-xs h-8 gap-1.5"
+                                  className="text-xs text-muted-foreground hover:text-foreground h-7"
                                 >
-                                  {loadingMore && <Spinner className="size-3.5" />}
                                   {t('products.offers.loadMore')}
                                 </Button>
                               )}

@@ -88,6 +88,14 @@ function toLocalDatetimeInput(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function isValidDateString(val: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(val)) return false;
+  const d = new Date(val);
+  if (Number.isNaN(d.getTime())) return false;
+  const year = d.getFullYear();
+  return year >= 1970 && year <= 2100;
+}
+
 const offerFormSchema = z
   .object({
     sellerId: z.string().trim().min(1, 'products.offers.form.err.sellerRequired'),
@@ -194,8 +202,32 @@ const offerFormSchema = z
         });
       }
     }
-    // 2. Sale end must be after sale start
-    if (data.saleStartsAt && data.saleEndsAt) {
+    // 2. Validate sale start / end date format & ordering
+    let validStart = false;
+    let validEnd = false;
+    if (data.saleStartsAt && data.saleStartsAt.trim() !== '') {
+      if (!isValidDateString(data.saleStartsAt)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'products.offers.form.err.dateInvalid',
+          path: ['saleStartsAt'],
+        });
+      } else {
+        validStart = true;
+      }
+    }
+    if (data.saleEndsAt && data.saleEndsAt.trim() !== '') {
+      if (!isValidDateString(data.saleEndsAt)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'products.offers.form.err.dateInvalid',
+          path: ['saleEndsAt'],
+        });
+      } else {
+        validEnd = true;
+      }
+    }
+    if (validStart && validEnd && data.saleStartsAt && data.saleEndsAt) {
       if (new Date(data.saleEndsAt) <= new Date(data.saleStartsAt)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -258,10 +290,6 @@ export function OfferFormModal({
     }),
     [t],
   );
-
-  const defaultSeller = useMemo(() => {
-    return sellers.find((s) => s.shop?.slug === 'shopnetic-retail') ?? sellers[0];
-  }, [sellers]);
 
   const [serverError, setServerError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -347,13 +375,10 @@ export function OfferFormModal({
         status: offer.status,
       });
     } else {
-      const initialSellerId = defaultSeller ? defaultSeller.id : '';
       const initialVariantId = selectedVariantId ?? (variants[0] ? variants[0].id : '');
-      const defaultWh = warehouses.find((w) => w.sellerId === initialSellerId && w.isDefault);
-      const fallbackWh = warehouses.find((w) => w.sellerId === initialSellerId);
 
       reset({
-        sellerId: initialSellerId,
+        sellerId: '',
         variantId: initialVariantId,
         price: '',
         currency: normalizeCurrency(product.currency, 'USD'),
@@ -366,11 +391,11 @@ export function OfferFormModal({
         minQty: '1',
         maxQty: '',
         initialStock: '10',
-        warehouseId: defaultWh ? defaultWh.id : fallbackWh ? fallbackWh.id : '',
+        warehouseId: '',
         status: 'active',
       });
     }
-  }, [open, offer, defaultSeller, selectedVariantId, variants, product, warehouses, reset]);
+  }, [open, offer, selectedVariantId, variants, product, warehouses, reset]);
 
   // Auto-sanitize decimal places when currency changes
   useEffect(() => {

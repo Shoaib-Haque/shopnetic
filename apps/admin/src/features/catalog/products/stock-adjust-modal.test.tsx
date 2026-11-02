@@ -82,7 +82,7 @@ const sampleOffer: Offer = {
       available: 45,
       safetyStock: 10,
       backorder: false,
-      restockEta: '2026-06-01T00:00:00.000Z',
+      restockEta: '2026-12-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     },
   ],
@@ -378,6 +378,33 @@ describe('StockAdjustModal', () => {
 
     expect(mockedUpdateStock).not.toHaveBeenCalled();
     expect(screen.getAllByText('No changes to save').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('validates restockEta against past dates and invalid formats', async () => {
+    renderAdmin(
+      <StockAdjustModal
+        open={true}
+        onOpenChange={vi.fn()}
+        offer={sampleOffer}
+        warehouses={[sampleWarehouse1]}
+        onStockUpdated={vi.fn()}
+      />,
+    );
+
+    const etaInput = screen.getByLabelText(/Restock ETA/i);
+
+    // 1. Invalid date
+    fireEvent.change(etaInput, { target: { value: 'not-a-date' } });
+    const updateBtn = screen.getByRole('button', { name: 'Update Stock' });
+    fireEvent.click(updateBtn);
+    expect(screen.getByText('Enter a valid date.')).toBeInTheDocument();
+    expect(mockedUpdateStock).not.toHaveBeenCalled();
+
+    // 2. Past date (e.g. 2020-01-01)
+    fireEvent.change(etaInput, { target: { value: '2020-01-01' } });
+    fireEvent.click(updateBtn);
+    expect(screen.getByText('Restock ETA date cannot be in the past.')).toBeInTheDocument();
+    expect(mockedUpdateStock).not.toHaveBeenCalled();
   });
 
   it('calls onOpenChange(false) when cancel button is clicked', () => {

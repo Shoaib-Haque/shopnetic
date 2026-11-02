@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronsUpDown, Search } from 'lucide-react';
 import type { Category } from '@shopnetic/contracts';
 import { Input, Popover, PopoverContent, PopoverTrigger } from '@shopnetic/ui';
@@ -49,6 +49,8 @@ export function CategoryCombobox({
 }: CategoryComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const listboxRef = useRef<HTMLDivElement | null>(null);
 
   const categoryMap = useMemo(() => {
     const map = new Map<string, Category>();
@@ -85,6 +87,41 @@ export function CategoryCombobox({
         it.category.slug.toLowerCase().includes(q),
     );
   }, [items, query]);
+
+  useEffect(() => {
+    setHighlightIndex(-1);
+  }, [open, filteredItems]);
+
+  useEffect(() => {
+    if (highlightIndex < 0 || !listboxRef.current) return;
+    const option = listboxRef.current.children[highlightIndex] as HTMLElement | undefined;
+    if (option?.scrollIntoView) {
+      option.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightIndex]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev < filteredItems.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === 'Enter') {
+      if (highlightIndex >= 0 && highlightIndex < filteredItems.length) {
+        e.preventDefault();
+        const selected = filteredItems[highlightIndex];
+        if (selected) {
+          onChange(selected.id);
+          setOpen(false);
+          setQuery('');
+        }
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
 
   return (
     <Popover
@@ -129,12 +166,14 @@ export function CategoryCombobox({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder={searchPlaceholder}
             className="h-8 pl-8 text-xs"
             autoFocus
           />
         </div>
         <div
+          ref={listboxRef}
           role="listbox"
           className="max-h-56 overflow-y-auto space-y-0.5 pr-1"
           onWheel={(e) => e.stopPropagation()}
@@ -142,8 +181,9 @@ export function CategoryCombobox({
           {filteredItems.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">{emptyText}</div>
           ) : (
-            filteredItems.map((it) => {
+            filteredItems.map((it, index) => {
               const isSelected = it.id === value;
+              const isHighlighted = index === highlightIndex;
               return (
                 <button
                   key={it.id}
@@ -151,15 +191,20 @@ export function CategoryCombobox({
                   role="option"
                   aria-label={it.breadcrumb}
                   aria-selected={isSelected}
+                  onMouseEnter={() => setHighlightIndex(index)}
                   onClick={() => {
                     onChange(it.id);
                     setOpen(false);
                     setQuery('');
                   }}
-                  className={`flex w-full items-start justify-between rounded px-2.5 py-1.5 text-xs transition-colors hover:bg-accent hover:text-accent-foreground text-left ${
+                  className={`flex w-full items-start justify-between rounded px-2.5 py-1.5 text-xs transition-colors text-left ${
                     isSelected
-                      ? 'bg-accent/80 font-medium text-accent-foreground'
-                      : 'text-foreground'
+                      ? isHighlighted
+                        ? 'bg-accent font-medium text-accent-foreground ring-1 ring-accent-foreground/20'
+                        : 'bg-accent/80 font-medium text-accent-foreground'
+                      : isHighlighted
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-foreground hover:bg-accent hover:text-accent-foreground'
                   }`}
                 >
                   <div className="flex flex-col min-w-0 pr-2">

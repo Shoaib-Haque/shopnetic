@@ -113,6 +113,34 @@ export const offerSchema = z.object({
 });
 export type Offer = z.infer<typeof offerSchema>;
 
+export const isoDateTimeSchema = z
+  .string()
+  .datetime()
+  .refine(
+    (val) => {
+      const year = new Date(val).getUTCFullYear();
+      return year >= 1970 && year <= 2100;
+    },
+    { message: 'year must be between 1970 and 2100' },
+  );
+
+export const restockEtaSchema = z
+  .string()
+  .datetime()
+  .refine(
+    (val) => {
+      const d = new Date(val);
+      if (Number.isNaN(d.getTime())) return false;
+      const year = d.getUTCFullYear();
+      if (year < 1970 || year > 2100) return false;
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      return target >= today;
+    },
+    { message: 'restock ETA date cannot be in the past' },
+  );
+
 export const createOfferRequestSchema = z.object({
   sellerId: z.string().uuid().optional(),
   variantId: z.string().uuid(),
@@ -130,8 +158,8 @@ export const createOfferRequestSchema = z.object({
       message: 'sale price exceeds maximum allowed value',
     })
     .optional(),
-  saleStartsAt: z.string().datetime().optional(),
-  saleEndsAt: z.string().datetime().optional(),
+  saleStartsAt: isoDateTimeSchema.optional(),
+  saleEndsAt: isoDateTimeSchema.optional(),
   compareAtMinor: z
     .string()
     .regex(/^\d+$/)
@@ -166,8 +194,8 @@ export const updateOfferRequestSchema = z.object({
     })
     .nullable()
     .optional(),
-  saleStartsAt: z.string().datetime().nullable().optional(),
-  saleEndsAt: z.string().datetime().nullable().optional(),
+  saleStartsAt: isoDateTimeSchema.nullable().optional(),
+  saleEndsAt: isoDateTimeSchema.nullable().optional(),
   compareAtMinor: z
     .string()
     .regex(/^\d+$/)
@@ -192,7 +220,7 @@ export const updateStockRequestSchema = z
     delta: z.number().int().optional(),
     safetyStock: z.number().int().min(0).max(STOCK_UNITS_MAX).default(0),
     backorder: z.boolean().default(false),
-    restockEta: z.string().datetime().nullable().optional(),
+    restockEta: restockEtaSchema.nullable().optional(),
     expectedUpdatedAt: z.string().optional(),
   })
   .refine((data) => data.onHand !== undefined || data.delta !== undefined, {

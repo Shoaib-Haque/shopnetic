@@ -58,6 +58,7 @@ interface WarehouseStockRowState {
   fieldErrors: {
     onHand?: string | undefined;
     safetyStock?: string | undefined;
+    restockEta?: string | undefined;
   };
 }
 
@@ -193,6 +194,27 @@ export function StockAdjustModal({
           delete updatedFieldErrors.safetyStock;
         }
       }
+      if (field === 'restockEta') {
+        const strVal = String(value ?? '').trim();
+        if (strVal === '') {
+          delete updatedFieldErrors.restockEta;
+        } else {
+          const d = new Date(strVal);
+          if (
+            !Number.isNaN(d.getTime()) &&
+            /^\d{4}-\d{2}-\d{2}/.test(strVal) &&
+            d.getFullYear() >= 1970 &&
+            d.getFullYear() <= 2100
+          ) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            if (target >= today) {
+              delete updatedFieldErrors.restockEta;
+            }
+          }
+        }
+      }
 
       return {
         ...prev,
@@ -229,7 +251,28 @@ export function StockAdjustModal({
       safetyError = t('products.offers.stockModal.err.safetyStockMax');
     }
 
-    if (onHandError || safetyError) {
+    const cleanEta = String(row.restockEta ?? '').trim();
+    let restockEtaError: string | undefined;
+    if (cleanEta !== '') {
+      const d = new Date(cleanEta);
+      if (
+        Number.isNaN(d.getTime()) ||
+        !/^\d{4}-\d{2}-\d{2}/.test(cleanEta) ||
+        d.getFullYear() < 1970 ||
+        d.getFullYear() > 2100
+      ) {
+        restockEtaError = t('products.offers.stockModal.err.restockEtaInvalid');
+      } else {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        if (target < today) {
+          restockEtaError = t('products.offers.stockModal.err.restockEtaPast');
+        }
+      }
+    }
+
+    if (onHandError || safetyError || restockEtaError) {
       setRowStates((prev) => ({
         ...prev,
         [warehouse.id]: {
@@ -237,6 +280,7 @@ export function StockAdjustModal({
           fieldErrors: {
             onHand: onHandError,
             safetyStock: safetyError,
+            restockEta: restockEtaError,
           },
         },
       }));
@@ -560,10 +604,16 @@ export function StockAdjustModal({
                           onChange={(val) => handleFieldChange(wh.id, 'restockEta', val)}
                           minDate={new Date().toISOString().slice(0, 10)}
                           disabled={row.saving}
+                          invalid={Boolean(row.fieldErrors.restockEta)}
                           placeholder={t('products.offers.stockModal.restockEtaPlaceholder')}
                           className="h-9 text-xs"
                           ariaLabel={t('products.offers.stockModal.restockEta')}
                         />
+                        {row.fieldErrors.restockEta && (
+                          <p className="text-[11px] text-destructive font-medium">
+                            {row.fieldErrors.restockEta}
+                          </p>
+                        )}
                       </div>
 
                       {/* Backorder Switch + Update Button Column */}

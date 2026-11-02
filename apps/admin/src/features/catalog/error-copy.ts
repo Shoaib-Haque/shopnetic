@@ -51,6 +51,7 @@ const CODE_TO_KEY: Record<string, string> = {
   OFFER_ORDER_LIMITS_INVALID: 'errors.offerOrderLimitsInvalid',
   OFFER_WAREHOUSE_REQUIRED: 'errors.offerWarehouseRequired',
   WAREHOUSE_NOT_FOUND: 'errors.warehouseNotFound',
+  RESTOCK_ETA_PAST: 'errors.restockEtaPast',
   STOCK_INSUFFICIENT: 'errors.stockInsufficient',
   NOT_FOUND: 'errors.notFound',
   CONFLICT: 'errors.conflict',

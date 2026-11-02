@@ -683,31 +683,72 @@ describe('OfferFormModal', () => {
         expect(screen.getByText('List price cannot exceed $999,999.00.')).toBeInTheDocument();
       });
     });
+    it('shows "Enter a valid date." when sale start or end date is invalid', async () => {
+      renderModal();
+
+      const priceInput = screen.getByPlaceholderText('e.g. 29.99');
+      fireEvent.change(priceInput, { target: { value: '19.99' } });
+
+      const startInput = screen.getByLabelText('Sale Starts');
+      fireEvent.change(startInput, { target: { value: 'invalid-date-string' } });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Enter a valid date.')).toBeInTheDocument();
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
   // Warehouse auto-selection (create mode)
   // -------------------------------------------------------------------------
   describe('Warehouse auto-selection', () => {
-    it('auto-selects the default warehouse for the default seller', () => {
+    it('defaults seller to unselected ("Select seller…") on modal open', () => {
       renderModal({
         offer: null,
         sellers: [sampleSeller],
         warehouses: [sampleWarehouse],
       });
-      // The warehouse select trigger shows the selected warehouse label.
-      // getAllByText because the value also appears as a hidden <option> in Radix Select.
-      const matches = screen.getAllByText('Main Fulfillment Center (Default)');
-      expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Select seller…')).toBeInTheDocument();
     });
 
-    it('shows "No warehouses found" placeholder when seller has no warehouses', () => {
+    it('auto-selects the default warehouse when seller is selected', async () => {
+      renderModal({
+        offer: null,
+        sellers: [sampleSeller],
+        warehouses: [sampleWarehouse],
+      });
+      const trigger = screen.getByRole('combobox', { name: 'Seller' });
+      fireEvent.click(trigger);
+      await waitFor(() => {
+        expect(screen.getByRole('listbox')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('option', { name: 'Acme Apparel (3P)' }));
+
+      await waitFor(() => {
+        const matches = screen.getAllByText('Main Fulfillment Center (Default)');
+        expect(matches.length).toBeGreaterThanOrEqual(1);
+      });
+    });
+
+    it('shows "No warehouses found" placeholder when seller has no warehouses', async () => {
       renderModal({
         offer: null,
         sellers: [sampleSeller],
         warehouses: [],
       });
-      expect(screen.getByText('No warehouses found')).toBeInTheDocument();
+      const trigger = screen.getByRole('combobox', { name: 'Seller' });
+      fireEvent.click(trigger);
+      await waitFor(() => {
+        expect(screen.getByRole('listbox')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('option', { name: 'Acme Apparel (3P)' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('No warehouses found')).toBeInTheDocument();
+      });
     });
   });
 
@@ -722,6 +763,14 @@ describe('OfferFormModal', () => {
       mockedCreateOffer.mockResolvedValueOnce(savedOffer);
 
       renderModal({ offer: null, onSaved, onOpenChange });
+
+      // Select seller
+      const sellerTrigger = screen.getByRole('combobox', { name: 'Seller' });
+      fireEvent.click(sellerTrigger);
+      await waitFor(() => {
+        expect(screen.getByRole('listbox')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('option', { name: 'Acme Apparel (3P)' }));
 
       const priceInput = screen.getByPlaceholderText('e.g. 29.99');
       fireEvent.change(priceInput, { target: { value: '19.99' } });

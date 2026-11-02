@@ -358,4 +358,44 @@ describe('SellerCombobox', () => {
       });
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Keyboard navigation
+  // -------------------------------------------------------------------------
+  describe('Keyboard navigation and auto-scroll', () => {
+    it('navigates options via ArrowDown and ArrowUp and selects via Enter', async () => {
+      const onChange = vi.fn();
+      renderCombobox({ sellers: [acmeSeller, shopneticSeller], onChange });
+
+      fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
+      await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
+
+      const searchInput = screen.getByPlaceholderText('Search sellers…');
+
+      // Arrow down to first item
+      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
+      // Arrow down to second item
+      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
+      // Enter to select
+      fireEvent.keyDown(searchInput, { key: 'Enter' });
+
+      expect(onChange).toHaveBeenCalledWith('seller_1p');
+      await waitFor(() => {
+        expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      });
+    });
+
+    it('closes popover on Escape', async () => {
+      renderCombobox({ sellers: [acmeSeller, shopneticSeller] });
+      fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
+      await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
+
+      const searchInput = screen.getByPlaceholderText('Search sellers…');
+      fireEvent.keyDown(searchInput, { key: 'Escape' });
+
+      await waitFor(() => {
+        expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      });
+    });
+  });
 });

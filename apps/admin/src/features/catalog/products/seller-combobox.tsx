@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react';
 import type { SellerStatus, SellerWithShop } from '@shopnetic/contracts';
 import { Input, Popover, PopoverContent, PopoverTrigger, StatusBadge } from '@shopnetic/ui';
@@ -48,6 +48,8 @@ export function SellerCombobox({
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SellerWithShop[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const listboxRef = useRef<HTMLDivElement | null>(null);
 
   const knownSellers = useMemo(() => {
     const map = new Map<string, SellerWithShop>();
@@ -121,6 +123,41 @@ export function SellerCombobox({
     });
   }, [searchResults, sellers, query, statusFilter]);
 
+  useEffect(() => {
+    setHighlightIndex(-1);
+  }, [open, displayedSellers]);
+
+  useEffect(() => {
+    if (highlightIndex < 0 || !listboxRef.current) return;
+    const option = listboxRef.current.children[highlightIndex] as HTMLElement | undefined;
+    if (option?.scrollIntoView) {
+      option.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightIndex]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev < displayedSellers.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === 'Enter') {
+      if (highlightIndex >= 0 && highlightIndex < displayedSellers.length) {
+        e.preventDefault();
+        const selected = displayedSellers[highlightIndex];
+        if (selected) {
+          onChange(selected.id);
+          setOpen(false);
+          setQuery('');
+        }
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+
   return (
     <Popover
       open={open}
@@ -171,12 +208,14 @@ export function SellerCombobox({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Search sellers…"
             className="h-8 pl-8 text-xs"
             autoFocus
           />
         </div>
         <div
+          ref={listboxRef}
           role="listbox"
           className="max-h-56 overflow-y-auto space-y-0.5 pr-1"
           onWheel={(e) => e.stopPropagation()}
@@ -184,9 +223,10 @@ export function SellerCombobox({
           {displayedSellers.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">No sellers found</div>
           ) : (
-            displayedSellers.map((s) => {
+            displayedSellers.map((s, index) => {
               const { name, tag, fullText } = formatSellerLabel(s);
               const isSelected = s.id === value;
+              const isHighlighted = index === highlightIndex;
               return (
                 <button
                   key={s.id}
@@ -194,6 +234,7 @@ export function SellerCombobox({
                   role="option"
                   aria-label={fullText}
                   aria-selected={isSelected}
+                  onMouseEnter={() => setHighlightIndex(index)}
                   onClick={() => {
                     onChange(s.id);
                     setOpen(false);
@@ -201,8 +242,12 @@ export function SellerCombobox({
                   }}
                   className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors text-left ${
                     isSelected
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-foreground hover:bg-muted'
+                      ? isHighlighted
+                        ? 'bg-primary/20 text-primary font-medium'
+                        : 'bg-primary/10 text-primary font-medium'
+                      : isHighlighted
+                        ? 'bg-muted text-foreground'
+                        : 'text-foreground hover:bg-muted'
                   }`}
                   title={fullText}
                 >
