@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,6 +19,7 @@ import {
   type SellerWithShop,
   type Warehouse,
 } from '@shopnetic/contracts';
+import { useComboboxKeyboardNav } from '@/hooks/use-combobox-keyboard-nav';
 import {
   Button,
   Checkbox,
@@ -72,8 +73,6 @@ export function CountryCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [highlightIndex, setHighlightIndex] = useState(-1);
-  const listboxRef = useRef<HTMLDivElement | null>(null);
 
   const selectedCountry = useMemo(
     () => COUNTRIES.find((c) => c.code.toLowerCase() === (value ?? '').toLowerCase()),
@@ -88,40 +87,20 @@ export function CountryCombobox({
     );
   }, [search]);
 
-  useEffect(() => {
-    setHighlightIndex(-1);
-  }, [open, filteredCountries]);
-
-  useEffect(() => {
-    if (highlightIndex < 0 || !listboxRef.current) return;
-    const option = listboxRef.current.children[highlightIndex] as HTMLElement | undefined;
-    if (option?.scrollIntoView) {
-      option.scrollIntoView({ block: 'nearest' });
-    }
-  }, [highlightIndex]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlightIndex((prev) => (prev < filteredCountries.length - 1 ? prev + 1 : prev));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
-    } else if (e.key === 'Enter') {
-      if (highlightIndex >= 0 && highlightIndex < filteredCountries.length) {
-        e.preventDefault();
-        const selected = filteredCountries[highlightIndex];
-        if (selected) {
-          onChange(selected.code);
-          setOpen(false);
-          setSearch('');
-        }
+  const { listboxRef, handleKeyDown, getOptionProps } = useComboboxKeyboardNav({
+    open,
+    itemCount: filteredCountries.length,
+    onSelect: (index) => {
+      const selected = filteredCountries[index];
+      if (selected) {
+        onChange(selected.code);
+        setOpen(false);
+        setSearch('');
       }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setOpen(false);
-    }
-  };
+    },
+    onClose: () => setOpen(false),
+    resetOn: [filteredCountries],
+  });
 
   return (
     <Popover
@@ -185,7 +164,7 @@ export function CountryCombobox({
           ) : (
             filteredCountries.map((c, index) => {
               const isSelected = c.code.toLowerCase() === (value ?? '').toLowerCase();
-              const isHighlighted = index === highlightIndex;
+              const { onMouseEnter, isHighlighted } = getOptionProps(index);
               return (
                 <button
                   key={c.code}
@@ -193,7 +172,7 @@ export function CountryCombobox({
                   role="option"
                   aria-label={`${c.name} (${c.code})`}
                   aria-selected={isSelected}
-                  onMouseEnter={() => setHighlightIndex(index)}
+                  onMouseEnter={onMouseEnter}
                   onClick={() => {
                     onChange(c.code);
                     setOpen(false);

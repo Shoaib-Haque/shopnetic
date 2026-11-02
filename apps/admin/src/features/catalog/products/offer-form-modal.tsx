@@ -22,6 +22,7 @@ import {
   minorToDecimal,
   getCurrencyExponent,
   normalizeCurrency,
+  isValidDateYearRange,
 } from '@shopnetic/contracts';
 import {
   Button,
@@ -86,14 +87,6 @@ function toLocalDatetimeInput(iso: string | null | undefined): string {
   if (isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function isValidDateString(val: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}/.test(val)) return false;
-  const d = new Date(val);
-  if (Number.isNaN(d.getTime())) return false;
-  const year = d.getFullYear();
-  return year >= 1970 && year <= 2100;
 }
 
 const offerFormSchema = z
@@ -206,7 +199,7 @@ const offerFormSchema = z
     let validStart = false;
     let validEnd = false;
     if (data.saleStartsAt && data.saleStartsAt.trim() !== '') {
-      if (!isValidDateString(data.saleStartsAt)) {
+      if (!isValidDateYearRange(data.saleStartsAt)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: 'products.offers.form.err.dateInvalid',
@@ -217,7 +210,7 @@ const offerFormSchema = z
       }
     }
     if (data.saleEndsAt && data.saleEndsAt.trim() !== '') {
-      if (!isValidDateString(data.saleEndsAt)) {
+      if (!isValidDateYearRange(data.saleEndsAt)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: 'products.offers.form.err.dateInvalid',

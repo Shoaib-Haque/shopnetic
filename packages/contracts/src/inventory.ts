@@ -113,33 +113,47 @@ export const offerSchema = z.object({
 });
 export type Offer = z.infer<typeof offerSchema>;
 
+/**
+ * Validates whether a date string has a 4-digit year format (1970–2100)
+ * and represents a valid chronological date.
+ */
+export function isValidDateYearRange(val?: string | null): boolean {
+  if (!val) return true;
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(val);
+  if (!match) return false;
+  const year = parseInt(match[1]!, 10);
+  const month = parseInt(match[2]!, 10);
+  const day = parseInt(match[3]!, 10);
+  if (year < 1970 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const d = new Date(val);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getUTCFullYear() === year || d.getFullYear() === year;
+}
+
+/**
+ * Validates that a date is not in the past (using consistent UTC day boundary comparison).
+ * Returns true if the target date is strictly before today (00:00:00 UTC).
+ */
+export function isDateInPastUtc(val: string | Date): boolean {
+  const d = typeof val === 'string' ? new Date(val) : val;
+  if (Number.isNaN(d.getTime())) return false;
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const targetUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return targetUtc < todayUtc;
+}
+
 export const isoDateTimeSchema = z
   .string()
   .datetime()
-  .refine(
-    (val) => {
-      const year = new Date(val).getUTCFullYear();
-      return year >= 1970 && year <= 2100;
-    },
-    { message: 'year must be between 1970 and 2100' },
-  );
+  .refine((val) => isValidDateYearRange(val), { message: 'year must be between 1970 and 2100' });
 
 export const restockEtaSchema = z
   .string()
   .datetime()
-  .refine(
-    (val) => {
-      const d = new Date(val);
-      if (Number.isNaN(d.getTime())) return false;
-      const year = d.getUTCFullYear();
-      if (year < 1970 || year > 2100) return false;
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0);
-      const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-      return target >= today;
-    },
-    { message: 'restock ETA date cannot be in the past' },
-  );
+  .refine((val) => isValidDateYearRange(val) && !isDateInPastUtc(val), {
+    message: 'restock ETA date cannot be in the past',
+  });
 
 export const createOfferRequestSchema = z.object({
   sellerId: z.string().uuid().optional(),

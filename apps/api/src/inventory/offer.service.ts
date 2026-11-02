@@ -3,6 +3,7 @@ import { assertCan, Permission, type Actor } from '@shopnetic/auth';
 import {
   createOfferRequestSchema,
   currencySchema,
+  isValidDateYearRange,
   updateOfferRequestSchema,
   type CreateOfferRequest,
   type ListOffersQuery,
@@ -322,16 +323,14 @@ export class OfferService {
     }
 
     if (data.saleStartsAt) {
-      const d = new Date(data.saleStartsAt);
-      if (Number.isNaN(d.getTime()) || d.getFullYear() < 1970 || d.getFullYear() > 2100) {
+      if (!isValidDateYearRange(data.saleStartsAt)) {
         throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
           detail: 'invalid sale start date',
         });
       }
     }
     if (data.saleEndsAt) {
-      const d = new Date(data.saleEndsAt);
-      if (Number.isNaN(d.getTime()) || d.getFullYear() < 1970 || d.getFullYear() > 2100) {
+      if (!isValidDateYearRange(data.saleEndsAt)) {
         throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
           detail: 'invalid sale end date',
         });
@@ -478,16 +477,14 @@ export class OfferService {
     }
 
     if (data.saleStartsAt) {
-      const d = new Date(data.saleStartsAt);
-      if (Number.isNaN(d.getTime()) || d.getFullYear() < 1970 || d.getFullYear() > 2100) {
+      if (!isValidDateYearRange(data.saleStartsAt)) {
         throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
           detail: 'invalid sale start date',
         });
       }
     }
     if (data.saleEndsAt) {
-      const d = new Date(data.saleEndsAt);
-      if (Number.isNaN(d.getTime()) || d.getFullYear() < 1970 || d.getFullYear() > 2100) {
+      if (!isValidDateYearRange(data.saleEndsAt)) {
         throw new AppError('OFFER_SALE_DATES_INVALID', 422, {
           detail: 'invalid sale end date',
         });

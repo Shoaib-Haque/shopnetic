@@ -9,6 +9,8 @@ import {
   type StockLevel,
   type UpdateStockRequest,
   type Warehouse,
+  isDateInPastUtc,
+  isValidDateYearRange,
 } from '@shopnetic/contracts';
 import {
   Button,
@@ -254,21 +256,10 @@ export function StockAdjustModal({
     const cleanEta = String(row.restockEta ?? '').trim();
     let restockEtaError: string | undefined;
     if (cleanEta !== '') {
-      const d = new Date(cleanEta);
-      if (
-        Number.isNaN(d.getTime()) ||
-        !/^\d{4}-\d{2}-\d{2}/.test(cleanEta) ||
-        d.getFullYear() < 1970 ||
-        d.getFullYear() > 2100
-      ) {
+      if (!isValidDateYearRange(cleanEta)) {
         restockEtaError = t('products.offers.stockModal.err.restockEtaInvalid');
-      } else {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-        if (target < today) {
-          restockEtaError = t('products.offers.stockModal.err.restockEtaPast');
-        }
+      } else if (isDateInPastUtc(cleanEta)) {
+        restockEtaError = t('products.offers.stockModal.err.restockEtaPast');
       }
     }
 

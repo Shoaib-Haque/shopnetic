@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react';
 import type { SellerStatus, SellerWithShop } from '@shopnetic/contracts';
 import { Input, Popover, PopoverContent, PopoverTrigger, StatusBadge } from '@shopnetic/ui';
+import { useComboboxKeyboardNav } from '@/hooks/use-combobox-keyboard-nav';
 import { listSellersPage } from '@/features/sellers/api';
 
 export interface SellerComboboxProps {
@@ -48,8 +49,6 @@ export function SellerCombobox({
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SellerWithShop[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [highlightIndex, setHighlightIndex] = useState(-1);
-  const listboxRef = useRef<HTMLDivElement | null>(null);
 
   const knownSellers = useMemo(() => {
     const map = new Map<string, SellerWithShop>();
@@ -123,40 +122,20 @@ export function SellerCombobox({
     });
   }, [searchResults, sellers, query, statusFilter]);
 
-  useEffect(() => {
-    setHighlightIndex(-1);
-  }, [open, displayedSellers]);
-
-  useEffect(() => {
-    if (highlightIndex < 0 || !listboxRef.current) return;
-    const option = listboxRef.current.children[highlightIndex] as HTMLElement | undefined;
-    if (option?.scrollIntoView) {
-      option.scrollIntoView({ block: 'nearest' });
-    }
-  }, [highlightIndex]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlightIndex((prev) => (prev < displayedSellers.length - 1 ? prev + 1 : prev));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
-    } else if (e.key === 'Enter') {
-      if (highlightIndex >= 0 && highlightIndex < displayedSellers.length) {
-        e.preventDefault();
-        const selected = displayedSellers[highlightIndex];
-        if (selected) {
-          onChange(selected.id);
-          setOpen(false);
-          setQuery('');
-        }
+  const { listboxRef, handleKeyDown, getOptionProps } = useComboboxKeyboardNav({
+    open,
+    itemCount: displayedSellers.length,
+    onSelect: (index) => {
+      const selected = displayedSellers[index];
+      if (selected) {
+        onChange(selected.id);
+        setOpen(false);
+        setQuery('');
       }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setOpen(false);
-    }
-  };
+    },
+    onClose: () => setOpen(false),
+    resetOn: [displayedSellers],
+  });
 
   return (
     <Popover
@@ -226,7 +205,7 @@ export function SellerCombobox({
             displayedSellers.map((s, index) => {
               const { name, tag, fullText } = formatSellerLabel(s);
               const isSelected = s.id === value;
-              const isHighlighted = index === highlightIndex;
+              const { onMouseEnter, isHighlighted } = getOptionProps(index);
               return (
                 <button
                   key={s.id}
@@ -234,7 +213,7 @@ export function SellerCombobox({
                   role="option"
                   aria-label={fullText}
                   aria-selected={isSelected}
-                  onMouseEnter={() => setHighlightIndex(index)}
+                  onMouseEnter={onMouseEnter}
                   onClick={() => {
                     onChange(s.id);
                     setOpen(false);

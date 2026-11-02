@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react';
 import type { Brand } from '@shopnetic/contracts';
 import { Input, Popover, PopoverContent, PopoverTrigger } from '@shopnetic/ui';
+import { useComboboxKeyboardNav } from '@/hooks/use-combobox-keyboard-nav';
 import { listBrandsPage } from '@/features/catalog/brands/api';
 
 export interface BrandComboboxProps {
@@ -37,8 +38,6 @@ export function BrandCombobox({
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Brand[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [highlightIndex, setHighlightIndex] = useState(-1);
-  const listboxRef = useRef<HTMLDivElement | null>(null);
 
   const knownBrands = useMemo(() => {
     const map = new Map<string, Brand>();
@@ -107,46 +106,22 @@ export function BrandCombobox({
     );
   }, [searchResults, brands, query]);
 
-  useEffect(() => {
-    setHighlightIndex(-1);
-  }, [open, displayedBrands]);
-
-  useEffect(() => {
-    if (highlightIndex < 0 || !listboxRef.current) return;
-    const option = listboxRef.current.children[highlightIndex] as HTMLElement | undefined;
-    if (option?.scrollIntoView) {
-      option.scrollIntoView({ block: 'nearest' });
-    }
-  }, [highlightIndex]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const totalOptions = 1 + displayedBrands.length;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlightIndex((prev) => (prev < totalOptions - 1 ? prev + 1 : prev));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
-    } else if (e.key === 'Enter') {
-      if (highlightIndex === 0) {
-        e.preventDefault();
+  const { listboxRef, handleKeyDown, getOptionProps } = useComboboxKeyboardNav({
+    open,
+    itemCount: 1 + displayedBrands.length,
+    onSelect: (index) => {
+      if (index === 0) {
         onChange('');
-        setOpen(false);
-        setQuery('');
-      } else if (highlightIndex > 0 && highlightIndex <= displayedBrands.length) {
-        e.preventDefault();
-        const b = displayedBrands[highlightIndex - 1];
-        if (b) {
-          onChange(b.id);
-          setOpen(false);
-          setQuery('');
-        }
+      } else {
+        const b = displayedBrands[index - 1];
+        if (b) onChange(b.id);
       }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
       setOpen(false);
-    }
-  };
+      setQuery('');
+    },
+    onClose: () => setOpen(false),
+    resetOn: [displayedBrands],
+  });
 
   return (
     <Popover
@@ -211,30 +186,35 @@ export function BrandCombobox({
           onWheel={(e) => e.stopPropagation()}
         >
           {/* None / Unbranded Option */}
-          <button
-            type="button"
-            role="option"
-            aria-label={noBrandLabel}
-            aria-selected={!value}
-            onMouseEnter={() => setHighlightIndex(0)}
-            onClick={() => {
-              onChange('');
-              setOpen(false);
-              setQuery('');
-            }}
-            className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-xs transition-colors text-left ${
-              !value
-                ? highlightIndex === 0
-                  ? 'bg-accent font-medium text-accent-foreground ring-1 ring-accent-foreground/20'
-                  : 'bg-accent/80 font-medium text-accent-foreground'
-                : highlightIndex === 0
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-            }`}
-          >
-            <span>{noBrandLabel}</span>
-            {!value && <Check className="size-3.5 shrink-0 text-primary" />}
-          </button>
+          {(() => {
+            const { onMouseEnter, isHighlighted } = getOptionProps(0);
+            return (
+              <button
+                type="button"
+                role="option"
+                aria-label={noBrandLabel}
+                aria-selected={!value}
+                onMouseEnter={onMouseEnter}
+                onClick={() => {
+                  onChange('');
+                  setOpen(false);
+                  setQuery('');
+                }}
+                className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-xs transition-colors text-left ${
+                  !value
+                    ? isHighlighted
+                      ? 'bg-accent font-medium text-accent-foreground ring-1 ring-accent-foreground/20'
+                      : 'bg-accent/80 font-medium text-accent-foreground'
+                    : isHighlighted
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }`}
+              >
+                <span>{noBrandLabel}</span>
+                {!value && <Check className="size-3.5 shrink-0 text-primary" />}
+              </button>
+            );
+          })()}
 
           {displayedBrands.length === 0 ? (
             <div className="py-4 text-center text-xs text-muted-foreground">{emptyText}</div>
@@ -242,7 +222,7 @@ export function BrandCombobox({
             displayedBrands.map((b, index) => {
               const optionIndex = index + 1;
               const isSelected = b.id === value;
-              const isHighlighted = optionIndex === highlightIndex;
+              const { onMouseEnter, isHighlighted } = getOptionProps(optionIndex);
               return (
                 <button
                   key={b.id}
@@ -250,7 +230,7 @@ export function BrandCombobox({
                   role="option"
                   aria-label={b.name}
                   aria-selected={isSelected}
-                  onMouseEnter={() => setHighlightIndex(optionIndex)}
+                  onMouseEnter={onMouseEnter}
                   onClick={() => {
                     onChange(b.id);
                     setOpen(false);

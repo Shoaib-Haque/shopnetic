@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { assertCan, Permission, type Actor } from '@shopnetic/auth';
 import {
+  isDateInPastUtc,
+  isValidDateYearRange,
   updateStockRequestSchema,
   type StockLevel,
   type UpdateStockRequest,
@@ -72,14 +74,10 @@ export class StockService {
     }
 
     if (data.restockEta) {
-      const d = new Date(data.restockEta);
-      if (Number.isNaN(d.getTime())) {
+      if (!isValidDateYearRange(data.restockEta)) {
         throw new AppError('VALIDATION_ERROR', 422, { detail: 'invalid restock ETA date format' });
       }
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0);
-      const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-      if (target < today) {
+      if (isDateInPastUtc(data.restockEta)) {
         throw new AppError('RESTOCK_ETA_PAST', 422, {
           detail: 'restock ETA date cannot be in the past',
         });
