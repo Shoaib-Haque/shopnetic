@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react';
 import type { SellerStatus, SellerWithShop } from '@shopnetic/contracts';
 import { Input, Popover, PopoverContent, PopoverTrigger, StatusBadge } from '@shopnetic/ui';
 import { useComboboxKeyboardNav } from '@/hooks/use-combobox-keyboard-nav';
+import { useDebouncedSearch } from '@/hooks/use-debounced-search';
+import { useScrollLoad } from '@/components/crud/use-scroll-load';
 import { listSellersPage } from '@/features/sellers/api';
 
 export interface SellerComboboxProps {
@@ -47,17 +49,31 @@ export function SellerCombobox({
 }: SellerComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SellerWithShop[] | null>(null);
-  const [searching, setSearching] = useState(false);
+  const debouncedQuery = useDebouncedSearch(query);
+
+  const fetchPage = useCallback(
+    (cursor: string | undefined) =>
+      listSellersPage({
+        q: debouncedQuery.trim() || undefined,
+        status: statusFilter,
+        cursor,
+        limit: 50,
+      }).then((res) => ({ items: res.sellers, nextCursor: res.nextCursor })),
+    [debouncedQuery, statusFilter],
+  );
+
+  const { items, loading, loadingMore, loadError, sentinelRef } = useScrollLoad<SellerWithShop>(
+    fetchPage,
+    [debouncedQuery, statusFilter],
+    open,
+  );
 
   const knownSellers = useMemo(() => {
     const map = new Map<string, SellerWithShop>();
     for (const s of sellers) map.set(s.id, s);
-    if (searchResults) {
-      for (const s of searchResults) map.set(s.id, s);
-    }
+    for (const s of items) map.set(s.id, s);
     return Array.from(map.values());
-  }, [sellers, searchResults]);
+  }, [sellers, items]);
 
   const selectedSeller = useMemo(
     () => knownSellers.find((s) => s.id === value),
@@ -69,45 +85,11 @@ export function SellerCombobox({
     [selectedSeller],
   );
 
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!open) {
-      setSearchResults(null);
-      return;
-    }
-
-    let active = true;
-    const timer = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res = await listSellersPage({
-          q: trimmed || undefined,
-          status: statusFilter,
-          limit: 50,
-        });
-        if (active) {
-          setSearchResults(res.sellers);
-        }
-      } catch {
-        if (active) {
-          setSearchResults(null);
-        }
-      } finally {
-        if (active) setSearching(false);
-      }
-    }, 200);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [open, query, statusFilter]);
-
   const displayedSellers = useMemo(() => {
-    if (searchResults !== null) {
-      return searchResults;
-    }
-    const q = query.trim().toLowerCase();
+    if (items.length > 0) return items;
+    if (!loading && !loadError) return [];
+    // While loading initial page or on load error, fall back to passed-in prop sellers
+    const q = debouncedQuery.trim().toLowerCase();
     const filteredByStatus = statusFilter
       ? sellers.filter((s) => s.status === statusFilter)
       : sellers;
@@ -120,7 +102,7 @@ export function SellerCombobox({
         s.legalName?.toLowerCase().includes(q)
       );
     });
-  }, [searchResults, sellers, query, statusFilter]);
+  }, [items, loading, loadError, sellers, debouncedQuery, statusFilter]);
 
   const { listboxRef, handleKeyDown, getOptionProps } = useComboboxKeyboardNav({
     open,
@@ -137,6 +119,8 @@ export function SellerCombobox({
     resetOn: [displayedSellers],
   });
 
+  const isSearching = loading || query !== debouncedQuery;
+
   return (
     <Popover
       open={open}
@@ -144,7 +128,6 @@ export function SellerCombobox({
         setOpen(next);
         if (!next) {
           setQuery('');
-          setSearchResults(null);
         }
       }}
     >
@@ -179,7 +162,7 @@ export function SellerCombobox({
         onWheel={(e) => e.stopPropagation()}
       >
         <div className="relative mb-2">
-          {searching ? (
+          {isSearching ? (
             <Loader2 className="absolute left-2.5 top-2.5 size-3.5 animate-spin text-muted-foreground" />
           ) : (
             <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
@@ -202,56 +185,65 @@ export function SellerCombobox({
           {displayedSellers.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">No sellers found</div>
           ) : (
-            displayedSellers.map((s, index) => {
-              const { name, tag, fullText } = formatSellerLabel(s);
-              const isSelected = s.id === value;
-              const { onMouseEnter, isHighlighted } = getOptionProps(index);
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  role="option"
-                  aria-label={fullText}
-                  aria-selected={isSelected}
-                  onMouseEnter={onMouseEnter}
-                  onClick={() => {
-                    onChange(s.id);
-                    setOpen(false);
-                    setQuery('');
-                  }}
-                  className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors text-left ${
-                    isSelected
-                      ? isHighlighted
-                        ? 'bg-primary/20 text-primary font-medium'
-                        : 'bg-primary/10 text-primary font-medium'
-                      : isHighlighted
-                        ? 'bg-muted text-foreground'
-                        : 'text-foreground hover:bg-muted'
-                  }`}
-                  title={fullText}
-                >
-                  <div className="flex flex-col min-w-0 flex-1 mr-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="truncate">{name}</span>
-                      <StatusBadge
-                        tone={tag === '1P' ? 'neutral' : 'warning'}
-                        className="text-[9px] px-1 py-0 shrink-0"
-                      >
-                        {tag}
-                      </StatusBadge>
+            <>
+              {displayedSellers.map((s, index) => {
+                const { name, tag, fullText } = formatSellerLabel(s);
+                const isSelected = s.id === value;
+                const { onMouseEnter, isHighlighted } = getOptionProps(index);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="option"
+                    aria-label={fullText}
+                    aria-selected={isSelected}
+                    onMouseEnter={onMouseEnter}
+                    onClick={() => {
+                      onChange(s.id);
+                      setOpen(false);
+                      setQuery('');
+                    }}
+                    className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors text-left ${
+                      isSelected
+                        ? isHighlighted
+                          ? 'bg-primary/20 text-primary font-medium'
+                          : 'bg-primary/10 text-primary font-medium'
+                        : isHighlighted
+                          ? 'bg-muted text-foreground'
+                          : 'text-foreground hover:bg-muted'
+                    }`}
+                    title={fullText}
+                  >
+                    <div className="flex flex-col min-w-0 flex-1 mr-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate">{name}</span>
+                        <StatusBadge
+                          tone={tag === '1P' ? 'neutral' : 'warning'}
+                          className="text-[9px] px-1 py-0 shrink-0"
+                        >
+                          {tag}
+                        </StatusBadge>
+                      </div>
+                      {s.legalName &&
+                      s.shop?.displayName &&
+                      s.legalName.toLowerCase() !== s.shop.displayName.toLowerCase() ? (
+                        <span className="truncate text-[10px] text-muted-foreground">
+                          {s.legalName}
+                        </span>
+                      ) : null}
                     </div>
-                    {s.legalName &&
-                    s.shop?.displayName &&
-                    s.legalName.toLowerCase() !== s.shop.displayName.toLowerCase() ? (
-                      <span className="truncate text-[10px] text-muted-foreground">
-                        {s.legalName}
-                      </span>
-                    ) : null}
-                  </div>
-                  {isSelected && <Check className="size-3.5 shrink-0 text-primary" />}
-                </button>
-              );
-            })
+                    {isSelected && <Check className="size-3.5 shrink-0 text-primary" />}
+                  </button>
+                );
+              })}
+              {loadingMore ? (
+                <div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  <span>Loading more…</span>
+                </div>
+              ) : null}
+              <div ref={sentinelRef} data-testid="seller-combobox-sentinel" />
+            </>
           )}
         </div>
       </PopoverContent>

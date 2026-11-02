@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { SellerWithShop } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
+import { triggerIntersection } from '@/test/intersection-observer';
+import { listSellersPage } from '@/features/sellers/api';
 import { formatSellerLabel, SellerCombobox, type SellerComboboxProps } from './seller-combobox';
+
+vi.mock('@/features/sellers/api', () => ({
+  listSellersPage: vi.fn(),
+}));
+
+const mockedListSellersPage = vi.mocked(listSellersPage);
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -136,6 +144,19 @@ describe('formatSellerLabel', () => {
 describe('SellerCombobox', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedListSellersPage.mockImplementation(async (opts) => {
+      let list = [acmeSeller, shopneticSeller];
+      if (opts?.q) {
+        const q = opts.q.toLowerCase();
+        list = list.filter(
+          (s) =>
+            s.shop?.displayName.toLowerCase().includes(q) ||
+            s.shop?.slug.toLowerCase().includes(q) ||
+            s.legalName.toLowerCase().includes(q),
+        );
+      }
+      return { sellers: list, nextCursor: undefined };
+    });
   });
 
   afterEach(() => {
@@ -350,6 +371,7 @@ describe('SellerCombobox', () => {
   // -------------------------------------------------------------------------
   describe('Empty sellers list', () => {
     it('shows "No sellers found" immediately when sellers array is empty', async () => {
+      mockedListSellersPage.mockResolvedValueOnce({ sellers: [], nextCursor: undefined });
       renderCombobox({ sellers: [] });
       fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
 
@@ -396,6 +418,106 @@ describe('SellerCombobox', () => {
       await waitFor(() => {
         expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Pagination & Infinite Scroll (useScrollLoad)
+  // -------------------------------------------------------------------------
+  describe('Pagination & Infinite Scroll', () => {
+    it('requests initial page with limit=50 and undefined cursor on open', async () => {
+      renderCombobox();
+      fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
+
+      await waitFor(() => {
+        expect(mockedListSellersPage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            cursor: undefined,
+            limit: 50,
+            status: 'approved',
+          }),
+        );
+      });
+    });
+
+    it('appends page 2 when sentinel intersects and passes cursor without duplicate rows', async () => {
+      const sellerPage2: SellerWithShop = {
+        ...acmeSeller,
+        id: 'seller_page2',
+        accountId: 'acc_page2',
+        legalName: 'Second Page Merchant LLC',
+        shop: {
+          ...acmeSeller.shop!,
+          id: 'shop_page2',
+          sellerId: 'seller_page2',
+          slug: 'second-page',
+          displayName: 'Second Page Merchant',
+        },
+      };
+
+      mockedListSellersPage.mockImplementation(async (opts) => {
+        if (opts?.cursor === 'next_page_cursor') {
+          return { sellers: [sellerPage2], nextCursor: undefined };
+        }
+        return { sellers: [acmeSeller], nextCursor: 'next_page_cursor' };
+      });
+
+      renderCombobox({ sellers: [] });
+      fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
+
+      // Wait for page 1 to load
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: 'Acme Apparel (3P)' })).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByRole('option', { name: 'Second Page Merchant (3P)' }),
+      ).not.toBeInTheDocument();
+
+      // Trigger sentinel visibility
+      const sentinel = screen.getByTestId('seller-combobox-sentinel');
+      act(() => {
+        triggerIntersection(sentinel, true);
+      });
+
+      // Page 2 should be appended
+      await waitFor(() => {
+        expect(
+          screen.getByRole('option', { name: 'Second Page Merchant (3P)' }),
+        ).toBeInTheDocument();
+      });
+
+      // Page 1 is still present
+      expect(screen.getByRole('option', { name: 'Acme Apparel (3P)' })).toBeInTheDocument();
+
+      // Verified called with cursor and query
+      expect(mockedListSellersPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cursor: 'next_page_cursor',
+          limit: 50,
+        }),
+      );
+    });
+
+    it('clamps ArrowDown at the boundary of currently loaded items', async () => {
+      const onChange = vi.fn();
+      renderCombobox({ sellers: [acmeSeller, shopneticSeller], onChange });
+
+      fireEvent.click(screen.getByRole('combobox', { name: 'Seller' }));
+      await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
+
+      const searchInput = screen.getByPlaceholderText('Search sellers…');
+
+      // Navigate down to item 0, item 1 (last loaded item), and attempt exceeding boundary
+      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
+      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
+      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
+      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
+
+      // Enter to select — should select the clamped last loaded item (Shopnetic Retail)
+      fireEvent.keyDown(searchInput, { key: 'Enter' });
+
+      expect(onChange).toHaveBeenCalledWith('seller_1p');
     });
   });
 });
