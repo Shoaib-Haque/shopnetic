@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Check, Image as ImageIcon, Layers, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
+import {
+  Check,
+  Image as ImageIcon,
+  Layers,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+} from 'lucide-react';
 import type {
   CategoryOption,
   OptionType,
@@ -14,6 +22,7 @@ import type {
 import {
   Button,
   Checkbox,
+  Input,
   Modal,
   ModalBody,
   ModalContent,
@@ -70,11 +79,13 @@ function ValueSelectModal({
 }: ValueSelectModalProps) {
   const t = useTranslations('catalog');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(currentValueIds));
+  const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setSelectedIds(new Set(currentValueIds));
+    setQuery('');
     setError(null);
   }, [currentValueIds, open]);
 
@@ -88,6 +99,15 @@ function ValueSelectModal({
     return optionType.values.filter((v) => v.status === 'active');
   }, [optionType, categoryOption, valueSet]);
 
+  const filteredValues = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return availableValues;
+    return availableValues.filter(
+      (v) =>
+        v.code.toLowerCase().includes(q) || (v.label.en && v.label.en.toLowerCase().includes(q)),
+    );
+  }, [availableValues, query]);
+
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -98,11 +118,19 @@ function ValueSelectModal({
   };
 
   const selectAll = () => {
-    setSelectedIds(new Set(availableValues.map((v) => v.id)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const v of filteredValues) next.add(v.id);
+      return next;
+    });
   };
 
   const deselectAll = () => {
-    setSelectedIds(new Set());
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const v of filteredValues) next.delete(v.id);
+      return next;
+    });
   };
 
   const handleSave = async () => {
@@ -144,21 +172,37 @@ function ValueSelectModal({
             </span>
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={selectAll}>
-                Select all
+                {t('products.options.selectAll')}
               </Button>
               <Button type="button" variant="outline" size="sm" onClick={deselectAll}>
-                Deselect all
+                {t('products.options.deselectAll')}
               </Button>
             </div>
           </div>
 
+          {availableValues.length > 0 && (
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('products.options.searchValues')}
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+          )}
+
           {availableValues.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">
-              No active values available for this option type.
+              {t('products.options.noActiveValues')}
+            </p>
+          ) : filteredValues.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              {t('products.options.noValuesMatch')}
             </p>
           ) : (
             <div className="max-h-60 divide-y divide-border overflow-y-auto rounded-md border border-input">
-              {availableValues.map((val) => {
+              {filteredValues.map((val) => {
                 const isChecked = selectedIds.has(val.id);
                 return (
                   <label

@@ -120,6 +120,34 @@ export function listVariants(productId: string): Promise<Variant[]> {
   return adminApi<Variant[]>(`/products/${productId}/variants`);
 }
 
+export async function listVariantsPage(
+  productId: string,
+  opts?: {
+    status?: 'active' | 'inactive' | 'all';
+    q?: string;
+    cursor?: string;
+    limit?: number;
+  },
+): Promise<{ variants: Variant[]; nextCursor?: string | undefined; total: number }> {
+  const params = new URLSearchParams();
+  if (opts?.status && opts.status !== 'all') params.set('status', opts.status);
+  if (opts?.q) params.set('q', opts.q);
+  if (opts?.cursor) params.set('cursor', opts.cursor);
+  if (opts?.limit) params.set('limit', String(opts.limit));
+
+  const queryStr = params.toString();
+  const path = `/products/${productId}/variants${queryStr ? `?${queryStr}` : ''}`;
+  const res = await adminApi<{ data: Variant[]; meta: { nextCursor?: string; total?: number } }>(
+    path,
+    { raw: true },
+  );
+  return {
+    variants: res.data,
+    ...(res.meta.nextCursor ? { nextCursor: res.meta.nextCursor } : {}),
+    total: res.meta.total ?? res.data.length,
+  };
+}
+
 export function getVariant(productId: string, id: string): Promise<Variant> {
   return adminApi<Variant>(`/products/${productId}/variants/${id}`);
 }

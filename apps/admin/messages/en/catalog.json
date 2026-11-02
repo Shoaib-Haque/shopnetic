@@ -461,10 +461,14 @@
         "slugAutoHint": "Generated from title if left blank.",
         "category": "Category",
         "selectCategory": "Select a category…",
+        "searchCategories": "Search categories…",
+        "noCategories": "No categories found",
         "categoryLockedHint": "Category is permanently locked after creation.",
         "defaultDraftHint": "New products start in Draft status.",
         "brand": "Brand",
         "selectBrand": "Select a brand (optional)…",
+        "searchBrands": "Search brands…",
+        "noBrands": "No brands found",
         "noBrand": "None (unbranded)",
         "description": "Description",
         "descriptionPlaceholder": "Product details, materials, care instructions…",
@@ -565,7 +569,10 @@
           "categoryRequired": "Please select a category.",
           "slugFormat": "Lowercase letters, digits, and single hyphens only.",
           "slugLong": "Keep slug to 80 characters or fewer.",
-          "priceInvalid": "Enter a valid non-negative number."
+          "slugRequired": "Please enter a product slug.",
+          "priceInvalid": "Enter a valid non-negative number.",
+          "priceMax": "Base price cannot exceed $999,999.00.",
+          "rejectionNoteMax": "Rejection note cannot exceed 2,000 characters."
         }
       },
       "options": {
@@ -589,6 +596,11 @@
         "predefinedValues": "Predefined Value Set",
         "openValues": "Open Catalog Values",
         "selectedValuesCount": "{count, plural, =0 {No values selected} one {# value selected} other {# values selected}}",
+        "selectAll": "Select all",
+        "deselectAll": "Deselect all",
+        "noActiveValues": "No active values available for this option type.",
+        "searchValues": "Search values…",
+        "noValuesMatch": "No values match your search.",
         "manageValues": "Select Values",
         "selectValuesTitle": "Select Offered Values",
         "selectValuesHint": "Choose the values this product offers for {name}.",
@@ -616,6 +628,13 @@
         "dialogSubtitle": "Manage SKU codes, barcodes, weights, dimensions, and active combinations.",
         "dialogSubtitleArchived": "This product is archived. Variants are displayed in read-only mode.",
         "dialogSubtitlePending": "This product is awaiting review. Variants are displayed in read-only mode.",
+        "searchPlaceholder": "Search by SKU, GTIN, or option value…",
+        "showingCount": "Showing {count} of {total} variants",
+        "loadMore": "Load more variants",
+        "status": {
+          "active": "Active",
+          "inactive": "Inactive"
+        },
         "generate": "Generate Variants",
         "createSingle": "Add Variant",
         "emptyTitle": "No variants generated yet.",
@@ -642,6 +661,13 @@
           "defaultStatus": "Initial Status",
           "selectAll": "Select All",
           "deselectAll": "Deselect All",
+          "searchCombos": "Search combinations…",
+          "noCombosMatch": "No combinations match your search.",
+          "selectedCount": "{selected} of {total} selected",
+          "singleDefaultVariant": "Single / Default Variant",
+          "errMaxCombosExceeded": "Cannot generate more than 600 variants at once. Please refine your selected combinations.",
+          "errPrefixTooLong": "SKU prefix is too long: combined SKU would exceed 64 characters (longest suffix is {maxSuffixLen} chars).",
+          "errPartialGeneration": "Generated {created} of {total} variants before stopping: {error}",
           "generateSelected": "Generate {count, plural, one {# Variant} other {# Variants}}",
           "generating": "Generating variants...",
           "noNewCombos": "All possible combinations have already been generated.",
@@ -669,9 +695,12 @@
           "create": "Create Variant",
           "cancel": "Cancel",
           "err": {
-            "skuLong": "SKU code cannot exceed 80 characters.",
+            "skuLong": "SKU code cannot exceed 64 characters.",
             "weightInvalid": "Weight must be a non-negative whole number.",
-            "dimensionInvalid": "Dimensions must be positive whole numbers (greater than 0)."
+            "weightMax": "Weight cannot exceed 10,000,000 grams.",
+            "dimensionInvalid": "Dimensions must be positive whole numbers (greater than 0).",
+            "dimensionMax": "Dimensions cannot exceed 100,000 mm (100 meters).",
+            "conflict": "That action conflicts with the current state — reload and try again."
           }
         },
         "deleteConfirmTitle": "Delete variant?",

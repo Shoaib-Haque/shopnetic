@@ -14,11 +14,16 @@ import {
   Image as ImageIcon,
   Layers,
   Plus,
+  Search,
   Trash2,
   Wand2,
 } from 'lucide-react';
 import {
   computeComboSignature,
+  VARIANT_BULK_GENERATE_MAX,
+  VARIANT_DIM_MAX_MM,
+  VARIANT_SKU_MAX,
+  VARIANT_WEIGHT_MAX_G,
   type CategoryOption,
   type CreateVariantRequest,
   type OptionType,
@@ -70,7 +75,7 @@ import {
   createVariant,
   deleteVariant,
   listProductOptions,
-  listVariants,
+  listVariantsPage,
   restoreVariant,
   updateVariant,
 } from './api';
@@ -117,6 +122,7 @@ function GeneratorModal({
   const [skuPrefix, setSkuPrefix] = useState('');
   const [defaultStatus, setDefaultStatus] = useState<'active' | 'inactive'>('active');
   const [selectedCombos, setSelectedCombos] = useState<Set<string>>(new Set());
+  const [comboSearch, setComboSearch] = useState('');
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
 
@@ -208,6 +214,28 @@ function GeneratorModal({
     return { allCombos: combos, newCombos: newOnes };
   }, [variantAxes, optionTypeMap, existingSignatures]);
 
+  const filteredNewCombos = useMemo(() => {
+    const q = comboSearch.trim().toLowerCase();
+    if (!q) return newCombos;
+    return newCombos.filter((c) => {
+      if (c.suggestedSku.toLowerCase().includes(q)) return true;
+      return c.items.some(
+        (it) =>
+          it.valueCode.toLowerCase().includes(q) ||
+          it.valueLabel.toLowerCase().includes(q) ||
+          it.typeName.toLowerCase().includes(q),
+      );
+    });
+  }, [newCombos, comboSearch]);
+
+  const prevOpenRef = useRef(open);
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
+      setComboSearch('');
+    }
+    prevOpenRef.current = open;
+  }, [open]);
+
   // Default select all new combos when modal opens or list changes
   useEffect(() => {
     if (open) {
@@ -225,17 +253,41 @@ function GeneratorModal({
     });
   };
 
-  const selectAll = () => setSelectedCombos(new Set(newCombos.map((c) => c.signature)));
-  const deselectAll = () => setSelectedCombos(new Set());
+  const selectAll = () => {
+    setSelectedCombos((prev) => {
+      const next = new Set(prev);
+      for (const c of filteredNewCombos) next.add(c.signature);
+      return next;
+    });
+  };
+
+  const deselectAll = () => {
+    setSelectedCombos((prev) => {
+      const next = new Set(prev);
+      for (const c of filteredNewCombos) next.delete(c.signature);
+      return next;
+    });
+  };
 
   const handleGenerate = async () => {
     const toCreate = newCombos.filter((c) => selectedCombos.has(c.signature));
     if (toCreate.length === 0) return;
 
+    if (toCreate.length > VARIANT_BULK_GENERATE_MAX) {
+      setGenError(t('products.variants.matrix.errMaxCombosExceeded'));
+      return;
+    }
+
+    const prefix = skuPrefix.trim();
+    const maxSuffixLen = toCreate.reduce((max, c) => Math.max(max, c.suggestedSku.length), 0);
+    if (prefix.length + maxSuffixLen > VARIANT_SKU_MAX) {
+      setGenError(t('products.variants.matrix.errPrefixTooLong', { maxSuffixLen }));
+      return;
+    }
+
     setGenerating(true);
     setGenError(null);
     const createdList: Variant[] = [];
-    const prefix = skuPrefix.trim();
 
     try {
       for (let i = 0; i < toCreate.length; i++) {
@@ -258,9 +310,26 @@ function GeneratorModal({
       notify.saved(t('products.variants.toast.generated', { count: createdList.length }));
       onOpenChange(false);
     } catch (e) {
-      setGenError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+      const errMsg = t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined));
       if (createdList.length > 0) {
         onGenerated(createdList);
+        const succeededSignatures = new Set(createdList.map((v) => v.comboSignature));
+        setSelectedCombos((prev) => {
+          const next = new Set(prev);
+          for (const sig of succeededSignatures) {
+            next.delete(sig);
+          }
+          return next;
+        });
+        setGenError(
+          t('products.variants.matrix.errPartialGeneration', {
+            created: createdList.length,
+            total: toCreate.length,
+            error: errMsg,
+          }),
+        );
+      } else {
+        setGenError(errMsg);
       }
     } finally {
       setGenerating(false);
@@ -344,8 +413,8 @@ function GeneratorModal({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t('products.variants.status.active')}</SelectItem>
+                  <SelectItem value="inactive">{t('products.variants.status.inactive')}</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
@@ -360,7 +429,10 @@ function GeneratorModal({
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">
-                  {selectedCombos.size} of {newCombos.length} selected
+                  {t('products.variants.matrix.selectedCount', {
+                    selected: selectedCombos.size,
+                    total: newCombos.length,
+                  })}
                 </span>
                 <div className="flex items-center gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={selectAll}>
@@ -372,46 +444,65 @@ function GeneratorModal({
                 </div>
               </div>
 
-              <div className="max-h-60 divide-y divide-border overflow-y-auto rounded-md border border-input">
-                {newCombos.map((combo) => {
-                  const isChecked = selectedCombos.has(combo.signature);
-                  return (
-                    <label
-                      key={combo.signature}
-                      className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm hover:bg-muted/50"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Checkbox
-                          checked={isChecked}
-                          onCheckedChange={() => toggleCombo(combo.signature)}
-                          aria-label={combo.suggestedSku || 'Variant'}
-                        />
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {combo.items.length === 0 ? (
-                            <span className="text-xs text-muted-foreground italic">
-                              Single / Default Variant
-                            </span>
-                          ) : (
-                            combo.items.map((it) => (
-                              <span
-                                key={it.optionTypeId}
-                                className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
-                              >
-                                {it.typeName}: {it.valueLabel}
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                      {combo.suggestedSku && (
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {skuPrefix ? `${skuPrefix}${combo.suggestedSku}` : combo.suggestedSku}
-                        </span>
-                      )}
-                    </label>
-                  );
-                })}
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  value={comboSearch}
+                  onChange={(e) => setComboSearch(e.target.value)}
+                  placeholder={t('products.variants.matrix.searchCombos')}
+                  className="h-9 pl-8"
+                />
               </div>
+
+              {filteredNewCombos.length === 0 ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  {t('products.variants.matrix.noCombosMatch')}
+                </div>
+              ) : (
+                <div className="max-h-60 divide-y divide-border overflow-y-auto rounded-md border border-input">
+                  {filteredNewCombos.map((combo) => {
+                    const isChecked = selectedCombos.has(combo.signature);
+                    return (
+                      <label
+                        key={combo.signature}
+                        className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm hover:bg-muted/50"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() => toggleCombo(combo.signature)}
+                            aria-label={combo.suggestedSku || 'Variant'}
+                          />
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {combo.items.length === 0 ? (
+                              <span className="text-xs text-muted-foreground italic">
+                                {t('products.variants.matrix.singleDefaultVariant')}
+                              </span>
+                            ) : (
+                              combo.items.map((it) => (
+                                <span
+                                  key={it.optionTypeId}
+                                  className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
+                                >
+                                  {it.typeName}: {it.valueLabel}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        {combo.suggestedSku && (
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {skuPrefix ? `${skuPrefix}${combo.suggestedSku}` : combo.suggestedSku}
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -467,13 +558,14 @@ interface VariantFormModalProps {
   categoryOptions: CategoryOption[];
   optionTypeMap: Map<string, OptionType>;
   onSaved: (variant: Variant) => void;
+  onConflict?: () => void;
 }
 
 const variantFormSchema = z.object({
   skuCode: z
     .string()
     .trim()
-    .max(80, 'products.variants.form.err.skuLong')
+    .max(VARIANT_SKU_MAX, 'products.variants.form.err.skuLong')
     .optional()
     .or(z.literal('')),
   gtin: z
@@ -489,6 +581,10 @@ const variantFormSchema = z.object({
       (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 0),
       'products.variants.form.err.weightInvalid',
     )
+    .refine(
+      (v) => v === '' || Number(v) <= VARIANT_WEIGHT_MAX_G,
+      'products.variants.form.err.weightMax',
+    )
     .optional()
     .or(z.literal('')),
   length: z
@@ -497,6 +593,10 @@ const variantFormSchema = z.object({
     .refine(
       (v) => v === '' || (/^\d+$/.test(v) && Number(v) > 0),
       'products.variants.form.err.dimensionInvalid',
+    )
+    .refine(
+      (v) => v === '' || Number(v) <= VARIANT_DIM_MAX_MM,
+      'products.variants.form.err.dimensionMax',
     )
     .optional()
     .or(z.literal('')),
@@ -507,6 +607,10 @@ const variantFormSchema = z.object({
       (v) => v === '' || (/^\d+$/.test(v) && Number(v) > 0),
       'products.variants.form.err.dimensionInvalid',
     )
+    .refine(
+      (v) => v === '' || Number(v) <= VARIANT_DIM_MAX_MM,
+      'products.variants.form.err.dimensionMax',
+    )
     .optional()
     .or(z.literal('')),
   height: z
@@ -515,6 +619,10 @@ const variantFormSchema = z.object({
     .refine(
       (v) => v === '' || (/^\d+$/.test(v) && Number(v) > 0),
       'products.variants.form.err.dimensionInvalid',
+    )
+    .refine(
+      (v) => v === '' || Number(v) <= VARIANT_DIM_MAX_MM,
+      'products.variants.form.err.dimensionMax',
     )
     .optional()
     .or(z.literal('')),
@@ -532,6 +640,7 @@ function VariantFormModal({
   categoryOptions,
   optionTypeMap,
   onSaved,
+  onConflict,
 }: VariantFormModalProps) {
   const t = useTranslations('catalog');
   const [manualSelections, setManualSelections] = useState<Record<string, string>>({});
@@ -666,6 +775,9 @@ function VariantFormModal({
       setErrorCode(code ?? null);
       if (code === 'VARIANT_SKU_TAKEN' || code === 'SKU_TAKEN') {
         setError('skuCode', { type: 'server', message: t(catalogErrorKey(code)) });
+      } else if (code === 'CONFLICT' || code === 'VARIANT_OCC_CONFLICT') {
+        setFormError(t('products.variants.form.err.conflict'));
+        onConflict?.();
       } else {
         setFormError(t(catalogErrorKey(code)));
       }
@@ -675,7 +787,7 @@ function VariantFormModal({
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-lg max-h-[85vh] flex flex-col">
-        <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+        <form noValidate onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
           <ModalHeader className="shrink-0 border-b border-border pb-4">
             <ModalTitle>
               {isEdit
@@ -828,8 +940,8 @@ function VariantFormModal({
               >
                 <Input
                   id="variant-weight"
-                  type="number"
-                  min="0"
+                  type="text"
+                  inputMode="numeric"
                   {...register('weightG')}
                   placeholder={t('products.variants.form.weightPlaceholder')}
                   invalid={Boolean(errors.weightG)}
@@ -848,8 +960,8 @@ function VariantFormModal({
               >
                 <div className="grid grid-cols-3 gap-1.5">
                   <Input
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="L"
                     aria-label={t('products.variants.form.length')}
                     {...register('length')}
@@ -862,8 +974,8 @@ function VariantFormModal({
                     }
                   />
                   <Input
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="W"
                     aria-label={t('products.variants.form.width')}
                     {...register('width')}
@@ -876,8 +988,8 @@ function VariantFormModal({
                     }
                   />
                   <Input
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="H"
                     aria-label={t('products.variants.form.height')}
                     {...register('height')}
@@ -971,12 +1083,20 @@ export function ProductVariantsDialog({
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [variants, setVariants] = useState<Variant[]>([]);
+  const [totalVariants, setTotalVariants] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [optionTypes, setOptionTypes] = useState<OptionType[]>([]);
 
   // Sub-modals
   const [generatorOpen, setGeneratorOpen] = useState(false);
+  const [allExistingVariants, setAllExistingVariants] = useState<Variant[]>([]);
   const [formModalState, setFormModalState] = useState<{
     open: boolean;
     variant: Variant | null;
@@ -994,6 +1114,13 @@ export function ProductVariantsDialog({
     };
   }, []);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const loadData = useCallback(
     async ({ background = false }: { background?: boolean } = {}) => {
       if (!product) return;
@@ -1005,15 +1132,17 @@ export function ProductVariantsDialog({
       }
       setActionError(null);
       try {
-        const [vars, pOpts, cOpts, otLive, otArch] = await Promise.all([
-          listVariants(pId),
+        const [varsPage, pOpts, cOpts, otLive, otArch] = await Promise.all([
+          listVariantsPage(pId, { q: debouncedQuery, limit: 30 }),
           listProductOptions(pId),
           listCategoryOptions(cId),
           listOptionTypesPage({ limit: 100 }),
           listOptionTypesPage({ archived: true, limit: 100 }).catch(() => ({ optionTypes: [] })),
         ]);
         if (mounted.current && product.id === pId) {
-          setVariants(vars);
+          setVariants(varsPage.variants);
+          setTotalVariants(varsPage.total);
+          setNextCursor(varsPage.nextCursor);
           setProductOptions(pOpts);
           setCategoryOptions(cOpts);
           const map = new Map<string, OptionType>();
@@ -1033,16 +1162,22 @@ export function ProductVariantsDialog({
         }
       }
     },
-    [product, t],
+    [product, debouncedQuery, t],
   );
 
   useEffect(() => {
     if (!open || !product) {
       setVariants([]);
+      setTotalVariants(0);
+      setNextCursor(undefined);
+      setLoadingMore(false);
+      setSearchQuery('');
+      setDebouncedQuery('');
       setProductOptions([]);
       setCategoryOptions([]);
       setOptionTypes([]);
       setGeneratorOpen(false);
+      setAllExistingVariants([]);
       setFormModalState({ open: false, variant: null });
       setActionError(null);
       setLoadError(null);
@@ -1050,6 +1185,35 @@ export function ProductVariantsDialog({
     }
     void loadData();
   }, [open, product, loadData]);
+
+  useEffect(() => {
+    if (generatorOpen && product) {
+      let active = true;
+      const fetchAll = async () => {
+        try {
+          const collected: Variant[] = [];
+          let cur: string | undefined = undefined;
+          while (active) {
+            const page = await listVariantsPage(product.id, {
+              limit: 100,
+              ...(cur ? { cursor: cur } : {}),
+            });
+            collected.push(...page.variants);
+            if (!page.nextCursor) break;
+            cur = page.nextCursor;
+          }
+          if (active) setAllExistingVariants(collected);
+        } catch {
+          if (active) setAllExistingVariants(variants);
+        }
+      };
+      void fetchAll();
+      return () => {
+        active = false;
+      };
+    }
+    return undefined;
+  }, [generatorOpen, product, variants]);
 
   const optionTypeMap = useMemo(() => {
     const map = new Map<string, OptionType>();
@@ -1063,21 +1227,53 @@ export function ProductVariantsDialog({
   const resyncVariants = useCallback(async () => {
     if (!product || !mounted.current) return;
     try {
-      const vars = await listVariants(product.id);
-      if (mounted.current) setVariants(vars);
+      const page = await listVariantsPage(product.id, { q: debouncedQuery, limit: 30 });
+      if (mounted.current) {
+        setVariants(page.variants);
+        setTotalVariants(page.total);
+        setNextCursor(page.nextCursor);
+      }
     } catch {
       // best-effort silent resync
     }
-  }, [product]);
+  }, [product, debouncedQuery]);
+
+  const handleLoadMore = async () => {
+    if (!product || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await listVariantsPage(product.id, {
+        q: debouncedQuery,
+        cursor: nextCursor,
+        limit: 30,
+      });
+      if (mounted.current) {
+        setVariants((prev) => [...prev, ...page.variants]);
+        setNextCursor(page.nextCursor);
+        setTotalVariants(page.total);
+      }
+    } catch (e) {
+      setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+    } finally {
+      if (mounted.current) {
+        setLoadingMore(false);
+      }
+    }
+  };
 
   const { doDelete: doDeleteVariant } = useSoftDeleteWithUndo<Variant>({
     deleteItem: (variantId) => (product ? deleteVariant(product.id, variantId) : Promise.resolve()),
     restoreItem: (variantId) =>
       product ? restoreVariant(product.id, variantId) : Promise.resolve(),
     resync: () => void resyncVariants(),
-    onOptimisticRemove: (v) => setVariants((prev) => prev.filter((x) => x.id !== v.id)),
-    onOptimisticRestore: (v) =>
-      setVariants((prev) => [...prev, v].sort((a, b) => a.position - b.position)),
+    onOptimisticRemove: (v) => {
+      setVariants((prev) => prev.filter((x) => x.id !== v.id));
+      setTotalVariants((prev) => Math.max(0, prev - 1));
+    },
+    onOptimisticRestore: (v) => {
+      setVariants((prev) => [...prev, v].sort((a, b) => a.position - b.position));
+      setTotalVariants((prev) => prev + 1);
+    },
     labelOf: labelOfVariant,
     onError: (e) =>
       setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined))),
@@ -1103,6 +1299,7 @@ export function ProductVariantsDialog({
 
   const handleGenerated = (newlyCreated: Variant[]) => {
     setVariants((prev) => [...prev, ...newlyCreated]);
+    setTotalVariants((prev) => prev + newlyCreated.length);
   };
 
   const handleSaved = (v: Variant) => {
@@ -1110,6 +1307,7 @@ export function ProductVariantsDialog({
       const exists = prev.some((x) => x.id === v.id);
       return exists ? prev.map((x) => (x.id === v.id ? v : x)) : [...prev, v];
     });
+    setTotalVariants((prev) => (variants.some((x) => x.id === v.id) ? prev : prev + 1));
   };
 
   const formatDims = (dims: unknown): string => {
@@ -1134,7 +1332,7 @@ export function ProductVariantsDialog({
                   <Layers className="size-5 text-primary shrink-0" aria-hidden />
                   <span>{t('products.variants.dialogTitle')}</span>
                   <StatusBadge tone="neutral" className="text-xs font-mono">
-                    {variants.length}
+                    {totalVariants}
                   </StatusBadge>
                   {product && (
                     <span
@@ -1216,186 +1414,382 @@ export function ProductVariantsDialog({
                   </div>
                 )}
 
-                {variants.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border py-12 text-center">
-                    <Grid className="mx-auto size-8 text-muted-foreground/60" aria-hidden />
-                    <p className="mt-2 text-sm font-medium text-foreground">
-                      {t('products.variants.emptyTitle')}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t('products.variants.emptySubtitle')}
-                    </p>
-                    <div className="mt-4 flex items-center justify-center gap-3">
-                      {onBackToOptions && product && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            onOpenChange(false);
-                            onBackToOptions(product);
-                          }}
-                        >
-                          <ArrowLeft className="size-4" />
-                          {t('products.variants.backToOptions')}
-                        </Button>
-                      )}
-                      {!isReadOnly && (
-                        <Button type="button" size="sm" onClick={() => setGeneratorOpen(true)}>
-                          <Wand2 className="size-4" />
-                          {t('products.variants.generate')}
-                        </Button>
-                      )}
-                    </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search
+                      className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder={t('products.variants.searchPlaceholder')}
+                      className="h-9 pl-8"
+                    />
                   </div>
+                  <div className="text-xs text-muted-foreground">
+                    {t('products.variants.showingCount', {
+                      count: variants.length,
+                      total: totalVariants,
+                    })}
+                  </div>
+                </div>
+
+                {variants.length === 0 ? (
+                  debouncedQuery ? (
+                    <div className="rounded-lg border border-dashed border-border py-12 text-center">
+                      <Search className="mx-auto size-8 text-muted-foreground/60" aria-hidden />
+                      <p className="mt-2 text-sm font-medium text-foreground">
+                        No variants match your search
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Try adjusting your search terms.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-border py-12 text-center">
+                      <Grid className="mx-auto size-8 text-muted-foreground/60" aria-hidden />
+                      <p className="mt-2 text-sm font-medium text-foreground">
+                        {t('products.variants.emptyTitle')}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t('products.variants.emptySubtitle')}
+                      </p>
+                      <div className="mt-4 flex items-center justify-center gap-3">
+                        {onBackToOptions && product && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              onOpenChange(false);
+                              onBackToOptions(product);
+                            }}
+                          >
+                            <ArrowLeft className="size-4" />
+                            {t('products.variants.backToOptions')}
+                          </Button>
+                        )}
+                        {!isReadOnly && (
+                          <Button type="button" size="sm" onClick={() => setGeneratorOpen(true)}>
+                            <Wand2 className="size-4" />
+                            {t('products.variants.generate')}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border border-border">
-                    <Table className="min-w-[700px]">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>{t('products.variants.table.combination')}</TableHead>
-                          <TableHead className="w-36">{t('products.variants.table.sku')}</TableHead>
-                          <TableHead className="w-36">
-                            {t('products.variants.table.gtin')}
-                          </TableHead>
-                          <TableHead className="w-24">
-                            {t('products.variants.table.weight')}
-                          </TableHead>
-                          <TableHead className="w-32">
-                            {t('products.variants.table.dimensions')}
-                          </TableHead>
-                          <TableHead className="w-24">
-                            {t('products.variants.table.status')}
-                          </TableHead>
-                          <TableHead className="w-20 text-right">
-                            {t('products.variants.table.actions')}
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {variants.map((v) => {
-                          const isDeleting = deletingId === v.id;
-                          return (
-                            <TableRow key={v.id}>
-                              <TableCell>
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {v.selections.length === 0 ? (
-                                    <span className="text-xs text-muted-foreground italic">
-                                      Single / Base Variant
-                                    </span>
-                                  ) : (
-                                    v.selections.map((sel) => {
-                                      const ot = optionTypeMap.get(sel.optionTypeId);
-                                      const ov = ot?.values.find(
-                                        (val) => val.id === sel.optionValueId,
-                                      );
-                                      const po = productOptions.find(
-                                        (p) => p.optionTypeId === sel.optionTypeId,
-                                      );
-                                      const pv = po?.values.find(
-                                        (val) => val.optionValueId === sel.optionValueId,
-                                      );
+                  <>
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block overflow-x-auto rounded-lg border border-border">
+                      <Table className="min-w-[700px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t('products.variants.table.combination')}</TableHead>
+                            <TableHead className="w-36">
+                              {t('products.variants.table.sku')}
+                            </TableHead>
+                            <TableHead className="w-36">
+                              {t('products.variants.table.gtin')}
+                            </TableHead>
+                            <TableHead className="w-24">
+                              {t('products.variants.table.weight')}
+                            </TableHead>
+                            <TableHead className="w-32">
+                              {t('products.variants.table.dimensions')}
+                            </TableHead>
+                            <TableHead className="w-24">
+                              {t('products.variants.table.status')}
+                            </TableHead>
+                            <TableHead className="w-20 text-right">
+                              {t('products.variants.table.actions')}
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {variants.map((v) => {
+                            const isDeleting = deletingId === v.id;
+                            return (
+                              <TableRow key={v.id}>
+                                <TableCell>
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    {v.selections.length === 0 ? (
+                                      <span className="text-xs text-muted-foreground italic">
+                                        Single / Base Variant
+                                      </span>
+                                    ) : (
+                                      v.selections.map((sel) => {
+                                        const ot = optionTypeMap.get(sel.optionTypeId);
+                                        const ov = ot?.values.find(
+                                          (val) => val.id === sel.optionValueId,
+                                        );
+                                        const po = productOptions.find(
+                                          (p) => p.optionTypeId === sel.optionTypeId,
+                                        );
+                                        const pv = po?.values.find(
+                                          (val) => val.optionValueId === sel.optionValueId,
+                                        );
 
-                                      const typeName =
-                                        sel.optionTypeName?.en ||
-                                        sel.optionTypeCode ||
-                                        ot?.name.en ||
-                                        po?.optionTypeName?.en ||
-                                        po?.optionTypeCode ||
-                                        'Option';
-                                      const valLabel =
-                                        sel.optionValueLabel?.en ||
-                                        sel.optionValueCode ||
-                                        ov?.label.en ||
-                                        ov?.code ||
-                                        pv?.code ||
-                                        '—';
+                                        const typeName =
+                                          sel.optionTypeName?.en ||
+                                          sel.optionTypeCode ||
+                                          ot?.name.en ||
+                                          po?.optionTypeName?.en ||
+                                          po?.optionTypeCode ||
+                                          'Option';
+                                        const valLabel =
+                                          sel.optionValueLabel?.en ||
+                                          sel.optionValueCode ||
+                                          ov?.label.en ||
+                                          ov?.code ||
+                                          pv?.code ||
+                                          '—';
 
-                                      return (
-                                        <span
-                                          key={sel.optionTypeId}
-                                          className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
-                                        >
-                                          {typeName}: {valLabel}
-                                        </span>
-                                      );
-                                    })
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-mono text-xs text-muted-foreground">
-                                {v.skuCode || '—'}
-                              </TableCell>
-                              <TableCell className="font-mono text-xs text-muted-foreground">
-                                {v.gtin || '—'}
-                              </TableCell>
-                              <TableCell className="text-xs text-muted-foreground">
-                                {v.weightG != null ? `${v.weightG}g` : '—'}
-                              </TableCell>
-                              <TableCell className="text-xs text-muted-foreground">
-                                {formatDims(v.dims)}
-                              </TableCell>
-                              <TableCell>
-                                <StatusBadge tone={v.status === 'active' ? 'success' : 'neutral'}>
-                                  {v.status}
-                                </StatusBadge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                  {onManageOffers && product && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
+                                        return (
+                                          <span
+                                            key={sel.optionTypeId}
+                                            className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
+                                          >
+                                            {typeName}: {valLabel}
+                                          </span>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="font-mono text-xs text-muted-foreground">
+                                  {v.skuCode || '—'}
+                                </TableCell>
+                                <TableCell className="font-mono text-xs text-muted-foreground">
+                                  {v.gtin || '—'}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {v.weightG != null ? `${v.weightG}g` : '—'}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {formatDims(v.dims)}
+                                </TableCell>
+                                <TableCell>
+                                  <StatusBadge tone={v.status === 'active' ? 'success' : 'neutral'}>
+                                    {v.status}
+                                  </StatusBadge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    {onManageOffers && product && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => onManageOffers(product, v.id)}
+                                            aria-label={t('products.offersAction')}
+                                          >
+                                            <Boxes className="size-3.5" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {t('products.offersAction')}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {!isReadOnly && (
+                                      <>
                                         <Button
                                           type="button"
                                           variant="ghost"
                                           size="sm"
-                                          onClick={() => onManageOffers(product, v.id)}
-                                          aria-label={t('products.offersAction')}
+                                          onClick={() =>
+                                            setFormModalState({ open: true, variant: v })
+                                          }
+                                          aria-label="Edit variant"
                                         >
-                                          <Boxes className="size-3.5" />
+                                          <Edit2 className="size-3.5" />
                                         </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>{t('products.offersAction')}</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {!isReadOnly && (
-                                    <>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() =>
-                                          setFormModalState({ open: true, variant: v })
-                                        }
-                                        aria-label="Edit variant"
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          disabled={isDeleting}
+                                          onClick={() => handleDeleteVariant(v)}
+                                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                          aria-label="Delete variant"
+                                        >
+                                          {isDeleting ? (
+                                            <Spinner className="size-3.5" />
+                                          ) : (
+                                            <Trash2 className="size-3.5" />
+                                          )}
+                                        </Button>
+                                      </>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Mobile Card View */}
+                    <div className="md:hidden space-y-3">
+                      {variants.map((v) => {
+                        const isDeleting = deletingId === v.id;
+                        return (
+                          <div
+                            key={v.id}
+                            className="rounded-lg border border-border bg-card p-3.5 space-y-2.5 text-sm"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex flex-wrap items-center gap-1.5 flex-1">
+                                {v.selections.length === 0 ? (
+                                  <span className="text-xs text-muted-foreground italic">
+                                    Single / Base Variant
+                                  </span>
+                                ) : (
+                                  v.selections.map((sel) => {
+                                    const ot = optionTypeMap.get(sel.optionTypeId);
+                                    const ov = ot?.values.find(
+                                      (val) => val.id === sel.optionValueId,
+                                    );
+                                    const po = productOptions.find(
+                                      (p) => p.optionTypeId === sel.optionTypeId,
+                                    );
+                                    const pv = po?.values.find(
+                                      (val) => val.optionValueId === sel.optionValueId,
+                                    );
+                                    const typeName =
+                                      sel.optionTypeName?.en ||
+                                      sel.optionTypeCode ||
+                                      ot?.name.en ||
+                                      po?.optionTypeName?.en ||
+                                      po?.optionTypeCode ||
+                                      'Option';
+                                    const valLabel =
+                                      sel.optionValueLabel?.en ||
+                                      sel.optionValueCode ||
+                                      ov?.label.en ||
+                                      ov?.code ||
+                                      pv?.code ||
+                                      '—';
+                                    return (
+                                      <span
+                                        key={sel.optionTypeId}
+                                        className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
                                       >
-                                        <Edit2 className="size-3.5" />
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        disabled={isDeleting}
-                                        onClick={() => handleDeleteVariant(v)}
-                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                        aria-label="Delete variant"
-                                      >
-                                        {isDeleting ? (
-                                          <Spinner className="size-3.5" />
-                                        ) : (
-                                          <Trash2 className="size-3.5" />
-                                        )}
-                                      </Button>
-                                    </>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                                        {typeName}: {valLabel}
+                                      </span>
+                                    );
+                                  })
+                                )}
+                              </div>
+                              <StatusBadge tone={v.status === 'active' ? 'success' : 'neutral'}>
+                                {v.status}
+                              </StatusBadge>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-muted-foreground">
+                                  {t('products.variants.table.sku')}:{' '}
+                                </span>
+                                <span className="font-mono text-foreground">
+                                  {v.skuCode || '—'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">
+                                  {t('products.variants.table.gtin')}:{' '}
+                                </span>
+                                <span className="font-mono text-foreground">{v.gtin || '—'}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">
+                                  {t('products.variants.table.weight')}:{' '}
+                                </span>
+                                <span className="text-foreground">
+                                  {v.weightG != null ? `${v.weightG}g` : '—'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">
+                                  {t('products.variants.table.dimensions')}:{' '}
+                                </span>
+                                <span className="text-foreground">{formatDims(v.dims)}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-1 pt-2 border-t border-border/50">
+                              {onManageOffers && product && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => onManageOffers(product, v.id)}
+                                  aria-label={t('products.offersAction')}
+                                >
+                                  <Boxes className="size-3.5" />
+                                </Button>
+                              )}
+                              {!isReadOnly && (
+                                <>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setFormModalState({ open: true, variant: v })}
+                                    aria-label="Edit variant"
+                                  >
+                                    <Edit2 className="size-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={isDeleting}
+                                    onClick={() => handleDeleteVariant(v)}
+                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    aria-label="Delete variant"
+                                  >
+                                    {isDeleting ? (
+                                      <Spinner className="size-3.5" />
+                                    ) : (
+                                      <Trash2 className="size-3.5" />
+                                    )}
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Pagination - Load More */}
+                    {nextCursor && (
+                      <div className="flex justify-center pt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleLoadMore()}
+                          disabled={loadingMore}
+                        >
+                          {loadingMore ? (
+                            <>
+                              <Spinner className="size-4" />
+                              <span>{t('products.variants.loadMore')}</span>
+                            </>
+                          ) : (
+                            <span>{t('products.variants.loadMore')}</span>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -1462,7 +1856,7 @@ export function ProductVariantsDialog({
           productOptions={productOptions}
           categoryOptions={categoryOptions}
           optionTypeMap={optionTypeMap}
-          existingVariants={variants}
+          existingVariants={allExistingVariants.length > 0 ? allExistingVariants : variants}
           onGenerated={handleGenerated}
         />
       )}
@@ -1480,6 +1874,7 @@ export function ProductVariantsDialog({
           categoryOptions={categoryOptions}
           optionTypeMap={optionTypeMap}
           onSaved={handleSaved}
+          onConflict={() => void resyncVariants()}
         />
       )}
     </>

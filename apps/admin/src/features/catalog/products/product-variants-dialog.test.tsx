@@ -9,6 +9,7 @@ import {
   type Variant,
 } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
+import { AdminApiError } from '@/features/admin-api/client';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import {
@@ -16,6 +17,7 @@ import {
   deleteVariant,
   listProductOptions,
   listVariants,
+  listVariantsPage,
   restoreVariant,
   updateVariant,
 } from './api';
@@ -26,6 +28,7 @@ vi.mock('./api', async () => {
   return {
     ...actual,
     listVariants: vi.fn(),
+    listVariantsPage: vi.fn(),
     listProductOptions: vi.fn(),
     createVariant: vi.fn(),
     updateVariant: vi.fn(),
@@ -43,6 +46,7 @@ vi.mock('@/features/catalog/option-types/api', () => ({
 }));
 
 const mockedListVariants = vi.mocked(listVariants);
+const mockedListVariantsPage = vi.mocked(listVariantsPage);
 const mockedListProductOptions = vi.mocked(listProductOptions);
 const mockedCreateVariant = vi.mocked(createVariant);
 const mockedUpdateVariant = vi.mocked(updateVariant);
@@ -192,6 +196,11 @@ describe('ProductVariantsDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedListVariants.mockResolvedValue([sampleVariant]);
+    mockedListVariantsPage.mockResolvedValue({
+      variants: [sampleVariant],
+      total: 1,
+      nextCursor: undefined,
+    });
     mockedListProductOptions.mockResolvedValue(productOptions);
     mockedListCategoryOptions.mockResolvedValue(categoryOptions);
     mockedListOptionTypesPage.mockResolvedValue({
@@ -211,12 +220,12 @@ describe('ProductVariantsDialog', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Product Variants')).toBeInTheDocument();
-      expect(screen.getByText('Size: Small')).toBeInTheDocument();
-      expect(screen.getByText('TEE-S')).toBeInTheDocument();
-      expect(screen.getByText('123456789012')).toBeInTheDocument();
-      expect(screen.getByText('180g')).toBeInTheDocument();
-      expect(screen.getByText('250×200×15 mm')).toBeInTheDocument();
-      expect(screen.getByText('active')).toBeInTheDocument();
+      expect(screen.getAllByText('Size: Small')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('TEE-S')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('123456789012')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('180g')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('250×200×15 mm')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('active')[0]).toBeInTheDocument();
     });
   });
 
@@ -285,10 +294,10 @@ describe('ProductVariantsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Edit variant' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Edit variant' })[0]).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit variant' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit variant' })[0]!);
 
     await waitFor(() => {
       expect(screen.getByText('Edit Variant')).toBeInTheDocument();
@@ -313,7 +322,7 @@ describe('ProductVariantsDialog', () => {
         status: 'active',
         expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
       });
-      expect(screen.getByText('TEE-S-UPDATED')).toBeInTheDocument();
+      expect(screen.getAllByText('TEE-S-UPDATED')[0]).toBeInTheDocument();
     });
   });
 
@@ -323,10 +332,10 @@ describe('ProductVariantsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Edit variant' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Edit variant' })[0]).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit variant' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit variant' })[0]!);
 
     await waitFor(() => {
       expect(screen.getByText('Edit Variant')).toBeInTheDocument();
@@ -353,10 +362,10 @@ describe('ProductVariantsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Edit variant' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Edit variant' })[0]).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit variant' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit variant' })[0]!);
 
     await waitFor(() => {
       expect(screen.getByText('Edit Variant')).toBeInTheDocument();
@@ -381,16 +390,19 @@ describe('ProductVariantsDialog', () => {
   it('deletes a variant', async () => {
     mockedDeleteVariant.mockResolvedValue(undefined);
     mockedListVariants.mockResolvedValueOnce([sampleVariant]).mockResolvedValue([]);
+    mockedListVariantsPage
+      .mockResolvedValueOnce({ variants: [sampleVariant], total: 1, nextCursor: undefined })
+      .mockResolvedValue({ variants: [], total: 0, nextCursor: undefined });
 
     renderAdmin(
       <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Delete variant' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Delete variant' })[0]).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete variant' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete variant' })[0]!);
 
     await waitFor(() => {
       expect(mockedDeleteVariant).toHaveBeenCalledWith('prod_1', 'var_1');
@@ -474,6 +486,11 @@ describe('ProductVariantsDialog', () => {
     };
 
     mockedListVariants.mockResolvedValue([existingMultiVariant]);
+    mockedListVariantsPage.mockResolvedValue({
+      variants: [existingMultiVariant],
+      total: 1,
+      nextCursor: undefined,
+    });
     mockedListProductOptions.mockResolvedValue(multiProductOptions);
     mockedListCategoryOptions.mockResolvedValue(multiCategoryOptions);
     mockedListOptionTypesPage.mockResolvedValue({
@@ -534,13 +551,18 @@ describe('ProductVariantsDialog', () => {
       ],
     };
     mockedListVariants.mockResolvedValueOnce([variantWithDenorm]);
+    mockedListVariantsPage.mockResolvedValueOnce({
+      variants: [variantWithDenorm],
+      total: 1,
+      nextCursor: undefined,
+    });
 
     renderAdmin(
       <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Material: Cotton')).toBeInTheDocument();
+      expect(screen.getAllByText('Material: Cotton')[0]).toBeInTheDocument();
     });
     expect(screen.queryByText(/01a0b3eb-6700/)).not.toBeInTheDocument();
   });
@@ -550,6 +572,10 @@ describe('ProductVariantsDialog', () => {
       .mockResolvedValueOnce([sampleVariant]) // mount
       .mockResolvedValueOnce([]) // after delete
       .mockResolvedValueOnce([sampleVariant]); // after undo/restore
+    mockedListVariantsPage
+      .mockResolvedValueOnce({ variants: [sampleVariant], total: 1, nextCursor: undefined })
+      .mockResolvedValueOnce({ variants: [], total: 0, nextCursor: undefined })
+      .mockResolvedValueOnce({ variants: [sampleVariant], total: 1, nextCursor: undefined });
     mockedListProductOptions.mockResolvedValue(productOptions);
     mockedListCategoryOptions.mockResolvedValue(categoryOptions);
     mockedListOptionTypesPage.mockResolvedValue({
@@ -564,10 +590,10 @@ describe('ProductVariantsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('TEE-S')).toBeInTheDocument();
+      expect(screen.getAllByText('TEE-S')[0]).toBeInTheDocument();
     });
 
-    const deleteBtn = screen.getByRole('button', { name: 'Delete variant' });
+    const deleteBtn = screen.getAllByRole('button', { name: 'Delete variant' })[0]!;
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {
@@ -594,6 +620,11 @@ describe('ProductVariantsDialog', () => {
     };
     mockedListProductOptions.mockResolvedValue([emptyAxisPo]);
     mockedListVariants.mockResolvedValue([]);
+    mockedListVariantsPage.mockResolvedValue({
+      variants: [],
+      total: 0,
+      nextCursor: undefined,
+    });
 
     renderAdmin(
       <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
@@ -633,7 +664,7 @@ describe('ProductVariantsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('TEE-S')).toBeInTheDocument();
+      expect(screen.getAllByText('TEE-S')[0]).toBeInTheDocument();
     });
 
     // Subtitle shows archived note
@@ -661,7 +692,7 @@ describe('ProductVariantsDialog', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('TEE-S')).toBeInTheDocument();
+      expect(screen.getAllByText('TEE-S')[0]).toBeInTheDocument();
       expect(screen.getByText('Pending Review')).toBeInTheDocument();
     });
 
@@ -675,5 +706,213 @@ describe('ProductVariantsDialog', () => {
     expect(screen.queryByRole('button', { name: 'Add Variant' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit variant' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete variant' })).not.toBeInTheDocument();
+  });
+
+  it('validates SKU code maximum length of 64 characters and blocks save when exceeding', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Edit variant' })[0]).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit variant' })[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Variant')).toBeInTheDocument();
+    });
+
+    // 65 chars SKU
+    fireEvent.change(screen.getByDisplayValue('TEE-S'), {
+      target: { value: 'A'.repeat(65) },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Variant' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('SKU code cannot exceed 64 characters.')).toBeInTheDocument();
+    });
+
+    expect(mockedUpdateVariant).not.toHaveBeenCalled();
+  });
+
+  it('validates weight ceiling of 10,000,000 grams and blocks saving greater values', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Edit variant' })[0]).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit variant' })[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Variant')).toBeInTheDocument();
+    });
+
+    // 10,000,001 g
+    fireEvent.change(screen.getByDisplayValue('180'), {
+      target: { value: '10000001' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Variant' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Weight cannot exceed 10,000,000 grams.')).toBeInTheDocument();
+    });
+
+    expect(mockedUpdateVariant).not.toHaveBeenCalled();
+  });
+
+  it('validates dimension ceiling of 100,000 mm and blocks saving greater values', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Edit variant' })[0]).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit variant' })[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Variant')).toBeInTheDocument();
+    });
+
+    // 100,001 mm length
+    fireEvent.change(screen.getByDisplayValue('250'), {
+      target: { value: '100001' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Variant' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Dimensions cannot exceed 100,000 mm (100 meters).'),
+      ).toBeInTheDocument();
+    });
+
+    expect(mockedUpdateVariant).not.toHaveBeenCalled();
+  });
+
+  it('displays conflict error banner on OCC conflict 409', async () => {
+    mockedUpdateVariant.mockRejectedValueOnce(new AdminApiError('CONFLICT', 409));
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Edit variant' })[0]).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit variant' })[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Variant')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Variant' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('That action conflicts with the current state — reload and try again.'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('blocks bulk generation in GeneratorModal when SKU prefix would cause SKU length to exceed 64 chars', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Variants' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Generate Variant Matrix')).toBeInTheDocument();
+    });
+
+    // Enter a very long prefix (65 chars + suffix)
+    const prefixInput = screen.getByPlaceholderText('e.g. PROD-100-');
+    fireEvent.change(prefixInput, {
+      target: { value: 'PREFIX-'.repeat(10) },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Generate 1 Variant/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/SKU prefix is too long: combined SKU would exceed 64 characters/i),
+      ).toBeInTheDocument();
+    });
+
+    expect(mockedCreateVariant).not.toHaveBeenCalled();
+  });
+
+  it('filters combinations checklist via search box in GeneratorModal', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Variants' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Generate Variant Matrix')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search combinations…');
+    fireEvent.change(searchInput, {
+      target: { value: 'NonExistentCombo' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('No combinations match your search.')).toBeInTheDocument();
+    });
+  });
+
+  it('displays showing count and loads more variants on click', async () => {
+    mockedListVariantsPage
+      .mockResolvedValueOnce({
+        variants: [sampleVariant],
+        total: 2,
+        nextCursor: 'cursor_page_2',
+      })
+      .mockResolvedValueOnce({
+        variants: [
+          {
+            ...sampleVariant,
+            id: 'var_page_2',
+            skuCode: 'TEE-M',
+          },
+        ],
+        total: 2,
+        nextCursor: undefined,
+      });
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Showing 1 of 2 variants')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Load more variants' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more variants' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Showing 2 of 2 variants')).toBeInTheDocument();
+      expect(screen.getAllByText('TEE-M')[0]).toBeInTheDocument();
+    });
   });
 });

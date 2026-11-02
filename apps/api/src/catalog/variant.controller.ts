@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import type { Request } from 'express';
 import { Permission, type Actor } from '@shopnetic/auth';
 import {
   createVariantRequestSchema,
+  listVariantsQuerySchema,
   updateVariantRequestSchema,
   type CreateVariantRequest,
   type UpdateVariantRequest,
@@ -31,7 +33,10 @@ import { VariantService } from './variant.service.js';
 const createBody = new ZodBodyPipe(createVariantRequestSchema);
 const updateBody = new ZodBodyPipe(updateVariantRequestSchema);
 
-type Envelope<T> = { data: T; meta: { requestId: string; count?: number } };
+type Envelope<T> = {
+  data: T;
+  meta: { requestId: string; count?: number; total?: number; nextCursor?: string };
+};
 
 @Controller('admin/v1/products/:productId/variants')
 @UseGuards(StaffAuthGuard, PermissionGuard)
@@ -43,10 +48,23 @@ export class VariantController {
   async list(
     @Req() req: Request,
     @Param('productId') productId: string,
+    @Query('status') status?: string,
+    @Query('q') q?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
   ): Promise<Envelope<Variant[]>> {
-    const items = await this.variants.list(productId);
+    const raw: Record<string, unknown> = {};
+    if (status) raw.status = status;
+    if (q) raw.q = q;
+    if (cursor) raw.cursor = cursor;
+    if (limit) raw.limit = limit;
+    const query = listVariantsQuerySchema.parse(raw);
+    const { items, total, nextCursor } = await this.variants.list(productId, query);
     const base = ok(req, items);
-    return { data: base.data, meta: { ...base.meta, count: items.length } };
+    return {
+      data: base.data,
+      meta: { ...base.meta, count: items.length, total, ...(nextCursor ? { nextCursor } : {}) },
+    };
   }
 
   @Get(':id')

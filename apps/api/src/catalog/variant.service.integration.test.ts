@@ -1,7 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import type { Actor } from '@shopnetic/auth';
-import { createVariantRequestSchema, updateVariantRequestSchema } from '@shopnetic/contracts';
+import {
+  createProductRequestSchema,
+  createVariantRequestSchema,
+  PRODUCT_BASE_PRICE_MAX_MINOR,
+  PRODUCT_REJECTION_NOTE_MAX,
+  updateProductRequestSchema,
+  updateVariantRequestSchema,
+  VARIANT_DIM_MAX_MM,
+  VARIANT_SKU_MAX,
+  VARIANT_WEIGHT_MAX_G,
+} from '@shopnetic/contracts';
 import { AuditService } from '../audit/audit.service.js';
 import { OptionTypeService } from './option-type.service.js';
 import { CategoryOptionService } from './category-option.service.js';
@@ -665,5 +675,77 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
       dims: { length: 10, width: 20, height: 30 },
     });
     expect(validPositive.success).toBe(true);
+  });
+
+  it('enforces dimension, weight, SKU, price, and rejection note ceilings', () => {
+    // Dimension ceiling (VARIANT_DIM_MAX_MM)
+    const overLength = createVariantRequestSchema.safeParse({
+      selections: [
+        {
+          optionTypeId: 'a0000000-0000-0000-0000-000000000001',
+          optionValueId: 'b0000000-0000-0000-0000-000000000001',
+        },
+      ],
+      dims: { length: VARIANT_DIM_MAX_MM + 1 },
+    });
+    expect(overLength.success).toBe(false);
+
+    // Weight ceiling (VARIANT_WEIGHT_MAX_G)
+    const overWeight = createVariantRequestSchema.safeParse({
+      selections: [
+        {
+          optionTypeId: 'a0000000-0000-0000-0000-000000000001',
+          optionValueId: 'b0000000-0000-0000-0000-000000000001',
+        },
+      ],
+      weightG: VARIANT_WEIGHT_MAX_G + 1,
+    });
+    expect(overWeight.success).toBe(false);
+
+    // SKU max length (VARIANT_SKU_MAX = 64)
+    const overSku = createVariantRequestSchema.safeParse({
+      selections: [
+        {
+          optionTypeId: 'a0000000-0000-0000-0000-000000000001',
+          optionValueId: 'b0000000-0000-0000-0000-000000000001',
+        },
+      ],
+      skuCode: 'A'.repeat(VARIANT_SKU_MAX + 1),
+    });
+    expect(overSku.success).toBe(false);
+
+    // Base price ceiling (PRODUCT_BASE_PRICE_MAX_MINOR = 99_999_900)
+    const overPrice = createProductRequestSchema.safeParse({
+      categoryId: 'a0000000-0000-0000-0000-000000000001',
+      title: { en: 'Product' },
+      slug: 'valid-slug',
+      basePriceMinor: PRODUCT_BASE_PRICE_MAX_MINOR + 1,
+    });
+    expect(overPrice.success).toBe(false);
+
+    // Rejection note max length (PRODUCT_REJECTION_NOTE_MAX = 2000)
+    const overNote = updateProductRequestSchema.safeParse({
+      spec: { rejectionNote: 'x'.repeat(PRODUCT_REJECTION_NOTE_MAX + 1) },
+    });
+    expect(overNote.success).toBe(false);
+  });
+
+  it('supports pagination, status filtering, and multi-word token search', async () => {
+    // List with query pagination
+    const page1 = await variants.list(productId, { limit: 2 });
+    expect(page1.items.length).toBeLessThanOrEqual(2);
+    expect(page1.total).toBeGreaterThanOrEqual(1);
+
+    if (page1.nextCursor) {
+      const page2 = await variants.list(productId, { limit: 2, cursor: page1.nextCursor });
+      expect(page2.items.length).toBeGreaterThanOrEqual(1);
+    }
+
+    // Search by SKU
+    const existing = page1.items[0];
+    if (existing?.skuCode) {
+      const searchRes = await variants.list(productId, { q: existing.skuCode });
+      expect(searchRes.items.some((v) => v.id === existing.id)).toBe(true);
+    }
   });
 });

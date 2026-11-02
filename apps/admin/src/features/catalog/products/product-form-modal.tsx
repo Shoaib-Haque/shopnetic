@@ -48,6 +48,8 @@ import {
 } from '@/lib/numeric-input';
 import { createProduct, getSeller, updateProduct } from './api';
 import { RichTextEditor } from './rich-text-editor';
+import { CategoryCombobox } from './category-combobox';
+import { BrandCombobox } from './brand-combobox';
 
 const textareaCls =
   'w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:shadow-[0_0_0_4px_hsl(var(--ring)/0.15)] disabled:cursor-not-allowed disabled:opacity-50';
@@ -85,6 +87,12 @@ const formSchema = z
           message: 'products.form.err.priceInvalid',
           path: ['basePrice'],
         });
+      } else if (parseFloat(data.basePrice) > 999_999) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'products.form.err.priceMax',
+          path: ['basePrice'],
+        });
       }
     }
   });
@@ -103,6 +111,8 @@ const EMPTY: FormValues = {
 
 const FIELD_FOR_CODE: Record<string, Path<FormValues>> = {
   PRODUCT_SLUG_TAKEN: 'slug',
+  PRODUCT_SLUG_INVALID: 'slug',
+  PRODUCT_SLUG_REQUIRED: 'slug',
   PRODUCT_CATEGORY_INVALID: 'categoryId',
   PRODUCT_BRAND_INVALID: 'brandId',
   PRODUCT_BRAND_REQUIRED: 'brandId',
@@ -276,10 +286,11 @@ export function ProductFormModal({
             }
           : undefined;
 
+        const slug = values.slug ? values.slug : slugify(values.titleEn);
         const p = await updateProduct(product.id, {
           brandId: values.brandId ? values.brandId : null,
           title: { en: values.titleEn },
-          slug: values.slug,
+          slug,
           description: values.descriptionEn ? { en: values.descriptionEn } : null,
           status: targetStatus,
           basePriceMinor,
@@ -502,22 +513,17 @@ export function ProductFormModal({
               control={control}
               name="categoryId"
               render={({ field }) => (
-                <Select
+                <CategoryCombobox
+                  id="product-category"
                   value={field.value}
-                  onValueChange={field.onChange}
+                  onChange={field.onChange}
+                  categories={categories}
                   disabled={isFieldsDisabled}
-                >
-                  <SelectTrigger id="product-category" invalid={Boolean(errors.categoryId)}>
-                    <SelectValue placeholder={t('products.form.selectCategory')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id} title={c.name.en || c.slug}>
-                        {c.name.en || c.slug}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  invalid={Boolean(errors.categoryId)}
+                  placeholder={t('products.form.selectCategory')}
+                  searchPlaceholder={t('products.form.searchCategories')}
+                  emptyText={t('products.form.noCategories')}
+                />
               )}
             />
           </Field>
@@ -545,23 +551,18 @@ export function ProductFormModal({
             control={control}
             name="brandId"
             render={({ field }) => (
-              <Select
-                value={field.value || '__none__'}
-                onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+              <BrandCombobox
+                id="product-brand"
+                value={field.value || ''}
+                onChange={field.onChange}
+                brands={brands}
                 disabled={isFieldsDisabled}
-              >
-                <SelectTrigger id="product-brand" invalid={Boolean(errors.brandId)}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">{t('products.form.noBrand')}</SelectItem>
-                  {brands.map((b) => (
-                    <SelectItem key={b.id} value={b.id} title={b.name}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                invalid={Boolean(errors.brandId)}
+                placeholder={t('products.form.selectBrand')}
+                searchPlaceholder={t('products.form.searchBrands')}
+                noBrandLabel={t('products.form.noBrand')}
+                emptyText={t('products.form.noBrands')}
+              />
             )}
           />
         </Field>
@@ -767,11 +768,17 @@ export function ProductFormModal({
                 id="rejection-note"
                 className={textareaCls}
                 rows={3}
+                maxLength={2000}
                 placeholder={t('products.form.rejectionNotePlaceholder')}
                 value={rejectionNote}
                 onChange={(e) => setRejectionNote(e.target.value)}
                 disabled={submittingAction === 'reject'}
               />
+              <div className="flex justify-end pt-1">
+                <span className="text-[11px] text-muted-foreground">
+                  {rejectionNote.length} / 2,000
+                </span>
+              </div>
             </Field>
           </ModalBody>
           <ModalFooter>

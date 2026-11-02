@@ -453,12 +453,19 @@ export { currencySchema, type Currency };
 export * from './catalog-description.js';
 import { productDescriptionSchema } from './catalog-description.js';
 
+export const PRODUCT_BASE_PRICE_MAX_MINOR = 99_999_900; // $999,999.00
+export const PRODUCT_REJECTION_NOTE_MAX = 2_000;
+export const VARIANT_DIM_MAX_MM = 100_000; // 100 meters
+export const VARIANT_BULK_GENERATE_MAX = 600;
+export const VARIANT_WEIGHT_MAX_G = 10_000_000;
+export const VARIANT_SKU_MAX = 64;
+
 /** Non-negative integer minor units (cents). Carried as a string in views. */
-const priceMinorSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const priceMinorSchema = z.number().int().min(0).max(PRODUCT_BASE_PRICE_MAX_MINOR);
 
 export const productSpecSchema = z
   .object({
-    rejectionNote: z.string().optional(),
+    rejectionNote: z.string().trim().max(PRODUCT_REJECTION_NOTE_MAX).optional(),
     rejectedAt: z.string().optional(),
     _previousStatus: productStatusSchema.optional(),
   })
@@ -566,9 +573,9 @@ export type VariantSelection = z.infer<typeof variantSelectionSchema>;
 
 export const variantDimsSchema = z
   .object({
-    length: z.number().int().positive().optional(),
-    width: z.number().int().positive().optional(),
-    height: z.number().int().positive().optional(),
+    length: z.number().int().positive().max(VARIANT_DIM_MAX_MM).optional(),
+    width: z.number().int().positive().max(VARIANT_DIM_MAX_MM).optional(),
+    height: z.number().int().positive().max(VARIANT_DIM_MAX_MM).optional(),
   })
   .strict();
 export type VariantDims = z.infer<typeof variantDimsSchema>;
@@ -642,6 +649,14 @@ export const updateVariantRequestSchema = z
   })
   .partial();
 export type UpdateVariantRequest = z.infer<typeof updateVariantRequestSchema>;
+
+export const listVariantsQuerySchema = z.object({
+  status: z.enum(['active', 'inactive', 'all']).default('all'),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  cursor: z.string().trim().optional(),
+  q: z.string().trim().max(100).optional(),
+});
+export type ListVariantsQuery = z.infer<typeof listVariantsQuerySchema>;
 
 // ── Media assets (plan/26 section 5) ──────────────────────────────────────────────
 

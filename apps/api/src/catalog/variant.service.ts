@@ -3,6 +3,7 @@ import type { Actor } from '@shopnetic/auth';
 import {
   computeComboSignature,
   type CreateVariantRequest,
+  type ListVariantsQuery,
   type LocalizedText,
   type UpdateVariantRequest,
   type Variant,
@@ -16,6 +17,8 @@ import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
+import { clampLimit } from '../common/pagination.js';
+import { rankedNextCursor, rankedOffsetFromCursor, tokenizeForSql } from '../common/text-search.js';
 
 const withValues = {
   optionValues: {
@@ -46,7 +49,7 @@ export class VariantService {
     this.record = auditRecordFor(this.audit, 'variant');
   }
 
-  async list(productId: string): Promise<Variant[]> {
+  async listAll(productId: string): Promise<Variant[]> {
     await this.productOrThrow(productId, true);
     const rows = await this.prisma.variant.findMany({
       where: { productId, deletedAt: null },
@@ -54,6 +57,74 @@ export class VariantService {
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
     return rows.map(toView);
+  }
+
+  async list(productId: string): Promise<Variant[]>;
+  async list(
+    productId: string,
+    query: Partial<ListVariantsQuery>,
+  ): Promise<{ items: Variant[]; total: number; nextCursor?: string }>;
+  async list(
+    productId: string,
+    query?: Partial<ListVariantsQuery>,
+  ): Promise<Variant[] | { items: Variant[]; total: number; nextCursor?: string }> {
+    if (!query) {
+      return this.listAll(productId);
+    }
+
+    await this.productOrThrow(productId, true);
+    const limit = clampLimit(query.limit ?? 30, 1, 100);
+    const offset = query.cursor ? (rankedOffsetFromCursor(query.cursor) ?? 0) : 0;
+
+    const where: Prisma.VariantWhereInput = {
+      productId,
+      deletedAt: null,
+      ...(query.status && query.status !== 'all' ? { status: query.status } : {}),
+    };
+
+    if (query.q) {
+      const tokens = tokenizeForSql(query.q);
+      if (tokens.length > 0) {
+        where.AND = tokens.map((token) => ({
+          OR: [
+            { skuCode: { contains: token, mode: 'insensitive' } },
+            { gtin: { contains: token, mode: 'insensitive' } },
+            {
+              optionValues: {
+                some: {
+                  optionValue: {
+                    OR: [
+                      { code: { contains: token, mode: 'insensitive' } },
+                      { labelI18n: { path: ['en'], string_contains: token } },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        }));
+      }
+    }
+
+    const total = await this.prisma.variant.count({ where });
+    const findArgs: Prisma.VariantFindManyArgs = {
+      where,
+      include: withValues,
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
+      take: limit,
+    };
+    if (offset > 0) {
+      findArgs.skip = offset;
+    }
+
+    const rows = (await this.prisma.variant.findMany(findArgs)) as VariantRow[];
+    const nextCursor = rankedNextCursor(rows.length, limit, offset);
+
+    return {
+      items: rows.map(toView),
+      total,
+      ...(nextCursor ? { nextCursor } : {}),
+    };
   }
 
   async get(id: string): Promise<Variant> {

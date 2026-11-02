@@ -675,6 +675,101 @@ describe('ProductFormModal', () => {
       expect(mockedCreateProduct).not.toHaveBeenCalled();
     });
 
+    it('blocks submission and displays inline error when Base Price exceeds $999,999.00', async () => {
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="create"
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'Luxury Item' } });
+      fireEvent.change(screen.getByLabelText(/Base price/i), { target: { value: '1000000.00' } });
+
+      const submitBtn = screen.getByRole('button', { name: 'Create' });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Base price cannot exceed $999,999.00.')).toBeInTheDocument();
+      });
+      expect(mockedCreateProduct).not.toHaveBeenCalled();
+    });
+
+    it('auto-regenerates slug from title when slug field is cleared in edit mode', async () => {
+      const onSaved = vi.fn();
+      const product = sampleProduct({
+        title: { en: 'Updated Title' },
+        slug: 'original-slug',
+      });
+      mockedUpdateProduct.mockResolvedValueOnce({
+        ...product,
+        slug: 'updated-title',
+      });
+
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="edit"
+          product={product}
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={onSaved}
+        />,
+      );
+
+      // Clear the slug
+      fireEvent.change(screen.getByLabelText(/Slug/i), { target: { value: '' } });
+
+      const saveBtn = screen.getByRole('button', { name: 'Save' });
+      fireEvent.click(saveBtn);
+
+      await waitFor(() => {
+        expect(mockedUpdateProduct).toHaveBeenCalledWith(
+          product.id,
+          expect.objectContaining({
+            slug: 'updated-title',
+          }),
+        );
+      });
+    });
+
+    it('limits rejection note to 2000 characters with character counter in reject modal', async () => {
+      const product = sampleProduct({
+        status: 'pending',
+      });
+
+      renderAdmin(
+        <ProductFormModal
+          open
+          onOpenChange={vi.fn()}
+          mode="review"
+          product={product}
+          categories={mockCategories}
+          brands={mockBrands}
+          onSaved={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Reject to Draft' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Reject Product Proposal')).toBeInTheDocument();
+        expect(screen.getByText('0 / 2,000')).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText(
+        'Provide feedback or instructions for the seller...',
+      );
+      fireEvent.change(textarea, { target: { value: 'Fix title formatting' } });
+
+      expect(screen.getByText('20 / 2,000')).toBeInTheDocument();
+    });
+
     it('maps backend PRODUCT_SLUG_TAKEN (409) to inline error on Slug field', async () => {
       mockedCreateProduct.mockRejectedValueOnce(new AdminApiError('PRODUCT_SLUG_TAKEN', 409));
 

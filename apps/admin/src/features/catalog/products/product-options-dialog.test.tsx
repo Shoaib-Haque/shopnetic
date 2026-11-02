@@ -270,6 +270,32 @@ describe('ProductOptionsDialog', () => {
     });
   });
 
+  it('filters option values by search query in ValueSelectModal', async () => {
+    renderAdmin(
+      <ProductOptionsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Select Values (2)')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Select Values (2)'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Select Offered Values')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search values…')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search values…');
+    fireEvent.change(searchInput, { target: { value: 'Small' } });
+
+    expect(screen.getByRole('checkbox', { name: 'Small' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Medium' })).not.toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: 'NonExistent' } });
+    expect(screen.getByText('No values match your search.')).toBeInTheDocument();
+  });
+
   it('updates requiredValueId when single value is selected', async () => {
     mockedPutProductOption.mockResolvedValue({
       ...sampleProductOption,
