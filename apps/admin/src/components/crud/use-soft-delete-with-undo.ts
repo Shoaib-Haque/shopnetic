@@ -12,6 +12,9 @@ export interface SoftDeleteMessages {
   alreadyDeleted: (name: string) => string;
   /** same idea, for the restore side. */
   alreadyRestored: (name: string) => string;
+  /** shown instead of an error toast when an undo attempt finds the row
+   * already gone (e.g. purged by a recreation of the same combination). */
+  alreadyGoneOnUndo?: (name: string) => string;
   undoLabel: string;
 }
 
@@ -49,6 +52,8 @@ export interface UseSoftDeleteWithUndo<T> {
    * bookkeeping is no longer live either, so callers with such a toast of
    * their own should clear this alongside showing it. */
   clearPendingUndo: () => void;
+  /** Dismisses any live undo toast managed by this hook and clears pending state. */
+  dismissUndo: () => void;
 }
 
 /**
@@ -98,8 +103,17 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
               if (pendingUndoId.current === item.id) pendingUndoId.current = null;
               resync();
             } catch (e) {
-              onError(e); // surface the real reason (name now taken, parent archived…)
-              resync();
+              if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
+                if (pendingUndoId.current === item.id) pendingUndoId.current = null;
+                const msg = messages.alreadyGoneOnUndo
+                  ? messages.alreadyGoneOnUndo(labelOf(item))
+                  : messages.alreadyRestored(labelOf(item));
+                notify.info(msg);
+                resync();
+              } else {
+                onError(e); // surface the real reason (name now taken, parent archived…)
+                resync();
+              }
               throw e; // and skip the "restored" confirmation toast
             }
           },
@@ -163,5 +177,20 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
     pendingUndoId.current = null;
   }, []);
 
-  return { doDelete, restoreTarget, setRestoreTarget, restoring, confirmRestore, clearPendingUndo };
+  const dismissUndo = useCallback(() => {
+    if (pendingUndoId.current !== null) {
+      notify.dismissUndo();
+      pendingUndoId.current = null;
+    }
+  }, []);
+
+  return {
+    doDelete,
+    restoreTarget,
+    setRestoreTarget,
+    restoring,
+    confirmRestore,
+    clearPendingUndo,
+    dismissUndo,
+  };
 }

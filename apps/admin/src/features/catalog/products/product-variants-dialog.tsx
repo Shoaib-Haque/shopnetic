@@ -978,6 +978,7 @@ function VariantFormModal({
   const t = useTranslations('catalog');
   const [manualSelections, setManualSelections] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const isSkuUserEdited = useRef(false);
 
   const isEdit = variant !== null;
 
@@ -1022,6 +1023,29 @@ function VariantFormModal({
     });
   }, [productOptions, categoryOptionMap, categoryOptions.length]);
 
+  const suggestedSku = useMemo(() => {
+    if (isEdit || variantAxes.length === 0) return '';
+    const codes: string[] = [];
+    for (const axis of variantAxes) {
+      const selectedValId = manualSelections[axis.optionTypeId];
+      if (!selectedValId) continue;
+      const val = axis.values.find((v) => v.optionValueId === selectedValId);
+      if (val?.code) {
+        codes.push(val.code.trim().toUpperCase());
+      }
+    }
+    return codes.join('-');
+  }, [isEdit, variantAxes, manualSelections]);
+
+  useEffect(() => {
+    if (!isEdit && !isSkuUserEdited.current) {
+      setValue('skuCode', suggestedSku, {
+        shouldValidate: true,
+        shouldDirty: Boolean(suggestedSku),
+      });
+    }
+  }, [isEdit, suggestedSku, setValue]);
+
   useEffect(() => {
     if (variant) {
       const d = variant.dims as { length?: number; width?: number; height?: number } | null;
@@ -1047,6 +1071,7 @@ function VariantFormModal({
       });
       setManualSelections({});
       setFormError(null);
+      isSkuUserEdited.current = false;
     }
   }, [variant, open, reset]);
 
@@ -1204,12 +1229,21 @@ function VariantFormModal({
               <Field
                 label={t('products.variants.form.sku')}
                 htmlFor="variant-sku"
+                hint={
+                  !isEdit && suggestedSku && isSkuUserEdited.current
+                    ? t('products.variants.form.suggestedSkuHint', { sku: suggestedSku })
+                    : undefined
+                }
                 error={fieldError('skuCode')}
               >
                 <Input
                   id="variant-sku"
-                  {...register('skuCode')}
-                  placeholder={t('products.variants.form.skuPlaceholder')}
+                  {...register('skuCode', {
+                    onChange: () => {
+                      isSkuUserEdited.current = true;
+                    },
+                  })}
+                  placeholder={suggestedSku || t('products.variants.form.skuPlaceholder')}
                   invalid={Boolean(errors.skuCode)}
                 />
               </Field>
@@ -1436,6 +1470,7 @@ export function ProductVariantsDialog({
 
   const [variants, setVariants] = useState<Variant[]>([]);
   const [totalVariants, setTotalVariants] = useState(0);
+  const [unfilteredTotalVariants, setUnfilteredTotalVariants] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -1499,6 +1534,9 @@ export function ProductVariantsDialog({
         if (mounted.current && product.id === pId) {
           setVariants(varsPage.variants);
           setTotalVariants(varsPage.total);
+          if (!debouncedQuery) {
+            setUnfilteredTotalVariants(varsPage.total);
+          }
           setNextCursor(varsPage.nextCursor);
           setProductOptions(pOpts);
           setCategoryOptions(cOpts);
@@ -1526,6 +1564,7 @@ export function ProductVariantsDialog({
     if (!open || !product) {
       setVariants([]);
       setTotalVariants(0);
+      setUnfilteredTotalVariants(0);
       setNextCursor(undefined);
       setLoadingMore(false);
       setSearchQuery('');
@@ -1602,8 +1641,8 @@ export function ProductVariantsDialog({
 
   const allCombosGenerated = useMemo(() => {
     if (loading || maxCombos === 0) return false;
-    return totalVariants >= maxCombos;
-  }, [loading, maxCombos, totalVariants]);
+    return unfilteredTotalVariants >= maxCombos;
+  }, [loading, maxCombos, unfilteredTotalVariants]);
 
   const labelOfVariant = useCallback(
     (v: Variant | null | undefined): string => {
@@ -1619,7 +1658,16 @@ export function ProductVariantsDialog({
       if (mounted.current) {
         setVariants(page.variants);
         setTotalVariants(page.total);
+        if (!debouncedQuery) {
+          setUnfilteredTotalVariants(page.total);
+        }
         setNextCursor(page.nextCursor);
+      }
+      if (debouncedQuery && mounted.current) {
+        const unfiltered = await listVariantsPage(product.id, { limit: 1 });
+        if (mounted.current) {
+          setUnfilteredTotalVariants(unfiltered.total);
+        }
       }
     } catch {
       // best-effort silent resync
@@ -1668,32 +1716,37 @@ export function ProductVariantsDialog({
     return () => observer.disconnect();
   }, [nextCursor, loadingMore, loading, handleLoadMore]);
 
-  const { doDelete: doDeleteVariant } = useSoftDeleteWithUndo<Variant>({
-    deleteItem: (variantId) => (product ? deleteVariant(product.id, variantId) : Promise.resolve()),
-    restoreItem: (variantId) =>
-      product ? restoreVariant(product.id, variantId) : Promise.resolve(),
-    resync: () => void resyncVariants(),
-    onOptimisticRemove: (v) => {
-      setVariants((prev) => prev.filter((x) => x.id !== v.id));
-      setAllExistingVariants((prev) => prev.filter((x) => x.id !== v.id));
-      setTotalVariants((prev) => Math.max(0, prev - 1));
-    },
-    onOptimisticRestore: (v) => {
-      setVariants((prev) => [...prev, v].sort((a, b) => a.position - b.position));
-      setAllExistingVariants((prev) => [...prev.filter((x) => x.id !== v.id), v]);
-      setTotalVariants((prev) => prev + 1);
-    },
-    labelOf: labelOfVariant,
-    onError: (e) =>
-      setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined))),
-    messages: {
-      deleted: (name) => t('products.variants.toast.deletedNamed', { name }),
-      restored: (name) => t('products.variants.toast.restoredNamed', { name }),
-      alreadyDeleted: (name) => t('products.variants.alreadyDeleted', { name }),
-      alreadyRestored: (name) => t('products.variants.alreadyRestored', { name }),
-      undoLabel: t('products.variants.undo'),
-    },
-  });
+  const { doDelete: doDeleteVariant, dismissUndo: dismissUndoVariant } =
+    useSoftDeleteWithUndo<Variant>({
+      deleteItem: (variantId) =>
+        product ? deleteVariant(product.id, variantId) : Promise.resolve(),
+      restoreItem: (variantId) =>
+        product ? restoreVariant(product.id, variantId) : Promise.resolve(),
+      resync: () => void resyncVariants(),
+      onOptimisticRemove: (v) => {
+        setVariants((prev) => prev.filter((x) => x.id !== v.id));
+        setAllExistingVariants((prev) => prev.filter((x) => x.id !== v.id));
+        setTotalVariants((prev) => Math.max(0, prev - 1));
+        setUnfilteredTotalVariants((prev) => Math.max(0, prev - 1));
+      },
+      onOptimisticRestore: (v) => {
+        setVariants((prev) => [...prev, v].sort((a, b) => a.position - b.position));
+        setAllExistingVariants((prev) => [...prev.filter((x) => x.id !== v.id), v]);
+        setTotalVariants((prev) => prev + 1);
+        setUnfilteredTotalVariants((prev) => prev + 1);
+      },
+      labelOf: labelOfVariant,
+      onError: (e) =>
+        setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined))),
+      messages: {
+        deleted: (name) => t('products.variants.toast.deletedNamed', { name }),
+        restored: (name) => t('products.variants.toast.restoredNamed', { name }),
+        alreadyDeleted: (name) => t('products.variants.alreadyDeleted', { name }),
+        alreadyRestored: (name) => t('products.variants.alreadyRestored', { name }),
+        alreadyGoneOnUndo: () => t('products.variants.alreadyGoneOnUndo'),
+        undoLabel: t('products.variants.undo'),
+      },
+    });
 
   const handleDeleteVariant = async (variant: Variant) => {
     if (!product) return;
@@ -1726,16 +1779,25 @@ export function ProductVariantsDialog({
   };
 
   const handleGenerated = (newlyCreated: Variant[]) => {
+    dismissUndoVariant();
     setVariants((prev) => [...prev, ...newlyCreated]);
     setTotalVariants((prev) => prev + newlyCreated.length);
+    setUnfilteredTotalVariants((prev) => prev + newlyCreated.length);
   };
 
   const handleSaved = (v: Variant) => {
+    const isNew = !variants.some((x) => x.id === v.id);
+    if (isNew) {
+      dismissUndoVariant();
+    }
     setVariants((prev) => {
       const exists = prev.some((x) => x.id === v.id);
       return exists ? prev.map((x) => (x.id === v.id ? v : x)) : [...prev, v];
     });
     setTotalVariants((prev) => (variants.some((x) => x.id === v.id) ? prev : prev + 1));
+    if (isNew) {
+      setUnfilteredTotalVariants((prev) => prev + 1);
+    }
   };
 
   const formatDims = (dims: unknown): string => {
@@ -1760,7 +1822,7 @@ export function ProductVariantsDialog({
                   <Layers className="size-5 text-primary shrink-0" aria-hidden />
                   <span>{t('products.variants.dialogTitle')}</span>
                   <StatusBadge tone="neutral" className="text-xs font-mono">
-                    {totalVariants}
+                    {unfilteredTotalVariants}
                   </StatusBadge>
                   {product && (
                     <span

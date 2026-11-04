@@ -690,6 +690,7 @@
           "selectValues": "Select Values for Each Axis",
           "sku": "SKU Code",
           "skuPlaceholder": "e.g. TSHIRT-BLK-L",
+          "suggestedSkuHint": "Suggested: {sku}",
           "gtin": "GTIN / Barcode",
           "gtinPlaceholder": "e.g. 012345678901",
           "gtinHint": "8 to 14 numeric digits (UPC, EAN, or ISBN).",
@@ -716,6 +717,7 @@
         "deleteConfirmMessage": "Are you sure you want to delete this variant? Any existing offers or cart links will be affected.",
         "alreadyDeleted": "Variant “{name}” was already deleted.",
         "alreadyRestored": "Variant “{name}” was already restored.",
+        "alreadyGoneOnUndo": "This combination now has a new variant — nothing to undo.",
         "undo": "Undo",
         "toast": {
           "created": "Variant created.",

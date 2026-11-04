@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { notify } from '@shopnetic/ui';
 import {
   plainTextToDoc,
   type CategoryOption,
@@ -325,8 +326,9 @@ describe('ProductOptionsDialog', () => {
     });
   });
 
-  it('removes option from product', async () => {
+  it('removes option from product and proactively dismisses any stale undo toast', async () => {
     mockedDeleteProductOption.mockResolvedValue(undefined);
+    const dismissSpy = vi.spyOn(notify, 'dismissUndo');
 
     renderAdmin(
       <ProductOptionsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
@@ -341,6 +343,7 @@ describe('ProductOptionsDialog', () => {
 
     await waitFor(() => {
       expect(mockedDeleteProductOption).toHaveBeenCalledWith('prod_1', 'ot_size');
+      expect(dismissSpy).toHaveBeenCalled();
       expect(screen.queryByText('/size')).not.toBeInTheDocument();
     });
   });

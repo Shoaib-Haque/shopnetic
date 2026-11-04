@@ -114,6 +114,44 @@ describe('useSoftDeleteWithUndo', () => {
       expect(opts.onError).toHaveBeenCalledWith(boom);
     });
 
+    it('a NOT_FOUND on onUndo shows calm alreadyGoneOnUndo info toast, skips onError, and resyncs', async () => {
+      const notFound = new AdminApiError('NOT_FOUND', 404);
+      const opts = options({
+        restoreItem: vi.fn().mockRejectedValue(notFound),
+        messages: {
+          deleted: (name) => `${name} deleted`,
+          restored: (name) => `${name} restored`,
+          alreadyDeleted: (name) => `${name} already deleted`,
+          alreadyRestored: (name) => `${name} already restored`,
+          alreadyGoneOnUndo: (name) => `${name} already gone on undo`,
+          undoLabel: 'Undo',
+        },
+      });
+      const { result } = renderHook(() => useSoftDeleteWithUndo<Item>(opts));
+      await act(() => result.current.doDelete(item('a', 'Alpha')));
+      const onUndo = mockedNotify.undo.mock.calls[0]?.[1]?.onUndo;
+
+      await expect(act(() => onUndo!())).rejects.toThrow(notFound);
+      expect(mockedNotify.info).toHaveBeenCalledWith('Alpha already gone on undo');
+      expect(opts.onError).not.toHaveBeenCalled();
+      expect(opts.resync).toHaveBeenCalledTimes(2); // once for doDelete, once for onUndo
+    });
+
+    it('a NOT_FOUND on onUndo falls back to alreadyRestored if alreadyGoneOnUndo is omitted', async () => {
+      const notFound = new AdminApiError('NOT_FOUND', 404);
+      const opts = options({
+        restoreItem: vi.fn().mockRejectedValue(notFound),
+      });
+      const { result } = renderHook(() => useSoftDeleteWithUndo<Item>(opts));
+      await act(() => result.current.doDelete(item('a', 'Alpha')));
+      const onUndo = mockedNotify.undo.mock.calls[0]?.[1]?.onUndo;
+
+      await expect(act(() => onUndo!())).rejects.toThrow(notFound);
+      expect(mockedNotify.info).toHaveBeenCalledWith('Alpha already restored');
+      expect(opts.onError).not.toHaveBeenCalled();
+      expect(opts.resync).toHaveBeenCalledTimes(2);
+    });
+
     it('invokes onOptimisticRemove synchronously on delete and onOptimisticRestore synchronously on undo', async () => {
       const onOptimisticRemove = vi.fn();
       const onOptimisticRestore = vi.fn();
@@ -214,6 +252,19 @@ describe('useSoftDeleteWithUndo', () => {
     act(() => result.current.setRestoreTarget(item('a', 'Alpha')));
     await act(() => result.current.confirmRestore());
     expect(mockedNotify.dismissUndo).not.toHaveBeenCalled();
+  });
+
+  it('dismissUndo dismisses live undo toast and clears pending state', async () => {
+    const opts = options();
+    const { result } = renderHook(() => useSoftDeleteWithUndo<Item>(opts));
+    await act(() => result.current.doDelete(item('a', 'Alpha')));
+
+    act(() => result.current.dismissUndo());
+    expect(mockedNotify.dismissUndo).toHaveBeenCalledTimes(1);
+
+    // subsequent dismiss does not re-invoke since pending id was cleared
+    act(() => result.current.dismissUndo());
+    expect(mockedNotify.dismissUndo).toHaveBeenCalledTimes(1);
   });
 
   it('restoring flips true while in flight and back to false once settled', async () => {

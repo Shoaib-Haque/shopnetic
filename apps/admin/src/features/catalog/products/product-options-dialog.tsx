@@ -591,6 +591,7 @@ export function ProductOptionsDialog({
     try {
       await deleteProductOption(product.id, optionTypeId);
       setProductOptions((prev) => prev.filter((po) => po.optionTypeId !== optionTypeId));
+      notify.dismissUndo();
       notify.saved(t('products.options.toast.optionRemoved', { name }));
     } catch (e) {
       if (e instanceof AdminApiError && e.code === 'CONFLICT') {

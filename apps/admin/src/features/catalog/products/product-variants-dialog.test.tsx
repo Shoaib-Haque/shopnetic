@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { notify } from '@shopnetic/ui';
 import {
   plainTextToDoc,
   type CategoryOption,
@@ -1288,6 +1289,174 @@ describe('ProductVariantsDialog', () => {
     expect(previewSpan).toBeInTheDocument();
     expect(previewSpan.parentElement).toHaveClass('min-w-0');
     expect(previewSpan.closest('.space-y-1')).toBeInTheDocument();
+  });
+
+  it('search filter does not re-enable buttons or hide completion banner when matrix is fully generated', async () => {
+    const var2: Variant = {
+      ...sampleVariant,
+      id: 'var_2',
+      skuCode: 'TEE-M',
+      comboSignature: 'ot_size:val_m',
+      selections: [{ optionTypeId: 'ot_size', optionValueId: 'val_m' }],
+    };
+
+    mockedListVariantsPage.mockImplementation(async (_prodId, opts) => {
+      if (opts?.q) {
+        return { variants: [sampleVariant], total: 1, nextCursor: undefined };
+      }
+      return { variants: [sampleVariant, var2], total: 2, nextCursor: undefined };
+    });
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('All possible variant combinations have already been generated.'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add Variant' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).toBeDisabled();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search by SKU, GTIN, or option value…');
+    fireEvent.change(searchInput, { target: { value: 'small' } });
+
+    await waitFor(() => {
+      expect(mockedListVariantsPage).toHaveBeenCalledWith(
+        'prod_1',
+        expect.objectContaining({ q: 'small' }),
+      );
+    });
+
+    // Despite filtered results count being 1, unfilteredTotalVariants remains 2 >= maxCombos (2)
+    expect(
+      screen.getByText('All possible variant combinations have already been generated.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Variant' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Generate Variants' })).toBeDisabled();
+  });
+
+  it('proactively dismisses stale undo toast on variant creation and shows calm alreadyGoneOnUndo info toast when undo is clicked on a purged variant', async () => {
+    mockedListVariantsPage.mockResolvedValue({
+      variants: [sampleVariant],
+      total: 1,
+      nextCursor: undefined,
+    });
+    mockedDeleteVariant.mockResolvedValueOnce();
+    mockedRestoreVariant.mockRejectedValueOnce(new AdminApiError('NOT_FOUND', 404));
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('TEE-S')[0]).toBeInTheDocument();
+    });
+
+    const deleteBtn = screen.getAllByRole('button', { name: 'Delete variant' })[0]!;
+    fireEvent.click(deleteBtn);
+
+    const undoBtn = await screen.findByRole('button', { name: 'Undo' });
+    expect(undoBtn).toBeInTheDocument();
+
+    fireEvent.click(undoBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('This combination now has a new variant — nothing to undo.'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('proactively dismisses stale undo toast when a new variant is created', async () => {
+    mockedListVariantsPage.mockResolvedValue({
+      variants: [sampleVariant],
+      total: 1,
+      nextCursor: undefined,
+    });
+    mockedDeleteVariant.mockResolvedValueOnce();
+    const dismissSpy = vi.spyOn(notify, 'dismissUndo');
+
+    const createdVariant: Variant = {
+      ...sampleVariant,
+      id: 'var_new',
+      skuCode: 'TEE-NEW',
+      comboSignature: 'ot_size:val_m',
+      selections: [{ optionTypeId: 'ot_size', optionValueId: 'val_m' }],
+    };
+    mockedCreateVariant.mockResolvedValueOnce(createdVariant);
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('TEE-S')[0]).toBeInTheDocument();
+    });
+
+    const deleteBtn = screen.getAllByRole('button', { name: 'Delete variant' })[0]!;
+    fireEvent.click(deleteBtn);
+
+    await screen.findByRole('button', { name: 'Undo' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Variant' }));
+    await screen.findByText('New Variant');
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Size' }));
+    const mediumOpt = await screen.findByRole('option', { name: /Medium/i });
+    fireEvent.click(mediumOpt);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Variant' }));
+
+    await waitFor(() => {
+      expect(mockedCreateVariant).toHaveBeenCalled();
+      expect(dismissSpy).toHaveBeenCalled();
+    });
+  });
+
+  it('auto-generates live suggested SKU as axis values are selected and preserves user edits', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Add Variant' })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Variant' }));
+    await screen.findByText('New Variant');
+
+    const skuInput = screen.getByPlaceholderText('e.g. TSHIRT-BLK-L') as HTMLInputElement;
+    expect(skuInput.value).toBe('');
+
+    // Select Size = Medium (code: "m")
+    fireEvent.click(screen.getByRole('combobox', { name: 'Size' }));
+    const mediumOpt = await screen.findByRole('option', { name: /Medium/i });
+    fireEvent.click(mediumOpt);
+
+    // SKU should automatically be pre-filled with uppercase code "M"
+    await waitFor(() => {
+      expect(skuInput.value).toBe('M');
+    });
+
+    // Manually edit the SKU field
+    fireEvent.change(skuInput, { target: { value: 'CUSTOM-SKU-001' } });
+    expect(skuInput.value).toBe('CUSTOM-SKU-001');
+
+    // Select Size = Small (code: "s")
+    fireEvent.click(screen.getByRole('combobox', { name: 'Size' }));
+    const smallOpt = await screen.findByRole('option', { name: /Small/i });
+    fireEvent.click(smallOpt);
+
+    // Manual edit is preserved (not overwritten by "S")
+    expect(skuInput.value).toBe('CUSTOM-SKU-001');
+    // Helpful hint is displayed showing what was suggested
+    expect(screen.getByText('Suggested: S')).toBeInTheDocument();
+
+    // User clears the field explicitly
+    fireEvent.change(skuInput, { target: { value: '' } });
+    expect(skuInput.value).toBe('');
   });
 
   describe('formatVariantSelectionsLabel & resolveVariantSelections', () => {
