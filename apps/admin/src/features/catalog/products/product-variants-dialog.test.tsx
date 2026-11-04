@@ -1108,4 +1108,109 @@ describe('ProductVariantsDialog', () => {
       expect(screen.getByRole('button', { name: 'Add Variant' })).not.toBeDisabled();
     });
   });
+
+  it('formats readable selection label for variant delete toast when skuCode is missing instead of raw UUIDs', async () => {
+    const variantWithoutSku: Variant = {
+      ...sampleVariant,
+      id: 'var_no_sku',
+      skuCode: '', // no skuCode
+      comboSignature: 'ot_color:val_navy', // raw UUIDs
+      selections: [
+        {
+          optionTypeId: 'ot_color',
+          optionTypeCode: 'color',
+          optionTypeName: { en: 'Color' },
+          optionValueId: 'val_navy',
+          optionValueCode: 'navy',
+          optionValueLabel: { en: 'Navy' },
+        },
+      ],
+    };
+
+    mockedListVariantsPage.mockResolvedValueOnce({
+      variants: [variantWithoutSku],
+      total: 1,
+      nextCursor: undefined,
+    });
+    mockedCountVariantOffers.mockResolvedValue(0);
+    mockedDeleteVariant.mockResolvedValueOnce();
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Delete variant' })[0]).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete variant' })[0]!);
+
+    // Soft-delete toast should format "Color: Navy" instead of raw "ot_color:val_navy"
+    await waitFor(() => {
+      expect(screen.getByText(/Variant.*Color: Navy.*deleted/i)).toBeInTheDocument();
+    });
+  });
+
+  it('filters axis combobox on single-letter size queries like "s" or "m"', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Add Variant' })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Variant' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('New Variant')).toBeInTheDocument();
+    });
+
+    // Find the Size combobox trigger
+    const sizeCombobox = screen.getByRole('combobox', { name: 'Size' });
+    fireEvent.click(sizeCombobox);
+
+    // Search input should appear
+    const searchInput = await screen.findByPlaceholderText('Search values…');
+    expect(searchInput).toBeInTheDocument();
+
+    // Medium (m) is in the available list for new variants
+    expect(screen.getByRole('option', { name: /Medium/i })).toBeInTheDocument();
+
+    // Type single letter "m"
+    fireEvent.change(searchInput, { target: { value: 'm' } });
+
+    // Medium matches single letter "m"
+    expect(screen.getByRole('option', { name: /Medium/i })).toBeInTheDocument();
+
+    // Type single letter "z" which doesn't match
+    fireEvent.change(searchInput, { target: { value: 'z' } });
+    expect(screen.queryByRole('option', { name: /Medium/i })).not.toBeInTheDocument();
+  });
+
+  it('renders long SKU prefix with truncation and tooltip in generator combination checklist', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Variants' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Generate Variant Matrix')).toBeInTheDocument();
+    });
+
+    const prefixInput = screen.getByPlaceholderText('e.g. PROD-100-');
+    const longPrefix = 'SUPER-LONG-PREFIX-FOR-TESTING-OVERFLOW-';
+    fireEvent.change(prefixInput, { target: { value: longPrefix } });
+
+    // The combination label preview should have truncate class and title attribute
+    const previewSpan = screen.getByTitle(`${longPrefix}M`);
+    expect(previewSpan).toBeInTheDocument();
+    expect(previewSpan).toHaveClass('truncate');
+    expect(previewSpan).toHaveClass('min-w-0');
+  });
 });

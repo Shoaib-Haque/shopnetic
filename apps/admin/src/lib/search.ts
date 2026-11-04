@@ -22,11 +22,12 @@ function normalize(text: string): string {
     .trim();
 }
 
-export function tokenize(query: string): string[] {
+export function tokenize(query: string, options?: { minLength?: number }): string[] {
   if (!query) return [];
+  const minLen = options?.minLength ?? 2;
   const seen = new Set<string>();
   for (const raw of normalize(query).split(' ')) {
-    if (raw.length >= 2) seen.add(raw);
+    if (raw.length >= minLen) seen.add(raw);
     if (seen.size >= MAX_TOKENS) break;
   }
   return [...seen];

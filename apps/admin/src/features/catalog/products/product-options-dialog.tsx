@@ -97,12 +97,30 @@ function ValueSelectModal({
   }, [optionType, categoryOption, valueSet]);
 
   const filteredValues = useMemo(() => {
-    const tokens = tokenize(query);
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) return availableValues;
+    const tokens = tokenize(trimmed, { minLength: 1 });
     if (tokens.length === 0) return availableValues;
     return availableValues
       .map((v) => {
-        const text = `${v.code} ${v.label.en ?? ''}`;
-        const score = matchScore(text, tokens);
+        const code = v.code.toLowerCase();
+        const label = (v.label.en ?? '').toLowerCase();
+        const text = `${code} ${label}`;
+
+        let score = 0;
+        if (code === trimmed) {
+          score += 100;
+        } else if (label === trimmed) {
+          score += 80;
+        } else if (code.startsWith(trimmed)) {
+          score += 50;
+        } else if (label.startsWith(trimmed)) {
+          score += 30;
+        }
+
+        const tokenScore = matchScore(text, tokens);
+        score += tokenScore;
+
         return { v, score };
       })
       .filter(({ score }) => score > 0)

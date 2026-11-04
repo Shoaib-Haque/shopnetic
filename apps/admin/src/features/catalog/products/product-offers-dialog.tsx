@@ -667,16 +667,14 @@ export function ProductOffersDialog({
 
                   return (
                     <>
-                      {/* Search bar when >30 offers exist or search is active */}
-                      {(totalForSelected > 30 || Boolean(searchQuery)) && (
-                        <SearchInput
-                          value={searchQuery}
-                          onValueChange={setSearchQuery}
-                          placeholder={t('products.offers.searchOffersPlaceholder')}
-                          clearLabel="Clear search"
-                          className="h-9 text-xs"
-                        />
-                      )}
+                      {/* Search bar rendered unconditionally for consistency across catalog lists */}
+                      <SearchInput
+                        value={searchQuery}
+                        onValueChange={setSearchQuery}
+                        placeholder={t('products.offers.searchOffersPlaceholder')}
+                        clearLabel="Clear search"
+                        className="h-9 text-xs"
+                      />
 
                       {offersLoading ? (
                         <div className="space-y-3 py-4">

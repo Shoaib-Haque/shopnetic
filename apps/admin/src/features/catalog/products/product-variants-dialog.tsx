@@ -482,13 +482,14 @@ function GeneratorModal({
                     return (
                       <label
                         key={combo.signature}
-                        className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm hover:bg-muted/50"
+                        className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-muted/50"
                       >
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex min-w-0 shrink items-center gap-2.5">
                           <Checkbox
                             checked={isChecked}
                             onCheckedChange={() => toggleCombo(combo.signature)}
                             aria-label={combo.suggestedSku || 'Variant'}
+                            className="shrink-0"
                           />
                           <div className="flex flex-wrap items-center gap-1.5">
                             {combo.items.length === 0 ? (
@@ -508,7 +509,12 @@ function GeneratorModal({
                           </div>
                         </div>
                         {combo.suggestedSku && (
-                          <span className="font-mono text-xs text-muted-foreground">
+                          <span
+                            className="min-w-0 shrink truncate font-mono text-xs text-muted-foreground"
+                            title={
+                              skuPrefix ? `${skuPrefix}${combo.suggestedSku}` : combo.suggestedSku
+                            }
+                          >
                             {skuPrefix ? `${skuPrefix}${combo.suggestedSku}` : combo.suggestedSku}
                           </span>
                         )}
@@ -681,12 +687,30 @@ function OptionValueCombobox({
   const selectedItem = useMemo(() => values.find((v) => v.id === value), [values, value]);
 
   const filteredValues = useMemo(() => {
-    const tokens = tokenize(search);
+    const trimmed = search.trim().toLowerCase();
+    if (!trimmed) return values;
+    const tokens = tokenize(trimmed, { minLength: 1 });
     if (tokens.length === 0) return values;
     return values
       .map((v) => {
-        const text = `${v.code} ${v.label}`;
-        const score = matchScore(text, tokens);
+        const code = v.code.toLowerCase();
+        const label = v.label.toLowerCase();
+        const text = `${code} ${label}`;
+
+        let score = 0;
+        if (code === trimmed) {
+          score += 100;
+        } else if (label === trimmed) {
+          score += 80;
+        } else if (code.startsWith(trimmed)) {
+          score += 50;
+        } else if (label.startsWith(trimmed)) {
+          score += 30;
+        }
+
+        const tokenScore = matchScore(text, tokens);
+        score += tokenScore;
+
         return { v, score };
       })
       .filter(({ score }) => score > 0)
@@ -1480,8 +1504,39 @@ export function ProductVariantsDialog({
     return totalVariants >= maxCombos;
   }, [loading, maxCombos, totalVariants]);
 
-  const labelOfVariant = (v: Variant | null | undefined): string =>
-    v?.skuCode || (v?.comboSignature ? v.comboSignature : '');
+  const labelOfVariant = useCallback(
+    (v: Variant | null | undefined): string => {
+      if (!v) return '';
+      if (v.skuCode) return v.skuCode;
+      if (v.selections && v.selections.length > 0) {
+        const parts = v.selections.map((sel) => {
+          const ot = optionTypeMap.get(sel.optionTypeId);
+          const po = productOptions.find((p) => p.optionTypeId === sel.optionTypeId);
+          const val = ot?.values.find((val) => val.id === sel.optionValueId);
+          const pv = po?.values.find((val) => val.optionValueId === sel.optionValueId);
+
+          const typeName =
+            sel.optionTypeName?.en ||
+            sel.optionTypeCode ||
+            ot?.name.en ||
+            po?.optionTypeName?.en ||
+            po?.optionTypeCode ||
+            'Option';
+          const valLabel =
+            sel.optionValueLabel?.en ||
+            sel.optionValueCode ||
+            val?.label.en ||
+            val?.code ||
+            pv?.code ||
+            '';
+          return valLabel ? `${typeName}: ${valLabel}` : typeName;
+        });
+        return parts.join(', ');
+      }
+      return 'Single / Base Variant';
+    },
+    [optionTypeMap, productOptions],
+  );
 
   const resyncVariants = useCallback(async () => {
     if (!product || !mounted.current) return;

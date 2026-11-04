@@ -924,4 +924,22 @@ describe('ProductOffersDialog', () => {
       { timeout: 1500 },
     );
   }, 15000);
+
+  it('renders search bar unconditionally even when a variant has fewer than 30 offers', async () => {
+    mockedGetVariantOfferCounts.mockResolvedValue({ var_1: 1, var_2: 0 });
+    mockedListOffersPage.mockResolvedValue({
+      offers: [sampleOffer],
+      total: 1,
+      nextCursor: undefined,
+    });
+
+    renderAdmin(<ProductOffersDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Offers & Stock')).toBeInTheDocument();
+    });
+
+    const searchInput = await screen.findByPlaceholderText('Search sellers in offers…');
+    expect(searchInput).toBeInTheDocument();
+  });
 });
