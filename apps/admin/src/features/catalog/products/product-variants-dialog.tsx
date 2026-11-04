@@ -105,6 +105,66 @@ interface CartesianCombo {
   suggestedSku: string;
 }
 
+// ── Variant Selection Resolution Helpers ─────────────────────────────────────
+
+export interface ResolvedVariantSelection {
+  optionTypeId: string;
+  optionValueId: string;
+  typeName: string;
+  valLabel: string;
+  formatted: string;
+}
+
+export function resolveVariantSelections(
+  selections: VariantSelection[] | undefined,
+  optionTypeMap: Map<string, OptionType>,
+  productOptions: ProductOption[],
+): ResolvedVariantSelection[] {
+  if (!selections || selections.length === 0) return [];
+  return selections.map((sel) => {
+    const ot = optionTypeMap.get(sel.optionTypeId);
+    const ov = ot?.values.find((v) => v.id === sel.optionValueId);
+    const po = productOptions.find((p) => p.optionTypeId === sel.optionTypeId);
+    const pv = po?.values.find((v) => v.optionValueId === sel.optionValueId);
+
+    const typeName =
+      sel.optionTypeName?.en ||
+      sel.optionTypeCode ||
+      ot?.name.en ||
+      po?.optionTypeName?.en ||
+      po?.optionTypeCode ||
+      'Option';
+    const valLabel =
+      sel.optionValueLabel?.en ||
+      sel.optionValueCode ||
+      ov?.label.en ||
+      ov?.code ||
+      pv?.code ||
+      '—';
+
+    return {
+      optionTypeId: sel.optionTypeId,
+      optionValueId: sel.optionValueId,
+      typeName,
+      valLabel,
+      formatted: valLabel !== '—' ? `${typeName}: ${valLabel}` : typeName,
+    };
+  });
+}
+
+export function formatVariantSelectionsLabel(
+  variant: Variant | null | undefined,
+  optionTypeMap: Map<string, OptionType>,
+  productOptions: ProductOption[],
+  fallback = 'Single / Base Variant',
+): string {
+  if (!variant) return '';
+  if (variant.skuCode) return variant.skuCode;
+  const resolved = resolveVariantSelections(variant.selections, optionTypeMap, productOptions);
+  if (resolved.length === 0) return fallback;
+  return resolved.map((r) => r.formatted).join(', ');
+}
+
 // ── Cartesian Generator Modal ────────────────────────────────────────────────
 
 interface GeneratorModalProps {
@@ -1026,36 +1086,16 @@ function VariantFormModal({
                       Single / Default Variant
                     </span>
                   ) : (
-                    variant.selections.map((sel) => {
-                      const ot = optionTypeMap.get(sel.optionTypeId);
-                      const ov = ot?.values.find((v) => v.id === sel.optionValueId);
-                      const po = productOptions.find((p) => p.optionTypeId === sel.optionTypeId);
-                      const pv = po?.values.find((v) => v.optionValueId === sel.optionValueId);
-
-                      const typeName =
-                        sel.optionTypeName?.en ||
-                        sel.optionTypeCode ||
-                        ot?.name.en ||
-                        po?.optionTypeName?.en ||
-                        po?.optionTypeCode ||
-                        'Option';
-                      const valLabel =
-                        sel.optionValueLabel?.en ||
-                        sel.optionValueCode ||
-                        ov?.label.en ||
-                        ov?.code ||
-                        pv?.code ||
-                        '—';
-
-                      return (
+                    resolveVariantSelections(variant.selections, optionTypeMap, productOptions).map(
+                      (sel) => (
                         <span
                           key={sel.optionTypeId}
                           className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
                         >
-                          {typeName}: {valLabel}
+                          {sel.typeName}: {sel.valLabel}
                         </span>
-                      );
-                    })
+                      ),
+                    )
                   )}
                 </div>
               </div>
@@ -1506,34 +1546,7 @@ export function ProductVariantsDialog({
 
   const labelOfVariant = useCallback(
     (v: Variant | null | undefined): string => {
-      if (!v) return '';
-      if (v.skuCode) return v.skuCode;
-      if (v.selections && v.selections.length > 0) {
-        const parts = v.selections.map((sel) => {
-          const ot = optionTypeMap.get(sel.optionTypeId);
-          const po = productOptions.find((p) => p.optionTypeId === sel.optionTypeId);
-          const val = ot?.values.find((val) => val.id === sel.optionValueId);
-          const pv = po?.values.find((val) => val.optionValueId === sel.optionValueId);
-
-          const typeName =
-            sel.optionTypeName?.en ||
-            sel.optionTypeCode ||
-            ot?.name.en ||
-            po?.optionTypeName?.en ||
-            po?.optionTypeCode ||
-            'Option';
-          const valLabel =
-            sel.optionValueLabel?.en ||
-            sel.optionValueCode ||
-            val?.label.en ||
-            val?.code ||
-            pv?.code ||
-            '';
-          return valLabel ? `${typeName}: ${valLabel}` : typeName;
-        });
-        return parts.join(', ');
-      }
-      return 'Single / Base Variant';
+      return formatVariantSelectionsLabel(v, optionTypeMap, productOptions);
     },
     [optionTypeMap, productOptions],
   );
@@ -1879,42 +1892,18 @@ export function ProductVariantsDialog({
                                     Single / Base Variant
                                   </span>
                                 ) : (
-                                  v.selections.map((sel) => {
-                                    const ot = optionTypeMap.get(sel.optionTypeId);
-                                    const ov = ot?.values.find(
-                                      (val) => val.id === sel.optionValueId,
-                                    );
-                                    const po = productOptions.find(
-                                      (p) => p.optionTypeId === sel.optionTypeId,
-                                    );
-                                    const pv = po?.values.find(
-                                      (val) => val.optionValueId === sel.optionValueId,
-                                    );
-
-                                    const typeName =
-                                      sel.optionTypeName?.en ||
-                                      sel.optionTypeCode ||
-                                      ot?.name.en ||
-                                      po?.optionTypeName?.en ||
-                                      po?.optionTypeCode ||
-                                      'Option';
-                                    const valLabel =
-                                      sel.optionValueLabel?.en ||
-                                      sel.optionValueCode ||
-                                      ov?.label.en ||
-                                      ov?.code ||
-                                      pv?.code ||
-                                      '—';
-
-                                    return (
-                                      <span
-                                        key={sel.optionTypeId}
-                                        className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
-                                      >
-                                        {typeName}: {valLabel}
-                                      </span>
-                                    );
-                                  })
+                                  resolveVariantSelections(
+                                    v.selections,
+                                    optionTypeMap,
+                                    productOptions,
+                                  ).map((sel) => (
+                                    <span
+                                      key={sel.optionTypeId}
+                                      className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
+                                    >
+                                      {sel.typeName}: {sel.valLabel}
+                                    </span>
+                                  ))
                                 )}
                               </div>
                             </TableCell>
@@ -2006,38 +1995,18 @@ export function ProductVariantsDialog({
                                 Single / Base Variant
                               </span>
                             ) : (
-                              v.selections.map((sel) => {
-                                const ot = optionTypeMap.get(sel.optionTypeId);
-                                const ov = ot?.values.find((val) => val.id === sel.optionValueId);
-                                const po = productOptions.find(
-                                  (p) => p.optionTypeId === sel.optionTypeId,
-                                );
-                                const pv = po?.values.find(
-                                  (val) => val.optionValueId === sel.optionValueId,
-                                );
-                                const typeName =
-                                  sel.optionTypeName?.en ||
-                                  sel.optionTypeCode ||
-                                  ot?.name.en ||
-                                  po?.optionTypeName?.en ||
-                                  po?.optionTypeCode ||
-                                  'Option';
-                                const valLabel =
-                                  sel.optionValueLabel?.en ||
-                                  sel.optionValueCode ||
-                                  ov?.label.en ||
-                                  ov?.code ||
-                                  pv?.code ||
-                                  '—';
-                                return (
-                                  <span
-                                    key={sel.optionTypeId}
-                                    className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
-                                  >
-                                    {typeName}: {valLabel}
-                                  </span>
-                                );
-                              })
+                              resolveVariantSelections(
+                                v.selections,
+                                optionTypeMap,
+                                productOptions,
+                              ).map((sel) => (
+                                <span
+                                  key={sel.optionTypeId}
+                                  className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
+                                >
+                                  {sel.typeName}: {sel.valLabel}
+                                </span>
+                              ))
                             )}
                           </div>
                           <StatusBadge tone={v.status === 'active' ? 'success' : 'neutral'}>

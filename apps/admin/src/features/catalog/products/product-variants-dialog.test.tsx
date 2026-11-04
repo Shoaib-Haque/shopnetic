@@ -23,7 +23,11 @@ import {
   restoreVariant,
   updateVariant,
 } from './api';
-import { ProductVariantsDialog } from './product-variants-dialog';
+import {
+  formatVariantSelectionsLabel,
+  ProductVariantsDialog,
+  resolveVariantSelections,
+} from './product-variants-dialog';
 
 vi.mock('./api', async () => {
   const actual = await vi.importActual<typeof import('./api')>('./api');
@@ -1212,5 +1216,62 @@ describe('ProductVariantsDialog', () => {
     expect(previewSpan).toBeInTheDocument();
     expect(previewSpan).toHaveClass('truncate');
     expect(previewSpan).toHaveClass('min-w-0');
+  });
+
+  describe('formatVariantSelectionsLabel & resolveVariantSelections', () => {
+    const mockOptionTypeMap = new Map<string, OptionType>([
+      ['ot_color', colorOptionType],
+      ['ot_size', sizeOptionType],
+    ]);
+
+    it('resolves selections with typeName, valLabel, and formatted string', () => {
+      const selections = [{ optionTypeId: 'ot_color', optionValueId: 'val_navy' }];
+      const resolved = resolveVariantSelections(selections, mockOptionTypeMap, productOptions);
+      expect(resolved).toEqual([
+        {
+          optionTypeId: 'ot_color',
+          optionValueId: 'val_navy',
+          typeName: 'Color',
+          valLabel: 'Navy',
+          formatted: 'Color: Navy',
+        },
+      ]);
+    });
+
+    it('returns empty array when selections is empty or undefined', () => {
+      expect(resolveVariantSelections([], mockOptionTypeMap, productOptions)).toEqual([]);
+      expect(resolveVariantSelections(undefined, mockOptionTypeMap, productOptions)).toEqual([]);
+    });
+
+    it('formats variant label preferring skuCode if present', () => {
+      const v: Variant = {
+        ...sampleVariant,
+        skuCode: 'TEE-NVY-S',
+        selections: [{ optionTypeId: 'ot_color', optionValueId: 'val_navy' }],
+      };
+      expect(formatVariantSelectionsLabel(v, mockOptionTypeMap, productOptions)).toBe('TEE-NVY-S');
+    });
+
+    it('formats selections when skuCode is missing', () => {
+      const v: Variant = {
+        ...sampleVariant,
+        skuCode: null,
+        selections: [{ optionTypeId: 'ot_color', optionValueId: 'val_navy' }],
+      };
+      expect(formatVariantSelectionsLabel(v, mockOptionTypeMap, productOptions)).toBe(
+        'Color: Navy',
+      );
+    });
+
+    it('falls back to Single / Base Variant for variant with empty selections', () => {
+      const v: Variant = {
+        ...sampleVariant,
+        skuCode: null,
+        selections: [],
+      };
+      expect(formatVariantSelectionsLabel(v, mockOptionTypeMap, productOptions)).toBe(
+        'Single / Base Variant',
+      );
+    });
   });
 });
