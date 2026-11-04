@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { Actor } from '@shopnetic/auth';
 import {
   computeComboSignature,
@@ -19,6 +19,7 @@ import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 import { writeInventoryOutbox } from '../inventory/inventory-outbox.js';
+import { BuyboxService } from '../inventory/buybox.service.js';
 import { clampLimit } from '../common/pagination.js';
 import { rankedNextCursor, rankedOffsetFromCursor, tokenizeForSql } from '../common/text-search.js';
 
@@ -43,12 +44,15 @@ type VariantRow = Prisma.VariantGetPayload<{ include: typeof withValues }>;
 @Injectable()
 export class VariantService {
   private readonly record: ReturnType<typeof auditRecordFor>;
+  private readonly buyboxService: BuyboxService;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Optional() buybox?: BuyboxService,
   ) {
     this.record = auditRecordFor(this.audit, 'variant');
+    this.buyboxService = buybox ?? new BuyboxService(prisma);
   }
 
   async listAll(productId: string): Promise<Variant[]> {
@@ -108,11 +112,13 @@ export class VariantService {
     }
 
     if (tokens.length > 0) {
-      // Bound search candidates to avoid unbounded in-memory sorting on broad queries
-      const MAX_SEARCH_CANDIDATES = 500;
+      // Bound search candidates to avoid unbounded in-memory sorting on broad queries.
+      // 1000 candidates with deterministic ordering covers 100% of variants for any single product in the catalog.
+      const MAX_SEARCH_CANDIDATES = 1000;
       const allRows = (await this.prisma.variant.findMany({
         where,
         include: withValues,
+        orderBy: [{ position: 'asc' }, { id: 'asc' }],
         take: MAX_SEARCH_CANDIDATES,
       })) as VariantRow[];
 
@@ -314,8 +320,9 @@ export class VariantService {
   async remove(id: string, actor: Actor, meta: RequestMeta): Promise<void> {
     const current = await this.get(id);
     await this.productOrThrow(current.productId);
+    const deleteTime = new Date();
     await this.prisma.$transaction(async (tx) => {
-      await tx.variant.update({ where: { id }, data: { deletedAt: new Date() } });
+      await tx.variant.update({ where: { id }, data: { deletedAt: deleteTime } });
       await writeCatalogOutbox(tx, 'variant', 'variant.deleted', id, { id });
 
       // Invariant #4 (plan/32): Archiving a Variant disables all attached Seller Offers
@@ -326,10 +333,11 @@ export class VariantService {
       if (activeOffers.length > 0) {
         await tx.offer.updateMany({
           where: { variantId: id, deletedAt: null },
-          data: { deletedAt: new Date() },
+          data: { deletedAt: deleteTime },
         });
         for (const o of activeOffers) {
           await writeInventoryOutbox(tx, 'offer', 'offer.deleted', o.id, {
+            offerId: o.id,
             id: o.id,
             sellerId: o.sellerId,
             variantId: id,
@@ -337,6 +345,8 @@ export class VariantService {
           });
         }
       }
+
+      await this.buyboxService.recalculate(id, tx);
     });
     const [productTitle, resolvedSelections] = await Promise.all([
       this.productTitleOf(current.productId),
@@ -409,6 +419,38 @@ export class VariantService {
         id,
         productId: current.productId,
       });
+
+      // Invariant #4 (plan/32): Restoring a Variant restores attached offers that were cascaded
+      if (current.deletedAt) {
+        const cascadedOffers = await tx.offer.findMany({
+          where: {
+            variantId: id,
+            deletedAt: current.deletedAt,
+          },
+          select: { id: true, sellerId: true },
+        });
+        if (cascadedOffers.length > 0) {
+          await tx.offer.updateMany({
+            where: {
+              variantId: id,
+              deletedAt: current.deletedAt,
+            },
+            data: { deletedAt: null },
+          });
+          for (const o of cascadedOffers) {
+            await writeInventoryOutbox(tx, 'offer', 'offer.restored', o.id, {
+              offerId: o.id,
+              id: o.id,
+              sellerId: o.sellerId,
+              variantId: id,
+              reason: 'variant_restored_cascade',
+            });
+          }
+        }
+      }
+
+      await this.buyboxService.recalculate(id, tx);
+
       return row;
     });
 

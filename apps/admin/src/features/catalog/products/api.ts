@@ -286,6 +286,13 @@ export function listVariantOffers(variantId: string): Promise<Offer[]> {
   return adminApi<Offer[]>(`/offers?variantId=${variantId}`);
 }
 
+export function countVariantOffers(variantId: string): Promise<number> {
+  return adminApi<{ data: Offer[]; meta: { total?: number } }>(
+    `/offers?variantId=${variantId}&limit=1`,
+    { raw: true },
+  ).then((r) => r.meta.total ?? r.data.length);
+}
+
 export function getVariantBuybox(variantId: string): Promise<Buybox | null> {
   return adminApi<Buybox | null>(`/offers/variants/${variantId}/buybox`);
 }

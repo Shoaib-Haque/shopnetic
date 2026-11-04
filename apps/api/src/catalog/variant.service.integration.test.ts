@@ -381,6 +381,14 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
         country: 'US',
       },
     });
+    const wh = await prisma.warehouse.create({
+      data: {
+        sellerId: seller.id,
+        name: 'Cascade Test Warehouse',
+        address: { line1: '123 St', city: 'City', country: 'US', postalCode: '12345' },
+        isDefault: true,
+      },
+    });
     const offer = await prisma.offer.create({
       data: {
         sellerId: seller.id,
@@ -388,11 +396,18 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
         priceMinor: 2500n,
         currency: 'USD',
         status: 'active',
+        stocks: {
+          create: {
+            warehouseId: wh.id,
+            onHand: 10,
+            reserved: 0,
+          },
+        },
       },
     });
 
     try {
-      // Removing the variant should soft-delete the variant and attached offer
+      // Removing the variant should soft-delete the variant and attached offer and recalculate buybox
       await variants.remove(tempVar.id, actor, {});
 
       const offerAfter = await prisma.offer.findUnique({ where: { id: offer.id } });
@@ -406,8 +421,37 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
         },
       });
       expect(outbox).toBeTruthy();
+
+      const buyboxAfterDelete = await prisma.buybox.findUnique({
+        where: { variantId: tempVar.id },
+      });
+      expect(buyboxAfterDelete?.winningOfferId).toBeNull();
+      expect(buyboxAfterDelete?.sellerCount).toBe(0);
+
+      // Restoring the variant (undo) restores the variant AND the cascaded offer, recalculating buybox
+      await variants.restore(tempVar.id, actor, {});
+
+      const offerRestored = await prisma.offer.findUnique({ where: { id: offer.id } });
+      expect(offerRestored?.deletedAt).toBeNull();
+
+      const outboxRestored = await prisma.inventoryOutbox.findFirst({
+        where: {
+          aggregateType: 'offer',
+          aggregateId: offer.id,
+          eventType: 'offer.restored',
+        },
+      });
+      expect(outboxRestored).toBeTruthy();
+
+      const buyboxAfterRestore = await prisma.buybox.findUnique({
+        where: { variantId: tempVar.id },
+      });
+      expect(buyboxAfterRestore?.winningOfferId).toBe(offer.id);
+      expect(buyboxAfterRestore?.sellerCount).toBe(1);
     } finally {
+      await prisma.stock.deleteMany({ where: { warehouseId: wh.id } });
       await prisma.offer.deleteMany({ where: { id: offer.id } });
+      await prisma.warehouse.deleteMany({ where: { id: wh.id } });
       await prisma.seller.deleteMany({ where: { id: seller.id } });
       await prisma.account.deleteMany({ where: { id: sellerAccount.id } });
       await prisma.variant.deleteMany({ where: { id: tempVar.id } });

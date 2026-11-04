@@ -81,10 +81,10 @@ import { useComboboxKeyboardNav } from '@/hooks/use-combobox-keyboard-nav';
 import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
 import { matchScore, tokenize } from '@/lib/search';
 import {
+  countVariantOffers,
   createVariant,
   deleteVariant,
   listProductOptions,
-  listVariantOffers,
   listVariantsPage,
   restoreVariant,
   updateVariant,
@@ -1571,9 +1571,9 @@ export function ProductVariantsDialog({
     setDeletingId(variant.id);
     setActionError(null);
     try {
-      const offers = await listVariantOffers(variant.id).catch(() => []);
-      if (offers.length > 0) {
-        setCascadeVariantToDelete({ variant, offerCount: offers.length });
+      const offerCount = await countVariantOffers(variant.id).catch(() => 0);
+      if (offerCount > 0) {
+        setCascadeVariantToDelete({ variant, offerCount });
         return;
       }
       await doDeleteVariant(variant);

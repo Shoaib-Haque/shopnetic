@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { can, Permission, type Actor } from '@shopnetic/auth';
 import {
   docToPlainText,
@@ -27,6 +27,7 @@ import {
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 import { writeInventoryOutbox } from '../inventory/inventory-outbox.js';
+import { BuyboxService } from '../inventory/buybox.service.js';
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
@@ -39,12 +40,15 @@ const MAX_LIMIT = 100;
 @Injectable()
 export class ProductService {
   private readonly record: ReturnType<typeof auditRecordFor>;
+  private readonly buyboxService: BuyboxService;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Optional() buybox?: BuyboxService,
   ) {
     this.record = auditRecordFor(this.audit, 'product');
+    this.buyboxService = buybox ?? new BuyboxService(prisma);
   }
 
   async list(opts: {
@@ -346,11 +350,12 @@ export class ProductService {
       });
     }
     const currentSpec = (current.spec as Record<string, unknown>) ?? {};
+    const deleteTime = new Date();
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({
         where: { id },
         data: {
-          deletedAt: new Date(),
+          deletedAt: deleteTime,
           status: 'archived',
           spec: { ...currentSpec, _previousStatus: current.status } as Prisma.InputJsonValue,
         },
@@ -366,7 +371,7 @@ export class ProductService {
         const variantIds = activeVariants.map((v) => v.id);
         await tx.variant.updateMany({
           where: { productId: id, deletedAt: null },
-          data: { deletedAt: new Date() },
+          data: { deletedAt: deleteTime },
         });
         for (const v of activeVariants) {
           await writeCatalogOutbox(tx, 'variant', 'variant.deleted', v.id, { id: v.id });
@@ -378,16 +383,21 @@ export class ProductService {
         if (activeOffers.length > 0) {
           await tx.offer.updateMany({
             where: { variantId: { in: variantIds }, deletedAt: null },
-            data: { deletedAt: new Date() },
+            data: { deletedAt: deleteTime },
           });
           for (const o of activeOffers) {
             await writeInventoryOutbox(tx, 'offer', 'offer.deleted', o.id, {
+              offerId: o.id,
               id: o.id,
               sellerId: o.sellerId,
               variantId: o.variantId,
               reason: 'product_deleted_cascade',
             });
           }
+        }
+
+        for (const vId of variantIds) {
+          await this.buyboxService.recalculate(vId, tx);
         }
       }
     });
@@ -459,6 +469,52 @@ export class ProductService {
         },
       });
       await writeCatalogOutbox(tx, 'product', 'product.restored', id, { id });
+
+      // Invariant #4 (plan/32): Restoring a Product restores variants and attached offers cascaded with it
+      if (current.deletedAt) {
+        const cascadedVariants = await tx.variant.findMany({
+          where: { productId: id, deletedAt: current.deletedAt },
+          select: { id: true },
+        });
+        if (cascadedVariants.length > 0) {
+          const cascadedVariantIds = cascadedVariants.map((v) => v.id);
+          await tx.variant.updateMany({
+            where: { productId: id, deletedAt: current.deletedAt },
+            data: { deletedAt: null },
+          });
+          for (const v of cascadedVariants) {
+            await writeCatalogOutbox(tx, 'variant', 'variant.restored', v.id, {
+              id: v.id,
+              productId: id,
+            });
+          }
+
+          const cascadedOffers = await tx.offer.findMany({
+            where: { variantId: { in: cascadedVariantIds }, deletedAt: current.deletedAt },
+            select: { id: true, sellerId: true, variantId: true },
+          });
+          if (cascadedOffers.length > 0) {
+            await tx.offer.updateMany({
+              where: { variantId: { in: cascadedVariantIds }, deletedAt: current.deletedAt },
+              data: { deletedAt: null },
+            });
+            for (const o of cascadedOffers) {
+              await writeInventoryOutbox(tx, 'offer', 'offer.restored', o.id, {
+                offerId: o.id,
+                id: o.id,
+                sellerId: o.sellerId,
+                variantId: o.variantId,
+                reason: 'product_restored_cascade',
+              });
+            }
+          }
+
+          for (const vId of cascadedVariantIds) {
+            await this.buyboxService.recalculate(vId, tx);
+          }
+        }
+      }
+
       return row;
     });
 
