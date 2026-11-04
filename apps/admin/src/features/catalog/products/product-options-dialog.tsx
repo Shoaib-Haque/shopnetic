@@ -2,15 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  Check,
-  Image as ImageIcon,
-  Layers,
-  Plus,
-  Search,
-  SlidersHorizontal,
-  Trash2,
-} from 'lucide-react';
+import { Check, Image as ImageIcon, Layers, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type {
   CategoryOption,
   OptionType,
@@ -18,11 +10,11 @@ import type {
   Product,
   ProductOption,
   ValueSet,
+  Variant,
 } from '@shopnetic/contracts';
 import {
   Button,
   Checkbox,
-  Input,
   Modal,
   ModalBody,
   ModalContent,
@@ -31,6 +23,7 @@ import {
   ModalHeader,
   ModalTitle,
   notify,
+  SearchInput,
   Select,
   SelectContent,
   SelectItem,
@@ -51,10 +44,14 @@ import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import { listValueSets } from '@/features/catalog/value-sets/api';
+import { matchScore, tokenize } from '@/lib/search';
 import {
   deleteProductOption,
+  deleteVariant,
   listProductOptions,
+  listVariants,
   putProductOption,
+  restoreVariant,
   setProductOptionValues,
 } from './api';
 
@@ -100,13 +97,45 @@ function ValueSelectModal({
   }, [optionType, categoryOption, valueSet]);
 
   const filteredValues = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return availableValues;
-    return availableValues.filter(
-      (v) =>
-        v.code.toLowerCase().includes(q) || (v.label.en && v.label.en.toLowerCase().includes(q)),
-    );
+    const tokens = tokenize(query);
+    if (tokens.length === 0) return availableValues;
+    return availableValues
+      .map((v) => {
+        const text = `${v.code} ${v.label.en ?? ''}`;
+        const score = matchScore(text, tokens);
+        return { v, score };
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ v }) => v);
   }, [availableValues, query]);
+
+  const [renderedCount, setRenderedCount] = useState(25);
+  useEffect(() => {
+    setRenderedCount(25);
+  }, [query, open]);
+
+  const displayedValues = useMemo(() => {
+    return filteredValues.slice(0, renderedCount);
+  }, [filteredValues, renderedCount]);
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || renderedCount >= filteredValues.length) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setRenderedCount((prev) => Math.min(prev + 25, filteredValues.length));
+        }
+      },
+      { rootMargin: '60px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [renderedCount, filteredValues.length]);
 
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
@@ -181,15 +210,12 @@ function ValueSelectModal({
           </div>
 
           {availableValues.length > 0 && (
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('products.options.searchValues')}
-                className="h-8 pl-8 text-xs"
-              />
-            </div>
+            <SearchInput
+              value={query}
+              onValueChange={setQuery}
+              placeholder={t('products.options.searchValues')}
+              className="h-8 text-xs"
+            />
           )}
 
           {availableValues.length === 0 ? (
@@ -202,7 +228,7 @@ function ValueSelectModal({
             </p>
           ) : (
             <div className="max-h-60 divide-y divide-border overflow-y-auto rounded-md border border-input">
-              {filteredValues.map((val) => {
+              {displayedValues.map((val) => {
                 const isChecked = selectedIds.has(val.id);
                 return (
                   <label
@@ -230,6 +256,12 @@ function ValueSelectModal({
                   </label>
                 );
               })}
+              {renderedCount < filteredValues.length && (
+                <div ref={sentinelRef} className="py-2 text-center text-xs text-muted-foreground">
+                  <Spinner className="inline-block size-3.5 mr-1.5" />
+                  <span>Loading more values…</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -248,6 +280,59 @@ function ValueSelectModal({
           <Button type="button" disabled={saving} onClick={handleSave}>
             {saving ? <Spinner className="size-4" /> : <Check className="size-4" />}
             {t('products.options.saveValues')}
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+interface CascadeVariantDeleteConfirmModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  removedValueLabels: string[];
+  affectedCount: number;
+  onConfirm: () => Promise<void>;
+  loading: boolean;
+}
+
+function CascadeVariantDeleteConfirmModal({
+  open,
+  onOpenChange,
+  removedValueLabels,
+  affectedCount,
+  onConfirm,
+  loading,
+}: CascadeVariantDeleteConfirmModalProps) {
+  const t = useTranslations('catalog');
+  const valuesText = removedValueLabels.join(', ');
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-md">
+        <ModalHeader>
+          <ModalTitle className="text-destructive">
+            {t('products.options.cascadeDeleteTitle')}
+          </ModalTitle>
+          <ModalDescription>
+            {t('products.options.cascadeDeleteMessage', {
+              values: valuesText,
+              count: affectedCount,
+            })}
+          </ModalDescription>
+        </ModalHeader>
+        <ModalFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading}
+            onClick={() => onOpenChange(false)}
+          >
+            {t('products.options.cancel')}
+          </Button>
+          <Button type="button" variant="destructive" disabled={loading} onClick={onConfirm}>
+            {loading ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
+            {t('products.options.cascadeDeleteConfirm')}
           </Button>
         </ModalFooter>
       </ModalContent>
@@ -323,6 +408,7 @@ export function ProductOptionsDialog({
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [optionTypes, setOptionTypes] = useState<OptionType[]>([]);
   const [valueSets, setValueSets] = useState<ValueSet[]>([]);
+  const [variants, setVariants] = useState<Variant[]>([]);
 
   // Add Option state
   const [selectedToAdd, setSelectedToAdd] = useState('');
@@ -335,6 +421,15 @@ export function ProductOptionsDialog({
   // Removing state
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  // Cascade delete on deselect state
+  const [cascadePending, setCascadePending] = useState<{
+    optionTypeId: string;
+    valueIds: string[];
+    removedValues: Array<{ id: string; label: string }>;
+    affectedVariants: Variant[];
+  } | null>(null);
+  const [cascading, setCascading] = useState(false);
 
   const mounted = useRef(true);
   useEffect(() => {
@@ -352,16 +447,18 @@ export function ProductOptionsDialog({
     setLoadError(null);
     setActionError(null);
     try {
-      const [pOpts, cOpts, otLive, otArch, vsList] = await Promise.all([
+      const [pOpts, cOpts, otLive, otArch, vsList, vars] = await Promise.all([
         listProductOptions(pId),
         listCategoryOptions(cId),
         listOptionTypesPage({ limit: 100 }),
         listOptionTypesPage({ archived: true, limit: 100 }).catch(() => ({ optionTypes: [] })),
         listValueSets(),
+        listVariants(pId).catch(() => []),
       ]);
       if (mounted.current && product.id === pId) {
         setProductOptions(pOpts);
         setCategoryOptions(cOpts);
+        setVariants(vars);
         const map = new Map<string, OptionType>();
         for (const ot of otLive.optionTypes) map.set(ot.id, ot);
         for (const ot of otArch.optionTypes) {
@@ -387,9 +484,11 @@ export function ProductOptionsDialog({
       setCategoryOptions([]);
       setOptionTypes([]);
       setValueSets([]);
+      setVariants([]);
       setSelectedToAdd('');
       setValueSelectTarget(null);
       setRemovingId(null);
+      setCascadePending(null);
       setActionError(null);
       setLoadError(null);
       return;
@@ -487,7 +586,7 @@ export function ProductOptionsDialog({
     }
   };
 
-  const handleSaveValues = async (optionTypeId: string, valueIds: string[]) => {
+  const executeSaveValues = async (optionTypeId: string, valueIds: string[]) => {
     if (!product) return;
     const name = optName(optionTypeId);
     const po = productOptions.find((p) => p.optionTypeId === optionTypeId);
@@ -497,6 +596,94 @@ export function ProductOptionsDialog({
     });
     setProductOptions((prev) => prev.map((p) => (p.optionTypeId === optionTypeId ? updated : p)));
     notify.saved(t('products.options.toast.valuesSaved', { name, count: valueIds.length }));
+  };
+
+  const handleSaveValues = async (optionTypeId: string, valueIds: string[]) => {
+    if (!product) return;
+    const po = productOptions.find((p) => p.optionTypeId === optionTypeId);
+    const ot = optionTypeMap.get(optionTypeId);
+    const currentValIds = (po?.values ?? []).map((v) => v.optionValueId);
+    const deselectedIds = currentValIds.filter((id) => !valueIds.includes(id));
+
+    if (deselectedIds.length > 0) {
+      const affected = variants.filter((v) =>
+        v.selections.some(
+          (s) => s.optionTypeId === optionTypeId && deselectedIds.includes(s.optionValueId),
+        ),
+      );
+
+      if (affected.length > 0) {
+        const removedValues = deselectedIds.map((id) => {
+          const valObj = ot?.values.find((val) => val.id === id);
+          const poVal = po?.values.find((pv) => pv.optionValueId === id);
+          return {
+            id,
+            label: valObj?.label.en ?? valObj?.code ?? poVal?.code ?? 'value',
+          };
+        });
+
+        setCascadePending({
+          optionTypeId,
+          valueIds,
+          removedValues,
+          affectedVariants: affected,
+        });
+        return;
+      }
+    }
+
+    await executeSaveValues(optionTypeId, valueIds);
+  };
+
+  const confirmCascadeDelete = async () => {
+    if (!product || !cascadePending) return;
+    setCascading(true);
+    const { optionTypeId, valueIds, removedValues, affectedVariants } = cascadePending;
+    const name = optName(optionTypeId);
+    const po = productOptions.find((p) => p.optionTypeId === optionTypeId);
+    const previousVariants = [...variants];
+    const previousValues = (po?.values ?? []).map((v) => v.optionValueId);
+
+    try {
+      await Promise.all(affectedVariants.map((v) => deleteVariant(product.id, v.id)));
+      const updated = await setProductOptionValues(product.id, optionTypeId, {
+        values: valueIds.map((id, idx) => ({ optionValueId: id, position: idx })),
+        expectedUpdatedAt: po?.updatedAt,
+      });
+
+      const affectedIds = new Set(affectedVariants.map((v) => v.id));
+      setVariants((prev) => prev.filter((v) => !affectedIds.has(v.id)));
+      setProductOptions((prev) => prev.map((p) => (p.optionTypeId === optionTypeId ? updated : p)));
+      setCascadePending(null);
+
+      const valText = removedValues.map((v) => v.label).join(', ');
+      notify.undo(
+        t('products.options.toast.valuesRemovedWithCascade', {
+          values: valText,
+          count: affectedVariants.length,
+        }),
+        {
+          onUndo: async () => {
+            await Promise.all(affectedVariants.map((v) => restoreVariant(product.id, v.id)));
+            const restoredPo = await setProductOptionValues(product.id, optionTypeId, {
+              values: previousValues.map((id, idx) => ({ optionValueId: id, position: idx })),
+            });
+            setVariants(previousVariants);
+            setProductOptions((prev) =>
+              prev.map((p) => (p.optionTypeId === optionTypeId ? restoredPo : p)),
+            );
+          },
+          undoneMessage: t('products.options.toast.valuesSaved', {
+            name,
+            count: previousValues.length,
+          }),
+        },
+      );
+    } catch (e) {
+      setActionError(t(catalogErrorKey(e instanceof AdminApiError ? e.code : undefined)));
+    } finally {
+      setCascading(false);
+    }
   };
 
   const handleSetRequiredValue = async (optionTypeId: string, requiredValueId: string | null) => {
@@ -1104,6 +1291,17 @@ export function ProductOptionsDialog({
           return handleRemoveOption(deleteTarget);
         }}
         deleting={removingId !== null}
+      />
+
+      <CascadeVariantDeleteConfirmModal
+        open={cascadePending !== null}
+        onOpenChange={(next) => {
+          if (!next && !cascading) setCascadePending(null);
+        }}
+        removedValueLabels={cascadePending?.removedValues.map((v) => v.label) ?? []}
+        affectedCount={cascadePending?.affectedVariants.length ?? 0}
+        onConfirm={confirmCascadeDelete}
+        loading={cascading}
       />
     </>
   );

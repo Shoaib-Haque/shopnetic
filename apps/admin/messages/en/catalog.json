@@ -613,6 +613,9 @@
         "removeConfirmTitle": "Remove option from product?",
         "removeConfirmMessage": "This will remove the {name} axis from this product.",
         "removeConfirmAction": "Remove Option",
+        "cascadeDeleteTitle": "Delete affected variants?",
+        "cascadeDeleteMessage": "Removing {values} will delete {count, plural, one {# existing variant} other {# existing variants}} using {count, plural, one {it} other {them}}.",
+        "cascadeDeleteConfirm": "Remove and Delete Variants",
         "inUseByVariant": "Cannot remove this option because existing variants are currently using it. Delete those variants first.",
         "proceedToVariants": "Manage Variants →",
         "saveValues": "Save Values",
@@ -623,6 +626,7 @@
           "optionAdded": "Option “{name}” added to product.",
           "optionUpdated": "Option “{name}” updated.",
           "valuesSaved": "Saved values for “{name}” ({count, plural, one {# active value} other {# active values}}).",
+          "valuesRemovedWithCascade": "Removed {values} and deleted {count, plural, one {# variant} other {# variants}}.",
           "optionRemoved": "Option “{name}” removed from product."
         }
       },

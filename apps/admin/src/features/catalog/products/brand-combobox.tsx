@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react';
+import { Check, ChevronsUpDown, Loader2 } from 'lucide-react';
 import type { Brand } from '@shopnetic/contracts';
-import { Input, Popover, PopoverContent, PopoverTrigger } from '@shopnetic/ui';
+import { Popover, PopoverContent, PopoverTrigger, SearchInput } from '@shopnetic/ui';
 import { useComboboxKeyboardNav } from '@/hooks/use-combobox-keyboard-nav';
 import { listBrandsPage } from '@/features/catalog/brands/api';
 
@@ -194,21 +194,16 @@ export function BrandCombobox({
         className="w-[var(--radix-popover-trigger-width)] min-w-[18rem] max-w-[28rem] p-2 shadow-lg z-[60]"
         onWheel={(e) => e.stopPropagation()}
       >
-        <div className="relative mb-2">
-          {searching ? (
-            <Loader2 className="absolute left-2.5 top-2.5 size-3.5 animate-spin text-muted-foreground" />
-          ) : (
-            <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
-          )}
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={searchPlaceholder}
-            className="h-8 pl-8 text-xs"
-            autoFocus
-          />
-        </div>
+        <SearchInput
+          value={query}
+          onValueChange={setQuery}
+          onKeyDown={handleKeyDown}
+          placeholder={searchPlaceholder}
+          isLoading={searching}
+          className="mb-2"
+          inputClassName="h-8 text-xs"
+          autoFocus
+        />
         <div
           ref={listboxRef}
           role="listbox"

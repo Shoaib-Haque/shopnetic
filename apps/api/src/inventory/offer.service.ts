@@ -145,7 +145,8 @@ export class OfferService {
     if (query.q) {
       const tokens = tokenizeForSql(query.q);
       if (tokens.length > 0) {
-        const matchingSellers = await this.prisma.seller.findMany({
+        // Try matching sellers that contain ALL tokens first (e.g. multi-word seller "Beta Store", "Nordic Supply")
+        let matchingSellers = await this.prisma.seller.findMany({
           where: {
             deletedAt: null,
             AND: tokens.map((token) => ({
@@ -157,6 +158,22 @@ export class OfferService {
           },
           select: { id: true },
         });
+
+        // If no seller matches all tokens (e.g. multi-seller search "nordic har"),
+        // match sellers matching ANY token so offers from all mentioned sellers appear
+        if (matchingSellers.length === 0 && tokens.length > 1) {
+          matchingSellers = await this.prisma.seller.findMany({
+            where: {
+              deletedAt: null,
+              OR: tokens.flatMap((token) => [
+                { legalName: { contains: token, mode: 'insensitive' } },
+                { shop: { displayName: { contains: token, mode: 'insensitive' } } },
+              ]),
+            },
+            select: { id: true },
+          });
+        }
+
         if (matchingSellers.length === 0) {
           return { items: [], total: 0 };
         }

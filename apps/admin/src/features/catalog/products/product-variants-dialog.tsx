@@ -9,7 +9,9 @@ import {
   AlertTriangle,
   ArrowLeft,
   Boxes,
+  Check,
   CheckCircle2,
+  ChevronsUpDown,
   Edit2,
   Grid,
   Image as ImageIcon,
@@ -47,6 +49,10 @@ import {
   ModalHeader,
   ModalTitle,
   notify,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  SearchInput,
   Select,
   SelectContent,
   SelectItem,
@@ -71,7 +77,9 @@ import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { integerKeyDownHandler, integerPasteHandler } from '@/lib/numeric-input';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
+import { useComboboxKeyboardNav } from '@/hooks/use-combobox-keyboard-nav';
 import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
+import { matchScore, tokenize } from '@/lib/search';
 import {
   createVariant,
   deleteVariant,
@@ -126,6 +134,7 @@ function GeneratorModal({
   const [comboSearch, setComboSearch] = useState('');
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [prefixError, setPrefixError] = useState<string | null>(null);
 
   const categoryOptionMap = useMemo(() => {
     const map = new Map<string, CategoryOption>();
@@ -217,17 +226,20 @@ function GeneratorModal({
   }, [variantAxes, optionTypeMap, existingSignatures]);
 
   const filteredNewCombos = useMemo(() => {
-    const q = comboSearch.trim().toLowerCase();
-    if (!q) return newCombos;
-    return newCombos.filter((c) => {
-      if (c.suggestedSku.toLowerCase().includes(q)) return true;
-      return c.items.some(
-        (it) =>
-          it.valueCode.toLowerCase().includes(q) ||
-          it.valueLabel.toLowerCase().includes(q) ||
-          it.typeName.toLowerCase().includes(q),
-      );
-    });
+    const tokens = tokenize(comboSearch);
+    if (tokens.length === 0) return newCombos;
+    return newCombos
+      .map((c) => {
+        const text = [
+          c.suggestedSku,
+          ...c.items.flatMap((it) => [it.valueCode, it.valueLabel, it.typeName]),
+        ].join(' ');
+        const score = matchScore(text, tokens);
+        return { c, score };
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ c }) => c);
   }, [newCombos, comboSearch]);
 
   const prevOpenRef = useRef(open);
@@ -243,6 +255,7 @@ function GeneratorModal({
     if (open) {
       setSelectedCombos(new Set(newCombos.map((c) => c.signature)));
       setGenError(null);
+      setPrefixError(null);
     }
   }, [open, newCombos]);
 
@@ -283,12 +296,13 @@ function GeneratorModal({
     const prefix = skuPrefix.trim();
     const maxSuffixLen = toCreate.reduce((max, c) => Math.max(max, c.suggestedSku.length), 0);
     if (prefix.length + maxSuffixLen > VARIANT_SKU_MAX) {
-      setGenError(t('products.variants.matrix.errPrefixTooLong', { maxSuffixLen }));
+      setPrefixError(t('products.variants.matrix.errPrefixTooLong', { maxSuffixLen }));
       return;
     }
 
     setGenerating(true);
     setGenError(null);
+    setPrefixError(null);
     const createdList: Variant[] = [];
 
     try {
@@ -397,10 +411,13 @@ function GeneratorModal({
 
           {/* Configuration toolbar */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('products.variants.matrix.skuPrefix')}>
+            <Field label={t('products.variants.matrix.skuPrefix')} error={prefixError ?? undefined}>
               <Input
                 value={skuPrefix}
-                onChange={(e) => setSkuPrefix(e.target.value)}
+                onChange={(e) => {
+                  setSkuPrefix(e.target.value);
+                  setPrefixError(null);
+                }}
                 placeholder={t('products.variants.matrix.skuPrefixPlaceholder')}
                 className="h-9"
               />
@@ -446,18 +463,12 @@ function GeneratorModal({
                 </div>
               </div>
 
-              <div className="relative">
-                <Search
-                  className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground"
-                  aria-hidden
-                />
-                <Input
-                  value={comboSearch}
-                  onChange={(e) => setComboSearch(e.target.value)}
-                  placeholder={t('products.variants.matrix.searchCombos')}
-                  className="h-9 pl-8"
-                />
-              </div>
+              <SearchInput
+                value={comboSearch}
+                onValueChange={setComboSearch}
+                placeholder={t('products.variants.matrix.searchCombos')}
+                className="h-9"
+              />
 
               {filteredNewCombos.length === 0 ? (
                 <div className="py-6 text-center text-sm text-muted-foreground">
@@ -632,6 +643,180 @@ const variantFormSchema = z.object({
 });
 
 type VariantFormValues = z.infer<typeof variantFormSchema>;
+
+interface OptionValueItem {
+  id: string;
+  code: string;
+  label: string;
+  swatchHex?: string | null | undefined;
+}
+
+interface OptionValueComboboxProps {
+  id?: string;
+  value: string;
+  onChange: (valueId: string) => void;
+  values: OptionValueItem[];
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  ariaLabel?: string;
+  disabled?: boolean;
+}
+
+function OptionValueCombobox({
+  id,
+  value,
+  onChange,
+  values,
+  placeholder = 'Select a value…',
+  searchPlaceholder = 'Search values…',
+  emptyText = 'No values found',
+  ariaLabel,
+  disabled = false,
+}: OptionValueComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const selectedItem = useMemo(() => values.find((v) => v.id === value), [values, value]);
+
+  const filteredValues = useMemo(() => {
+    const tokens = tokenize(search);
+    if (tokens.length === 0) return values;
+    return values
+      .map((v) => {
+        const text = `${v.code} ${v.label}`;
+        const score = matchScore(text, tokens);
+        return { v, score };
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ v }) => v);
+  }, [values, search]);
+
+  const { listboxRef, handleKeyDown, getOptionProps } = useComboboxKeyboardNav({
+    open,
+    itemCount: filteredValues.length,
+    onSelect: (index) => {
+      const item = filteredValues[index];
+      if (item) {
+        onChange(item.id);
+        setOpen(false);
+        setSearch('');
+      }
+    },
+    onClose: () => setOpen(false),
+    resetOn: [filteredValues],
+  });
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setSearch('');
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          id={id}
+          role="combobox"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-label={ariaLabel}
+          disabled={disabled}
+          className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1.5 text-xs shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <div className="flex items-center gap-2 truncate text-left">
+            {selectedItem?.swatchHex && (
+              <span
+                className="size-3.5 shrink-0 rounded-full border border-border shadow-xs"
+                style={{ backgroundColor: selectedItem.swatchHex }}
+                title={selectedItem.swatchHex}
+              />
+            )}
+            <span className={selectedItem ? 'text-foreground' : 'text-muted-foreground'}>
+              {selectedItem ? `${selectedItem.label} (${selectedItem.code})` : placeholder}
+            </span>
+          </div>
+          <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-muted-foreground opacity-70" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={4}
+        hideClose
+        className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] max-w-[24rem] p-2 shadow-lg z-[60]"
+        onWheel={(e) => e.stopPropagation()}
+      >
+        <SearchInput
+          value={search}
+          onValueChange={setSearch}
+          onKeyDown={handleKeyDown}
+          placeholder={searchPlaceholder}
+          className="mb-2"
+          inputClassName="h-8 text-xs"
+          autoFocus
+        />
+        <div
+          ref={listboxRef}
+          role="listbox"
+          className="max-h-56 overflow-y-auto space-y-0.5 pr-1"
+          onWheel={(e) => e.stopPropagation()}
+        >
+          {filteredValues.length === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">{emptyText}</div>
+          ) : (
+            filteredValues.map((val, index) => {
+              const isSelected = val.id === value;
+              const { onMouseEnter, isHighlighted } = getOptionProps(index);
+              return (
+                <button
+                  key={val.id}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onMouseEnter={onMouseEnter}
+                  onClick={() => {
+                    onChange(val.id);
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                  className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-xs transition-colors text-left ${
+                    isSelected
+                      ? 'bg-primary text-primary-foreground font-medium'
+                      : isHighlighted
+                        ? 'bg-muted text-foreground'
+                        : 'text-foreground hover:bg-muted/70'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {val.swatchHex && (
+                      <span
+                        className="size-3.5 shrink-0 rounded-full border border-border shadow-xs"
+                        style={{ backgroundColor: val.swatchHex }}
+                        title={val.swatchHex}
+                      />
+                    )}
+                    <span>{val.label}</span>
+                    <span
+                      className={`font-mono text-[10px] ${
+                        isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                      }`}
+                    >
+                      ({val.code})
+                    </span>
+                  </div>
+                  {isSelected && <Check className="size-3.5 shrink-0" />}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function VariantFormModal({
   open,
@@ -858,36 +1043,30 @@ function VariantFormModal({
                   const ot = optionTypeMap.get(axis.optionTypeId);
                   const name = ot?.name.en || axis.optionTypeCode;
                   const fieldId = `manual-axis-${axis.optionTypeId}`;
+                  const valuesList: OptionValueItem[] = axis.values.map((v) => {
+                    const valObj = ot?.values.find((val) => val.id === v.optionValueId);
+                    return {
+                      id: v.optionValueId,
+                      code: v.code,
+                      label: valObj?.label.en ?? v.code,
+                      swatchHex: valObj?.swatchHex ?? null,
+                    };
+                  });
                   return (
                     <Field key={axis.optionTypeId} label={name} htmlFor={fieldId}>
-                      <Select
+                      <OptionValueCombobox
+                        id={fieldId}
                         value={manualSelections[axis.optionTypeId] ?? ''}
-                        onValueChange={(v) =>
+                        onChange={(v) =>
                           setManualSelections((prev) => ({
                             ...prev,
                             [axis.optionTypeId]: v,
                           }))
                         }
-                      >
-                        <SelectTrigger id={fieldId} aria-label={name}>
-                          <SelectValue placeholder="Select a value…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {axis.values.map((v) => {
-                            const valObj = ot?.values.find((val) => val.id === v.optionValueId);
-                            const label = valObj?.label.en ?? v.code;
-                            return (
-                              <SelectItem
-                                key={v.optionValueId}
-                                value={v.optionValueId}
-                                title={label}
-                              >
-                                {label}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                        values={valuesList}
+                        placeholder={t('products.variants.form.selectValues')}
+                        ariaLabel={name}
+                      />
                     </Field>
                   );
                 })}
@@ -1258,7 +1437,7 @@ export function ProductVariantsDialog({
     }
   }, [product, debouncedQuery]);
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (!product || !nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
@@ -1279,7 +1458,26 @@ export function ProductVariantsDialog({
         setLoadingMore(false);
       }
     }
-  };
+  }, [product, nextCursor, loadingMore, debouncedQuery, t]);
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !nextCursor || loadingMore || loading) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void handleLoadMore();
+        }
+      },
+      { rootMargin: '120px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [nextCursor, loadingMore, loading, handleLoadMore]);
 
   const { doDelete: doDeleteVariant } = useSoftDeleteWithUndo<Variant>({
     deleteItem: (variantId) => (product ? deleteVariant(product.id, variantId) : Promise.resolve()),
@@ -1434,18 +1632,12 @@ export function ProductVariantsDialog({
 
             {/* Search Toolbar (Always mounted so focus is never lost on typing!) */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <div className="relative flex-1 max-w-sm">
-                <Search
-                  className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground"
-                  aria-hidden
-                />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('products.variants.searchPlaceholder')}
-                  className="h-9 pl-8"
-                />
-              </div>
+              <SearchInput
+                value={searchQuery}
+                onValueChange={setSearchQuery}
+                placeholder={t('products.variants.searchPlaceholder')}
+                className="flex-1 max-w-sm h-9"
+              />
               <div className="text-xs text-muted-foreground">
                 {t('products.variants.showingCount', {
                   count: variants.length,
@@ -1796,25 +1988,29 @@ export function ProductVariantsDialog({
                   })}
                 </div>
 
-                {/* Pagination - Load More */}
+                {/* Pagination - Scroll Sentinel */}
                 {nextCursor && (
-                  <div className="flex justify-center pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleLoadMore()}
-                      disabled={loadingMore}
-                    >
-                      {loadingMore ? (
-                        <>
-                          <Spinner className="size-4" />
-                          <span>{t('products.variants.loadMore')}</span>
-                        </>
-                      ) : (
+                  <div
+                    ref={sentinelRef}
+                    data-testid="variants-scroll-sentinel"
+                    className="flex justify-center pt-2 pb-1"
+                  >
+                    {loadingMore ? (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Spinner className="size-3.5" />
                         <span>{t('products.variants.loadMore')}</span>
-                      )}
-                    </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleLoadMore()}
+                        disabled={loadingMore}
+                      >
+                        {t('products.variants.loadMore')}
+                      </Button>
+                    )}
                   </div>
                 )}
               </>

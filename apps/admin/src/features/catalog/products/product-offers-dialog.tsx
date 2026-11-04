@@ -9,12 +9,10 @@ import {
   Building2,
   Edit2,
   Plus,
-  Search,
   ShoppingBag,
   Sparkles,
   Trash2,
   Trophy,
-  X,
 } from 'lucide-react';
 import {
   type Buybox,
@@ -28,7 +26,6 @@ import {
 } from '@shopnetic/contracts';
 import {
   Button,
-  Input,
   Modal,
   ModalBody,
   ModalContent,
@@ -36,6 +33,7 @@ import {
   ModalFooter,
   ModalHeader,
   ModalTitle,
+  SearchInput,
   Skeleton,
   Spinner,
   StatusBadge,
@@ -671,26 +669,13 @@ export function ProductOffersDialog({
                     <>
                       {/* Search bar when >30 offers exist or search is active */}
                       {(totalForSelected > 30 || Boolean(searchQuery)) && (
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-                          <Input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder={t('products.offers.searchOffersPlaceholder')}
-                            className="pl-9 pr-8 h-9 text-xs"
-                          />
-                          {searchQuery && (
-                            <button
-                              type="button"
-                              onClick={() => setSearchQuery('')}
-                              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground"
-                              aria-label="Clear search"
-                            >
-                              <X className="size-3.5" />
-                            </button>
-                          )}
-                        </div>
+                        <SearchInput
+                          value={searchQuery}
+                          onValueChange={setSearchQuery}
+                          placeholder={t('products.offers.searchOffersPlaceholder')}
+                          clearLabel="Clear search"
+                          className="h-9 text-xs"
+                        />
                       )}
 
                       {offersLoading ? (

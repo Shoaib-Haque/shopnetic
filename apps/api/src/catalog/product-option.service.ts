@@ -174,6 +174,26 @@ export class ProductOptionService {
           },
         });
       }
+
+      // Cascade soft-delete any active variants using option values that are no longer offered
+      const affectedVariantRows = await tx.variantOptionValue.findMany({
+        where: {
+          optionTypeId,
+          variant: { productId, deletedAt: null },
+          ...(wanted.length > 0 ? { optionValueId: { notIn: wanted } } : {}),
+        },
+        select: { variantId: true },
+      });
+      const affectedVariantIds = [...new Set(affectedVariantRows.map((r) => r.variantId))];
+      if (affectedVariantIds.length > 0) {
+        await tx.variant.updateMany({
+          where: { id: { in: affectedVariantIds } },
+          data: { deletedAt: new Date() },
+        });
+        for (const vId of affectedVariantIds) {
+          await writeCatalogOutbox(tx, 'variant', 'variant.deleted', vId, { id: vId });
+        }
+      }
       await writeCatalogOutbox(tx, 'product', 'product.options_changed', productId, {
         productId,
         optionTypeId,

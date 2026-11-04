@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Controller, useForm, type Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Check, ChevronsUpDown, Search } from 'lucide-react';
+import { Check, ChevronsUpDown } from 'lucide-react';
 import {
   COUNTRIES,
   isValidPostalCode,
@@ -35,6 +35,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  SearchInput,
   notify,
 } from '@shopnetic/ui';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
@@ -142,17 +143,15 @@ export function CountryCombobox({
         className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] max-w-[22rem] p-2 shadow-lg z-[60]"
         onWheel={(e) => e.stopPropagation()}
       >
-        <div className="relative mb-2">
-          <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={searchPlaceholder}
-            className="h-8 pl-8 text-xs"
-            autoFocus
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onValueChange={setSearch}
+          onKeyDown={handleKeyDown}
+          placeholder={searchPlaceholder}
+          className="mb-2"
+          inputClassName="h-8 text-xs"
+          autoFocus
+        />
         <div
           ref={listboxRef}
           role="listbox"

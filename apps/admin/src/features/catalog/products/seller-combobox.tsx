@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { Check, ChevronsUpDown, Loader2, Search } from 'lucide-react';
+import { Check, ChevronsUpDown, Loader2 } from 'lucide-react';
 import type { SellerStatus, SellerWithShop } from '@shopnetic/contracts';
-import { Input, Popover, PopoverContent, PopoverTrigger, StatusBadge } from '@shopnetic/ui';
+import { Popover, PopoverContent, PopoverTrigger, SearchInput, StatusBadge } from '@shopnetic/ui';
 import { useComboboxKeyboardNav } from '@/hooks/use-combobox-keyboard-nav';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useScrollLoad } from '@/components/crud/use-scroll-load';
@@ -161,21 +161,16 @@ export function SellerCombobox({
         className="w-[var(--radix-popover-trigger-width)] min-w-[18rem] max-w-[28rem] p-2 shadow-lg z-[60]"
         onWheel={(e) => e.stopPropagation()}
       >
-        <div className="relative mb-2">
-          {isSearching ? (
-            <Loader2 className="absolute left-2.5 top-2.5 size-3.5 animate-spin text-muted-foreground" />
-          ) : (
-            <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
-          )}
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Search sellers…"
-            className="h-8 pl-8 text-xs"
-            autoFocus
-          />
-        </div>
+        <SearchInput
+          value={query}
+          onValueChange={setQuery}
+          onKeyDown={handleKeyDown}
+          placeholder="Search sellers…"
+          isLoading={isSearching}
+          className="mb-2"
+          inputClassName="h-8 text-xs"
+          autoFocus
+        />
         <div
           ref={listboxRef}
           role="listbox"

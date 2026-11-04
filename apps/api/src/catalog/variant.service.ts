@@ -83,28 +83,51 @@ export class VariantService {
       ...(query.status && query.status !== 'all' ? { status: query.status } : {}),
     };
 
+    let tokens: string[] = [];
     if (query.q) {
-      const tokens = tokenizeForSql(query.q);
+      tokens = tokenizeForSql(query.q);
       if (tokens.length > 0) {
-        where.AND = tokens.map((token) => ({
-          OR: [
-            { skuCode: { contains: token, mode: 'insensitive' } },
-            { gtin: { contains: token, mode: 'insensitive' } },
-            {
-              optionValues: {
-                some: {
-                  optionValue: {
-                    OR: [
-                      { code: { contains: token, mode: 'insensitive' } },
-                      { labelI18n: { path: ['en'], string_contains: token } },
-                    ],
-                  },
+        where.OR = tokens.flatMap((token) => [
+          { skuCode: { contains: token, mode: 'insensitive' } },
+          { gtin: { contains: token, mode: 'insensitive' } },
+          {
+            optionValues: {
+              some: {
+                optionValue: {
+                  OR: [
+                    { code: { contains: token, mode: 'insensitive' } },
+                    { labelI18n: { path: ['en'], string_contains: token } },
+                  ],
                 },
               },
             },
-          ],
-        }));
+          },
+        ]);
       }
+    }
+
+    if (tokens.length > 0) {
+      const allRows = (await this.prisma.variant.findMany({
+        where,
+        include: withValues,
+      })) as VariantRow[];
+
+      allRows.sort((a, b) => {
+        const scoreDiff = scoreVariant(b, tokens) - scoreVariant(a, tokens);
+        if (scoreDiff !== 0) return scoreDiff;
+        if (a.position !== b.position) return a.position - b.position;
+        return a.id.localeCompare(b.id);
+      });
+
+      const total = allRows.length;
+      const pageRows = allRows.slice(offset, offset + limit);
+      const nextCursor = rankedNextCursor(allRows.length - offset, limit, offset);
+
+      return {
+        items: pageRows.map(toView),
+        total,
+        ...(nextCursor ? { nextCursor } : {}),
+      };
     }
 
     const total = await this.prisma.variant.count({ where });
@@ -529,6 +552,24 @@ export class VariantService {
       });
     }
   }
+}
+
+function scoreVariant(row: VariantRow, tokens: string[]): number {
+  const parts: string[] = [
+    row.skuCode ?? '',
+    row.gtin ?? '',
+    ...row.optionValues.map((ov) => ov.optionValue?.code ?? ''),
+    ...row.optionValues.map((ov) => {
+      const label = ov.optionValue?.labelI18n as Record<string, string> | undefined;
+      return label?.['en'] ?? '';
+    }),
+  ];
+  const hay = parts.join(' ').toLowerCase();
+  let score = 0;
+  for (const tk of tokens) {
+    if (hay.includes(tk)) score += 1;
+  }
+  return score;
 }
 
 function toView(row: VariantRow): Variant {

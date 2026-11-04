@@ -1,7 +1,7 @@
 'use client';
 
 import { forwardRef, type InputHTMLAttributes } from 'react';
-import { Search, X } from 'lucide-react';
+import { Loader2, Search, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Input } from './input';
 
@@ -19,10 +19,23 @@ export interface SearchInputProps
   onClear?: () => void;
   /** localized label for the clear button — tooltip + `aria-label`. */
   clearLabel?: string;
+  /** Show spinning loader instead of magnifier icon */
+  isLoading?: boolean;
+  /** Custom classes for the inner input element */
+  inputClassName?: string;
 }
 
 export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(function SearchInput(
-  { value, onValueChange, onClear, clearLabel = 'Clear', className, ...props },
+  {
+    value,
+    onValueChange,
+    onClear,
+    clearLabel = 'Clear',
+    isLoading = false,
+    className,
+    inputClassName,
+    ...props
+  },
   ref,
 ) {
   const clear = (): void => {
@@ -31,10 +44,17 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
   };
   return (
     <div className={cn('relative', className)}>
-      <Search
-        aria-hidden
-        className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-      />
+      {isLoading ? (
+        <Loader2
+          aria-hidden
+          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
+        />
+      ) : (
+        <Search
+          aria-hidden
+          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+        />
+      )}
       <Input
         ref={ref}
         type="search"
@@ -45,8 +65,12 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
             e.preventDefault();
             clear();
           }
+          props.onKeyDown?.(e);
         }}
-        className="h-9 pl-8 pr-8 [&::-webkit-search-cancel-button]:appearance-none"
+        className={cn(
+          'h-9 pl-8 pr-8 [&::-webkit-search-cancel-button]:appearance-none',
+          inputClassName,
+        )}
         {...props}
       />
       {value && (
