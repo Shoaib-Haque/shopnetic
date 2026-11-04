@@ -345,8 +345,35 @@ function GeneratorModal({
     });
   };
 
+  const selectedNewCombos = useMemo(
+    () => newCombos.filter((c) => selectedCombos.has(c.signature)),
+    [newCombos, selectedCombos],
+  );
+
+  const maxSuffixLen = useMemo(
+    () => selectedNewCombos.reduce((max, c) => Math.max(max, c.suggestedSku.length), 0),
+    [selectedNewCombos],
+  );
+
+  const maxAllowedPrefixLength = Math.max(0, VARIANT_SKU_MAX - maxSuffixLen);
+
+  const isPrefixTooLong = skuPrefix.trim().length + maxSuffixLen > VARIANT_SKU_MAX;
+
+  // Re-validate prefix whenever selected combos or maxSuffixLen changes
+  useEffect(() => {
+    if (!skuPrefix) {
+      setPrefixError(null);
+      return;
+    }
+    if (skuPrefix.trim().length + maxSuffixLen > VARIANT_SKU_MAX) {
+      setPrefixError(t('products.variants.matrix.errPrefixTooLong', { maxSuffixLen }));
+    } else {
+      setPrefixError(null);
+    }
+  }, [maxSuffixLen, skuPrefix, t]);
+
   const handleGenerate = async () => {
-    const toCreate = newCombos.filter((c) => selectedCombos.has(c.signature));
+    const toCreate = selectedNewCombos;
     if (toCreate.length === 0) return;
 
     if (toCreate.length > VARIANT_BULK_GENERATE_MAX) {
@@ -355,7 +382,6 @@ function GeneratorModal({
     }
 
     const prefix = skuPrefix.trim();
-    const maxSuffixLen = toCreate.reduce((max, c) => Math.max(max, c.suggestedSku.length), 0);
     if (prefix.length + maxSuffixLen > VARIANT_SKU_MAX) {
       setPrefixError(t('products.variants.matrix.errPrefixTooLong', { maxSuffixLen }));
       return;
@@ -472,12 +498,38 @@ function GeneratorModal({
 
           {/* Configuration toolbar */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('products.variants.matrix.skuPrefix')} error={prefixError ?? undefined}>
+            <Field
+              label={
+                <span className="flex items-center justify-between w-full">
+                  <span>{t('products.variants.matrix.skuPrefix')}</span>
+                  <span
+                    className={`text-[11px] tabular-nums font-normal ${
+                      isPrefixTooLong
+                        ? 'font-medium text-destructive'
+                        : skuPrefix.length >= maxAllowedPrefixLength && maxAllowedPrefixLength > 0
+                          ? 'font-medium text-amber-600 dark:text-amber-400'
+                          : 'text-muted-foreground'
+                    }`}
+                  >
+                    {skuPrefix.length}/{maxAllowedPrefixLength}
+                  </span>
+                </span>
+              }
+              error={prefixError ?? undefined}
+            >
               <Input
                 value={skuPrefix}
+                maxLength={maxAllowedPrefixLength > 0 ? maxAllowedPrefixLength : undefined}
                 onChange={(e) => {
-                  setSkuPrefix(e.target.value);
-                  setPrefixError(null);
+                  const val = e.target.value;
+                  setSkuPrefix(val);
+                  if (val.trim().length + maxSuffixLen > VARIANT_SKU_MAX) {
+                    setPrefixError(
+                      t('products.variants.matrix.errPrefixTooLong', { maxSuffixLen }),
+                    );
+                  } else {
+                    setPrefixError(null);
+                  }
                 }}
                 placeholder={t('products.variants.matrix.skuPrefixPlaceholder')}
                 className="h-9"
@@ -539,18 +591,21 @@ function GeneratorModal({
                 <div className="max-h-60 divide-y divide-border overflow-y-auto rounded-md border border-input">
                   {filteredNewCombos.map((combo) => {
                     const isChecked = selectedCombos.has(combo.signature);
+                    const previewSku = skuPrefix
+                      ? `${skuPrefix}${combo.suggestedSku}`
+                      : combo.suggestedSku;
                     return (
                       <label
                         key={combo.signature}
-                        className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-muted/50"
+                        className="flex cursor-pointer items-start gap-3 px-3 py-2.5 text-sm hover:bg-muted/50"
                       >
-                        <div className="flex min-w-0 shrink items-center gap-2.5">
-                          <Checkbox
-                            checked={isChecked}
-                            onCheckedChange={() => toggleCombo(combo.signature)}
-                            aria-label={combo.suggestedSku || 'Variant'}
-                            className="shrink-0"
-                          />
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={() => toggleCombo(combo.signature)}
+                          aria-label={combo.suggestedSku || 'Variant'}
+                          className="mt-0.5 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
                           <div className="flex flex-wrap items-center gap-1.5">
                             {combo.items.length === 0 ? (
                               <span className="text-xs text-muted-foreground italic">
@@ -567,17 +622,17 @@ function GeneratorModal({
                               ))
                             )}
                           </div>
+                          {combo.suggestedSku && (
+                            <div className="min-w-0">
+                              <span
+                                className="block min-w-0 truncate font-mono text-xs text-muted-foreground"
+                                title={previewSku}
+                              >
+                                {previewSku}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        {combo.suggestedSku && (
-                          <span
-                            className="min-w-0 shrink truncate font-mono text-xs text-muted-foreground"
-                            title={
-                              skuPrefix ? `${skuPrefix}${combo.suggestedSku}` : combo.suggestedSku
-                            }
-                          >
-                            {skuPrefix ? `${skuPrefix}${combo.suggestedSku}` : combo.suggestedSku}
-                          </span>
-                        )}
                       </label>
                     );
                   })}
@@ -604,7 +659,13 @@ function GeneratorModal({
           </Button>
           <Button
             type="button"
-            disabled={generating || selectedCombos.size === 0 || emptyAxes.length > 0}
+            disabled={
+              generating ||
+              selectedCombos.size === 0 ||
+              emptyAxes.length > 0 ||
+              Boolean(prefixError) ||
+              isPrefixTooLong
+            }
             onClick={handleGenerate}
           >
             {generating ? (

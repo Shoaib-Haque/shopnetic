@@ -1218,6 +1218,78 @@ describe('ProductVariantsDialog', () => {
     expect(previewSpan).toHaveClass('min-w-0');
   });
 
+  it('re-validates prefix error dynamically and displays dynamic character counter', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Variants' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Generate Variant Matrix')).toBeInTheDocument();
+    });
+
+    // 1 combination available to generate with suffix "M" (length 1)
+    // maxAllowedPrefixLength is 64 - 1 = 63
+    expect(screen.getByText('0/63')).toBeInTheDocument();
+
+    const prefixInput = screen.getByPlaceholderText('e.g. PROD-100-');
+
+    // Type a 63-character prefix (valid)
+    const validPrefix = 'P'.repeat(63);
+    fireEvent.change(prefixInput, { target: { value: validPrefix } });
+    expect(screen.getByText('63/63')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/SKU prefix is too long: combined SKU would exceed 64 characters/i),
+    ).not.toBeInTheDocument();
+
+    // Type a 64-character prefix (64 + 1 = 65 > 64, invalid)
+    const invalidPrefix = 'P'.repeat(64);
+    fireEvent.change(prefixInput, { target: { value: invalidPrefix } });
+    expect(screen.getByText('64/63')).toBeInTheDocument();
+    expect(
+      screen.getByText(/SKU prefix is too long: combined SKU would exceed 64 characters/i),
+    ).toBeInTheDocument();
+
+    // Generate button should be disabled when prefix is too long
+    const generateBtn = screen.getByRole('button', { name: /Generate 1 Variant/i });
+    expect(generateBtn).toBeDisabled();
+
+    // Shortening prefix back to 63 clears error dynamically
+    fireEvent.change(prefixInput, { target: { value: validPrefix } });
+    expect(screen.getByText('63/63')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/SKU prefix is too long: combined SKU would exceed 64 characters/i),
+    ).not.toBeInTheDocument();
+    expect(generateBtn).toBeEnabled();
+  });
+
+  it('renders SKU preview on its own line below combination badges in stacked layout', async () => {
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Generate Variants' })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Variants' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Generate Variant Matrix')).toBeInTheDocument();
+    });
+
+    // Verify row layout has stacked flex-col/space-y structure with SKU below badges
+    const previewSpan = screen.getByTitle('M');
+    expect(previewSpan).toBeInTheDocument();
+    expect(previewSpan.parentElement).toHaveClass('min-w-0');
+    expect(previewSpan.closest('.space-y-1')).toBeInTheDocument();
+  });
+
   describe('formatVariantSelectionsLabel & resolveVariantSelections', () => {
     const mockOptionTypeMap = new Map<string, OptionType>([
       ['ot_color', colorOptionType],
