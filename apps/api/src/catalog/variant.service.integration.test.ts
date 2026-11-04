@@ -406,12 +406,31 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
       },
     });
 
+    // An offer independently deleted prior to the cascade should have an earlier deletedAt
+    const priorDeleteTimestamp = new Date(Date.now() - 3600_000);
+    const priorDeletedOffer = await prisma.offer.create({
+      data: {
+        sellerId: seller.id,
+        variantId: tempVar.id,
+        priceMinor: 3000n,
+        currency: 'USD',
+        status: 'active',
+        deletedAt: priorDeleteTimestamp,
+      },
+    });
+
     try {
-      // Removing the variant should soft-delete the variant and attached offer and recalculate buybox
+      // Removing the variant should soft-delete the variant and attached active offer and recalculate buybox
       await variants.remove(tempVar.id, actor, {});
 
       const offerAfter = await prisma.offer.findUnique({ where: { id: offer.id } });
       expect(offerAfter?.deletedAt).toBeTruthy();
+
+      // Prior deleted offer was untouched by cascade removal (its deletedAt was already set)
+      const priorOfferAfter = await prisma.offer.findUnique({
+        where: { id: priorDeletedOffer.id },
+      });
+      expect(priorOfferAfter?.deletedAt?.toISOString()).toBe(priorDeleteTimestamp.toISOString());
 
       const outbox = await prisma.inventoryOutbox.findFirst({
         where: {
@@ -428,11 +447,17 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
       expect(buyboxAfterDelete?.winningOfferId).toBeNull();
       expect(buyboxAfterDelete?.sellerCount).toBe(0);
 
-      // Restoring the variant (undo) restores the variant AND the cascaded offer, recalculating buybox
+      // Restoring the variant (undo) restores the variant AND only the cascaded offer, recalculating buybox
       await variants.restore(tempVar.id, actor, {});
 
       const offerRestored = await prisma.offer.findUnique({ where: { id: offer.id } });
       expect(offerRestored?.deletedAt).toBeNull();
+
+      // Disambiguation check: prior deleted offer must STAY deleted (deletedAt untouched)
+      const priorOfferRestored = await prisma.offer.findUnique({
+        where: { id: priorDeletedOffer.id },
+      });
+      expect(priorOfferRestored?.deletedAt?.toISOString()).toBe(priorDeleteTimestamp.toISOString());
 
       const outboxRestored = await prisma.inventoryOutbox.findFirst({
         where: {
@@ -450,7 +475,9 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
       expect(buyboxAfterRestore?.sellerCount).toBe(1);
     } finally {
       await prisma.stock.deleteMany({ where: { warehouseId: wh.id } });
-      await prisma.offer.deleteMany({ where: { id: offer.id } });
+      await prisma.offer.deleteMany({
+        where: { id: { in: [offer.id, priorDeletedOffer.id] } },
+      });
       await prisma.warehouse.deleteMany({ where: { id: wh.id } });
       await prisma.seller.deleteMany({ where: { id: seller.id } });
       await prisma.account.deleteMany({ where: { id: sellerAccount.id } });

@@ -46,7 +46,8 @@ This document formalizes the universal lifecycle invariants, resolve deferred po
   - **Master Catalog (`Product`, `Variant`)**: Defines global specification, attributes, and media. Managed by Admins or proposed by Sellers via moderation.
   - **Seller Offer (`Offer`)**: Represents an individual merchant's price, stock, handling time, and condition attached to a Variant.
   - **Programmatic Cascade**: Archiving a Product or Variant programmatically soft-deletes and disables all attached Seller Offers (`deletedAt: new Date()`) and publishes `offer.deleted` outbox events (`VariantService.remove`, `ProductService.remove`).
-  - **UI Cascade Warning**: Attempting to delete a variant with active seller offers triggers an explicit confirmation warning (`CascadeVariantOfferDeleteConfirmModal`) detailing the number of attached seller offers that will be disabled, with an actionable undo countdown toast.
+  - **UI Cascade Warning**: Attempting to delete a variant with attached seller offers triggers an explicit confirmation warning (`CascadeVariantOfferDeleteConfirmModal`) querying `status=all` to accurately detail the total count of attached seller offers (active, paused, out-of-stock) that will be disabled, with an actionable undo countdown toast.
+  - **Symmetric Cascade Undo & Timestamp Disambiguation**: Restoring an archived Variant (`VariantService.restore`) or Product (`ProductService.restore`) queries offers with `variantId: id, deletedAt: current.deletedAt` (the exact timestamp stamped during the cascade), ensuring that only cascaded offers are restored while any offer independently deleted prior to the cascade remains soft-deleted. Synchronously recalculates buybox after deletion and restoration.
 
 ---
 

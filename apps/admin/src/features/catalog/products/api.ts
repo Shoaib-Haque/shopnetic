@@ -288,7 +288,7 @@ export function listVariantOffers(variantId: string): Promise<Offer[]> {
 
 export function countVariantOffers(variantId: string): Promise<number> {
   return adminApi<{ data: Offer[]; meta: { total?: number } }>(
-    `/offers?variantId=${variantId}&limit=1`,
+    `/offers?variantId=${encodeURIComponent(variantId)}&status=all&limit=1`,
     { raw: true },
   ).then((r) => r.meta.total ?? r.data.length);
 }
