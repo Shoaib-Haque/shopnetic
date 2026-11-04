@@ -450,6 +450,7 @@ export function ProductOptionsDialog({
   const [cascading, setCascading] = useState(false);
 
   const mounted = useRef(true);
+  const pendingCascadeUndoOptionTypeId = useRef<string | null>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -507,6 +508,7 @@ export function ProductOptionsDialog({
       setValueSelectTarget(null);
       setRemovingId(null);
       setCascadePending(null);
+      pendingCascadeUndoOptionTypeId.current = null;
       setActionError(null);
       setLoadError(null);
       return;
@@ -591,7 +593,10 @@ export function ProductOptionsDialog({
     try {
       await deleteProductOption(product.id, optionTypeId);
       setProductOptions((prev) => prev.filter((po) => po.optionTypeId !== optionTypeId));
-      notify.dismissUndo();
+      if (pendingCascadeUndoOptionTypeId.current === optionTypeId) {
+        notify.dismissUndo();
+        pendingCascadeUndoOptionTypeId.current = null;
+      }
       notify.saved(t('products.options.toast.optionRemoved', { name }));
     } catch (e) {
       if (e instanceof AdminApiError && e.code === 'CONFLICT') {
@@ -676,6 +681,7 @@ export function ProductOptionsDialog({
       setCascadePending(null);
 
       const valText = removedValues.map((v) => v.label).join(', ');
+      pendingCascadeUndoOptionTypeId.current = optionTypeId;
       notify.undo(
         t('products.options.toast.valuesRemovedWithCascade', {
           values: valText,
@@ -687,6 +693,9 @@ export function ProductOptionsDialog({
             const restoredPo = await setProductOptionValues(product.id, optionTypeId, {
               values: previousValues.map((id, idx) => ({ optionValueId: id, position: idx })),
             });
+            if (pendingCascadeUndoOptionTypeId.current === optionTypeId) {
+              pendingCascadeUndoOptionTypeId.current = null;
+            }
             setVariants(previousVariants);
             setProductOptions((prev) =>
               prev.map((p) => (p.optionTypeId === optionTypeId ? restoredPo : p)),

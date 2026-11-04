@@ -326,7 +326,7 @@ describe('ProductOptionsDialog', () => {
     });
   });
 
-  it('removes option from product and proactively dismisses any stale undo toast', async () => {
+  it('removes option from product without dismissing unrelated undo toasts', async () => {
     mockedDeleteProductOption.mockResolvedValue(undefined);
     const dismissSpy = vi.spyOn(notify, 'dismissUndo');
 
@@ -343,7 +343,7 @@ describe('ProductOptionsDialog', () => {
 
     await waitFor(() => {
       expect(mockedDeleteProductOption).toHaveBeenCalledWith('prod_1', 'ot_size');
-      expect(dismissSpy).toHaveBeenCalled();
+      expect(dismissSpy).not.toHaveBeenCalled();
       expect(screen.queryByText('/size')).not.toBeInTheDocument();
     });
   });

@@ -1369,7 +1369,95 @@ describe('ProductVariantsDialog', () => {
     });
   });
 
-  it('proactively dismisses stale undo toast when a new variant is created', async () => {
+  it('preserves undo toast when an unrelated variant is created, and dismisses only on collision', async () => {
+    let currentVariants: Variant[] = [sampleVariant];
+    mockedListVariantsPage.mockImplementation(async () => ({
+      variants: [...currentVariants],
+      total: currentVariants.length,
+      nextCursor: undefined,
+    }));
+    mockedDeleteVariant.mockImplementation(async () => {
+      currentVariants = currentVariants.filter((v) => v.id !== sampleVariant.id);
+    });
+    const dismissSpy = vi.spyOn(notify, 'dismissUndo');
+
+    // Unrelated variant (size=M, different comboSignature and SKU)
+    const unrelatedVariant: Variant = {
+      ...sampleVariant,
+      id: 'var_unrelated',
+      skuCode: 'TEE-M',
+      comboSignature: 'ot_size:val_m',
+      selections: [{ optionTypeId: 'ot_size', optionValueId: 'val_m' }],
+    };
+    mockedCreateVariant.mockImplementation(async () => {
+      currentVariants = [...currentVariants, unrelatedVariant];
+      return unrelatedVariant;
+    });
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('TEE-S')[0]).toBeInTheDocument();
+    });
+
+    // Delete variant 1 (size=S) -> Undo toast appears
+    const deleteBtn = screen.getAllByRole('button', { name: 'Delete variant' })[0]!;
+    fireEvent.click(deleteBtn);
+
+    const undoBtn = await screen.findByRole('button', { name: 'Undo' });
+    expect(undoBtn).toBeInTheDocument();
+
+    // Open Add Variant modal and create an UNRELATED variant (size=M)
+    fireEvent.click(screen.getByRole('button', { name: 'Add Variant' }));
+    await screen.findByText('New Variant');
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Size' }));
+    const mediumOpt = await screen.findByRole('option', { name: /Medium/i });
+    fireEvent.click(mediumOpt);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Variant' }));
+
+    await waitFor(() => {
+      expect(mockedCreateVariant).toHaveBeenCalled();
+      expect(screen.queryByText('New Variant')).not.toBeInTheDocument();
+    });
+
+    // CRUCIAL: Creating an unrelated variant MUST NOT dismiss the undo toast for size=S!
+    expect(dismissSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+
+    // Now create a COLLIDING variant (size=S, matching comboSignature and SKU)
+    const collidingVariant: Variant = {
+      ...sampleVariant,
+      id: 'var_colliding',
+      skuCode: 'TEE-S',
+      comboSignature: 'ot_size:val_s',
+      selections: [{ optionTypeId: 'ot_size', optionValueId: 'val_s' }],
+    };
+    mockedCreateVariant.mockImplementation(async () => {
+      currentVariants = [...currentVariants, collidingVariant];
+      return collidingVariant;
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Variant' }));
+    await screen.findByText('New Variant');
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Size' }));
+    const smallOpt = await screen.findByRole('option', { name: /Small/i });
+    fireEvent.click(smallOpt);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Variant' }));
+
+    // On collision, dismissUndo MUST fire!
+    await waitFor(() => {
+      expect(dismissSpy).toHaveBeenCalled();
+      expect(screen.queryByText('New Variant')).not.toBeInTheDocument();
+    });
+  });
+
+  it('preserves undo toast on unrelated bulk generation, and dismisses when generated matrix contains colliding combination', async () => {
     mockedListVariantsPage.mockResolvedValue({
       variants: [sampleVariant],
       total: 1,
@@ -1380,12 +1468,12 @@ describe('ProductVariantsDialog', () => {
 
     const createdVariant: Variant = {
       ...sampleVariant,
-      id: 'var_new',
-      skuCode: 'TEE-NEW',
-      comboSignature: 'ot_size:val_m',
-      selections: [{ optionTypeId: 'ot_size', optionValueId: 'val_m' }],
+      id: 'var_colliding_gen',
+      skuCode: 'TEE-S',
+      comboSignature: 'ot_size:val_s',
+      selections: [{ optionTypeId: 'ot_size', optionValueId: 'val_s' }],
     };
-    mockedCreateVariant.mockResolvedValueOnce(createdVariant);
+    mockedCreateVariant.mockResolvedValue(createdVariant);
 
     renderAdmin(
       <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
@@ -1395,19 +1483,18 @@ describe('ProductVariantsDialog', () => {
       expect(screen.getAllByText('TEE-S')[0]).toBeInTheDocument();
     });
 
+    // Delete size=S
     const deleteBtn = screen.getAllByRole('button', { name: 'Delete variant' })[0]!;
     fireEvent.click(deleteBtn);
 
     await screen.findByRole('button', { name: 'Undo' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add Variant' }));
-    await screen.findByText('New Variant');
+    // Open Generator
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Variants' }));
+    await screen.findByText('Generate Variant Matrix');
 
-    fireEvent.click(screen.getByRole('combobox', { name: 'Size' }));
-    const mediumOpt = await screen.findByRole('option', { name: /Medium/i });
-    fireEvent.click(mediumOpt);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Create Variant' }));
+    // Click Generate on the size=S combination
+    fireEvent.click(screen.getByRole('button', { name: /Generate 1 Variant/i }));
 
     await waitFor(() => {
       expect(mockedCreateVariant).toHaveBeenCalled();
@@ -1454,9 +1541,20 @@ describe('ProductVariantsDialog', () => {
     // Helpful hint is displayed showing what was suggested
     expect(screen.getByText('Suggested: S')).toBeInTheDocument();
 
+    // If user changes custom SKU to exactly match suggestion, redundant hint is not shown
+    fireEvent.change(skuInput, { target: { value: 'S' } });
+    expect(screen.queryByText('Suggested: S')).not.toBeInTheDocument();
+
     // User clears the field explicitly
     fireEvent.change(skuInput, { target: { value: '' } });
     expect(skuInput.value).toBe('');
+
+    // Explicit clearing persists across subsequent axis selections
+    fireEvent.click(screen.getByRole('combobox', { name: 'Size' }));
+    const mediumOpt2 = await screen.findByRole('option', { name: /Medium/i });
+    fireEvent.click(mediumOpt2);
+    expect(skuInput.value).toBe('');
+    expect(screen.getByText('Suggested: M')).toBeInTheDocument();
   });
 
   describe('formatVariantSelectionsLabel & resolveVariantSelections', () => {

@@ -259,12 +259,38 @@ describe('useSoftDeleteWithUndo', () => {
     const { result } = renderHook(() => useSoftDeleteWithUndo<Item>(opts));
     await act(() => result.current.doDelete(item('a', 'Alpha')));
 
+    expect(result.current.getPendingDeletedItem()).toEqual(item('a', 'Alpha'));
+
     act(() => result.current.dismissUndo());
     expect(mockedNotify.dismissUndo).toHaveBeenCalledTimes(1);
+    expect(result.current.getPendingDeletedItem()).toBeNull();
 
     // subsequent dismiss does not re-invoke since pending id was cleared
     act(() => result.current.dismissUndo());
     expect(mockedNotify.dismissUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('dismissUndoIf dismisses undo only when predicate matches pending item', async () => {
+    const opts = options();
+    const { result } = renderHook(() => useSoftDeleteWithUndo<Item>(opts));
+    await act(() => result.current.doDelete(item('a', 'Alpha')));
+
+    // Predicate matching unrelated item does not dismiss
+    let dismissed = false;
+    act(() => {
+      dismissed = result.current.dismissUndoIf((pending) => pending.id === 'unrelated');
+    });
+    expect(dismissed).toBe(false);
+    expect(mockedNotify.dismissUndo).not.toHaveBeenCalled();
+    expect(result.current.getPendingDeletedItem()).toEqual(item('a', 'Alpha'));
+
+    // Predicate matching the actual pending item dismisses
+    act(() => {
+      dismissed = result.current.dismissUndoIf((pending) => pending.id === 'a');
+    });
+    expect(dismissed).toBe(true);
+    expect(mockedNotify.dismissUndo).toHaveBeenCalledTimes(1);
+    expect(result.current.getPendingDeletedItem()).toBeNull();
   });
 
   it('restoring flips true while in flight and back to false once settled', async () => {

@@ -54,6 +54,11 @@ export interface UseSoftDeleteWithUndo<T> {
   clearPendingUndo: () => void;
   /** Dismisses any live undo toast managed by this hook and clears pending state. */
   dismissUndo: () => void;
+  /** Returns the item currently pending undo, if any. */
+  getPendingDeletedItem: () => T | null;
+  /** Dismisses the live undo toast only if the predicate matches the pending deleted item.
+   * Returns true if dismissed, false otherwise. */
+  dismissUndoIf: (predicate: (item: T) => boolean) => boolean;
 }
 
 /**
@@ -86,6 +91,7 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
   const [restoreTarget, setRestoreTarget] = useState<T | null>(null);
   const [restoring, setRestoring] = useState(false);
   const pendingUndoId = useRef<string | null>(null);
+  const pendingDeletedItem = useRef<T | null>(null);
 
   const doDelete = useCallback(
     async (item: T): Promise<void> => {
@@ -93,6 +99,7 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
       try {
         await deleteItem(item.id);
         pendingUndoId.current = item.id;
+        pendingDeletedItem.current = item;
         notify.undo(messages.deleted(labelOf(item)), {
           undoLabel: messages.undoLabel,
           undoneMessage: messages.restored(labelOf(item)),
@@ -100,11 +107,17 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
             onOptimisticRestore?.(item);
             try {
               await restoreItem(item.id);
-              if (pendingUndoId.current === item.id) pendingUndoId.current = null;
+              if (pendingUndoId.current === item.id) {
+                pendingUndoId.current = null;
+                pendingDeletedItem.current = null;
+              }
               resync();
             } catch (e) {
               if (e instanceof AdminApiError && e.code === 'NOT_FOUND') {
-                if (pendingUndoId.current === item.id) pendingUndoId.current = null;
+                if (pendingUndoId.current === item.id) {
+                  pendingUndoId.current = null;
+                  pendingDeletedItem.current = null;
+                }
                 const msg = messages.alreadyGoneOnUndo
                   ? messages.alreadyGoneOnUndo(labelOf(item))
                   : messages.alreadyRestored(labelOf(item));
@@ -151,6 +164,7 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
       if (pendingUndoId.current === restoreTarget.id) {
         notify.dismissUndo();
         pendingUndoId.current = null;
+        pendingDeletedItem.current = null;
       }
       notify.saved(messages.restored(labelOf(restoreTarget)));
       setRestoreTarget(null);
@@ -175,14 +189,29 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
 
   const clearPendingUndo = useCallback(() => {
     pendingUndoId.current = null;
+    pendingDeletedItem.current = null;
   }, []);
 
   const dismissUndo = useCallback(() => {
     if (pendingUndoId.current !== null) {
       notify.dismissUndo();
       pendingUndoId.current = null;
+      pendingDeletedItem.current = null;
     }
   }, []);
+
+  const dismissUndoIf = useCallback(
+    (predicate: (item: T) => boolean): boolean => {
+      if (pendingDeletedItem.current !== null && predicate(pendingDeletedItem.current)) {
+        dismissUndo();
+        return true;
+      }
+      return false;
+    },
+    [dismissUndo],
+  );
+
+  const getPendingDeletedItem = useCallback(() => pendingDeletedItem.current, []);
 
   return {
     doDelete,
@@ -192,5 +221,7 @@ export function useSoftDeleteWithUndo<T extends { id: string }>(
     confirmRestore,
     clearPendingUndo,
     dismissUndo,
+    getPendingDeletedItem,
+    dismissUndoIf,
   };
 }

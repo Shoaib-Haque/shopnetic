@@ -989,6 +989,7 @@ function VariantFormModal({
     reset,
     setError,
     setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<VariantFormValues>({
     resolver: zodResolver(variantFormSchema),
@@ -1002,6 +1003,8 @@ function VariantFormModal({
       status: 'active',
     },
   });
+
+  const currentSku = watch('skuCode');
 
   function fieldError(field: Path<VariantFormValues>): string | undefined {
     const err = errors[field];
@@ -1230,7 +1233,10 @@ function VariantFormModal({
                 label={t('products.variants.form.sku')}
                 htmlFor="variant-sku"
                 hint={
-                  !isEdit && suggestedSku && isSkuUserEdited.current
+                  !isEdit &&
+                  suggestedSku &&
+                  isSkuUserEdited.current &&
+                  currentSku?.trim() !== suggestedSku.trim()
                     ? t('products.variants.form.suggestedSkuHint', { sku: suggestedSku })
                     : undefined
                 }
@@ -1716,7 +1722,7 @@ export function ProductVariantsDialog({
     return () => observer.disconnect();
   }, [nextCursor, loadingMore, loading, handleLoadMore]);
 
-  const { doDelete: doDeleteVariant, dismissUndo: dismissUndoVariant } =
+  const { doDelete: doDeleteVariant, dismissUndoIf: dismissUndoIfVariant } =
     useSoftDeleteWithUndo<Variant>({
       deleteItem: (variantId) =>
         product ? deleteVariant(product.id, variantId) : Promise.resolve(),
@@ -1779,7 +1785,18 @@ export function ProductVariantsDialog({
   };
 
   const handleGenerated = (newlyCreated: Variant[]) => {
-    dismissUndoVariant();
+    // Only dismiss pending undo if any generated variant collides with the pending deleted tombstone
+    dismissUndoIfVariant((pending) => {
+      return newlyCreated.some((v) => {
+        const comboMatch = pending.comboSignature === v.comboSignature;
+        const skuMatch = Boolean(
+          v.skuCode &&
+            pending.skuCode &&
+            v.skuCode.trim().toLowerCase() === pending.skuCode.trim().toLowerCase(),
+        );
+        return comboMatch || skuMatch;
+      });
+    });
     setVariants((prev) => [...prev, ...newlyCreated]);
     setTotalVariants((prev) => prev + newlyCreated.length);
     setUnfilteredTotalVariants((prev) => prev + newlyCreated.length);
@@ -1788,7 +1805,16 @@ export function ProductVariantsDialog({
   const handleSaved = (v: Variant) => {
     const isNew = !variants.some((x) => x.id === v.id);
     if (isNew) {
-      dismissUndoVariant();
+      // Only dismiss pending undo if the created variant collides with the pending deleted tombstone
+      dismissUndoIfVariant((pending) => {
+        const comboMatch = pending.comboSignature === v.comboSignature;
+        const skuMatch = Boolean(
+          v.skuCode &&
+            pending.skuCode &&
+            v.skuCode.trim().toLowerCase() === pending.skuCode.trim().toLowerCase(),
+        );
+        return comboMatch || skuMatch;
+      });
     }
     setVariants((prev) => {
       const exists = prev.some((x) => x.id === v.id);
