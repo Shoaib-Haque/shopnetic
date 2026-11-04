@@ -22,7 +22,12 @@ import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import { clampLimit } from '../common/pagination.js';
-import { rankedNextCursor, rankedOffsetFromCursor, tokenizeForSql } from '../common/text-search.js';
+import {
+  buildTokenSearch,
+  rankedNextCursor,
+  rankedOffsetFromCursor,
+  tokenizeForSql,
+} from '../common/text-search.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { BuyboxService } from './buybox.service.js';
 import { writeInventoryOutbox } from './inventory-outbox.js';
@@ -142,42 +147,34 @@ export class OfferService {
       where.variantId = { in: variants.map((v) => v.id) };
     }
 
+    let sellerScores: Map<string, number> | undefined;
     if (query.q) {
       const tokens = tokenizeForSql(query.q);
       if (tokens.length > 0) {
-        // Try matching sellers that contain ALL tokens first (e.g. multi-word seller "Beta Store", "Nordic Supply")
-        let matchingSellers = await this.prisma.seller.findMany({
-          where: {
-            deletedAt: null,
-            AND: tokens.map((token) => ({
-              OR: [
-                { legalName: { contains: token, mode: 'insensitive' } },
-                { shop: { displayName: { contains: token, mode: 'insensitive' } } },
-              ],
-            })),
-          },
-          select: { id: true },
+        const params: unknown[] = [];
+        const primary = `lower(s.legal_name)`;
+        const haystack = `lower(concat_ws(' ', s.legal_name, sh.display_name, sh.slug))`;
+        const { whereSql, scoreSql } = buildTokenSearch(tokens, haystack, params, {
+          primarySql: primary,
         });
 
-        // If no seller matches all tokens (e.g. multi-seller search "nordic har"),
-        // match sellers matching ANY token so offers from all mentioned sellers appear
-        if (matchingSellers.length === 0 && tokens.length > 1) {
-          matchingSellers = await this.prisma.seller.findMany({
-            where: {
-              deletedAt: null,
-              OR: tokens.flatMap((token) => [
-                { legalName: { contains: token, mode: 'insensitive' } },
-                { shop: { displayName: { contains: token, mode: 'insensitive' } } },
-              ]),
-            },
-            select: { id: true },
-          });
-        }
+        const rawSellers = await this.prisma.$queryRawUnsafe<{ id: string; rank_score: number }[]>(
+          `
+          SELECT s.id, ${scoreSql} AS rank_score
+          FROM seller.seller s
+          LEFT JOIN seller.shop sh ON sh.seller_id = s.id AND sh.deleted_at IS NULL
+          WHERE s.deleted_at IS NULL AND (${whereSql})
+          ORDER BY rank_score DESC
+        `,
+          ...params,
+        );
 
-        if (matchingSellers.length === 0) {
+        if (rawSellers.length === 0) {
           return { items: [], total: 0 };
         }
-        const matchingSellerIds = matchingSellers.map((s) => s.id);
+
+        sellerScores = new Map(rawSellers.map((s) => [s.id, Number(s.rank_score)]));
+        const matchingSellerIds = rawSellers.map((s) => s.id);
         if (where.sellerId) {
           if (!matchingSellerIds.includes(where.sellerId as string)) {
             return { items: [], total: 0 };
@@ -188,10 +185,43 @@ export class OfferService {
       }
     }
 
-    const total = await this.prisma.offer.count({ where });
-
     const isOffsetCursor = Boolean(query.cursor && /^\d+$/.test(query.cursor));
     const offset = isOffsetCursor ? rankedOffsetFromCursor(query.cursor) : 0;
+
+    if (sellerScores) {
+      const MAX_SEARCH_CANDIDATES = 1000;
+      const allMatchingOffers = (await this.prisma.offer.findMany({
+        where,
+        include: {
+          stocks: {
+            include: { warehouse: true },
+          },
+        },
+        orderBy: [{ priceMinor: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        take: MAX_SEARCH_CANDIDATES,
+      })) as OfferWithRelations[];
+
+      allMatchingOffers.sort((a, b) => {
+        const scoreA = sellerScores.get(a.sellerId) ?? 0;
+        const scoreB = sellerScores.get(b.sellerId) ?? 0;
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        if (a.priceMinor !== b.priceMinor) return a.priceMinor < b.priceMinor ? -1 : 1;
+        return a.id.localeCompare(b.id);
+      });
+
+      const total = allMatchingOffers.length;
+      const pageOffers = allMatchingOffers.slice(offset, offset + limit);
+      const nextCursor = rankedNextCursor(total - offset, limit, offset);
+
+      const serialized = await Promise.all(pageOffers.map((o) => this.serialize(o)));
+      return {
+        items: serialized,
+        total,
+        ...(nextCursor ? { nextCursor } : {}),
+      };
+    }
+
+    const total = await this.prisma.offer.count({ where });
 
     const findArgs: Prisma.OfferFindManyArgs & {
       include: { stocks: { include: { warehouse: true } } };

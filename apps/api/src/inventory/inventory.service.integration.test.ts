@@ -975,7 +975,7 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
       expect(page2.items[0]?.id).toBe(o1.id); // $25.00 third
       expect(page2.nextCursor).toBeUndefined();
 
-      // Search by seller 2 legal name or shop
+      // Blended ranked search by seller 2 legal name or shop ("Beta Store") ranks Beta Store first
       const seller2 = await prisma.seller.findUniqueOrThrow({
         where: { id: testSeller2Id },
         include: { shop: true },
@@ -988,8 +988,19 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
         limit: 10,
       });
 
-      expect(searchResult.total).toBe(1);
-      expect(searchResult.items[0]?.id).toBe(o2.id);
+      expect(searchResult.items[0]?.id).toBe(o2.id); // Beta Store ranks first with highest score
+      expect(searchResult.total).toBeGreaterThanOrEqual(1);
+
+      // Multi-seller cross query "alpha gamma" matches and returns offers from both sellers without suppressing either
+      const multiSellerResult = await offerService.list({
+        status: 'active',
+        variantId: variant.id,
+        q: 'alpha gamma',
+        limit: 10,
+      });
+      const returnedOfferIds = multiSellerResult.items.map((it) => it.id);
+      expect(returnedOfferIds).toContain(o1.id);
+      expect(returnedOfferIds).toContain(o3.id);
 
       // Offer counts helper
       const counts = await offerService.getVariantOfferCounts(product.id);
