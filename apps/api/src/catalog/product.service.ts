@@ -26,6 +26,7 @@ import {
 } from '../common/text-search.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
+import { writeInventoryOutbox } from '../inventory/inventory-outbox.js';
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
@@ -355,6 +356,40 @@ export class ProductService {
         },
       });
       await writeCatalogOutbox(tx, 'product', 'product.deleted', id, { id });
+
+      // Invariant #4 (plan/32): Archiving a Product disables all active variants and attached Seller Offers
+      const activeVariants = await tx.variant.findMany({
+        where: { productId: id, deletedAt: null },
+        select: { id: true },
+      });
+      if (activeVariants.length > 0) {
+        const variantIds = activeVariants.map((v) => v.id);
+        await tx.variant.updateMany({
+          where: { productId: id, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+        for (const v of activeVariants) {
+          await writeCatalogOutbox(tx, 'variant', 'variant.deleted', v.id, { id: v.id });
+        }
+        const activeOffers = await tx.offer.findMany({
+          where: { variantId: { in: variantIds }, deletedAt: null },
+          select: { id: true, sellerId: true, variantId: true },
+        });
+        if (activeOffers.length > 0) {
+          await tx.offer.updateMany({
+            where: { variantId: { in: variantIds }, deletedAt: null },
+            data: { deletedAt: new Date() },
+          });
+          for (const o of activeOffers) {
+            await writeInventoryOutbox(tx, 'offer', 'offer.deleted', o.id, {
+              id: o.id,
+              sellerId: o.sellerId,
+              variantId: o.variantId,
+              reason: 'product_deleted_cascade',
+            });
+          }
+        }
+      }
     });
     const view = toView({ ...current, deletedAt: new Date(), status: 'archived' });
     const [categoryName, brandName] = await Promise.all([

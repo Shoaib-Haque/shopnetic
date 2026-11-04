@@ -724,7 +724,10 @@
           "deleted": "Variant deleted.",
           "deletedNamed": "Variant “{name}” deleted.",
           "restoredNamed": "Variant “{name}” restored."
-        }
+        },
+        "cascadeOfferDeleteTitle": "Delete variant and attached seller offers?",
+        "cascadeOfferDeleteMessage": "{count, plural, one {# seller offer is} other {# seller offers are}} currently attached to “{name}”. Deleting this variant will automatically soft-delete and disable all attached seller offers.",
+        "cascadeOfferDeleteConfirm": "Delete variant & offers"
       },
       "media": {
         "dialogTitle": "Product Media Gallery",

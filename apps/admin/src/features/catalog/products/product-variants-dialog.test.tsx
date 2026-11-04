@@ -16,6 +16,7 @@ import {
   createVariant,
   deleteVariant,
   listProductOptions,
+  listVariantOffers,
   listVariants,
   listVariantsPage,
   restoreVariant,
@@ -30,6 +31,7 @@ vi.mock('./api', async () => {
     listVariants: vi.fn(),
     listVariantsPage: vi.fn(),
     listProductOptions: vi.fn(),
+    listVariantOffers: vi.fn(),
     createVariant: vi.fn(),
     updateVariant: vi.fn(),
     deleteVariant: vi.fn(),
@@ -48,6 +50,7 @@ vi.mock('@/features/catalog/option-types/api', () => ({
 const mockedListVariants = vi.mocked(listVariants);
 const mockedListVariantsPage = vi.mocked(listVariantsPage);
 const mockedListProductOptions = vi.mocked(listProductOptions);
+const mockedListVariantOffers = vi.mocked(listVariantOffers);
 const mockedCreateVariant = vi.mocked(createVariant);
 const mockedUpdateVariant = vi.mocked(updateVariant);
 const mockedDeleteVariant = vi.mocked(deleteVariant);
@@ -202,6 +205,7 @@ describe('ProductVariantsDialog', () => {
       nextCursor: undefined,
     });
     mockedListProductOptions.mockResolvedValue(productOptions);
+    mockedListVariantOffers.mockResolvedValue([]);
     mockedListCategoryOptions.mockResolvedValue(categoryOptions);
     mockedListOptionTypesPage.mockResolvedValue({
       optionTypes: [sizeOptionType],
@@ -410,6 +414,40 @@ describe('ProductVariantsDialog', () => {
     });
   });
 
+  it('prompts cascade warning modal before deleting a variant with attached seller offers', async () => {
+    mockedListVariantOffers.mockResolvedValue([
+      { id: 'off_1', sellerId: 'sel_1', variantId: 'var_1', priceMinor: 1000n } as never,
+      { id: 'off_2', sellerId: 'sel_2', variantId: 'var_1', priceMinor: 1200n } as never,
+    ]);
+    mockedDeleteVariant.mockResolvedValue(undefined);
+
+    renderAdmin(
+      <ProductVariantsDialog open={true} onOpenChange={vi.fn()} product={sampleProduct} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Delete variant' })[0]).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete variant' })[0]!);
+
+    // Cascade confirmation modal should appear
+    await waitFor(() => {
+      expect(screen.getByText('Delete variant and attached seller offers?')).toBeInTheDocument();
+      expect(screen.getByText(/2 seller offers are/)).toBeInTheDocument();
+    });
+
+    // Delete variant is NOT called yet
+    expect(mockedDeleteVariant).not.toHaveBeenCalled();
+
+    // Confirm deletion
+    fireEvent.click(screen.getByRole('button', { name: 'Delete variant & offers' }));
+
+    await waitFor(() => {
+      expect(mockedDeleteVariant).toHaveBeenCalledWith('prod_1', 'var_1');
+    });
+  });
+
   it('navigates back to configure options when requested', async () => {
     const onBackToOptions = vi.fn();
     const onOpenChange = vi.fn();
@@ -577,6 +615,7 @@ describe('ProductVariantsDialog', () => {
       .mockResolvedValueOnce({ variants: [], total: 0, nextCursor: undefined })
       .mockResolvedValueOnce({ variants: [sampleVariant], total: 1, nextCursor: undefined });
     mockedListProductOptions.mockResolvedValue(productOptions);
+    mockedListVariantOffers.mockResolvedValue([]);
     mockedListCategoryOptions.mockResolvedValue(categoryOptions);
     mockedListOptionTypesPage.mockResolvedValue({
       optionTypes: [sizeOptionType],

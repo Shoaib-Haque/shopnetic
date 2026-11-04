@@ -117,7 +117,7 @@ exists.
 | `option_type` | Soft, additive-only in practice (`26`) | Blocked once a `category_option` or `product_option` uses it (deprecate instead). Restore supported. |
 | `value_set` | Soft (`deleted_at`), undo supported | Blocked while a live `category_option` references it. Partial unique index on `lower(name) WHERE deleted_at IS NULL`. Restore supported. |
 | `category_option` | **Hard** | `category_option` will block once a product in the category uses that axis (guard lands with `product_option` usage tracking). |
-| `product`, `variant` | Soft (`archived` / `deleted_at`) | Order lines hold snapshots; PDP can 410/redirect (`10` section 5). In a cart → `29` alerts the buyer. In an order → keep forever. Restore supported (re-validates slug). |
+| `product`, `variant` | Soft (`archived` / `deleted_at`) | Order lines hold snapshots; PDP can 410/redirect (`10` section 5). In a cart → `29` alerts the buyer. In an order → keep forever. Restore supported (re-validates slug). Archiving a product cascades deactivation to active variants and attached seller offers; archiving a variant cascades soft-delete/disablement to attached seller offers with an explicit UI warning modal (`plan/32` Invariant #4). |
 | `media_asset` | **Hard** (DB row); object-storage blob GC'd later | No historical value once detached. |
 | `review`, `message`, `thread` | Soft (redact for T&S) | Moderation may redact content but keep the record |
 | `cart`, `cart_item`, `saved_item` | **Hard** (or TTL sweep) | No historical value; guest carts expire |

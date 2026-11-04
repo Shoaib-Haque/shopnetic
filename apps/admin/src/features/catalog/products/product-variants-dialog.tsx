@@ -84,6 +84,7 @@ import {
   createVariant,
   deleteVariant,
   listProductOptions,
+  listVariantOffers,
   listVariantsPage,
   restoreVariant,
   updateVariant,
@@ -1233,6 +1234,60 @@ function VariantFormModal({
   );
 }
 
+// ── Cascade Delete Variant & Offers Confirmation Modal ──────────────────────
+
+interface CascadeVariantOfferDeleteConfirmModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  variantLabel: string;
+  offerCount: number;
+  onConfirm: () => Promise<void>;
+  loading: boolean;
+}
+
+function CascadeVariantOfferDeleteConfirmModal({
+  open,
+  onOpenChange,
+  variantLabel,
+  offerCount,
+  onConfirm,
+  loading,
+}: CascadeVariantOfferDeleteConfirmModalProps) {
+  const t = useTranslations('catalog');
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-md">
+        <ModalHeader>
+          <ModalTitle className="text-destructive">
+            {t('products.variants.cascadeOfferDeleteTitle')}
+          </ModalTitle>
+          <ModalDescription>
+            {t('products.variants.cascadeOfferDeleteMessage', {
+              name: variantLabel,
+              count: offerCount,
+            })}
+          </ModalDescription>
+        </ModalHeader>
+        <ModalFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading}
+            onClick={() => onOpenChange(false)}
+          >
+            {t('products.variants.form.cancel')}
+          </Button>
+          <Button type="button" variant="destructive" disabled={loading} onClick={onConfirm}>
+            {loading ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
+            {t('products.variants.cascadeOfferDeleteConfirm')}
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
 // ── Main ProductVariantsDialog ───────────────────────────────────────────────
 
 export function ProductVariantsDialog({
@@ -1277,6 +1332,11 @@ export function ProductVariantsDialog({
   // Delete state
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cascadeVariantToDelete, setCascadeVariantToDelete] = useState<{
+    variant: Variant;
+    offerCount: number;
+  } | null>(null);
+  const [cascadeDeleting, setCascadeDeleting] = useState(false);
 
   const mounted = useRef(true);
   useEffect(() => {
@@ -1511,8 +1571,27 @@ export function ProductVariantsDialog({
     setDeletingId(variant.id);
     setActionError(null);
     try {
+      const offers = await listVariantOffers(variant.id).catch(() => []);
+      if (offers.length > 0) {
+        setCascadeVariantToDelete({ variant, offerCount: offers.length });
+        return;
+      }
       await doDeleteVariant(variant);
     } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleConfirmCascadeDelete = async () => {
+    if (!cascadeVariantToDelete || !product) return;
+    const { variant } = cascadeVariantToDelete;
+    setCascadeDeleting(true);
+    setDeletingId(variant.id);
+    try {
+      await doDeleteVariant(variant);
+      setCascadeVariantToDelete(null);
+    } finally {
+      setCascadeDeleting(false);
       setDeletingId(null);
     }
   };
@@ -2097,6 +2176,20 @@ export function ProductVariantsDialog({
           optionTypeMap={optionTypeMap}
           onSaved={handleSaved}
           onConflict={() => void resyncVariants()}
+        />
+      )}
+
+      {/* Cascade Delete Variant & Attached Offers Confirmation Modal */}
+      {cascadeVariantToDelete && (
+        <CascadeVariantOfferDeleteConfirmModal
+          open={Boolean(cascadeVariantToDelete)}
+          onOpenChange={(next) => {
+            if (!next && !cascadeDeleting) setCascadeVariantToDelete(null);
+          }}
+          variantLabel={labelOfVariant(cascadeVariantToDelete.variant)}
+          offerCount={cascadeVariantToDelete.offerCount}
+          onConfirm={handleConfirmCascadeDelete}
+          loading={cascadeDeleting}
         />
       )}
     </>

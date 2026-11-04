@@ -18,6 +18,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
+import { writeInventoryOutbox } from '../inventory/inventory-outbox.js';
 import { clampLimit } from '../common/pagination.js';
 import { rankedNextCursor, rankedOffsetFromCursor, tokenizeForSql } from '../common/text-search.js';
 
@@ -313,6 +314,26 @@ export class VariantService {
     await this.prisma.$transaction(async (tx) => {
       await tx.variant.update({ where: { id }, data: { deletedAt: new Date() } });
       await writeCatalogOutbox(tx, 'variant', 'variant.deleted', id, { id });
+
+      // Invariant #4 (plan/32): Archiving a Variant disables all attached Seller Offers
+      const activeOffers = await tx.offer.findMany({
+        where: { variantId: id, deletedAt: null },
+        select: { id: true, sellerId: true },
+      });
+      if (activeOffers.length > 0) {
+        await tx.offer.updateMany({
+          where: { variantId: id, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+        for (const o of activeOffers) {
+          await writeInventoryOutbox(tx, 'offer', 'offer.deleted', o.id, {
+            id: o.id,
+            sellerId: o.sellerId,
+            variantId: id,
+            reason: 'variant_deleted_cascade',
+          });
+        }
+      }
     });
     const [productTitle, resolvedSelections] = await Promise.all([
       this.productTitleOf(current.productId),

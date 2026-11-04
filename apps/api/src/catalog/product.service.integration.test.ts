@@ -457,6 +457,64 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     expect(events).toContain('product.restored');
   });
 
+  it('soft-deleting a product cascades to variants and attached offers (plan/32 Invariant #4)', async () => {
+    const p = await products.create(
+      { categoryId: catOptionalId, title: t('Cascade Prod'), slug: s('cascade-prod') },
+      actor,
+      {},
+    );
+    const v = await variants.create(p.id, { selections: [], skuCode: s('CASC-SKU') }, actor, {});
+    const sellerAccount = await prisma.account.create({
+      data: {
+        email: `${s('prod-cascade-seller')}@shopnetic.test`,
+        plane: 'marketplace',
+        status: 'active',
+      },
+    });
+    const seller = await prisma.seller.create({
+      data: {
+        accountId: sellerAccount.id,
+        legalName: 'Product Cascade Seller LLC',
+        type: 'business',
+        country: 'US',
+      },
+    });
+    const offer = await prisma.offer.create({
+      data: {
+        sellerId: seller.id,
+        variantId: v.id,
+        priceMinor: 3000n,
+        currency: 'USD',
+        status: 'active',
+      },
+    });
+
+    try {
+      await products.remove(p.id, actor, {});
+
+      const vAfter = await prisma.variant.findUnique({ where: { id: v.id } });
+      expect(vAfter?.deletedAt).toBeTruthy();
+
+      const offerAfter = await prisma.offer.findUnique({ where: { id: offer.id } });
+      expect(offerAfter?.deletedAt).toBeTruthy();
+
+      const outbox = await prisma.inventoryOutbox.findFirst({
+        where: {
+          aggregateType: 'offer',
+          aggregateId: offer.id,
+          eventType: 'offer.deleted',
+        },
+      });
+      expect(outbox).toBeTruthy();
+    } finally {
+      await prisma.offer.deleteMany({ where: { id: offer.id } });
+      await prisma.seller.deleteMany({ where: { id: seller.id } });
+      await prisma.account.deleteMany({ where: { id: sellerAccount.id } });
+      await prisma.variant.deleteMany({ where: { id: v.id } });
+      await prisma.product.deleteMany({ where: { id: p.id } });
+    }
+  });
+
   it('preserves pre-archive status on restore and prevents _previousStatus leak in spec', async () => {
     // 1. Active product restores to active
     const pActive = await products.create(

@@ -349,6 +349,72 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
     await expect(variants.get(target.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  it('soft-deleting a variant cascades to attached seller offers (plan/32 Invariant #4)', async () => {
+    const tempProd = await prisma.product.create({
+      data: {
+        categoryId,
+        titleI18n: t('Temp Prod For Cascade Offers'),
+        slug: s('temp-prod-cascade-offers'),
+        status: 'draft',
+      },
+    });
+    const tempVar = await variants.create(
+      tempProd.id,
+      { selections: [], skuCode: s('CASC-VAR-SKU') },
+      actor,
+      {},
+    );
+
+    // Create a temporary seller and offer attached to this variant
+    const sellerAccount = await prisma.account.create({
+      data: {
+        email: `${s('var-cascade-seller')}@shopnetic.test`,
+        plane: 'marketplace',
+        status: 'active',
+      },
+    });
+    const seller = await prisma.seller.create({
+      data: {
+        accountId: sellerAccount.id,
+        legalName: 'Variant Cascade Seller LLC',
+        type: 'business',
+        country: 'US',
+      },
+    });
+    const offer = await prisma.offer.create({
+      data: {
+        sellerId: seller.id,
+        variantId: tempVar.id,
+        priceMinor: 2500n,
+        currency: 'USD',
+        status: 'active',
+      },
+    });
+
+    try {
+      // Removing the variant should soft-delete the variant and attached offer
+      await variants.remove(tempVar.id, actor, {});
+
+      const offerAfter = await prisma.offer.findUnique({ where: { id: offer.id } });
+      expect(offerAfter?.deletedAt).toBeTruthy();
+
+      const outbox = await prisma.inventoryOutbox.findFirst({
+        where: {
+          aggregateType: 'offer',
+          aggregateId: offer.id,
+          eventType: 'offer.deleted',
+        },
+      });
+      expect(outbox).toBeTruthy();
+    } finally {
+      await prisma.offer.deleteMany({ where: { id: offer.id } });
+      await prisma.seller.deleteMany({ where: { id: seller.id } });
+      await prisma.account.deleteMany({ where: { id: sellerAccount.id } });
+      await prisma.variant.deleteMany({ where: { id: tempVar.id } });
+      await prisma.product.deleteMany({ where: { id: tempProd.id } });
+    }
+  });
+
   it('update rejects a stale expectedUpdatedAt (optimistic concurrency)', async () => {
     const list = await variants.list(productId);
     const target = list[0]!;
