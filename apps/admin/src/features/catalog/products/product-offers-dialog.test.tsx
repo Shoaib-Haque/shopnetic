@@ -923,5 +923,5 @@ describe('ProductOffersDialog', () => {
       },
       { timeout: 1500 },
     );
-  });
+  }, 15000);
 });

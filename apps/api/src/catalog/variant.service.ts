@@ -108,9 +108,12 @@ export class VariantService {
     }
 
     if (tokens.length > 0) {
+      // Bound search candidates to avoid unbounded in-memory sorting on broad queries
+      const MAX_SEARCH_CANDIDATES = 500;
       const allRows = (await this.prisma.variant.findMany({
         where,
         include: withValues,
+        take: MAX_SEARCH_CANDIDATES,
       })) as VariantRow[];
 
       allRows.sort((a, b) => {
