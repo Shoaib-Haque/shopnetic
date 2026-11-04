@@ -797,4 +797,86 @@ describe.skipIf(!hasDb)('VariantService (integration)', () => {
     await prisma.variant.deleteMany({ where: { productId: testProd.id } });
     await prisma.product.delete({ where: { id: testProd.id } });
   });
+
+  it('falls back to assigned product options as axes when category has zero CategoryOption mappings', async () => {
+    // 1. Create a category with zero category_option rows
+    const unmappedCat = await prisma.category.create({
+      data: { slug: s('unmapped-cat'), nameI18n: t('Unmapped Category'), brandRequirement: 'none' },
+    });
+    await prisma.$executeRawUnsafe(
+      `UPDATE catalog.category SET path = $1::ltree WHERE id = $2::uuid`,
+      unmappedCat.id.replace(/-/g, ''),
+      unmappedCat.id,
+    );
+
+    // Verify category has 0 categoryOption rows
+    const count = await prisma.categoryOption.count({ where: { categoryId: unmappedCat.id } });
+    expect(count).toBe(0);
+
+    // 2. Create a product under this unmapped category
+    const unmappedProd = await prisma.product.create({
+      data: {
+        slug: s('unmapped-prod'),
+        categoryId: unmappedCat.id,
+        titleI18n: t('Unmapped Product'),
+        status: 'active',
+      },
+    });
+
+    // 3. Directly assign size option & offered value to the product (bypassing CategoryOption mapping)
+    await prisma.productOption.create({
+      data: {
+        productId: unmappedProd.id,
+        optionTypeId: sizeTypeId,
+        position: 0,
+      },
+    });
+    await prisma.productOptionValue.create({
+      data: {
+        productId: unmappedProd.id,
+        optionTypeId: sizeTypeId,
+        optionValueId: sizeValues['s']!,
+        position: 0,
+      },
+    });
+
+    // 4. Omitting a required axis selection throws 422 VARIANT_SELECTION_INVALID,
+    // proving the fallback treated the assigned option as an axis
+    await expect(
+      variants.create(
+        unmappedProd.id,
+        { skuCode: s('unmapped-sku-empty'), selections: [] },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'VARIANT_SELECTION_INVALID' });
+
+    // 5. Creating variant with valid selections succeeds and returns denormalized selections
+    const created = await variants.create(
+      unmappedProd.id,
+      {
+        skuCode: s('unmapped-sku-valid'),
+        selections: [{ optionTypeId: sizeTypeId, optionValueId: sizeValues['s']! }],
+      },
+      actor,
+      {},
+    );
+
+    expect(created.id).toBeDefined();
+    expect(created.skuCode).toBe(s('unmapped-sku-valid'));
+    expect(created.selections).toHaveLength(1);
+    expect(created.selections[0]?.optionTypeId).toBe(sizeTypeId);
+    expect(created.selections[0]?.optionValueId).toBe(sizeValues['s']);
+    expect(created.selections[0]?.optionTypeCode).toBeDefined();
+    expect(created.selections[0]?.optionValueCode).toBeDefined();
+
+    // 6. Explicit teardown for this test
+    await prisma.variant.deleteMany({ where: { productId: unmappedProd.id } });
+    await prisma.productOptionValue.deleteMany({
+      where: { productOption: { productId: unmappedProd.id } },
+    });
+    await prisma.productOption.deleteMany({ where: { productId: unmappedProd.id } });
+    await prisma.product.delete({ where: { id: unmappedProd.id } });
+    await prisma.category.delete({ where: { id: unmappedCat.id } });
+  });
 });
