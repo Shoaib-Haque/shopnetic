@@ -975,21 +975,20 @@ describe.skipIf(!hasDb)('Inventory, Offers, Stock & Buybox (integration)', () =>
       expect(page2.items[0]?.id).toBe(o1.id); // $25.00 third
       expect(page2.nextCursor).toBeUndefined();
 
-      // Blended ranked search by seller 2 legal name or shop ("Beta Store") ranks Beta Store first
-      const seller2 = await prisma.seller.findUniqueOrThrow({
-        where: { id: testSeller2Id },
-        include: { shop: true },
-      });
-      const searchTarget = seller2.shop?.displayName ?? seller2.legalName;
+      // Blended ranked search by seller 2 shop ("Beta Store") ranks Beta Store first
       const searchResult = await offerService.list({
         status: 'active',
         variantId: variant.id,
-        q: searchTarget,
+        q: 'Beta Store',
         limit: 10,
       });
 
-      expect(searchResult.items[0]?.id).toBe(o2.id); // Beta Store ranks first with highest score
-      expect(searchResult.total).toBeGreaterThanOrEqual(1);
+      expect(searchResult.items[0]?.id).toBe(o2.id); // Beta Store ranks first with highest score (matches "beta" + "store")
+      // Non-suppression: partial matches on "Store" (Alpha Store and Gamma Store) are still present, ranked lower
+      const returnedWithBetaStore = searchResult.items.map((it) => it.id);
+      expect(returnedWithBetaStore).toContain(o1.id);
+      expect(returnedWithBetaStore).toContain(o3.id);
+      expect(searchResult.total).toBe(3);
 
       // Multi-seller cross query "alpha gamma" matches and returns offers from both sellers without suppressing either
       const multiSellerResult = await offerService.list({

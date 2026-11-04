@@ -147,7 +147,9 @@ export class OfferService {
       where.variantId = { in: variants.map((v) => v.id) };
     }
 
-    let sellerScores: Map<string, number> | undefined;
+    const isOffsetCursor = Boolean(query.cursor && /^\d+$/.test(query.cursor));
+    const offset = isOffsetCursor ? rankedOffsetFromCursor(query.cursor) : 0;
+
     if (query.q) {
       const tokens = tokenizeForSql(query.q);
       if (tokens.length > 0) {
@@ -158,67 +160,99 @@ export class OfferService {
           primarySql: primary,
         });
 
-        const rawSellers = await this.prisma.$queryRawUnsafe<{ id: string; rank_score: number }[]>(
+        const offerWheres: string[] = [
+          'o.deleted_at IS NULL',
+          's.deleted_at IS NULL',
+          `(${whereSql})`,
+        ];
+
+        if (query.status === 'active') {
+          params.push('active');
+          offerWheres.push(`o.status = $${params.length}::inventory."OfferStatus"`);
+        }
+        if (query.variantId) {
+          params.push(query.variantId);
+          offerWheres.push(`o.variant_id = $${params.length}::uuid`);
+        } else if (query.productId) {
+          const variants = await this.prisma.variant.findMany({
+            where: { productId: query.productId, deletedAt: null },
+            select: { id: true },
+          });
+          if (variants.length === 0) {
+            return { items: [], total: 0 };
+          }
+          const vIds = variants.map((v) => v.id);
+          params.push(vIds);
+          offerWheres.push(`o.variant_id = ANY($${params.length}::uuid[])`);
+        }
+        if (query.sellerId) {
+          params.push(query.sellerId);
+          offerWheres.push(`o.seller_id = $${params.length}::uuid`);
+        }
+
+        const whereClause = offerWheres.join(' AND ');
+
+        const countRows = await this.prisma.$queryRawUnsafe<{ count: string | bigint }[]>(
           `
-          SELECT s.id, ${scoreSql} AS rank_score
-          FROM seller.seller s
+          SELECT COUNT(*)::bigint AS count
+          FROM inventory.offer o
+          JOIN seller.seller s ON s.id = o.seller_id
           LEFT JOIN seller.shop sh ON sh.seller_id = s.id AND sh.deleted_at IS NULL
-          WHERE s.deleted_at IS NULL AND (${whereSql})
-          ORDER BY rank_score DESC
-        `,
+          WHERE ${whereClause}
+          `,
           ...params,
         );
-
-        if (rawSellers.length === 0) {
+        const total = Number(countRows[0]?.count ?? 0);
+        if (total === 0) {
           return { items: [], total: 0 };
         }
 
-        sellerScores = new Map(rawSellers.map((s) => [s.id, Number(s.rank_score)]));
-        const matchingSellerIds = rawSellers.map((s) => s.id);
-        if (where.sellerId) {
-          if (!matchingSellerIds.includes(where.sellerId as string)) {
-            return { items: [], total: 0 };
-          }
-        } else {
-          where.sellerId = { in: matchingSellerIds };
+        params.push(limit);
+        const limitParamIndex = params.length;
+        params.push(offset);
+        const offsetParamIndex = params.length;
+
+        const pageIdRows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+          `
+          SELECT o.id
+          FROM inventory.offer o
+          JOIN seller.seller s ON s.id = o.seller_id
+          LEFT JOIN seller.shop sh ON sh.seller_id = s.id AND sh.deleted_at IS NULL
+          WHERE ${whereClause}
+          ORDER BY ${scoreSql} DESC, o.price_minor ASC, o.id ASC
+          LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
+          `,
+          ...params,
+        );
+
+        const pageIds = pageIdRows.map((r) => r.id);
+        if (pageIds.length === 0) {
+          return { items: [], total };
         }
-      }
-    }
 
-    const isOffsetCursor = Boolean(query.cursor && /^\d+$/.test(query.cursor));
-    const offset = isOffsetCursor ? rankedOffsetFromCursor(query.cursor) : 0;
-
-    if (sellerScores) {
-      const MAX_SEARCH_CANDIDATES = 1000;
-      const allMatchingOffers = (await this.prisma.offer.findMany({
-        where,
-        include: {
-          stocks: {
-            include: { warehouse: true },
+        const hydratedOffers = (await this.prisma.offer.findMany({
+          where: { id: { in: pageIds } },
+          include: {
+            stocks: {
+              include: { warehouse: true },
+            },
           },
-        },
-        orderBy: [{ priceMinor: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-        take: MAX_SEARCH_CANDIDATES,
-      })) as OfferWithRelations[];
+        })) as OfferWithRelations[];
 
-      allMatchingOffers.sort((a, b) => {
-        const scoreA = sellerScores.get(a.sellerId) ?? 0;
-        const scoreB = sellerScores.get(b.sellerId) ?? 0;
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        if (a.priceMinor !== b.priceMinor) return a.priceMinor < b.priceMinor ? -1 : 1;
-        return a.id.localeCompare(b.id);
-      });
+        const byId = new Map(hydratedOffers.map((o) => [o.id, o]));
+        const orderedOffers = pageIds.flatMap((id) => {
+          const o = byId.get(id);
+          return o ? [o] : [];
+        });
 
-      const total = allMatchingOffers.length;
-      const pageOffers = allMatchingOffers.slice(offset, offset + limit);
-      const nextCursor = rankedNextCursor(total - offset, limit, offset);
-
-      const serialized = await Promise.all(pageOffers.map((o) => this.serialize(o)));
-      return {
-        items: serialized,
-        total,
-        ...(nextCursor ? { nextCursor } : {}),
-      };
+        const nextCursor = rankedNextCursor(total - offset, limit, offset);
+        const serialized = await Promise.all(orderedOffers.map((o) => this.serialize(o)));
+        return {
+          items: serialized,
+          total,
+          ...(nextCursor ? { nextCursor } : {}),
+        };
+      }
     }
 
     const total = await this.prisma.offer.count({ where });
