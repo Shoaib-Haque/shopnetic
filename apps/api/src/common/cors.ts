@@ -29,8 +29,9 @@ export function buildCorsOriginMatcher(
   }
 
   const isDev = env.NODE_ENV === 'development';
-  const devOriginRegex =
-    /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/;
+  const localhostRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+  const lanRegex =
+    /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/;
 
   return (origin, callback) => {
     // Direct server-to-server or curl calls without Origin header are allowed
@@ -40,7 +41,10 @@ export function buildCorsOriginMatcher(
     if (allowed.has(origin)) {
       return callback(null, true);
     }
-    if (isDev && devOriginRegex.test(origin)) {
+    if (isDev && localhostRegex.test(origin)) {
+      return callback(null, true);
+    }
+    if (isDev && env.CORS_ALLOW_LAN_IN_DEV && lanRegex.test(origin)) {
       return callback(null, true);
     }
     return callback(null, false);

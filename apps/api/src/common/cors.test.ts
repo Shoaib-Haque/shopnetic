@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCorsOriginMatcher } from './cors.js';
-import type { ApiEnv } from '../config/env.js';
+import { loadApiEnv, type ApiEnv } from '../config/env.js';
 
 const baseEnv: ApiEnv = {
   NODE_ENV: 'development',
@@ -20,6 +20,7 @@ const baseEnv: ApiEnv = {
   ADMIN_WEB_URL: 'http://localhost:3002',
   ADMIN_BASE_PATH: 'x7f2k9t3m1qp',
   CORS_ALLOWED_ORIGINS: 'http://custom-preview.local:3000,http://preview.shopnetic.internal',
+  CORS_ALLOW_LAN_IN_DEV: false,
   PASSWORD_BREACH_CHECK: false,
   DEV_AUTH_RELAXED: false,
   DEV_RATE_LIMIT_DISABLED: false,
@@ -58,10 +59,23 @@ describe('buildCorsOriginMatcher', () => {
     expect(checkOrigin(matcher, 'http://preview.shopnetic.internal')).toBe(true);
   });
 
-  it('allows LAN and localhost origins in development mode', () => {
+  it('allows localhost in dev mode, but blocks unlisted LAN origins by default', () => {
     const matcher = buildCorsOriginMatcher(baseEnv);
+    expect(checkOrigin(matcher, 'http://localhost:3000')).toBe(true);
+    expect(checkOrigin(matcher, 'http://127.0.0.1:3002')).toBe(true);
+    // Arbitrary unconfigured LAN origins blocked by default
+    expect(checkOrigin(matcher, 'http://192.168.68.126:3012')).toBe(false);
+    expect(checkOrigin(matcher, 'http://10.0.1.50:4000')).toBe(false);
+    expect(checkOrigin(matcher, 'https://evil-attacker.com')).toBe(false);
+  });
+
+  it('allows LAN origins in dev mode only when CORS_ALLOW_LAN_IN_DEV is explicitly true', () => {
+    const lanDevEnv: ApiEnv = {
+      ...baseEnv,
+      CORS_ALLOW_LAN_IN_DEV: true,
+    };
+    const matcher = buildCorsOriginMatcher(lanDevEnv);
     expect(checkOrigin(matcher, 'http://192.168.68.126:3012')).toBe(true);
-    expect(checkOrigin(matcher, 'http://127.0.0.1:3012')).toBe(true);
     expect(checkOrigin(matcher, 'http://10.0.1.50:4000')).toBe(true);
     expect(checkOrigin(matcher, 'https://evil-attacker.com')).toBe(false);
   });
@@ -73,6 +87,7 @@ describe('buildCorsOriginMatcher', () => {
       APP_WEB_URL: 'https://shopnetic.com',
       ADMIN_WEB_URL: 'https://admin.shopnetic.com',
       CORS_ALLOWED_ORIGINS: 'https://partner.shopnetic.com',
+      CORS_ALLOW_LAN_IN_DEV: false,
     };
     const matcher = buildCorsOriginMatcher(prodEnv);
 
@@ -84,5 +99,28 @@ describe('buildCorsOriginMatcher', () => {
     expect(checkOrigin(matcher, 'http://192.168.68.126:3012')).toBe(false);
     expect(checkOrigin(matcher, 'http://localhost:3000')).toBe(false);
     expect(checkOrigin(matcher, 'https://evil-attacker.com')).toBe(false);
+  });
+
+  it('rejects CORS_ALLOW_LAN_IN_DEV in production boot check', () => {
+    expect(() =>
+      loadApiEnv({
+        NODE_ENV: 'production',
+        PORT: '4000',
+        APP_VERSION: '1.0.0',
+        DATABASE_URL: 'postgresql://prod:prod@localhost:5432/prod',
+        REDIS_URL: 'redis://localhost:6379',
+        JWT_ISSUER: 'https://shopnetic.com',
+        JWT_ACCESS_TTL_SECONDS: '900',
+        AUTH_REFRESH_TTL_DAYS: '30',
+        AUTH_STAFF_REFRESH_TTL_HOURS: '8',
+        VERIFICATION_TTL_HOURS: '24',
+        PASSWORD_RESET_TTL_HOURS: '1',
+        TOTP_ISSUER: 'Shopnetic',
+        STORAGE_PROVIDER: 's3',
+        STORAGE_BUCKET: 'media',
+        STORAGE_REGION: 'us-east-1',
+        CORS_ALLOW_LAN_IN_DEV: 'true',
+      }),
+    ).toThrow('CORS_ALLOW_LAN_IN_DEV must not be set in production');
   });
 });

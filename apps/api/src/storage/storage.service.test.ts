@@ -21,6 +21,7 @@ const mockEnv: ApiEnv = {
   ADMIN_WEB_URL: 'http://localhost:3002',
   ADMIN_BASE_PATH: 'x7f2k9t3m1qp',
   CORS_ALLOWED_ORIGINS: '',
+  CORS_ALLOW_LAN_IN_DEV: false,
   PASSWORD_BREACH_CHECK: false,
   DEV_AUTH_RELAXED: false,
   DEV_RATE_LIMIT_DISABLED: false,

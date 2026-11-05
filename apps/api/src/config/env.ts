@@ -47,6 +47,11 @@ const envSchema = z.object({
   ADMIN_BASE_PATH: z.string().default('x7f2k9t3m1qp'),
   // CORS Allowed Origins (comma-separated, in addition to APP_WEB_URL and ADMIN_WEB_URL)
   CORS_ALLOWED_ORIGINS: z.string().default(''),
+  // DEV ONLY — allow private RFC-1918 LAN origins (192.168.x.x, 10.x.x.x) for storage upload. Off by default.
+  CORS_ALLOW_LAN_IN_DEV: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 
   // Have I Been Pwned k-anonymity check on new passwords.
   PASSWORD_BREACH_CHECK: z
@@ -125,6 +130,9 @@ export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_FAULT_STATUS > 0) {
     throw new Error('DEV_FAULT_STATUS must not be set in production');
+  }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.CORS_ALLOW_LAN_IN_DEV) {
+    throw new Error('CORS_ALLOW_LAN_IN_DEV must not be set in production');
   }
   if (
     parsed.data.NODE_ENV === 'production' &&
