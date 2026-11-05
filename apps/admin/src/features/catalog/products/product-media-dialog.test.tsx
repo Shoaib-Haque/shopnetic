@@ -1494,6 +1494,13 @@ describe('ProductMediaDialog', () => {
     fireEvent.click(zoom4x);
     expect(screen.getByText('4x Zoom:')).toBeInTheDocument();
 
+    // Verify mode switcher toggles between Side preview and Loupe
+    const loupeBtn = screen.getByRole('button', { name: 'Loupe' });
+    fireEvent.click(loupeBtn);
+    const sidePreviewBtn = screen.getByRole('button', { name: 'Side preview' });
+    fireEvent.click(sidePreviewBtn);
+    expect(screen.getByText('Magnifier Preview')).toBeInTheDocument();
+
     // Navigate to next image
     const nextBtn = screen.getByRole('button', { name: 'Next image' });
     fireEvent.click(nextBtn);

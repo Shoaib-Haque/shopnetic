@@ -17,6 +17,7 @@ export interface ImageMagnifierProps {
   zoomLevel?: number;
   lensSize?: number;
   mode?: 'flyout' | 'loupe';
+  flyoutPlacement?: 'auto' | 'right' | 'left' | 'inside';
   className?: string;
   flyoutClassName?: string;
   onLoad?: () => void;
@@ -29,6 +30,7 @@ export function ImageMagnifier({
   zoomLevel = 2.5,
   lensSize = 120,
   mode = 'flyout',
+  flyoutPlacement = 'auto',
   className,
   flyoutClassName,
   onLoad,
@@ -43,6 +45,7 @@ export function ImageMagnifier({
     width: 0,
     height: 0,
   });
+  const [computedPlacement, setComputedPlacement] = useState<'right' | 'left' | 'inside'>('right');
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
@@ -54,12 +57,43 @@ export function ImageMagnifier({
     return () => mq.removeEventListener?.('change', handler);
   }, []);
 
+  const updatePlacement = useCallback(() => {
+    if (flyoutPlacement !== 'auto') {
+      setComputedPlacement(flyoutPlacement);
+      return;
+    }
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    const boundary =
+      containerRef.current.closest('[role="dialog"]') ??
+      containerRef.current.closest('[data-scroll-container]') ??
+      document.body;
+    const boundaryRect = boundary.getBoundingClientRect();
+
+    const flyoutWidth = window.innerWidth >= 768 ? 384 : 320;
+    const gap = 16;
+
+    const spaceRight = boundaryRect.right - rect.right - gap;
+    const spaceLeft = rect.left - boundaryRect.left - gap;
+
+    if (spaceRight >= flyoutWidth) {
+      setComputedPlacement('right');
+    } else if (spaceLeft >= flyoutWidth) {
+      setComputedPlacement('left');
+    } else {
+      setComputedPlacement('inside');
+    }
+  }, [flyoutPlacement]);
+
   const updateContainerSize = useCallback(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       setContainerSize({ width: rect.width, height: rect.height });
+      updatePlacement();
     }
-  }, []);
+  }, [updatePlacement]);
 
   useEffect(() => {
     updateContainerSize();
@@ -276,10 +310,15 @@ export function ImageMagnifier({
             backgroundSize: `${zoomLevel * 100}%`,
           }}
           className={cn(
-            'absolute z-30 pointer-events-none',
-            'w-72 h-72 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-md border-2 border-border shadow-2xl bg-card overflow-hidden',
-            // Positioned to the right of image, or aligned inside bounds on tight viewports
-            'left-full top-0 ml-4 max-xl:left-auto max-xl:right-2 max-xl:top-2',
+            'absolute z-30 pointer-events-none rounded-md border-2 border-border shadow-2xl bg-card overflow-hidden',
+            computedPlacement === 'right' &&
+              'w-72 h-72 sm:w-80 sm:h-80 md:w-96 md:h-96 left-full top-0 ml-4',
+            computedPlacement === 'left' &&
+              'w-72 h-72 sm:w-80 sm:h-80 md:w-96 md:h-96 right-full top-0 mr-4',
+            computedPlacement === 'inside' && [
+              'w-64 h-64 sm:w-72 sm:h-72 max-w-[80%] max-h-[80%] top-2',
+              coords.x > 50 ? 'left-2' : 'right-2',
+            ],
             !reducedMotion &&
               'motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150',
             flyoutClassName,

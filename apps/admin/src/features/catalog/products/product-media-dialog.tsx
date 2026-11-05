@@ -1069,6 +1069,7 @@ function ImageInspectionModal({
 }: ImageInspectionModalProps) {
   const t = useTranslations('catalog');
   const [zoomLevel, setZoomLevel] = useState<number>(2.5);
+  const [magnifierMode, setMagnifierMode] = useState<'flyout' | 'loupe'>('flyout');
   const [loadError, setLoadError] = useState(false);
   const modalBodyRef = useRef<HTMLDivElement>(null);
 
@@ -1117,7 +1118,7 @@ function ImageInspectionModal({
 
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
-      <ModalContent className="max-w-4xl max-h-[92vh] flex flex-col p-0 overflow-hidden">
+      <ModalContent className="max-w-5xl xl:max-w-6xl w-[96vw] max-h-[92vh] flex flex-col p-0 overflow-hidden">
         <ModalHeader className="p-4 pr-12 border-b border-border shrink-0 flex flex-row items-center justify-between">
           <div className="flex flex-col min-w-0 pr-4">
             <ModalTitle className="truncate pr-4">{title}</ModalTitle>
@@ -1200,7 +1201,7 @@ function ImageInspectionModal({
           </div>
         </ModalHeader>
 
-        <ModalBody className="p-4 bg-muted/10 flex items-center justify-center min-h-[360px] flex-1 overflow-auto relative">
+        <ModalBody className="p-4 sm:p-6 bg-muted/10 flex items-center justify-center min-h-[420px] flex-1 overflow-hidden relative">
           <div ref={modalBodyRef} className="size-full flex items-center justify-center">
             {loadError ? (
               <div
@@ -1214,13 +1215,38 @@ function ImageInspectionModal({
                 </p>
               </div>
             ) : (
-              <ImageMagnifier
-                src={resolvedUrl}
-                alt={title}
-                zoomLevel={zoomLevel}
-                mode="flyout"
-                onError={() => setLoadError(true)}
-              />
+              <div className="flex flex-col lg:flex-row items-center justify-center gap-6 max-w-full">
+                <ImageMagnifier
+                  src={resolvedUrl}
+                  alt={title}
+                  zoomLevel={zoomLevel}
+                  mode={magnifierMode}
+                  onError={() => setLoadError(true)}
+                />
+
+                {/* Desktop inspection guide placeholder (only shown in flyout mode on wide screens) */}
+                {magnifierMode === 'flyout' && (
+                  <div
+                    aria-hidden="true"
+                    className="hidden lg:flex flex-col items-center justify-center text-center p-6 w-80 h-80 xl:w-96 xl:h-96 rounded-md border border-dashed border-border/80 bg-background/50 text-muted-foreground gap-3 shrink-0 pointer-events-none select-none"
+                  >
+                    <div className="size-12 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                      <ZoomIn className="size-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                        {t('products.media.magnifierGuideTitle')}
+                      </p>
+                      <p className="text-xs text-muted-foreground max-w-[240px]">
+                        {t('products.media.magnifierGuideDesc', { level: zoomLevel })}
+                      </p>
+                    </div>
+                    <p className="text-[11px] font-mono text-muted-foreground/80 mt-1">
+                      {asset.width && asset.height ? `${asset.width}×${asset.height} px` : ''}
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </ModalBody>
@@ -1246,6 +1272,36 @@ function ImageInspectionModal({
                   {level}x
                 </button>
               ))}
+            </div>
+
+            <div className="flex items-center gap-1.5 border-l border-border pl-3">
+              <span className="text-xs text-muted-foreground mr-1">
+                {t('products.media.magnifierMode')}:
+              </span>
+              <button
+                type="button"
+                onClick={() => setMagnifierMode('flyout')}
+                className={cn(
+                  'px-2 py-0.5 rounded text-xs font-medium transition-colors',
+                  magnifierMode === 'flyout'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted hover:bg-muted/80 text-foreground',
+                )}
+              >
+                {t('products.media.magnifierModeFlyout')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMagnifierMode('loupe')}
+                className={cn(
+                  'px-2 py-0.5 rounded text-xs font-medium transition-colors',
+                  magnifierMode === 'loupe'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted hover:bg-muted/80 text-foreground',
+                )}
+              >
+                {t('products.media.magnifierModeLoupe')}
+              </button>
             </div>
 
             <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground border-l border-border pl-3">

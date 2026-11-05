@@ -159,6 +159,53 @@ describe('ImageMagnifier', () => {
     expect(screen.queryByTestId('image-magnifier-lens')).not.toBeInTheDocument();
   });
 
+  it('supports explicit flyoutPlacement ("left" and "inside" opposite to cursor)', () => {
+    const { rerender } = render(
+      <ImageMagnifier
+        src="http://localhost:4000/uploads/product/sample.jpg"
+        alt="Sample organic tee"
+        mode="flyout"
+        flyoutPlacement="left"
+      />,
+    );
+
+    const container = screen.getByTestId('image-magnifier-container');
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      top: 100,
+      width: 400,
+      height: 400,
+      right: 500,
+      bottom: 500,
+      x: 100,
+      y: 100,
+      toJSON: () => {},
+    });
+
+    fireEvent.mouseEnter(container, { clientX: 200, clientY: 200 });
+    const flyoutLeft = screen.getByTestId('image-magnifier-flyout');
+    expect(flyoutLeft.className).toContain('right-full');
+
+    // Rerender with "inside" placement — when cursor on right half (clientX=400 -> x=75%), flyout pins to left-2
+    rerender(
+      <ImageMagnifier
+        src="http://localhost:4000/uploads/product/sample.jpg"
+        alt="Sample organic tee"
+        mode="flyout"
+        flyoutPlacement="inside"
+      />,
+    );
+
+    fireEvent.mouseMove(container, { clientX: 400, clientY: 200 });
+    const flyoutInsideLeft = screen.getByTestId('image-magnifier-flyout');
+    expect(flyoutInsideLeft.className).toContain('left-2');
+
+    // Move cursor to left half (clientX=150 -> x=12.5%), flyout flips to right-2
+    fireEvent.mouseMove(container, { clientX: 150, clientY: 200 });
+    const flyoutInsideRight = screen.getByTestId('image-magnifier-flyout');
+    expect(flyoutInsideRight.className).toContain('right-2');
+  });
+
   it('handles keyboard navigation with arrow keys and stops propagation on escape', () => {
     render(
       <ImageMagnifier
