@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { probeVideoDuration } from './video-probe.js';
+import { probeVideoDuration, probeVideoStructure } from './video-probe.js';
 
-describe('probeVideoDuration (workers)', () => {
+describe('worker probeVideoStructure & probeVideoDuration', () => {
   const dir = resolve(process.cwd(), '../../tmp/catalog/media');
   const fixturePath = resolve(dir, 'test-5s.mp4');
 
-  it('probes real video duration accurately', async () => {
+  it('probes real video duration and structure accurately', async () => {
     if (!existsSync(fixturePath)) {
       mkdirSync(dir, { recursive: true });
       execFileSync('ffmpeg', [
@@ -24,6 +24,34 @@ describe('probeVideoDuration (workers)', () => {
     }
     const duration = await probeVideoDuration(fixturePath);
     expect(duration).toBe(5);
+
+    const structure = await probeVideoStructure(fixturePath);
+    expect(structure.durationS).toBe(5);
+    expect(structure.width).toBe(320);
+    expect(structure.height).toBe(240);
+  });
+
+  it('rejects on truncated / padded video with valid ftyp header but no video data (oversized_mock)', async () => {
+    const truncatedPath = resolve(dir, 'oversized_mock_worker.mp4');
+    mkdirSync(dir, { recursive: true });
+    // Valid ftyp mp4 box header followed by null byte padding
+    const mockBuffer = Buffer.concat([
+      Buffer.from([
+        0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00,
+        0x00,
+      ]),
+      Buffer.alloc(1024),
+    ]);
+    writeFileSync(truncatedPath, mockBuffer);
+
+    try {
+      await expect(probeVideoStructure(truncatedPath)).rejects.toThrow();
+      await expect(probeVideoDuration(truncatedPath)).rejects.toThrow();
+    } finally {
+      if (existsSync(truncatedPath)) {
+        unlinkSync(truncatedPath);
+      }
+    }
   });
 
   it('rejects on non-existent or invalid file', async () => {

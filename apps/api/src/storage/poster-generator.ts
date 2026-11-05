@@ -8,6 +8,10 @@ const execFileAsync = promisify(execFile);
  * Extracts 3 candidate thumbnail frames from a video file at 25%, 50%, and 75%
  * of its probed duration using native ffmpeg.
  *
+ * Security:
+ * - Restricts demuxer protocols strictly to `file` via `-protocol_whitelist file`.
+ * - Enforces bounded execution timeout (15 seconds) to prevent hanging on malformed inputs.
+ *
  * @param videoFilePath - Absolute path to local video file.
  * @param durationS - Duration of the video in seconds.
  * @param outputDir - Directory to store generated candidate images.
@@ -27,20 +31,26 @@ export async function generatePosterCandidates(
   for (let i = 0; i < timestamps.length; i++) {
     const timestamp = timestamps[i]!;
     const outPath = resolve(outputDir, `${baseName}-poster-cand-${i + 1}.jpg`);
-    await execFileAsync('ffmpeg', [
-      '-y',
-      '-ss',
-      timestamp.toFixed(2),
-      '-i',
-      videoFilePath,
-      '-frames:v',
-      '1',
-      '-update',
-      '1',
-      '-q:v',
-      '2',
-      outPath,
-    ]);
+    await execFileAsync(
+      'ffmpeg',
+      [
+        '-y',
+        '-protocol_whitelist',
+        'file',
+        '-ss',
+        timestamp.toFixed(2),
+        '-i',
+        videoFilePath,
+        '-frames:v',
+        '1',
+        '-update',
+        '1',
+        '-q:v',
+        '2',
+        outPath,
+      ],
+      { timeout: 15_000, maxBuffer: 10 * 1024 * 1024 },
+    );
     outputPaths.push(outPath);
   }
 
