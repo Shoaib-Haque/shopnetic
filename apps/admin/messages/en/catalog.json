@@ -804,7 +804,10 @@
           "cancel": "Cancel",
           "err": {
             "fileKeyRequired": "File key or URL is required.",
+            "fileKeyInvalid": "Must be a valid URL (http/https) or storage key path (no spaces).",
             "posterKeyRequired": "Videos require a poster thumbnail URL for gallery preview.",
+            "posterKeyInvalid": "Must be a valid URL (http/https) or storage key path (no spaces).",
+            "altTooLong": "Alt text must be 200 characters or fewer.",
             "durationInvalid": "Duration must be a positive number of seconds (1–86,400)."
           }
         }

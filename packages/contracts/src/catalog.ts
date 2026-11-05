@@ -726,7 +726,24 @@ export function deriveVariantLeadMediaMap(assets: ReadonlyArray<MediaAsset>): Ma
   return leadMap;
 }
 
-const objectKeySchema = z.string().trim().min(1).max(1024);
+export const objectKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1024)
+  .refine(
+    (v) => {
+      if (/\s/.test(v)) return false;
+      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(v)) {
+        if (/^https?:\/\//i.test(v)) {
+          return z.string().url().safeParse(v).success;
+        }
+        return /^(s3|gs|minio):\/\/.+$/i.test(v);
+      }
+      return /^[a-zA-Z0-9_\-./@~+%=]+$/.test(v);
+    },
+    { message: 'errors.field.invalid_url_or_key' },
+  );
 const pixelSchema = z.number().int().min(1).max(100_000);
 
 export const createMediaRequestSchema = z.object({

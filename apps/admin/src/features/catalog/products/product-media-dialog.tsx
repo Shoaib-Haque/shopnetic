@@ -83,12 +83,39 @@ interface MediaFormModalProps {
   onConflict?: () => void;
 }
 
+const isValidUrlOrStorageKey = (v: string): boolean => {
+  if (/\s/.test(v)) return false;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(v)) {
+    if (/^https?:\/\//i.test(v)) {
+      return z.string().url().safeParse(v).success;
+    }
+    return /^(s3|gs|minio):\/\/.+$/i.test(v);
+  }
+  return /^[a-zA-Z0-9_\-./@~+%=]+$/.test(v);
+};
+
 const mediaFormSchema = z
   .object({
     kind: z.enum(['image', 'video']),
-    fileKey: z.string().trim().min(1, 'products.media.form.err.fileKeyRequired'),
-    posterKey: z.string().trim().optional().or(z.literal('')),
-    alt: z.string().trim().optional().or(z.literal('')),
+    fileKey: z
+      .string()
+      .trim()
+      .min(1, 'products.media.form.err.fileKeyRequired')
+      .max(1024, 'products.media.form.err.fileKeyInvalid')
+      .refine(isValidUrlOrStorageKey, 'products.media.form.err.fileKeyInvalid'),
+    posterKey: z
+      .string()
+      .trim()
+      .max(1024, 'products.media.form.err.posterKeyInvalid')
+      .refine((v) => !v || isValidUrlOrStorageKey(v), 'products.media.form.err.posterKeyInvalid')
+      .optional()
+      .or(z.literal('')),
+    alt: z
+      .string()
+      .trim()
+      .max(200, 'products.media.form.err.altTooLong')
+      .optional()
+      .or(z.literal('')),
     durationS: z
       .string()
       .trim()
@@ -151,6 +178,7 @@ function MediaFormModal({
   });
 
   const selectedKind = watch('kind');
+  const watchAlt = watch('alt') ?? '';
 
   function fieldError(field: Path<MediaFormValues>): string | undefined {
     const err = errors[field];
@@ -339,7 +367,22 @@ function MediaFormModal({
 
                 {/* Alt Text */}
                 <Field
-                  label={t('products.media.form.alt')}
+                  label={
+                    <span className="flex items-center justify-between w-full">
+                      <span>{t('products.media.form.alt')}</span>
+                      <span
+                        className={`text-[11px] tabular-nums font-normal ${
+                          watchAlt.length > 200
+                            ? 'font-medium text-destructive'
+                            : watchAlt.length > 180
+                              ? 'font-medium text-amber-600 dark:text-amber-400'
+                              : 'text-muted-foreground'
+                        }`}
+                      >
+                        {watchAlt.length}/200
+                      </span>
+                    </span>
+                  }
                   htmlFor="media-alt"
                   error={fieldError('alt')}
                 >
@@ -349,6 +392,7 @@ function MediaFormModal({
                     placeholder={t('products.media.form.altPlaceholder')}
                     invalid={Boolean(errors.alt)}
                     disabled={readOnly}
+                    maxLength={200}
                   />
                 </Field>
 

@@ -220,6 +220,28 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
+  it('rejects malformed fileKey formats', async () => {
+    await expect(
+      media.create(
+        'product',
+        productId,
+        { kind: 'image', fileKey: 'bad file key with spaces.jpg' },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+
+    await expect(
+      media.create(
+        'product',
+        productId,
+        { kind: 'image', fileKey: 'http://not a valid url' },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('updates metadata + status', async () => {
     const a = await media.create(
       'product',

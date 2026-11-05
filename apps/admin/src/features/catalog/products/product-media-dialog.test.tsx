@@ -330,6 +330,84 @@ describe('ProductMediaDialog', () => {
     });
   });
 
+  it('validates malformed fileKey and posterKey, rejecting spaces and invalid formats', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const fileKeyInput = screen.getByPlaceholderText(/products\/antigravity-tee-navy\.jpg/i);
+    const submitBtn = screen.getByRole('button', { name: 'Add Media' });
+
+    // Enter a malformed fileKey with spaces
+    fireEvent.change(fileKeyInput, { target: { value: 'not a valid url or storage key.jpg' } });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Must be a valid URL (http/https) or storage key path (no spaces).'),
+      ).toBeInTheDocument();
+    });
+    expect(mockedCreateProductMedia).not.toHaveBeenCalled();
+
+    // Enter valid URL format and ensure error clears
+    fireEvent.change(fileKeyInput, {
+      target: { value: 'https://cdn.example.com/products/valid.jpg' },
+    });
+    mockedCreateProductMedia.mockResolvedValueOnce({
+      id: 'media_url',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'image',
+      fileKey: 'https://cdn.example.com/products/valid.jpg',
+      posterKey: null,
+      width: null,
+      height: null,
+      durationS: null,
+      blurhash: null,
+      alt: null,
+      position: 0,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockedCreateProductMedia).toHaveBeenCalledWith(
+        'prod_1',
+        expect.objectContaining({
+          fileKey: 'https://cdn.example.com/products/valid.jpg',
+        }),
+      );
+    });
+  });
+
+  it('displays live alt text counter and enforces 200 character limit', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    // Initial counter is 0/200
+    expect(screen.getByText('0/200')).toBeInTheDocument();
+
+    const altInput = screen.getByPlaceholderText(/Descriptive text for screen readers/i);
+    fireEvent.change(altInput, { target: { value: 'Short description' } });
+
+    // Counter updates to 17/200
+    expect(screen.getByText('17/200')).toBeInTheDocument();
+
+    // Max length attribute is set to 200
+    expect(altInput).toHaveAttribute('maxLength', '200');
+  });
+
   it('handles reordering moving asset left/right', async () => {
     mockedReorderProductMedia.mockResolvedValue([sampleAssets[1]!, sampleAssets[0]!]);
 
