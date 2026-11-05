@@ -5,6 +5,7 @@ import { relative, resolve, sep } from 'node:path';
 import { S3Client, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import type { Job } from 'bullmq';
 import type { MediaSweepJob } from '@shopnetic/events';
+import { extractVariantKeys } from '@shopnetic/contracts';
 import { createLogger } from '@shopnetic/observability';
 import type { WorkersEnv } from '../config/env.js';
 
@@ -159,10 +160,26 @@ export interface MediaAssetDbClient {
   mediaAsset: {
     findMany(args: {
       where: {
-        OR: Array<{ fileKey: { in: string[] } } | { posterKey: { in: string[] } }>;
+        OR: Array<
+          | { fileKey: { in: string[] } }
+          | { posterKey: { in: string[] } }
+          | { ownerId?: { in: string[] } }
+        >;
       };
-      select: { fileKey: true; posterKey: true };
-    }): Promise<Array<{ fileKey: string; posterKey: string | null }>>;
+      select: {
+        fileKey: true;
+        posterKey: true;
+        posterCandidates?: true;
+        variants?: true;
+      };
+    }): Promise<
+      Array<{
+        fileKey: string;
+        posterKey: string | null;
+        posterCandidates?: string[];
+        variants?: unknown;
+      }>
+    >;
   };
 }
 
@@ -188,16 +205,35 @@ export function processMediaCleanupJob(driver: StorageCleanerDriver, prisma: Med
 
     for (let i = 0; i < candidateKeys.length; i += chunkSize) {
       const batch = candidateKeys.slice(i, i + chunkSize);
+      const ownerIds = batch
+        .map((k) => k.split('/')[1])
+        .filter((id): id is string => typeof id === 'string' && /^[0-9a-fA-F-]{36}$/.test(id));
+
       const matches = await prisma.mediaAsset.findMany({
         where: {
-          OR: [{ fileKey: { in: batch } }, { posterKey: { in: batch } }],
+          OR: [
+            { fileKey: { in: batch } },
+            { posterKey: { in: batch } },
+            ...(ownerIds.length > 0 ? [{ ownerId: { in: ownerIds } }] : []),
+          ],
         },
-        select: { fileKey: true, posterKey: true },
+        select: {
+          fileKey: true,
+          posterKey: true,
+          posterCandidates: true,
+          variants: true,
+        },
       });
       for (const m of matches) {
         referencedKeys.add(m.fileKey);
         if (m.posterKey) {
           referencedKeys.add(m.posterKey);
+        }
+        for (const cand of m.posterCandidates ?? []) {
+          referencedKeys.add(cand);
+        }
+        for (const vk of extractVariantKeys(m.variants)) {
+          referencedKeys.add(vk);
         }
       }
     }

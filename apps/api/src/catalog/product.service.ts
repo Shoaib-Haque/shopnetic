@@ -3,6 +3,7 @@ import { can, Permission, type Actor } from '@shopnetic/auth';
 import {
   docToPlainText,
   plainTextToDoc,
+  extractVariantKeys,
   type CreateProductRequest,
   type Product,
   type ProductDescription,
@@ -353,7 +354,13 @@ export class ProductService {
     }
     const currentSpec = (current.spec as Record<string, unknown>) ?? {};
     const deleteTime = new Date();
-    let productMedia: Array<{ id: string; fileKey: string; posterKey: string | null }> = [];
+    let productMedia: Array<{
+      id: string;
+      fileKey: string;
+      posterKey: string | null;
+      posterCandidates?: string[];
+      variants?: unknown;
+    }> = [];
 
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({
@@ -368,7 +375,13 @@ export class ProductService {
 
       productMedia = await tx.mediaAsset.findMany({
         where: { ownerType: 'product', ownerId: id },
-        select: { id: true, fileKey: true, posterKey: true },
+        select: {
+          id: true,
+          fileKey: true,
+          posterKey: true,
+          posterCandidates: true,
+          variants: true,
+        },
       });
       if (productMedia.length > 0) {
         await tx.mediaAsset.deleteMany({
@@ -425,12 +438,13 @@ export class ProductService {
     });
 
     if (this.storage && productMedia.length > 0) {
-      await Promise.allSettled(
-        productMedia.flatMap((m) => [
-          this.storage!.deleteFile(m.fileKey),
-          m.posterKey ? this.storage!.deleteFile(m.posterKey) : Promise.resolve(),
-        ]),
-      );
+      const allKeys = productMedia.flatMap((m) => [
+        m.fileKey,
+        ...(m.posterKey ? [m.posterKey] : []),
+        ...(m.posterCandidates ?? []),
+        ...extractVariantKeys(m.variants),
+      ]);
+      await Promise.allSettled(allKeys.map((k) => this.storage!.deleteFile(k)));
     }
 
     const view = toView({ ...current, deletedAt: new Date(), status: 'archived' });

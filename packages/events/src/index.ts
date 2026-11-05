@@ -70,6 +70,7 @@ export const QueueName = {
   MAIL: 'mail',
   MEDIA_CLEANUP: 'media-cleanup',
   MEDIA_VALIDATION: 'media-validation',
+  IMAGE_VARIANTS: 'image-variants',
 } as const;
 
 export type QueueName = (typeof QueueName)[keyof typeof QueueName];
@@ -82,6 +83,11 @@ export interface MediaValidationJob {
   mediaAssetId: string;
   fileKey: string;
   expectedKind: 'image' | 'video';
+}
+
+export interface ImageVariantJob {
+  mediaAssetId: string;
+  fileKey: string;
 }
 
 /** Rendered and ready to send — the worker knows nothing about templates or

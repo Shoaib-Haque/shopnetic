@@ -13,6 +13,7 @@ import {
   createProductMedia,
   deleteMedia,
   deleteMediaTag,
+  generatePosterCandidatesApi,
   listProductMedia,
   listProductOptions,
   putMediaTag,
@@ -21,7 +22,11 @@ import {
   updateMedia,
   uploadFileToPresignedUrl,
 } from './api';
-import { ProductMediaDialog, getFriendlyMediaLabel } from './product-media-dialog';
+import {
+  ProductMediaDialog,
+  getFriendlyMediaLabel,
+  readVideoDuration,
+} from './product-media-dialog';
 
 vi.mock('./api', async () => {
   const actual = await vi.importActual<typeof import('./api')>('./api');
@@ -37,6 +42,7 @@ vi.mock('./api', async () => {
     reorderProductMedia: vi.fn(),
     requestUploadUrl: vi.fn(),
     uploadFileToPresignedUrl: vi.fn(),
+    generatePosterCandidatesApi: vi.fn(),
   };
 });
 
@@ -54,6 +60,7 @@ const mockedDeleteMediaTag = vi.mocked(deleteMediaTag);
 const mockedReorderProductMedia = vi.mocked(reorderProductMedia);
 const mockedRequestUploadUrl = vi.mocked(requestUploadUrl);
 const mockedUploadFileToPresignedUrl = vi.mocked(uploadFileToPresignedUrl);
+const mockedGeneratePosterCandidatesApi = vi.mocked(generatePosterCandidatesApi);
 const mockedListOptionTypesPage = vi.mocked(listOptionTypesPage);
 
 const sampleProduct: Product = {
@@ -110,6 +117,8 @@ const sampleAssets: MediaAsset[] = [
     kind: 'image',
     fileKey: 'products/tee-front.jpg',
     posterKey: null,
+    posterCandidates: [],
+    posterCandidateUrls: [],
     width: 800,
     height: 800,
     durationS: null,
@@ -128,6 +137,8 @@ const sampleAssets: MediaAsset[] = [
     kind: 'image',
     fileKey: 'products/tee-navy.jpg',
     posterKey: null,
+    posterCandidates: [],
+    posterCandidateUrls: [],
     width: 800,
     height: 800,
     durationS: null,
@@ -157,6 +168,7 @@ describe('ProductMediaDialog', () => {
     });
     mockedListProductOptions.mockResolvedValue(sampleProductOptions);
     mockedListProductMedia.mockResolvedValue(sampleAssets);
+    mockedGeneratePosterCandidatesApi.mockResolvedValue({ candidates: [] });
   });
 
   afterEach(() => {
@@ -199,6 +211,8 @@ describe('ProductMediaDialog', () => {
       kind: 'image',
       fileKey: 'products/tee-back.jpg',
       posterKey: null,
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: null,
       height: null,
       durationS: null,
@@ -309,6 +323,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/video.mp4',
       posterKey: 'products/poster.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: null,
       height: null,
       durationS: 120,
@@ -369,6 +385,8 @@ describe('ProductMediaDialog', () => {
       kind: 'image',
       fileKey: 'https://cdn.example.com/products/valid.jpg',
       posterKey: null,
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: null,
       height: null,
       durationS: null,
@@ -460,6 +478,8 @@ describe('ProductMediaDialog', () => {
       kind: 'image',
       fileKey: 'product/prod_1/12345-tee-navy.jpg',
       posterKey: null,
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: null,
       height: null,
       durationS: null,
@@ -547,6 +567,163 @@ describe('ProductMediaDialog', () => {
       expect(screen.getByText('File exceeds maximum size (50MB).')).toBeInTheDocument();
     });
     expect(mockedRequestUploadUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects video files exceeding 120s duration with localized error', async () => {
+    const origCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation(
+      (tagName: string, options?: ElementCreationOptions) => {
+        const el = origCreateElement(tagName, options);
+        if (tagName.toLowerCase() === 'video') {
+          let _src = '';
+          Object.defineProperty(el, 'src', {
+            get: () => _src,
+            set: (val: string) => {
+              _src = val;
+              Object.defineProperty(el, 'duration', { value: 135, configurable: true });
+              setTimeout(() => {
+                (el as HTMLVideoElement).onloadedmetadata?.(new Event('loadedmetadata'));
+              }, 0);
+            },
+            configurable: true,
+          });
+        }
+        return el;
+      },
+    );
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('media-file-input');
+    const mp4Bytes = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00,
+      0x00,
+    ]);
+    const videoFile = new File([mp4Bytes], 'long-clip.mp4', { type: 'video/mp4' });
+
+    fireEvent.change(fileInput, { target: { files: [videoFile] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'Video duration exceeds the 120-second limit (135s). Please upload a shorter video.',
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(mockedRequestUploadUrl).not.toHaveBeenCalled();
+  });
+
+  it('accepts video files with duration <= 120s and automatically sets durationS field', async () => {
+    const origCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation(
+      (tagName: string, options?: ElementCreationOptions) => {
+        const el = origCreateElement(tagName, options);
+        if (tagName.toLowerCase() === 'video') {
+          let _src = '';
+          Object.defineProperty(el, 'src', {
+            get: () => _src,
+            set: (val: string) => {
+              _src = val;
+              Object.defineProperty(el, 'duration', { value: 45, configurable: true });
+              setTimeout(() => {
+                (el as HTMLVideoElement).onloadedmetadata?.(new Event('loadedmetadata'));
+              }, 0);
+            },
+            configurable: true,
+          });
+        }
+        return el;
+      },
+    );
+
+    mockedRequestUploadUrl.mockResolvedValueOnce({
+      uploadUrl: 'http://localhost:4000/admin/v1/storage/upload?token=test',
+      fileKey: 'product/prod_1/12345-clip.mp4',
+      publicUrl: 'http://localhost:4000/uploads/product/prod_1/12345-clip.mp4',
+    });
+    mockedUploadFileToPresignedUrl.mockResolvedValueOnce();
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('media-file-input');
+    const mp4Bytes = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00,
+      0x00,
+    ]);
+    const videoFile = new File([mp4Bytes], 'valid-clip.mp4', { type: 'video/mp4' });
+
+    fireEvent.change(fileInput, { target: { files: [videoFile] } });
+
+    await waitFor(() => {
+      expect(mockedRequestUploadUrl).toHaveBeenCalled();
+    });
+
+    const durationInput = screen.getByPlaceholderText('e.g. 45');
+    expect(durationInput).toHaveValue(45);
+  });
+
+  describe('readVideoDuration helper', () => {
+    it('resolves duration when metadata loads successfully', async () => {
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, 'createElement').mockImplementation(
+        (tagName: string, options?: ElementCreationOptions) => {
+          const el = origCreateElement(tagName, options);
+          if (tagName.toLowerCase() === 'video') {
+            let _src = '';
+            Object.defineProperty(el, 'src', {
+              get: () => _src,
+              set: (val: string) => {
+                _src = val;
+                Object.defineProperty(el, 'duration', { value: 60, configurable: true });
+                setTimeout(() => {
+                  (el as HTMLVideoElement).onloadedmetadata?.(new Event('loadedmetadata'));
+                }, 0);
+              },
+              configurable: true,
+            });
+          }
+          return el;
+        },
+      );
+
+      const fakeFile = new File(['dummy'], 'test.mp4', { type: 'video/mp4' });
+      const duration = await readVideoDuration(fakeFile);
+      expect(duration).toBe(60);
+    });
+
+    it('rejects when metadata loading encounters error', async () => {
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, 'createElement').mockImplementation(
+        (tagName: string, options?: ElementCreationOptions) => {
+          const el = origCreateElement(tagName, options);
+          if (tagName.toLowerCase() === 'video') {
+            let _src = '';
+            Object.defineProperty(el, 'src', {
+              get: () => _src,
+              set: (val: string) => {
+                _src = val;
+                setTimeout(() => {
+                  (el as HTMLVideoElement).onerror?.(new Event('error'));
+                }, 0);
+              },
+              configurable: true,
+            });
+          }
+          return el;
+        },
+      );
+
+      const fakeFile = new File(['dummy'], 'corrupt.mp4', { type: 'video/mp4' });
+      await expect(readVideoDuration(fakeFile)).rejects.toThrow('Failed to load video metadata');
+    });
   });
 
   it('rejects file upload with invalid magic bytes', async () => {
@@ -793,6 +970,8 @@ describe('ProductMediaDialog', () => {
         kind: 'image',
         fileKey: 'products/cover-front.jpg',
         posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
         width: 800,
         height: 800,
         durationS: null,
@@ -811,6 +990,8 @@ describe('ProductMediaDialog', () => {
         kind: 'image',
         fileKey: 'products/second-front.jpg',
         posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
         width: 800,
         height: 800,
         durationS: null,
@@ -829,6 +1010,8 @@ describe('ProductMediaDialog', () => {
         kind: 'image',
         fileKey: 'products/navy-primary.jpg',
         posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
         width: 800,
         height: 800,
         durationS: null,
@@ -854,6 +1037,8 @@ describe('ProductMediaDialog', () => {
         kind: 'image',
         fileKey: 'products/navy-detail.jpg',
         posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
         width: 800,
         height: 800,
         durationS: null,
@@ -924,6 +1109,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/tee-promo.mp4',
       posterKey: 'products/tee-promo-poster.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 45,
@@ -997,6 +1184,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/invalid-video.mp4',
       posterKey: null,
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: null,
       height: null,
       durationS: null,
@@ -1042,6 +1231,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/video-1.mp4',
       posterKey: 'products/poster-1.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 30,
@@ -1060,6 +1251,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/video-2.mp4',
       posterKey: 'products/poster-2.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 60,
@@ -1114,6 +1307,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/video-1.mp4',
       posterKey: 'products/poster-1.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 30,
@@ -1153,6 +1348,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/video-1.mp4',
       posterKey: 'products/poster-1.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 30,
@@ -1191,6 +1388,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/video-1.mp4',
       posterKey: 'products/video-1-poster.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 30,
@@ -1230,6 +1429,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/video-1.mp4',
       posterKey: 'products/poster-1.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 30,
@@ -1248,6 +1449,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/video-2.mp4',
       posterKey: 'products/poster-2.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 45,
@@ -1307,6 +1510,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/video-1.mp4',
       posterKey: 'products/poster-1.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 30,
@@ -1446,6 +1651,8 @@ describe('ProductMediaDialog', () => {
         kind: 'image',
         fileKey: 'products/tee-back.jpg',
         posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
         width: 800,
         height: 800,
         durationS: null,
@@ -1634,6 +1841,8 @@ describe('ProductMediaDialog', () => {
       kind: 'video',
       fileKey: 'products/tee-promo.mp4',
       posterKey: 'products/tee-promo-poster.jpg',
+      posterCandidates: [],
+      posterCandidateUrls: [],
       width: 1920,
       height: 1080,
       durationS: 45,
@@ -1698,6 +1907,124 @@ describe('ProductMediaDialog', () => {
     const videoFullscreenBtn = screen.getByRole('button', { name: 'Fullscreen' });
     const videoHeaderBtnGroup = videoFullscreenBtn.parentElement;
     expect(videoHeaderBtnGroup).toHaveClass('flex-wrap');
+  });
+
+  describe('Video poster thumbnail candidates', () => {
+    it('displays poster candidates on video upload and updates posterKey on selection', async () => {
+      mockedListProductMedia.mockResolvedValue([]);
+      mockedRequestUploadUrl.mockResolvedValue({
+        uploadUrl: 'http://upload/presigned',
+        fileKey: 'product/prod_1/123-video.mp4',
+        publicUrl: 'http://cdn/123-video.mp4',
+      });
+      mockedUploadFileToPresignedUrl.mockResolvedValue();
+      mockedGeneratePosterCandidatesApi.mockResolvedValue({
+        candidates: [
+          { key: 'product/prod_1/123-video-poster-cand-1.jpg', url: 'http://cdn/cand-1.jpg' },
+          { key: 'product/prod_1/123-video-poster-cand-2.jpg', url: 'http://cdn/cand-2.jpg' },
+          { key: 'product/prod_1/123-video-poster-cand-3.jpg', url: 'http://cdn/cand-3.jpg' },
+        ],
+      });
+      mockedCreateProductMedia.mockResolvedValue({
+        id: 'new_media_1',
+        ownerType: 'product',
+        ownerId: sampleProduct.id,
+        kind: 'video',
+        fileKey: 'product/prod_1/123-video.mp4',
+        posterKey: 'product/prod_1/123-video-poster-cand-2.jpg',
+        posterCandidates: [
+          'product/prod_1/123-video-poster-cand-1.jpg',
+          'product/prod_1/123-video-poster-cand-2.jpg',
+          'product/prod_1/123-video-poster-cand-3.jpg',
+        ],
+        posterCandidateUrls: [
+          'http://cdn/cand-1.jpg',
+          'http://cdn/cand-2.jpg',
+          'http://cdn/cand-3.jpg',
+        ],
+        width: 1920,
+        height: 1080,
+        durationS: 30,
+        blurhash: null,
+        alt: null,
+        position: 0,
+        status: 'active',
+        tags: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      });
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      // Click Add Media
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add Media' })[0]!);
+
+      // Select Video Kind
+      const videoKindBtn = screen.getByRole('button', { name: /video/i });
+      fireEvent.click(videoKindBtn);
+
+      await screen.findByText('Suggested Video Posters');
+
+      // Simulate video file upload
+      const fileInput = screen.getByTestId('media-file-input');
+      const mp4Bytes = new Uint8Array([
+        0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00,
+        0x00,
+      ]);
+      const file = new File([mp4Bytes], 'demo.mp4', { type: 'video/mp4' });
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      // Verify candidates generation endpoint is called
+      await waitFor(() => {
+        expect(mockedGeneratePosterCandidatesApi).toHaveBeenCalledWith(
+          'product/prod_1/123-video.mp4',
+        );
+      });
+
+      // Verify all 3 candidate thumbnails are displayed
+      const candidatesGrid = await screen.findByTestId('poster-candidates-grid');
+      expect(candidatesGrid).toBeInTheDocument();
+      const candidateButtons = within(candidatesGrid).getAllByRole('button');
+      expect(candidateButtons).toHaveLength(3);
+
+      // Candidate 1 is automatically selected initially
+      const posterInput = screen.getByLabelText(/Video Poster Thumbnail URL/i) as HTMLInputElement;
+      expect(posterInput.value).toBe('product/prod_1/123-video-poster-cand-1.jpg');
+
+      // Click candidate 2 to pick it
+      fireEvent.click(candidateButtons[1]!);
+      expect(posterInput.value).toBe('product/prod_1/123-video-poster-cand-2.jpg');
+
+      // Manual input field still accepts typing independently
+      fireEvent.change(posterInput, {
+        target: { value: 'https://cdn.example.com/custom-poster.jpg' },
+      });
+      expect(posterInput.value).toBe('https://cdn.example.com/custom-poster.jpg');
+
+      // Switch back by clicking candidate 2
+      fireEvent.click(candidateButtons[1]!);
+      expect(posterInput.value).toBe('product/prod_1/123-video-poster-cand-2.jpg');
+
+      // Save media
+      const modalAddBtns = screen.getAllByRole('button', { name: 'Add Media' });
+      fireEvent.click(modalAddBtns[modalAddBtns.length - 1]!);
+      await waitFor(() => {
+        expect(mockedCreateProductMedia).toHaveBeenCalledWith(
+          sampleProduct.id,
+          expect.objectContaining({
+            kind: 'video',
+            fileKey: 'product/prod_1/123-video.mp4',
+            posterKey: 'product/prod_1/123-video-poster-cand-2.jpg',
+            posterCandidates: [
+              'product/prod_1/123-video-poster-cand-1.jpg',
+              'product/prod_1/123-video-poster-cand-2.jpg',
+              'product/prod_1/123-video-poster-cand-3.jpg',
+            ],
+          }),
+        );
+      });
+    });
   });
 });
 

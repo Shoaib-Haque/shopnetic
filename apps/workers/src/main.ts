@@ -10,6 +10,10 @@ import {
   createStorageValidator,
   processMediaValidationJob,
 } from './media/media-validation-processor.js';
+import {
+  createImageVariantStorage,
+  processImageVariantJob,
+} from './media/image-variant-processor.js';
 
 /**
  * Background job processors (BullMQ) — payouts, emails, exports, reindex,
@@ -72,7 +76,25 @@ function main(): void {
     log.warn({ jobId: job?.id, err: err.message }, 'media validation job failed'),
   );
 
-  log.info('workers started — mail, media cleanup, and media validation queues active');
+  const imageVariantStorage = createImageVariantStorage(env);
+  const imageVariantWorker = new Worker(
+    QueueName.IMAGE_VARIANTS,
+    processImageVariantJob(imageVariantStorage, prisma, env.STORAGE_PUBLIC_BASE_URL),
+    {
+      connection,
+      concurrency: 5,
+    },
+  );
+  imageVariantWorker.on('completed', (job, result) =>
+    log.info({ jobId: job.id, result }, 'image variant job completed'),
+  );
+  imageVariantWorker.on('failed', (job, err) =>
+    log.warn({ jobId: job?.id, err: err.message }, 'image variant job failed'),
+  );
+
+  log.info(
+    'workers started — mail, media cleanup, media validation, and image variants queues active',
+  );
 }
 
 main();

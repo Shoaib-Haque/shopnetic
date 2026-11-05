@@ -43,6 +43,7 @@ const CODE_TO_KEY: Record<string, string> = {
   MEDIA_TAG_INVALID: 'errors.mediaTagInvalid',
   MEDIA_FILE_KEY_CONFLICT: 'errors.mediaFileKeyConflict',
   MEDIA_TYPE_INVALID: 'errors.mediaTypeInvalid',
+  MEDIA_VIDEO_DURATION_EXCEEDED: 'errors.mediaVideoDurationExceeded',
   SELLER_NOT_FOUND: 'errors.sellerNotFound',
   SELLER_NOT_APPROVED: 'errors.sellerNotApproved',
   OFFER_NOT_FOUND: 'errors.offerNotFound',

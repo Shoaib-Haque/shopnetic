@@ -1,18 +1,29 @@
 import { existsSync } from 'node:fs';
-import { open, unlink } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
-import { S3Client, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { mkdir, open, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { basename, dirname, extname, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomBytes } from 'node:crypto';
+import {
+  S3Client,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3';
 import type { Job } from 'bullmq';
 import type { MediaValidationJob } from '@shopnetic/events';
-import { isValidMediaFileType } from '@shopnetic/contracts';
+import { isValidMediaFileType, MEDIA_VIDEO_MAX_DURATION_SECONDS } from '@shopnetic/contracts';
 import { createLogger } from '@shopnetic/observability';
 import type { WorkersEnv } from '../config/env.js';
+import { probeVideoDuration } from './video-probe.js';
+import { generatePosterCandidates as generatePosterCandidatesUtil } from './poster-generator.js';
 
 const log = createLogger({ service: 'media-validation' });
 
 export interface StorageValidatorDriver {
   readHeaderBytes(key: string, maxBytes?: number): Promise<Uint8Array | null>;
   deleteFile(key: string): Promise<boolean>;
+  probeDuration?(key: string): Promise<number | null>;
+  generatePosterCandidates?(fileKey: string, durationS: number): Promise<string[] | null>;
 }
 
 async function streamToUint8Array(stream: unknown): Promise<Uint8Array> {
@@ -84,6 +95,89 @@ export function createStorageValidator(env: WorkersEnv): StorageValidatorDriver 
           return false;
         }
       },
+
+      async probeDuration(key: string): Promise<number | null> {
+        const tempPath = resolve(
+          tmpdir(),
+          `probe-${Date.now()}-${randomBytes(6).toString('hex')}.tmp`,
+        );
+        try {
+          const res = await s3Client.send(
+            new GetObjectCommand({
+              Bucket: env.STORAGE_BUCKET,
+              Key: key,
+            }),
+          );
+          if (!res.Body) return null;
+          const bytes = await streamToUint8Array(res.Body);
+          await writeFile(tempPath, bytes);
+          return await probeVideoDuration(tempPath);
+        } catch (err) {
+          log.warn(
+            { key, err: err instanceof Error ? err.message : String(err) },
+            'Failed to probe S3 video duration',
+          );
+          return null;
+        } finally {
+          await unlink(tempPath).catch(() => {});
+        }
+      },
+
+      async generatePosterCandidates(fileKey: string, durationS: number): Promise<string[] | null> {
+        const ext = extname(fileKey);
+        const baseName = basename(fileKey, ext);
+        const dir = dirname(fileKey).split(sep).join('/');
+        const candKeys = [1, 2, 3].map((i) => `${dir}/${baseName}-poster-cand-${i}.jpg`);
+
+        const tempDir = resolve(
+          tmpdir(),
+          `worker-poster-${Date.now()}-${randomBytes(4).toString('hex')}`,
+        );
+        await mkdir(tempDir, { recursive: true });
+        const tempVideoPath = resolve(tempDir, `video${ext}`);
+
+        try {
+          const res = await s3Client.send(
+            new GetObjectCommand({
+              Bucket: env.STORAGE_BUCKET,
+              Key: fileKey,
+            }),
+          );
+          if (!res.Body) return null;
+          const bytes = await streamToUint8Array(res.Body);
+          await writeFile(tempVideoPath, bytes);
+
+          const generated = await generatePosterCandidatesUtil(
+            tempVideoPath,
+            durationS,
+            tempDir,
+            baseName,
+          );
+
+          for (let i = 0; i < candKeys.length; i++) {
+            const key = candKeys[i]!;
+            const framePath = generated[i]!;
+            const frameBytes = await readFile(framePath);
+            await s3Client.send(
+              new PutObjectCommand({
+                Bucket: env.STORAGE_BUCKET,
+                Key: key,
+                Body: frameBytes,
+                ContentType: 'image/jpeg',
+              }),
+            );
+          }
+          return candKeys;
+        } catch (err) {
+          log.warn(
+            { fileKey, err: err instanceof Error ? err.message : String(err) },
+            'Failed to generate S3 poster candidates in worker',
+          );
+          return null;
+        } finally {
+          await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        }
+      },
     };
   }
 
@@ -127,16 +221,65 @@ export function createStorageValidator(env: WorkersEnv): StorageValidatorDriver 
         return false;
       }
     },
+
+    async probeDuration(key: string): Promise<number | null> {
+      const fullPath = resolve(baseDir, key.replace(/\//g, sep));
+      if (!fullPath.startsWith(baseDir) || !existsSync(fullPath)) {
+        return null;
+      }
+      try {
+        return await probeVideoDuration(fullPath);
+      } catch (err) {
+        log.warn(
+          { key, err: err instanceof Error ? err.message : String(err) },
+          'Failed to probe local video duration',
+        );
+        return null;
+      }
+    },
+
+    async generatePosterCandidates(fileKey: string, durationS: number): Promise<string[] | null> {
+      const fullPath = resolve(baseDir, fileKey.replace(/\//g, sep));
+      if (!fullPath.startsWith(baseDir) || !existsSync(fullPath)) {
+        return null;
+      }
+      const ext = extname(fileKey);
+      const baseName = basename(fileKey, ext);
+      const outDir = dirname(fullPath);
+      const dirKey = dirname(fileKey).split(sep).join('/');
+      const candKeys = [1, 2, 3].map((i) => `${dirKey}/${baseName}-poster-cand-${i}.jpg`);
+
+      try {
+        await mkdir(outDir, { recursive: true });
+        await generatePosterCandidatesUtil(fullPath, durationS, outDir, baseName);
+        return candKeys;
+      } catch (err) {
+        log.warn(
+          { fileKey, err: err instanceof Error ? err.message : String(err) },
+          'Failed to generate local poster candidates in worker',
+        );
+        return null;
+      }
+    },
+  };
+}
+
+export interface MediaValidationPrisma {
+  mediaAsset: {
+    findUnique?: (args: {
+      where: { id: string };
+      select: { durationS: true; posterCandidates?: true };
+    }) => Promise<{ durationS: number | null; posterCandidates?: string[] } | null>;
+    update: (args: {
+      where: { id: string };
+      data: { status?: 'rejected'; durationS?: number; posterCandidates?: string[] };
+    }) => Promise<unknown>;
   };
 }
 
 export function processMediaValidationJob(
   validator: StorageValidatorDriver,
-  prisma: {
-    mediaAsset: {
-      update: (args: { where: { id: string }; data: { status: 'rejected' } }) => Promise<unknown>;
-    };
-  },
+  prisma: MediaValidationPrisma,
 ) {
   return async (job: Job<MediaValidationJob>): Promise<{ status: 'valid' | 'rejected' }> => {
     const { mediaAssetId, fileKey, expectedKind } = job.data;
@@ -156,6 +299,65 @@ export function processMediaValidationJob(
       });
 
       return { status: 'rejected' };
+    }
+
+    if (expectedKind === 'video') {
+      const duration = validator.probeDuration ? await validator.probeDuration(fileKey) : null;
+      if (duration === null || duration > MEDIA_VIDEO_MAX_DURATION_SECONDS) {
+        log.warn(
+          { jobId: job.id, mediaAssetId, fileKey, expectedKind, duration },
+          'Video duration validation failed; rejecting asset and purging storage object',
+        );
+
+        await validator.deleteFile(fileKey);
+        await prisma.mediaAsset.update({
+          where: { id: mediaAssetId },
+          data: { status: 'rejected' },
+        });
+
+        return { status: 'rejected' };
+      }
+
+      let existingCandidates: string[] = [];
+      if (typeof prisma.mediaAsset.findUnique === 'function') {
+        const existing = await prisma.mediaAsset.findUnique({
+          where: { id: mediaAssetId },
+          select: { durationS: true, posterCandidates: true },
+        });
+        if (existing) {
+          if (existing.durationS == null) {
+            await prisma.mediaAsset.update({
+              where: { id: mediaAssetId },
+              data: { durationS: duration },
+            });
+          }
+          if (Array.isArray(existing.posterCandidates)) {
+            existingCandidates = existing.posterCandidates;
+          }
+        }
+      }
+
+      if (existingCandidates.length === 0 && validator.generatePosterCandidates) {
+        try {
+          const candidateKeys = await validator.generatePosterCandidates(fileKey, duration);
+          if (candidateKeys && candidateKeys.length > 0) {
+            await prisma.mediaAsset.update({
+              where: { id: mediaAssetId },
+              data: { posterCandidates: candidateKeys },
+            });
+          }
+        } catch (err) {
+          log.warn(
+            {
+              jobId: job.id,
+              mediaAssetId,
+              fileKey,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            'Failed to generate poster candidates during worker validation',
+          );
+        }
+      }
     }
 
     log.info(

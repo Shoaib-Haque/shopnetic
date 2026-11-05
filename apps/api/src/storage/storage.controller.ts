@@ -1,3 +1,4 @@
+import { unlink } from 'node:fs/promises';
 import {
   Body,
   Controller,
@@ -14,7 +15,11 @@ import type { Request } from 'express';
 import { Permission } from '@shopnetic/auth';
 import {
   detectMediaFileType,
+  generatePosterCandidatesRequestSchema,
+  MEDIA_VIDEO_MAX_DURATION_SECONDS,
   requestUploadUrlSchema,
+  type GeneratePosterCandidatesRequest,
+  type PosterCandidatesResponse,
   type RequestUploadUrlRequest,
   type UploadUrlResponse,
 } from '@shopnetic/contracts';
@@ -25,8 +30,10 @@ import { ZodBodyPipe } from '../common/zod-body.pipe.js';
 import { ok } from '../common/envelope.js';
 import { AppError } from '../common/app-error.js';
 import { StorageService } from './storage.service.js';
+import { probeVideoDuration } from './video-probe.js';
 
 const uploadUrlBody = new ZodBodyPipe(requestUploadUrlSchema);
+const posterCandidatesBody = new ZodBodyPipe(generatePosterCandidatesRequestSchema);
 
 @Controller('admin/v1')
 export class StorageController {
@@ -41,6 +48,17 @@ export class StorageController {
   ): Promise<{ data: UploadUrlResponse; meta: { requestId: string } }> {
     const res = await this.storage.createUploadUrl(body);
     return ok(req, res);
+  }
+
+  @Post('media/poster-candidates')
+  @UseGuards(StaffAuthGuard, PermissionGuard)
+  @RequirePermission(Permission.PRODUCT_MANAGE)
+  async getPosterCandidates(
+    @Req() req: Request,
+    @Body(posterCandidatesBody) body: GeneratePosterCandidatesRequest,
+  ): Promise<{ data: PosterCandidatesResponse; meta: { requestId: string } }> {
+    const candidates = await this.storage.generateAndSavePosterCandidates(body.fileKey);
+    return ok(req, { candidates });
   }
 
   /**
@@ -93,7 +111,28 @@ export class StorageController {
       });
     }
 
+    const fullPath = this.storage.assertSafeStorageKey(key);
     await this.storage.saveLocalFile(key, fileBuffer);
+
+    if (detected.kind === 'video') {
+      let duration: number;
+      try {
+        duration = await probeVideoDuration(fullPath);
+      } catch (err) {
+        await unlink(fullPath).catch(() => {});
+        if (err instanceof AppError) throw err;
+        throw new AppError('MEDIA_TYPE_INVALID', 415, {
+          detail: 'Failed to probe video file format',
+        });
+      }
+
+      if (duration > MEDIA_VIDEO_MAX_DURATION_SECONDS) {
+        await unlink(fullPath).catch(() => {});
+        throw new AppError('MEDIA_VIDEO_DURATION_EXCEEDED', 422, {
+          detail: 'Video exceeds maximum permitted duration of 120 seconds',
+        });
+      }
+    }
 
     return { status: 'ok' };
   }

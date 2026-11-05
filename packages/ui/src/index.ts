@@ -73,3 +73,4 @@ export {
   SelectLabel,
   SelectSeparator,
 } from './components/select';
+export { ResponsiveImage, type ResponsiveImageProps } from './components/responsive-image';

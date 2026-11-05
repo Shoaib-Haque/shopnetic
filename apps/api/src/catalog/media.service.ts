@@ -4,9 +4,12 @@ import {
   createMediaRequestSchema,
   updateMediaRequestSchema,
   resolveMediaUrl,
+  resolveMediaVariantsUrls,
+  extractVariantKeys,
   type CreateMediaRequest,
   type MediaAsset,
   type MediaOwnerType,
+  type MediaVariants,
   type UpdateMediaRequest,
 } from '@shopnetic/contracts';
 import { Prisma } from '@shopnetic/db';
@@ -18,6 +21,7 @@ import type { RequestMeta } from '../identity/identity.service.js';
 import { API_ENV, type ApiEnv } from '../config/env.js';
 import { StorageService, isInternalStorageKey } from '../storage/storage.service.js';
 import { MediaValidationQueueService } from '../queue/media-validation-queue.service.js';
+import { ImageVariantQueueService } from '../queue/image-variant-queue.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
 const withTags = {
@@ -42,6 +46,7 @@ export class MediaService {
     @Optional() @Inject(API_ENV) private readonly env?: ApiEnv,
     @Optional() private readonly storage?: StorageService,
     @Optional() private readonly validationQueue?: MediaValidationQueueService,
+    @Optional() private readonly variantQueue?: ImageVariantQueueService,
   ) {
     this.record = auditRecordFor(this.audit, 'media_asset');
   }
@@ -102,6 +107,8 @@ export class MediaService {
             fileKey: valid.fileKey,
             position,
             ...(valid.posterKey != null ? { posterKey: valid.posterKey } : {}),
+            ...(valid.posterCandidates ? { posterCandidates: valid.posterCandidates } : {}),
+            ...(valid.variants != null ? { variants: valid.variants } : {}),
             ...(valid.width != null ? { width: valid.width } : {}),
             ...(valid.height != null ? { height: valid.height } : {}),
             ...(valid.durationS != null ? { durationS: valid.durationS } : {}),
@@ -134,6 +141,29 @@ export class MediaService {
         fileKey: created.fileKey,
         expectedKind: created.kind,
       });
+    }
+
+    if (created.kind === 'image' && isInternalStorageKey(created.fileKey)) {
+      if (this.env?.STORAGE_PROVIDER === 'local' && this.storage) {
+        try {
+          const variants = await this.storage.generateAndSaveImageVariants(created.fileKey);
+          await this.prisma.mediaAsset.update({
+            where: { id: created.id },
+            data: { variants },
+          });
+          created.variants = variants;
+        } catch {
+          await this.variantQueue?.enqueueImageVariants({
+            mediaAssetId: created.id,
+            fileKey: created.fileKey,
+          });
+        }
+      } else {
+        await this.variantQueue?.enqueueImageVariants({
+          mediaAssetId: created.id,
+          fileKey: created.fileKey,
+        });
+      }
     }
 
     await this.record(actor, 'catalog.media_created', created.id, meta, {
@@ -175,6 +205,11 @@ export class MediaService {
     const data: Prisma.MediaAssetUpdateInput = {};
     if (valid.fileKey !== undefined) data.fileKey = valid.fileKey;
     if (valid.posterKey !== undefined) data.posterKey = valid.posterKey;
+    if (valid.posterCandidates !== undefined) data.posterCandidates = valid.posterCandidates;
+    if (valid.variants !== undefined) {
+      data.variants =
+        valid.variants === null ? Prisma.DbNull : (valid.variants as Prisma.InputJsonValue);
+    }
     if (valid.width !== undefined) data.width = valid.width;
     if (valid.height !== undefined) data.height = valid.height;
     if (valid.durationS !== undefined) data.durationS = valid.durationS;
@@ -186,6 +221,7 @@ export class MediaService {
     const keysToDelete: string[] = [];
     if (valid.fileKey !== undefined && valid.fileKey !== current.fileKey) {
       keysToDelete.push(current.fileKey);
+      keysToDelete.push(...extractVariantKeys(current.variants));
     }
     if (
       valid.posterKey !== undefined &&
@@ -216,6 +252,33 @@ export class MediaService {
       await Promise.allSettled(keysToDelete.map((k) => this.storage!.deleteFile(k)));
     }
 
+    if (
+      valid.fileKey !== undefined &&
+      valid.fileKey !== current.fileKey &&
+      current.kind === 'image' &&
+      isInternalStorageKey(valid.fileKey)
+    ) {
+      if (this.env?.STORAGE_PROVIDER === 'local' && this.storage) {
+        try {
+          const variants = await this.storage.generateAndSaveImageVariants(valid.fileKey);
+          await this.prisma.mediaAsset.update({
+            where: { id },
+            data: { variants },
+          });
+        } catch {
+          await this.variantQueue?.enqueueImageVariants({
+            mediaAssetId: id,
+            fileKey: valid.fileKey,
+          });
+        }
+      } else {
+        await this.variantQueue?.enqueueImageVariants({
+          mediaAssetId: id,
+          fileKey: valid.fileKey,
+        });
+      }
+    }
+
     const view = await this.get(id);
     await this.record(actor, 'catalog.media_updated', id, meta, {
       before: this.toView(current),
@@ -235,6 +298,8 @@ export class MediaService {
       await Promise.allSettled([
         this.storage.deleteFile(current.fileKey),
         current.posterKey ? this.storage.deleteFile(current.posterKey) : Promise.resolve(),
+        ...(current.posterCandidates ?? []).map((cand) => this.storage!.deleteFile(cand)),
+        ...extractVariantKeys(current.variants).map((k) => this.storage!.deleteFile(k)),
       ]);
     }
     await this.record(actor, 'catalog.media_deleted', id, meta, {
@@ -442,6 +507,11 @@ export class MediaService {
       url: resolveMediaUrl(row.fileKey, baseUrl),
       posterKey: row.posterKey,
       posterUrl: row.posterKey ? resolveMediaUrl(row.posterKey, baseUrl) : null,
+      posterCandidates: row.posterCandidates ?? [],
+      posterCandidateUrls: (row.posterCandidates ?? []).map((k) => resolveMediaUrl(k, baseUrl)),
+      variants: row.variants
+        ? resolveMediaVariantsUrls(row.variants as MediaVariants, baseUrl)
+        : null,
       width: row.width,
       height: row.height,
       durationS: row.durationS,

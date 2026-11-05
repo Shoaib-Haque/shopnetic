@@ -9,11 +9,14 @@ import {
   type MouseEvent,
   type TouchEvent,
 } from 'react';
-import { cn } from '@shopnetic/ui';
+import { cn, ResponsiveImage } from '@shopnetic/ui';
+import type { MediaVariants } from '@shopnetic/contracts';
 
 export interface ImageMagnifierProps {
   src: string;
   alt: string;
+  variants?: MediaVariants | null | undefined;
+  sizes?: string | undefined;
   zoomLevel?: number;
   lensSize?: number;
   mode?: 'flyout' | 'loupe';
@@ -27,6 +30,8 @@ export interface ImageMagnifierProps {
 export function ImageMagnifier({
   src,
   alt,
+  variants,
+  sizes = '(max-width: 1024px) 90vw, 600px',
   zoomLevel = 2.5,
   lensSize = 120,
   mode = 'flyout',
@@ -255,8 +260,10 @@ export function ImageMagnifier({
           'touch-none',
         )}
       >
-        <img
+        <ResponsiveImage
           src={src}
+          variants={variants}
+          sizes={sizes}
           alt={alt}
           onLoad={onLoad}
           onError={onError}

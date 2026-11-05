@@ -250,4 +250,16 @@ describe('StorageService', () => {
       expect(filesAfter.some((f) => f.key === testKey)).toBe(false);
     });
   });
+
+  describe('generateAndSavePosterCandidates', () => {
+    it('rejects external URLs or invalid keys', async () => {
+      const service = new StorageService(mockEnv);
+      await expect(
+        service.generateAndSavePosterCandidates('https://cdn.example.com/video.mp4'),
+      ).rejects.toThrow(BadRequestException);
+      await expect(service.generateAndSavePosterCandidates('')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
 });

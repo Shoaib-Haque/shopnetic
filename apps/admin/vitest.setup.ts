@@ -103,3 +103,10 @@ if (!Range.prototype.getClientRects) {
 if (!Range.prototype.getBoundingClientRect) {
   Range.prototype.getBoundingClientRect = () => emptyDomRect;
 }
+
+if (!window.URL.createObjectURL) {
+  window.URL.createObjectURL = () => `blob:mock-url-${Math.random().toString(36).slice(2)}`;
+}
+if (!window.URL.revokeObjectURL) {
+  window.URL.revokeObjectURL = () => {};
+}

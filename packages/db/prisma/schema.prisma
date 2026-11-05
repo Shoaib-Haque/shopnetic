@@ -753,8 +753,10 @@ model MediaAsset {
   kind      MediaKind
   /// Partial unique index on file_key for internal keys — see migration 20261105120000
   fileKey   String           @map("file_key")
-  posterKey String?          @map("poster_key")
-  width     Int?
+  posterKey        String?          @map("poster_key")
+  posterCandidates String[]         @default([]) @map("poster_candidates")
+  variants         Json?            @map("variants")
+  width            Int?
   height    Int?
   durationS Int?             @map("duration_s")
   blurhash  String?

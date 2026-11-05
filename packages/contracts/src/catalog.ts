@@ -679,6 +679,27 @@ export const mediaOptionTagSchema = z.object({
 });
 export type MediaOptionTag = z.infer<typeof mediaOptionTagSchema>;
 
+export const RESPONSIVE_IMAGE_WIDTHS = [320, 480, 800, 1200, 1600, 2000] as const;
+export type ResponsiveImageWidth = (typeof RESPONSIVE_IMAGE_WIDTHS)[number];
+
+export const RESPONSIVE_IMAGE_FORMATS = ['avif', 'webp', 'jpeg'] as const;
+export type ResponsiveImageFormat = (typeof RESPONSIVE_IMAGE_FORMATS)[number];
+
+export const mediaVariantFileSchema = z.object({
+  key: z.string(),
+  url: z.string().optional(),
+  width: z.number().int(),
+  height: z.number().int().optional(),
+  format: z.enum(['avif', 'webp', 'jpeg']),
+});
+export type MediaVariantFile = z.infer<typeof mediaVariantFileSchema>;
+
+export const mediaVariantsSchema = z.record(
+  z.string(), // width string: "320", "480", etc.
+  z.record(z.string(), mediaVariantFileSchema), // format -> file details
+);
+export type MediaVariants = z.infer<typeof mediaVariantsSchema>;
+
 export const mediaAssetSchema = z.object({
   id: z.string(),
   ownerType: mediaOwnerTypeSchema,
@@ -688,6 +709,9 @@ export const mediaAssetSchema = z.object({
   url: z.string().optional(),
   posterKey: z.string().nullable(),
   posterUrl: z.string().nullable().optional(),
+  posterCandidates: z.array(z.string()).default([]),
+  posterCandidateUrls: z.array(z.string()).default([]),
+  variants: mediaVariantsSchema.nullish(),
   width: z.number().int().nullable(),
   height: z.number().int().nullable(),
   durationS: z.number().int().nullable(),
@@ -722,6 +746,91 @@ export function resolveMediaUrl(keyOrUrl?: string | null, publicBaseUrl?: string
     return `${base}/${cleanKey}`;
   }
   return trimmed;
+}
+
+export function resolveMediaVariantsUrls(
+  variants: MediaVariants | null | undefined,
+  publicBaseUrl?: string,
+): MediaVariants | null {
+  if (!variants) return null;
+  const result: MediaVariants = {};
+  for (const [wStr, formats] of Object.entries(variants)) {
+    if (!formats) continue;
+    result[wStr] = {};
+    for (const [fmt, file] of Object.entries(formats)) {
+      if (!file) continue;
+      result[wStr][fmt] = {
+        ...file,
+        url: file.url || resolveMediaUrl(file.key, publicBaseUrl),
+      };
+    }
+  }
+  return result;
+}
+
+export function extractVariantKeys(variants: unknown): string[] {
+  if (!variants || typeof variants !== 'object') return [];
+  const keys: string[] = [];
+  for (const formats of Object.values(variants as Record<string, unknown>)) {
+    if (!formats || typeof formats !== 'object') continue;
+    for (const file of Object.values(formats as Record<string, unknown>)) {
+      if (
+        file &&
+        typeof file === 'object' &&
+        'key' in file &&
+        typeof (file as { key: unknown }).key === 'string'
+      ) {
+        keys.push((file as { key: string }).key);
+      }
+    }
+  }
+  return keys;
+}
+
+export function buildResponsiveSrcSet(
+  variants: MediaVariants | null | undefined,
+  format: ResponsiveImageFormat,
+  publicBaseUrl?: string,
+): string {
+  if (!variants) return '';
+  const widths = Object.keys(variants)
+    .map((w) => Number(w))
+    .filter((n) => !Number.isNaN(n) && n > 0)
+    .sort((a, b) => a - b);
+
+  const parts: string[] = [];
+  for (const width of widths) {
+    const file = variants[String(width)]?.[format];
+    if (file && file.key) {
+      const url = file.url || resolveMediaUrl(file.key, publicBaseUrl);
+      if (url) {
+        parts.push(`${url} ${file.width}w`);
+      }
+    }
+  }
+  return parts.join(', ');
+}
+
+export function getResponsiveImageSources(
+  asset: Pick<MediaAsset, 'fileKey' | 'url' | 'variants'>,
+  publicBaseUrl?: string,
+): {
+  avifSrcSet?: string;
+  webpSrcSet?: string;
+  jpegSrcSet?: string;
+  fallbackSrc: string;
+} {
+  const fallbackSrc = asset.url || resolveMediaUrl(asset.fileKey, publicBaseUrl);
+  const avif = buildResponsiveSrcSet(asset.variants, 'avif', publicBaseUrl);
+  const webp = buildResponsiveSrcSet(asset.variants, 'webp', publicBaseUrl);
+  const jpeg = buildResponsiveSrcSet(asset.variants, 'jpeg', publicBaseUrl);
+
+  return {
+    ...(avif ? { avifSrcSet: avif } : {}),
+    ...(webp ? { webpSrcSet: webp } : {}),
+    ...(jpeg ? { jpegSrcSet: jpeg } : {}),
+    fallbackSrc,
+  };
 }
 
 /**
@@ -772,13 +881,17 @@ export const objectKeySchema = z
   );
 const pixelSchema = z.number().int().min(1).max(100_000);
 
+export const MEDIA_VIDEO_MAX_DURATION_SECONDS = 120;
+
 export const createMediaRequestSchema = z.object({
   kind: mediaKindSchema,
   fileKey: objectKeySchema,
   posterKey: objectKeySchema.nullish(),
+  posterCandidates: z.array(z.string()).optional(),
+  variants: mediaVariantsSchema.nullish(),
   width: pixelSchema.nullish(),
   height: pixelSchema.nullish(),
-  durationS: z.number().int().min(1).max(86_400).nullish(),
+  durationS: z.number().int().min(1).max(MEDIA_VIDEO_MAX_DURATION_SECONDS).nullish(),
   blurhash: z.string().trim().max(128).nullish(),
   alt: localizedTextSchema.optional(),
   position: positionField.optional(),
@@ -790,9 +903,11 @@ export const updateMediaRequestSchema = z
   .object({
     fileKey: objectKeySchema,
     posterKey: objectKeySchema.nullable(),
+    posterCandidates: z.array(z.string()).optional(),
+    variants: mediaVariantsSchema.nullish(),
     width: pixelSchema.nullable(),
     height: pixelSchema.nullable(),
-    durationS: z.number().int().min(1).max(86_400).nullable(),
+    durationS: z.number().int().min(1).max(MEDIA_VIDEO_MAX_DURATION_SECONDS).nullable(),
     blurhash: z.string().trim().max(128).nullable(),
     alt: localizedTextSchema.nullable(),
     position: positionField,
@@ -801,6 +916,21 @@ export const updateMediaRequestSchema = z
   })
   .partial();
 export type UpdateMediaRequest = z.infer<typeof updateMediaRequestSchema>;
+
+export const generatePosterCandidatesRequestSchema = z.object({
+  fileKey: objectKeySchema,
+});
+export type GeneratePosterCandidatesRequest = z.infer<typeof generatePosterCandidatesRequestSchema>;
+
+export const posterCandidatesResponseSchema = z.object({
+  candidates: z.array(
+    z.object({
+      key: z.string(),
+      url: z.string(),
+    }),
+  ),
+});
+export type PosterCandidatesResponse = z.infer<typeof posterCandidatesResponseSchema>;
 
 /** Upsert a tag on one axis: `PUT …/media/:id/tags/:optionTypeId`. */
 export const putMediaTagRequestSchema = z.object({

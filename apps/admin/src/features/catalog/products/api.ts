@@ -9,6 +9,7 @@ import type {
   CreateWarehouseRequest,
   MediaAsset,
   Offer,
+  PosterCandidatesResponse,
   Product,
   ProductListStatus,
   ProductOption,
@@ -190,6 +191,13 @@ export function requestUploadUrl(body: RequestUploadUrlRequest): Promise<UploadU
   return adminApi<UploadUrlResponse>('/media/upload-url', {
     method: 'POST',
     body,
+  });
+}
+
+export function generatePosterCandidatesApi(fileKey: string): Promise<PosterCandidatesResponse> {
+  return adminApi<PosterCandidatesResponse>('/media/poster-candidates', {
+    method: 'POST',
+    body: { fileKey },
   });
 }
 

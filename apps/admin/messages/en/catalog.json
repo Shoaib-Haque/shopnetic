@@ -813,11 +813,17 @@
           "uploadSuccess": "Uploaded successfully.",
           "uploadFailed": "Upload failed. Please try again.",
           "fileTooBig": "File exceeds maximum size (50MB).",
+          "videoDurationExceeded": "Video duration exceeds the 120-second limit ({duration}s). Please upload a shorter video.",
           "invalidFileType": "Invalid file format. Please upload a supported image (PNG, JPG, WebP, AVIF, GIF) or video (MP4, WebM).",
           "removeFile": "Change file",
           "fileKey": "File Key / Asset URL",
           "fileKeyPlaceholder": "e.g. products/antigravity-tee-navy.jpg or https://cdn.example.com/...",
           "fileKeyLockedHint": "Locked to uploaded file. Click the remove button above to clear and enter a manual URL.",
+          "posterCandidatesTitle": "Suggested Video Posters",
+          "posterCandidatesGenerating": "Generating poster frame candidates…",
+          "posterCandidatesSelect": "Select frame",
+          "posterCandidatesSelected": "Selected",
+          "customPosterPrompt": "Or enter custom poster URL / key",
           "posterKey": "Video Poster Thumbnail URL",
           "posterKeyPlaceholder": "e.g. products/video-poster.jpg",
           "posterKeyHint": "Required for videos so a preview thumbnail displays in the gallery.",
@@ -839,7 +845,7 @@
             "posterKeyRequired": "Videos require a poster thumbnail URL for gallery preview.",
             "posterKeyInvalid": "Must be a valid URL (http/https) or storage key path (no spaces).",
             "altTooLong": "Alt text must be 200 characters or fewer.",
-            "durationInvalid": "Duration must be a positive number of seconds (1–86,400)."
+            "durationInvalid": "Duration must be a positive number of seconds (1–120)."
           }
         }
       },
@@ -1085,6 +1091,7 @@
       "mediaTagInvalid": "That option value does not belong to the selected option axis.",
       "mediaFileKeyConflict": "A media asset with this file key already exists. Please use a different file.",
       "mediaTypeInvalid": "Invalid or unsupported media file format. Only PNG, JPG, WebP, AVIF, GIF, MP4, and WebM are permitted.",
+      "mediaVideoDurationExceeded": "Video exceeds the maximum duration limit of 120 seconds.",
       "sellerNotFound": "The specified seller does not exist.",
       "sellerNotApproved": "Offers can only be created for approved sellers.",
       "offerNotFound": "The offer listing was not found.",

@@ -265,7 +265,9 @@ uploads, buyer sees/filters.
 
 ```
 media_asset      (id, owner_type, owner_id, kind,           -- kind: image | video
-                  file_key, poster_key NULL, width, height, duration_s NULL,
+                  file_key, poster_key NULL, poster_candidates [],
+                  variants Json NULL,
+                  width, height, duration_s NULL, blurhash NULL,
                   alt_i18n, position, status)
                   -- owner_type: product | offer
 media_option_tag (media_asset_id, option_type_id, option_value_id)
@@ -1172,6 +1174,16 @@ Group 6: Network, Loading & Resiliency Tests
 ---
 
 ## Changelog
+
+- 2026-11-05 — Implemented Video Duration Cap (120s) & 3-Candidate Poster Generation (D7, D6):
+  - **120-Second Video Duration Validation (D7)**: Defined `MEDIA_VIDEO_MAX_DURATION_SECONDS = 120` in `@shopnetic/contracts`, constrained `durationS` in `createMediaRequestSchema` and `updateMediaRequestSchema`, and added `MEDIA_VIDEO_DURATION_EXCEEDED` error code; enforced client-side validation in `ProductMediaDialog` via `readVideoDuration` before uploading; enforced server-side validation via native `ffprobe` (`probeVideoDuration`) in `apps/api` (`uploadLocal`) and `apps/workers` (`media-validation-processor`), rejecting videos >120s and unlinking storage files.
+  - **3-Candidate Video Poster Auto-Generation (D6)**: Added `posterCandidates` array column to `catalog.media_asset` via migration `20261105130000_media_asset_poster_candidates`; implemented native `ffmpeg` frame extraction (`generatePosterCandidates`) at 25%, 50%, and 75% video duration; added `StorageService.generateAndSavePosterCandidates` and `POST /admin/v1/media/poster-candidates` caching generated JPEG frames; wired 3-column candidate selector cards into `MediaFormModal` with selection checkmarks, updating `posterKey` while preserving manual custom poster input; integrated candidate extraction into BullMQ worker validation; and cascaded candidate file deletion on asset removal.
+
+- 2026-11-05 — Implemented Responsive Image Variants Pipeline & Multi-Frontend picture Elements (D4):
+  - **Database Migration & Contracts**: Added `variants jsonb` column to `catalog.media_asset` via migration `20261105140000_media_asset_variants`; added `RESPONSIVE_IMAGE_WIDTHS = [320, 480, 800, 1200, 1600, 2000]`, `RESPONSIVE_IMAGE_FORMATS = ['avif', 'webp', 'jpeg']`, schemas `mediaVariantFileSchema`, `mediaVariantsSchema`, and utility functions `buildResponsiveSrcSet`, `getResponsiveImageSources`, `resolveMediaVariantsUrls`, and `extractVariantKeys` to `@shopnetic/contracts`.
+  - **Sharp Pre-Generation Pipeline & BullMQ Queue**: Implemented `generateImageVariantsBuffers` and `buildMediaVariantsRecord` via `sharp` generating 18 variants (6 widths x 3 formats: AVIF quality 80, WebP quality 85, JPEG fallback quality 85) with `withoutEnlargement: true`; created `ImageVariantQueueService` on `QueueName.IMAGE_VARIANTS = 'image-variants'` in `apps/api` and `ImageVariantWorker` processor in `apps/workers`; added synchronous local fallback in `StorageService.generateAndSaveImageVariants` and `MediaService` for instant dev-mode local variant creation.
+  - **Multi-Frontend Integration**: Created shared `<ResponsiveImage>` in `@shopnetic/ui` rendering HTML5 `<picture>`, `<source type="image/avif">`, `<source type="image/webp">`, and `<img srcSet="...">` with responsive `sizes` attribute; wired into `apps/admin` thumbnail cards and `ImageMagnifier` / `ImageInspectionModal`, `apps/storefront` via `<ProductMedia>`, and `apps/seller` via `<SellerProductMedia>`.
+  - **Clean Variant Pruning & Sweeper Safeguards (D1)**: Extended `MediaService.remove`, `MediaService.update`, and `ProductService.remove` to extract all variant storage keys (`extractVariantKeys`) and purge them alongside base files on deletion or asset replacement; hardened `apps/workers` media sweeper (`media-cleanup-processor.ts`) to query active media assets by `ownerId` and mark variant files referenced, preventing false orphan deletions.
 
 - 2026-11-05 — Implemented Product Media Storage Hardening, Magic-Byte Validation, Orphan Cleanup & Responsive UI Polish:
   - **Internal FileKey Partial Unique Index & Remove-Button Validation Timing (D2, Fix #5)**: Added partial unique index `media_asset_internal_file_key_unique` in PostgreSQL via raw migration scoped to internally-generated storage keys (`<ownerType>/<UUID>/...`), allowing external CDN URLs to be reused across products while preventing duplicate keys on generated uploads; wrapped `MediaService.create` and `update` to catch Prisma `P2002` violations and surface `MEDIA_FILE_KEY_CONFLICT` (409) with localized error copy; changed fileKey clear on dropzone remove button to `shouldValidate: false`, deferring validation to save time.

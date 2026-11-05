@@ -9,6 +9,7 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
+  Check,
   ChevronLeft,
   ChevronRight,
   Edit2,
@@ -16,6 +17,7 @@ import {
   FileCheck,
   Film,
   Image as ImageIcon,
+  Loader2,
   Maximize,
   Pencil,
   Play,
@@ -34,6 +36,7 @@ import {
   deriveVariantLeadMediaMap,
   detectMediaFileType,
   resolveMediaUrl,
+  MEDIA_VIDEO_MAX_DURATION_SECONDS,
   type CreateMediaRequest,
   type MediaAsset,
   type OptionType,
@@ -62,6 +65,7 @@ import {
   Skeleton,
   Spinner,
   StatusBadge,
+  ResponsiveImage,
 } from '@shopnetic/ui';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -72,6 +76,7 @@ import {
   createProductMedia,
   deleteMedia,
   deleteMediaTag,
+  generatePosterCandidatesApi,
   listProductMedia,
   listProductOptions,
   putMediaTag,
@@ -153,7 +158,9 @@ const mediaFormSchema = z
       .string()
       .trim()
       .refine(
-        (v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 86400),
+        (v) =>
+          v === '' ||
+          (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= MEDIA_VIDEO_MAX_DURATION_SECONDS),
         'products.media.form.err.durationInvalid',
       )
       .optional()
@@ -171,6 +178,44 @@ const mediaFormSchema = z
   });
 
 type MediaFormValues = z.infer<typeof mediaFormSchema>;
+
+export function readVideoDuration(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !('URL' in window) || !URL.createObjectURL) {
+      resolve(0);
+      return;
+    }
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    let objectUrl = '';
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    video.src = objectUrl;
+
+    const cleanup = () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+      video.removeAttribute('src');
+      video.load();
+    };
+
+    video.onloadedmetadata = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      cleanup();
+      resolve(duration);
+    };
+
+    video.onerror = () => {
+      cleanup();
+      reject(new Error('Failed to load video metadata'));
+    };
+  });
+}
 
 function MediaFormModal({
   open,
@@ -196,6 +241,8 @@ function MediaFormModal({
   const [dragActive, setDragActive] = useState(false);
   const [isFileUploaded, setIsFileUploaded] = useState(false);
   const [isPosterUploaded, setIsPosterUploaded] = useState(false);
+  const [posterCandidates, setPosterCandidates] = useState<Array<{ key: string; url: string }>>([]);
+  const [isGeneratingCandidates, setIsGeneratingCandidates] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (file: File) => {
@@ -210,6 +257,28 @@ function MediaFormModal({
     if (!detected) {
       setUploadError(t('products.media.form.invalidFileType'));
       return;
+    }
+
+    if (detected.kind === 'video') {
+      try {
+        const duration = await readVideoDuration(file);
+        if (duration > MEDIA_VIDEO_MAX_DURATION_SECONDS) {
+          setUploadError(
+            t('products.media.form.videoDurationExceeded', {
+              duration: Math.round(duration),
+            }),
+          );
+          return;
+        }
+        if (duration > 0) {
+          setValue('durationS', String(Math.round(duration)), {
+            shouldValidate: true,
+            shouldDirty: true,
+          });
+        }
+      } catch {
+        // If client-side metadata extraction fails, proceed and let server validate
+      }
     }
 
     setSelectedFile(file);
@@ -246,6 +315,29 @@ function MediaFormModal({
       setIsFileUploaded(true);
       setUploadProgress(100);
       notify.saved(t('products.media.form.uploadSuccess'));
+
+      if (detected.kind === 'video') {
+        setIsGeneratingCandidates(true);
+        generatePosterCandidatesApi(presigned.fileKey)
+          ?.then((res) => {
+            if (res.candidates && res.candidates.length > 0) {
+              setPosterCandidates(res.candidates);
+              const currentPoster = watch('posterKey');
+              if (!currentPoster) {
+                setValue('posterKey', res.candidates[0]!.key, {
+                  shouldValidate: true,
+                  shouldDirty: true,
+                });
+              }
+            }
+          })
+          .catch(() => {
+            // Non-blocking: admin can still enter manual poster URL
+          })
+          .finally(() => {
+            setIsGeneratingCandidates(false);
+          });
+      }
     } catch {
       setUploadError(t('products.media.form.uploadFailed'));
       setUploadProgress(null);
@@ -286,6 +378,7 @@ function MediaFormModal({
 
   const watchKind = watch('kind');
   const selectedKind = watchKind;
+  const watchPosterKey = watch('posterKey');
   const watchAlt = watch('alt') ?? '';
 
   function fieldError(field: Path<MediaFormValues>): string | undefined {
@@ -313,6 +406,8 @@ function MediaFormModal({
     setIsPosterUploaded(false);
 
     if (!open) {
+      setPosterCandidates([]);
+      setIsGeneratingCandidates(false);
       reset({
         kind: 'image',
         fileKey: '',
@@ -335,7 +430,41 @@ function MediaFormModal({
         durationS: asset.durationS != null ? String(asset.durationS) : '',
         status: asset.status,
       });
+
+      if (asset.kind === 'video') {
+        if (asset.posterCandidates && asset.posterCandidates.length > 0) {
+          setPosterCandidates(
+            asset.posterCandidates.map((key, i) => ({
+              key,
+              url: asset.posterCandidateUrls?.[i] || resolveMediaUrl(key, STORAGE_PUBLIC_BASE_URL),
+            })),
+          );
+        } else if (
+          asset.fileKey &&
+          !asset.fileKey.startsWith('http://') &&
+          !asset.fileKey.startsWith('https://')
+        ) {
+          setIsGeneratingCandidates(true);
+          generatePosterCandidatesApi(asset.fileKey)
+            ?.then((res) => {
+              if (res.candidates && res.candidates.length > 0) {
+                setPosterCandidates(res.candidates);
+              }
+            })
+            .catch(() => {})
+            .finally(() => {
+              setIsGeneratingCandidates(false);
+            });
+        } else {
+          setPosterCandidates([]);
+        }
+      } else {
+        setPosterCandidates([]);
+        setIsGeneratingCandidates(false);
+      }
     } else {
+      setPosterCandidates([]);
+      setIsGeneratingCandidates(false);
       reset({
         kind: 'image',
         fileKey: '',
@@ -370,6 +499,9 @@ function MediaFormModal({
         const req: UpdateMediaRequest = {
           fileKey: cleanFileKey,
           posterKey: cleanPosterKey || null,
+          ...(posterCandidates.length > 0
+            ? { posterCandidates: posterCandidates.map((c) => c.key) }
+            : {}),
           alt: data.alt?.trim() ? { en: data.alt.trim() } : null,
           durationS: data.durationS ? Number(data.durationS) : null,
           status: data.status,
@@ -384,6 +516,9 @@ function MediaFormModal({
           kind: data.kind,
           fileKey: cleanFileKey,
           posterKey: cleanPosterKey || null,
+          ...(posterCandidates.length > 0
+            ? { posterCandidates: posterCandidates.map((c) => c.key) }
+            : {}),
           alt: data.alt?.trim() ? { en: data.alt.trim() } : undefined,
           durationS: data.durationS ? Number(data.durationS) : undefined,
           status: data.status,
@@ -620,31 +755,127 @@ function MediaFormModal({
                   />
                 </Field>
 
-                {/* Poster Key (Videos only) */}
+                {/* Suggested Poster Candidates & Poster Key (Videos only) */}
                 {selectedKind === 'video' && (
-                  <Field
-                    label={t('products.media.form.posterKey')}
-                    htmlFor="media-poster-key"
-                    hint={
-                      isPosterUploaded
-                        ? t('products.media.form.posterKeyLockedHint')
-                        : t('products.media.form.posterKeyHint')
-                    }
-                    error={fieldError('posterKey')}
-                  >
-                    <Input
-                      id="media-poster-key"
-                      {...register('posterKey')}
-                      placeholder={t('products.media.form.posterKeyPlaceholder')}
-                      invalid={Boolean(errors.posterKey)}
-                      readOnly={readOnly || isPosterUploaded}
-                      tabIndex={isPosterUploaded ? -1 : undefined}
-                      className={cn(
-                        (readOnly || isPosterUploaded) &&
-                          'bg-muted/50 text-muted-foreground cursor-not-allowed select-all',
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">
+                          {t('products.media.form.posterCandidatesTitle')}
+                        </label>
+                        {isGeneratingCandidates && (
+                          <span className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
+                            <Loader2 className="size-3 animate-spin" />
+                            {t('products.media.form.posterCandidatesGenerating')}
+                          </span>
+                        )}
+                      </div>
+
+                      {posterCandidates.length > 0 && (
+                        <div
+                          className="grid grid-cols-3 gap-2"
+                          data-testid="poster-candidates-grid"
+                        >
+                          {posterCandidates.map((cand, idx) => {
+                            const isSelected = watchPosterKey === cand.key;
+                            return (
+                              <button
+                                key={cand.key}
+                                type="button"
+                                disabled={readOnly}
+                                onClick={() => {
+                                  setValue('posterKey', cand.key, {
+                                    shouldValidate: true,
+                                    shouldDirty: true,
+                                  });
+                                }}
+                                className={cn(
+                                  'group relative aspect-video w-full rounded-md overflow-hidden border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring bg-muted/40 text-left cursor-pointer',
+                                  isSelected
+                                    ? 'border-primary ring-2 ring-primary/30 shadow-sm'
+                                    : 'border-border/60 hover:border-primary/50',
+                                )}
+                                title={
+                                  isSelected
+                                    ? t('products.media.form.posterCandidatesSelected')
+                                    : t('products.media.form.posterCandidatesSelect')
+                                }
+                                aria-label={`Poster frame candidate ${idx + 1}`}
+                              >
+                                <img
+                                  src={cand.url}
+                                  alt={`Candidate frame ${idx + 1}`}
+                                  className="size-full object-cover"
+                                  loading="lazy"
+                                />
+                                {isSelected && (
+                                  <div className="absolute top-1 right-1 size-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
+                                    <Check className="size-3 stroke-[3]" />
+                                  </div>
+                                )}
+                                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent p-1 text-[10px] text-white font-medium flex items-center justify-between opacity-80 group-hover:opacity-100">
+                                  <span>Frame {idx + 1}</span>
+                                  {isSelected && (
+                                    <span className="text-[9px] bg-primary/90 px-1 rounded font-semibold">
+                                      {t('products.media.form.posterCandidatesSelected')}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
                       )}
-                    />
-                  </Field>
+
+                      {posterCandidates.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {t('products.media.form.customPosterPrompt')}
+                        </p>
+                      )}
+                    </div>
+
+                    <Field
+                      label={t('products.media.form.posterKey')}
+                      htmlFor="media-poster-key"
+                      hint={
+                        isPosterUploaded
+                          ? t('products.media.form.posterKeyLockedHint')
+                          : t('products.media.form.posterKeyHint')
+                      }
+                      error={fieldError('posterKey')}
+                    >
+                      <Input
+                        id="media-poster-key"
+                        {...register('posterKey')}
+                        placeholder={t('products.media.form.posterKeyPlaceholder')}
+                        invalid={Boolean(errors.posterKey)}
+                        readOnly={readOnly || isPosterUploaded}
+                        tabIndex={isPosterUploaded ? -1 : undefined}
+                        className={cn(
+                          (readOnly || isPosterUploaded) &&
+                            'bg-muted/50 text-muted-foreground cursor-not-allowed select-all',
+                        )}
+                      />
+                      {watchPosterKey && (
+                        <div className="mt-2 flex items-center gap-2 rounded border border-border/60 bg-muted/20 p-2">
+                          <img
+                            src={resolveMediaUrl(watchPosterKey, STORAGE_PUBLIC_BASE_URL)}
+                            alt="Poster preview"
+                            className="size-12 rounded object-cover border border-border shrink-0"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                          <div className="min-w-0 flex-1 text-xs">
+                            <p className="font-medium text-foreground truncate">{watchPosterKey}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {t('products.media.form.posterCandidatesSelected')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </Field>
+                  </div>
                 )}
 
                 {/* Alt Text */}
@@ -1274,6 +1505,8 @@ function ImageInspectionModal({
               <div className="flex flex-col lg:flex-row items-center justify-center gap-6 max-w-full">
                 <ImageMagnifier
                   src={resolvedUrl}
+                  variants={asset.variants}
+                  sizes="(max-width: 1024px) 90vw, 600px"
                   alt={title}
                   zoomLevel={zoomLevel}
                   mode={magnifierMode}
@@ -1836,10 +2069,14 @@ export function ProductMediaDialog({
                             className="relative size-full flex items-center justify-center cursor-pointer group/img"
                             onClick={() => setInspectImageAsset(asset)}
                           >
-                            <img
+                            <ResponsiveImage
+                              fileKey={asset.fileKey}
                               src={
                                 asset.url || resolveMediaUrl(asset.fileKey, STORAGE_PUBLIC_BASE_URL)
                               }
+                              variants={asset.variants}
+                              publicBaseUrl={STORAGE_PUBLIC_BASE_URL}
+                              sizes="160px"
                               alt={asset.alt?.en ?? 'Product media'}
                               className="size-full object-cover transition-transform group-hover/img:scale-105"
                               onError={(e) => {

@@ -141,7 +141,7 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     expect(list.map((m) => m.fileKey)).toEqual([s('img-b.jpg'), s('img-a.jpg')]);
   });
 
-  it('rejects video creation with invalid duration (durationS <= 0 or > 86400)', async () => {
+  it('rejects video creation with invalid duration (durationS <= 0 or > 120)', async () => {
     await expect(
       media.create(
         'product',
@@ -165,7 +165,7 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
           kind: 'video',
           fileKey: s('video-too-long.mp4'),
           posterKey: s('poster.jpg'),
-          durationS: 90000,
+          durationS: 121,
         },
         actor,
         {},

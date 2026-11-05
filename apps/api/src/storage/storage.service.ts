@@ -1,17 +1,30 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { createHmac, randomBytes } from 'node:crypto';
-import type { Dirent } from 'node:fs';
+import { existsSync, type Dirent } from 'node:fs';
 import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
-import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import type { RequestUploadUrlRequest, UploadUrlResponse } from '@shopnetic/contracts';
+import type {
+  RequestUploadUrlRequest,
+  UploadUrlResponse,
+  MediaVariants,
+} from '@shopnetic/contracts';
 import { API_ENV, type ApiEnv } from '../config/env.js';
+import { probeVideoDuration } from './video-probe.js';
+import { generatePosterCandidates } from './poster-generator.js';
+import {
+  generateImageVariantsBuffers,
+  buildMediaVariantsRecord,
+} from './image-variant-generator.js';
 
 export function isInternalStorageKey(key: string): boolean {
   if (!key || typeof key !== 'string') return false;
@@ -224,5 +237,194 @@ export class StorageService {
 
     await walk(uploadsDir);
     return results;
+  }
+
+  /**
+   * Generates and stores 3 video poster candidate frames at 25%, 50%, and 75%
+   * of duration. Caches results if candidate files already exist.
+   */
+  async generateAndSavePosterCandidates(
+    videoFileKey: string,
+  ): Promise<Array<{ key: string; url: string }>> {
+    if (!videoFileKey || typeof videoFileKey !== 'string') {
+      throw new BadRequestException('Video file key is required');
+    }
+    if (!this.isInternalStorageKey(videoFileKey)) {
+      throw new BadRequestException(
+        'Cannot generate poster candidates for non-internal storage keys',
+      );
+    }
+
+    const ext = extname(videoFileKey);
+    const baseName = basename(videoFileKey, ext);
+    const dir = dirname(videoFileKey).split(sep).join('/');
+    const candKeys = [1, 2, 3].map((i) => `${dir}/${baseName}-poster-cand-${i}.jpg`);
+    const baseUrl = this.env.STORAGE_PUBLIC_BASE_URL.replace(/\/$/, '');
+
+    // 1. S3 Mode
+    if (this.env.STORAGE_PROVIDER === 's3' && this.s3Client) {
+      // Check cache hit in S3
+      try {
+        await Promise.all(
+          candKeys.map((k) =>
+            this.s3Client!.send(
+              new HeadObjectCommand({
+                Bucket: this.env.STORAGE_BUCKET,
+                Key: k,
+              }),
+            ),
+          ),
+        );
+        return candKeys.map((k) => ({ key: k, url: `${baseUrl}/${k}` }));
+      } catch {
+        // Cache miss: proceed to generate
+      }
+
+      const tempDir = resolve(
+        tmpdir(),
+        `poster-cand-${Date.now()}-${randomBytes(4).toString('hex')}`,
+      );
+      await mkdir(tempDir, { recursive: true });
+      const tempVideoPath = resolve(tempDir, `video${ext}`);
+
+      try {
+        const getRes = await this.s3Client.send(
+          new GetObjectCommand({
+            Bucket: this.env.STORAGE_BUCKET,
+            Key: videoFileKey,
+          }),
+        );
+        if (!getRes.Body) {
+          throw new BadRequestException('Failed to retrieve video from storage');
+        }
+
+        let videoBytes: Uint8Array;
+        if (
+          typeof (getRes.Body as { transformToByteArray?: () => Promise<Uint8Array> })
+            .transformToByteArray === 'function'
+        ) {
+          videoBytes = await (
+            getRes.Body as { transformToByteArray: () => Promise<Uint8Array> }
+          ).transformToByteArray();
+        } else {
+          const chunks: Buffer[] = [];
+          for await (const chunk of getRes.Body as AsyncIterable<Uint8Array | Buffer>) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+          videoBytes = new Uint8Array(Buffer.concat(chunks));
+        }
+
+        await writeFile(tempVideoPath, videoBytes);
+        const duration = await probeVideoDuration(tempVideoPath);
+        const generatedPaths = await generatePosterCandidates(
+          tempVideoPath,
+          duration,
+          tempDir,
+          baseName,
+        );
+
+        for (let i = 0; i < candKeys.length; i++) {
+          const key = candKeys[i]!;
+          const framePath = generatedPaths[i]!;
+          const frameBytes = await readFile(framePath);
+          await this.s3Client.send(
+            new PutObjectCommand({
+              Bucket: this.env.STORAGE_BUCKET,
+              Key: key,
+              Body: frameBytes,
+              ContentType: 'image/jpeg',
+            }),
+          );
+        }
+
+        return candKeys.map((k) => ({ key: k, url: `${baseUrl}/${k}` }));
+      } finally {
+        await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+
+    // 2. Local Mode
+    const localCandPaths = candKeys.map((k) => this.assertSafeStorageKey(k));
+    const allCandidatesExist = localCandPaths.every((p) => existsSync(p));
+    if (allCandidatesExist) {
+      return candKeys.map((k) => ({ key: k, url: `${baseUrl}/${k}` }));
+    }
+
+    const videoLocalPath = this.assertSafeStorageKey(videoFileKey);
+    if (!existsSync(videoLocalPath)) {
+      throw new BadRequestException('Video file not found in storage');
+    }
+
+    const duration = await probeVideoDuration(videoLocalPath);
+    const outDir = dirname(videoLocalPath);
+    await mkdir(outDir, { recursive: true });
+    await generatePosterCandidates(videoLocalPath, duration, outDir, baseName);
+
+    return candKeys.map((k) => ({ key: k, url: `${baseUrl}/${k}` }));
+  }
+
+  async generateAndSaveImageVariants(fileKey: string): Promise<MediaVariants> {
+    if (!fileKey || typeof fileKey !== 'string') {
+      throw new BadRequestException('File key is required');
+    }
+    if (!this.isInternalStorageKey(fileKey)) {
+      throw new BadRequestException('Cannot generate variants for non-internal storage keys');
+    }
+
+    let sourceBuffer: Buffer;
+    if (this.env.STORAGE_PROVIDER === 's3' && this.s3Client) {
+      const getRes = await this.s3Client.send(
+        new GetObjectCommand({
+          Bucket: this.env.STORAGE_BUCKET,
+          Key: fileKey,
+        }),
+      );
+      if (
+        getRes.Body &&
+        typeof (getRes.Body as { transformToByteArray?: () => Promise<Uint8Array> })
+          .transformToByteArray === 'function'
+      ) {
+        sourceBuffer = Buffer.from(
+          await (
+            getRes.Body as { transformToByteArray: () => Promise<Uint8Array> }
+          ).transformToByteArray(),
+        );
+      } else {
+        const chunks: Buffer[] = [];
+        for await (const chunk of getRes.Body as AsyncIterable<Uint8Array | Buffer>) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        sourceBuffer = Buffer.concat(chunks);
+      }
+    } else {
+      const localPath = this.assertSafeStorageKey(fileKey);
+      if (!existsSync(localPath)) {
+        throw new BadRequestException('Source image file not found in storage');
+      }
+      sourceBuffer = await readFile(localPath);
+    }
+
+    const variants = await generateImageVariantsBuffers(sourceBuffer, fileKey);
+
+    if (this.env.STORAGE_PROVIDER === 's3' && this.s3Client) {
+      for (const v of variants) {
+        const contentType =
+          v.format === 'avif' ? 'image/avif' : v.format === 'webp' ? 'image/webp' : 'image/jpeg';
+        await this.s3Client.send(
+          new PutObjectCommand({
+            Bucket: this.env.STORAGE_BUCKET,
+            Key: v.key,
+            Body: v.data,
+            ContentType: contentType,
+          }),
+        );
+      }
+    } else {
+      for (const v of variants) {
+        await this.saveLocalFile(v.key, v.data);
+      }
+    }
+
+    return buildMediaVariantsRecord(variants, this.env.STORAGE_PUBLIC_BASE_URL);
   }
 }

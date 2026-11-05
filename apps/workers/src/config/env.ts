@@ -29,6 +29,7 @@ const envSchema = z.object({
   STORAGE_FORCE_PATH_STYLE: z
     .preprocess((v) => v === 'true' || v === true, z.boolean())
     .default(true),
+  STORAGE_PUBLIC_BASE_URL: z.string().default('http://localhost:4000/media'),
   STORAGE_LOCAL_DIR: z.string().optional(),
 });
 
