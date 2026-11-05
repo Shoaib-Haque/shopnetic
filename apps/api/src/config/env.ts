@@ -45,6 +45,8 @@ const envSchema = z.object({
   APP_WEB_URL: z.string().url().default('http://localhost:3000'),
   ADMIN_WEB_URL: z.string().url().default('http://localhost:3002'),
   ADMIN_BASE_PATH: z.string().default('x7f2k9t3m1qp'),
+  // CORS Allowed Origins (comma-separated, in addition to APP_WEB_URL and ADMIN_WEB_URL)
+  CORS_ALLOWED_ORIGINS: z.string().default(''),
 
   // Have I Been Pwned k-anonymity check on new passwords.
   PASSWORD_BREACH_CHECK: z

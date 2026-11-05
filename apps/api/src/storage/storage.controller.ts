@@ -3,6 +3,7 @@ import {
   Controller,
   ForbiddenException,
   HttpCode,
+  Options,
   Post,
   Put,
   Query,
@@ -38,6 +39,15 @@ export class StorageController {
   ): Promise<{ data: UploadUrlResponse; meta: { requestId: string } }> {
     const res = await this.storage.createUploadUrl(body);
     return ok(req, res);
+  }
+
+  /**
+   * CORS preflight and OPTIONS handler for direct storage uploads.
+   */
+  @Options('storage/upload')
+  @HttpCode(204)
+  optionsUpload(): void {
+    // 204 No Content for preflight / direct OPTIONS requests
   }
 
   /**

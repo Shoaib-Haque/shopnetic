@@ -307,6 +307,8 @@ Rules:
     leading slashes, illegal chars, path escapes) independently of signature checks.
   - `STORAGE_UPLOAD_BASE_URL` env variable ensures presigned upload URLs work across remote/container review
     environments (not hardcoded to localhost).
+  - Explicit CORS origin allowlist (`plan/16-security.md`) and preflight `OPTIONS` handling on `/admin/v1/storage/upload`
+    with `crossOriginResourcePolicy: 'cross-origin'` enable secure direct browser binary PUT uploads across origins.
   `fileKey` in `media_asset` stores relative object-storage keys (e.g. `product/{id}/{timestamp}-{hash}-{filename}.jpg`).
   The admin UI `MediaFormModal` provides drag-and-drop file upload with live progress tracking,
   automatic media kind detection, and fallback manual key/URL input. Dev/CI seed data
