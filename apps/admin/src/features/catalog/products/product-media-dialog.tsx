@@ -1765,6 +1765,7 @@ export function ProductMediaDialog({
                                 type="button"
                                 className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform group-hover:scale-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring z-10"
                                 aria-label={t('products.media.playPreview')}
+                                title={t('products.media.playPreview')}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setPreviewVideoAsset(asset);
@@ -1815,7 +1816,7 @@ export function ProductMediaDialog({
                         {/* Hover Overlay Actions (Desktop) */}
                         {!isReadOnly && (
                           <div
-                            className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-2 pt-6 z-20"
+                            className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-2 pt-6 z-20"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {canMoveLeft && (
@@ -1825,10 +1826,11 @@ export function ProductMediaDialog({
                                 size="sm"
                                 onClick={() => handleMove(asset.id, 'left')}
                                 disabled={reordering}
-                                className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground"
+                                className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground shrink-0"
                                 aria-label={t('products.media.moveLeft')}
+                                title={t('products.media.moveLeft')}
                               >
-                                <ChevronLeft className="size-4" />
+                                <ChevronLeft className="size-3.5" />
                               </Button>
                             )}
                             {canSetCover && (
@@ -1838,10 +1840,11 @@ export function ProductMediaDialog({
                                 size="sm"
                                 onClick={() => handleSetAsCover(asset.id)}
                                 disabled={reordering}
-                                className="h-7 px-2 text-[10px] rounded-full gap-1 bg-background/90 hover:bg-background text-foreground"
+                                className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground shrink-0"
+                                aria-label={t('products.media.setAsCover')}
+                                title={t('products.media.setAsCover')}
                               >
-                                <Star className="size-3" />
-                                {t('products.media.setAsCover')}
+                                <Star className="size-3.5" />
                               </Button>
                             )}
                             {asset.kind === 'image' && (
@@ -1850,7 +1853,7 @@ export function ProductMediaDialog({
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setInspectImageAsset(asset)}
-                                className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground"
+                                className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground shrink-0"
                                 aria-label={t('products.media.inspectImage')}
                                 title={t('products.media.inspectImage')}
                               >
@@ -1862,8 +1865,9 @@ export function ProductMediaDialog({
                               variant="outline"
                               size="sm"
                               onClick={() => setFormModalState({ open: true, asset })}
-                              className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground"
+                              className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground shrink-0"
                               aria-label={t('products.media.edit')}
+                              title={t('products.media.edit')}
                             >
                               <Edit2 className="size-3.5" />
                             </Button>
@@ -1872,8 +1876,9 @@ export function ProductMediaDialog({
                               variant="destructive"
                               size="sm"
                               onClick={() => setDeleteTarget(asset)}
-                              className="size-7 p-0 rounded-full"
+                              className="size-7 p-0 rounded-full shrink-0"
                               aria-label={t('products.media.delete')}
+                              title={t('products.media.delete')}
                             >
                               <Trash2 className="size-3.5" />
                             </Button>
@@ -1884,10 +1889,11 @@ export function ProductMediaDialog({
                                 size="sm"
                                 onClick={() => handleMove(asset.id, 'right')}
                                 disabled={reordering}
-                                className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground"
+                                className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground shrink-0"
                                 aria-label={t('products.media.moveRight')}
+                                title={t('products.media.moveRight')}
                               >
-                                <ChevronRight className="size-4" />
+                                <ChevronRight className="size-3.5" />
                               </Button>
                             )}
                           </div>
