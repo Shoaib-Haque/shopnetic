@@ -23,8 +23,11 @@ export class StorageService {
       this.logger.warn(
         'STORAGE_HMAC_SECRET unset; generated an ephemeral 32-byte secret for local storage tokens.',
       );
+    } else if (env.STORAGE_PROVIDER === 'local') {
+      throw new Error('STORAGE_HMAC_SECRET must be configured in production for local storage');
     } else {
-      throw new Error('STORAGE_HMAC_SECRET must be configured in production');
+      // In production with S3 provider, HMAC tokens are not used
+      this.hmacSecret = '';
     }
 
     if (env.STORAGE_PROVIDER === 's3') {
@@ -74,11 +77,14 @@ export class StorageService {
   }
 
   signToken(key: string, expires: number): string {
+    if (!this.hmacSecret) {
+      throw new Error('Local storage HMAC operations are unavailable without a configured secret');
+    }
     return createHmac('sha256', this.hmacSecret).update(`${key}:${expires}`).digest('hex');
   }
 
   verifyToken(key: string, token: string, expires: number): boolean {
-    if (Date.now() > expires) return false;
+    if (!this.hmacSecret || Date.now() > expires) return false;
     const expected = this.signToken(key, expires);
     return token === expected;
   }

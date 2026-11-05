@@ -157,4 +157,35 @@ describe('StorageService', () => {
       }),
     ).toThrow('STORAGE_HMAC_SECRET must be configured in production for local storage');
   });
+
+  it('allows booting StorageService in production with STORAGE_PROVIDER=s3 without STORAGE_HMAC_SECRET', () => {
+    const s3ProdEnv = loadApiEnv({
+      NODE_ENV: 'production',
+      PORT: '4000',
+      APP_VERSION: '1.0.0',
+      DATABASE_URL: 'postgresql://prod:prod@localhost:5432/prod',
+      REDIS_URL: 'redis://localhost:6379',
+      JWT_ISSUER: 'https://shopnetic.com',
+      JWT_ACCESS_TTL_SECONDS: '900',
+      AUTH_REFRESH_TTL_DAYS: '30',
+      AUTH_STAFF_REFRESH_TTL_HOURS: '8',
+      VERIFICATION_TTL_HOURS: '24',
+      PASSWORD_RESET_TTL_HOURS: '1',
+      TOTP_ISSUER: 'Shopnetic',
+      STORAGE_PROVIDER: 's3',
+      STORAGE_BUCKET: 'prod-media',
+      STORAGE_REGION: 'us-east-1',
+    });
+
+    let service: StorageService | undefined;
+    expect(() => {
+      service = new StorageService(s3ProdEnv);
+    }).not.toThrow();
+
+    expect(service).toBeDefined();
+    expect(() => service!.signToken('key', Date.now() + 1000)).toThrow(
+      'Local storage HMAC operations are unavailable without a configured secret',
+    );
+    expect(service!.verifyToken('key', 'token', Date.now() + 1000)).toBe(false);
+  });
 });
