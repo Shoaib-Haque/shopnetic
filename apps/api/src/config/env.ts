@@ -83,6 +83,19 @@ const envSchema = z.object({
   // DEV ONLY — the injected body shape: a normal RFC-9457 error envelope,
   // broken JSON, or an empty body (exercises the client's non-JSON path).
   DEV_FAULT_BODY: z.enum(['envelope', 'malformed', 'empty']).default('envelope'),
+
+  // Media Object Storage (S3 / MinIO / Local dev disk)
+  STORAGE_PROVIDER: z.enum(['s3', 'local']).default('local'),
+  STORAGE_BUCKET: z.string().default('media'),
+  STORAGE_REGION: z.string().default('us-east-1'),
+  STORAGE_ENDPOINT: z.string().optional(),
+  STORAGE_ACCESS_KEY_ID: z.string().optional(),
+  STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+  STORAGE_PUBLIC_BASE_URL: z.string().default('http://localhost:4000/uploads'),
+  STORAGE_FORCE_PATH_STYLE: z
+    .enum(['true', 'false', '1', '0'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;

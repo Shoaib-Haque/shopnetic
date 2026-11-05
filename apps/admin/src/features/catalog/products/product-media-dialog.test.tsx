@@ -17,7 +17,9 @@ import {
   listProductOptions,
   putMediaTag,
   reorderProductMedia,
+  requestUploadUrl,
   updateMedia,
+  uploadFileToPresignedUrl,
 } from './api';
 import { ProductMediaDialog } from './product-media-dialog';
 
@@ -33,6 +35,8 @@ vi.mock('./api', async () => {
     putMediaTag: vi.fn(),
     deleteMediaTag: vi.fn(),
     reorderProductMedia: vi.fn(),
+    requestUploadUrl: vi.fn(),
+    uploadFileToPresignedUrl: vi.fn(),
   };
 });
 
@@ -48,6 +52,8 @@ const mockedDeleteMedia = vi.mocked(deleteMedia);
 const mockedPutMediaTag = vi.mocked(putMediaTag);
 const mockedDeleteMediaTag = vi.mocked(deleteMediaTag);
 const mockedReorderProductMedia = vi.mocked(reorderProductMedia);
+const mockedRequestUploadUrl = vi.mocked(requestUploadUrl);
+const mockedUploadFileToPresignedUrl = vi.mocked(uploadFileToPresignedUrl);
 const mockedListOptionTypesPage = vi.mocked(listOptionTypesPage);
 
 const sampleProduct: Product = {
@@ -406,6 +412,95 @@ describe('ProductMediaDialog', () => {
 
     // Max length attribute is set to 200
     expect(altInput).toHaveAttribute('maxLength', '200');
+  });
+
+  it('uploads file via presigned URL pipeline and sets fileKey automatically', async () => {
+    mockedRequestUploadUrl.mockResolvedValueOnce({
+      uploadUrl: 'http://localhost:4000/admin/v1/storage/upload?token=test',
+      fileKey: 'product/prod_1/12345-tee-navy.jpg',
+      publicUrl: 'http://localhost:4000/uploads/product/prod_1/12345-tee-navy.jpg',
+    });
+    mockedUploadFileToPresignedUrl.mockResolvedValueOnce();
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('media-file-input');
+    const fakeFile = new File(['image-bytes'], 'tee-navy.jpg', { type: 'image/jpeg' });
+
+    fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+
+    await waitFor(() => {
+      expect(mockedRequestUploadUrl).toHaveBeenCalledWith({
+        fileName: 'tee-navy.jpg',
+        contentType: 'image/jpeg',
+        ownerType: 'product',
+        ownerId: 'prod_1',
+      });
+      expect(mockedUploadFileToPresignedUrl).toHaveBeenCalledWith(
+        'http://localhost:4000/admin/v1/storage/upload?token=test',
+        fakeFile,
+        expect.any(Function),
+      );
+    });
+
+    // The fileKey input has automatically been populated
+    const fileKeyInput = screen.getByPlaceholderText(/products\/antigravity-tee-navy\.jpg/i);
+    expect(fileKeyInput).toHaveValue('product/prod_1/12345-tee-navy.jpg');
+
+    // Submit the form
+    mockedCreateProductMedia.mockResolvedValueOnce({
+      id: 'media_uploaded',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'image',
+      fileKey: 'product/prod_1/12345-tee-navy.jpg',
+      posterKey: null,
+      width: null,
+      height: null,
+      durationS: null,
+      blurhash: null,
+      alt: null,
+      position: 0,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const submitBtn = screen.getByRole('button', { name: 'Add Media' });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockedCreateProductMedia).toHaveBeenCalledWith(
+        'prod_1',
+        expect.objectContaining({
+          fileKey: 'product/prod_1/12345-tee-navy.jpg',
+        }),
+      );
+    });
+  });
+
+  it('rejects files larger than 50MB with localized error', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('media-file-input');
+    const largeFile = new File(['x'], 'huge-video.mp4', { type: 'video/mp4' });
+    Object.defineProperty(largeFile, 'size', { value: 60 * 1024 * 1024 });
+
+    fireEvent.change(fileInput, { target: { files: [largeFile] } });
+
+    await waitFor(() => {
+      expect(screen.getByText('File exceeds maximum size (50MB).')).toBeInTheDocument();
+    });
+    expect(mockedRequestUploadUrl).not.toHaveBeenCalled();
   });
 
   it('handles reordering moving asset left/right', async () => {

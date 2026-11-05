@@ -788,3 +788,20 @@ export const reorderMediaRequestSchema = z.object({
   mediaAssetIds: z.array(z.string().uuid()).min(1).max(500),
 });
 export type ReorderMediaRequest = z.infer<typeof reorderMediaRequestSchema>;
+
+/** Presigned upload URL request: `POST …/media/upload-url`. */
+export const requestUploadUrlSchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  contentType: z.string().trim().min(1).max(100),
+  ownerType: mediaOwnerTypeSchema,
+  ownerId: z.string().uuid(),
+});
+export type RequestUploadUrlRequest = z.infer<typeof requestUploadUrlSchema>;
+
+/** Presigned upload URL response. */
+export const uploadUrlResponseSchema = z.object({
+  uploadUrl: z.string().url(),
+  fileKey: objectKeySchema,
+  publicUrl: z.string().url(),
+});
+export type UploadUrlResponse = z.infer<typeof uploadUrlResponseSchema>;

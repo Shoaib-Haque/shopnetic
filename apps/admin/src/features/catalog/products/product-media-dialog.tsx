@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Edit2,
   ExternalLink,
+  FileCheck,
   Film,
   Image as ImageIcon,
   Maximize,
@@ -22,6 +23,8 @@ import {
   Star,
   Tag,
   Trash2,
+  Upload,
+  X,
 } from 'lucide-react';
 import {
   deriveProductCoverMedia,
@@ -68,7 +71,9 @@ import {
   listProductOptions,
   putMediaTag,
   reorderProductMedia,
+  requestUploadUrl,
   updateMedia,
+  uploadFileToPresignedUrl,
 } from './api';
 
 // ── Sub-modal: Media Form Modal (Add / Edit) ──────────────────────────────────
@@ -155,6 +160,69 @@ function MediaFormModal({
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (file: File) => {
+    if (file.size > 50 * 1024 * 1024) {
+      setUploadError(t('products.media.form.fileTooBig'));
+      return;
+    }
+    setUploadError(null);
+    setSelectedFile(file);
+
+    if (file.type.startsWith('video/')) {
+      setValue('kind', 'video', { shouldValidate: true });
+    } else if (file.type.startsWith('image/')) {
+      setValue('kind', 'image', { shouldValidate: true });
+      if (typeof window !== 'undefined' && 'URL' in window && URL.createObjectURL) {
+        try {
+          const previewUrl = URL.createObjectURL(file);
+          setFilePreview(previewUrl);
+        } catch {
+          // ignore in environments without object URL
+        }
+      }
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const presigned = await requestUploadUrl({
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        ownerType: 'product',
+        ownerId: productId,
+      });
+
+      await uploadFileToPresignedUrl(presigned.uploadUrl, file, (percent) => {
+        setUploadProgress(percent);
+      });
+
+      setValue('fileKey', presigned.fileKey, { shouldValidate: true, shouldDirty: true });
+      setUploadProgress(100);
+      notify.saved(t('products.media.form.uploadSuccess'));
+    } catch {
+      setUploadError(t('products.media.form.uploadFailed'));
+      setUploadProgress(null);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (filePreview && typeof window !== 'undefined' && 'URL' in window && URL.revokeObjectURL) {
+        URL.revokeObjectURL(filePreview);
+      }
+    };
+  }, [filePreview]);
+
   const {
     register,
     control,
@@ -195,6 +263,13 @@ function MediaFormModal({
   }
 
   useEffect(() => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    setUploadProgress(null);
+    setUploadError(null);
+    setIsUploading(false);
+    setDragActive(false);
+
     if (!open) {
       reset({
         kind: 'image',
@@ -332,6 +407,128 @@ function MediaFormModal({
                   </Field>
                 )}
 
+                {/* Direct File Upload Dropzone */}
+                {!readOnly && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">
+                      {t('products.media.form.uploadMode')}
+                    </label>
+                    <div
+                      data-testid="media-file-dropzone"
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        setDragActive(true);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragActive(true);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        setDragActive(false);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragActive(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) void handleFileUpload(file);
+                      }}
+                      onClick={() => {
+                        if (!isUploading) fileInputRef.current?.click();
+                      }}
+                      className={cn(
+                        'relative flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg transition-colors cursor-pointer text-center',
+                        dragActive
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/30',
+                        isUploading && 'pointer-events-none opacity-80',
+                      )}
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        data-testid="media-file-input"
+                        accept="image/*,video/*"
+                        className="sr-only"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void handleFileUpload(file);
+                          e.target.value = '';
+                        }}
+                      />
+                      {selectedFile ? (
+                        <div className="flex items-center gap-3 w-full">
+                          {filePreview ? (
+                            <img
+                              src={filePreview}
+                              alt="Upload preview"
+                              className="size-10 rounded object-cover border border-border shrink-0"
+                            />
+                          ) : (
+                            <div className="size-10 rounded bg-muted flex items-center justify-center shrink-0">
+                              <FileCheck className="size-5 text-primary" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0 text-left">
+                            <p className="text-xs font-medium text-foreground truncate">
+                              {selectedFile.name}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                            {uploadProgress !== null && (
+                              <div className="mt-1 flex items-center gap-2">
+                                <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
+                                  <div
+                                    className="h-full bg-primary transition-all duration-200"
+                                    style={{ width: `${uploadProgress}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] font-mono text-muted-foreground">
+                                  {uploadProgress}%
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          {!isUploading && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="size-7 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedFile(null);
+                                setFilePreview(null);
+                                setUploadProgress(null);
+                              }}
+                              title={t('products.media.form.removeFile')}
+                              aria-label={t('products.media.form.removeFile')}
+                            >
+                              <X className="size-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1.5 py-1">
+                          <Upload className="size-6 text-muted-foreground" />
+                          <p className="text-xs font-medium text-foreground">
+                            {t('products.media.form.dropzoneTitle')}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {t('products.media.form.dropzoneHint')}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {uploadError && (
+                      <p className="text-xs text-destructive" role="alert">
+                        {uploadError}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* File Key / URL */}
                 <Field
                   label={t('products.media.form.fileKey')}
@@ -463,7 +660,7 @@ function MediaFormModal({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isUploading}
                 onClick={() => requestClose(false)}
               >
                 {t(readOnly ? 'products.media.close' : 'products.media.form.cancel')}
@@ -473,8 +670,8 @@ function MediaFormModal({
                   type="submit"
                   variant="primary"
                   size="sm"
-                  loading={isSubmitting}
-                  disabled={isSubmitting}
+                  loading={isSubmitting || isUploading}
+                  disabled={isSubmitting || isUploading}
                 >
                   {isEdit ? t('products.media.form.save') : t('products.media.form.add')}
                 </Button>

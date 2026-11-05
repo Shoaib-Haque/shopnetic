@@ -295,21 +295,14 @@ Rules:
   `option_value.swatch_hex` / `swatch_image_key` (a tiny representative image),
   set by admin for predefined values, by seller (pending normalization) for
   `open` values.
-- **`file_key` today vs. later**: the S3/MinIO signed-upload pipeline (`01`
-  section "File/media", Phase 1 "Media & Storage Pipeline" in `AGENTS.md`)
-  isn't built yet, so there's nowhere to upload a file to. Until it lands,
-  `file_key` holds a directly-renderable URL instead of an object-storage
-  key — the admin's media dialog already renders it as a plain `<img src>`, so
-  either shape works with no component change. Dev/CI seed data
-  (`packages/db/prisma/seed/fixtures/seed-media.ts`) uses real, openly-licensed
-  product photos served as static files from `apps/api/public/seed-media/`
-  (wired via `app.useStaticAssets()` in `apps/api/src/main.ts`, dev-only) —
-  the API's own origin, not any one app's `public/`, so admin, storefront,
-  and seller can all render the same URL without a per-app copy. Migrating
-  to the real pipeline later = upload those files (or re-fetch the
-  originals — sources are documented in `seed-media.ts`) to the object store
-  and swap the paths in that one file; `fixtures/inventory.ts` only ever
-  references photos by category key, never by raw path.
+- **`file_key` & signed upload pipeline**: Implemented in Phase 1 (`POST /admin/v1/media/upload-url`,
+  `StorageService` in `apps/api/src/storage/`). Supports both AWS S3 / MinIO (`STORAGE_PROVIDER=s3`)
+  using `@aws-sdk/s3-request-presigner` and local dev storage (`STORAGE_PROVIDER=local`, signed HMAC
+  upload endpoint storing to `apps/api/public/uploads/` and served statically). `fileKey` in `media_asset`
+  stores relative object-storage keys (e.g. `product/{id}/{timestamp}-{hash}-{filename}.jpg`).
+  The admin UI `MediaFormModal` provides drag-and-drop file upload with live progress tracking,
+  automatic media kind detection, and fallback manual key/URL input. Dev/CI seed data
+  (`packages/db/prisma/seed/fixtures/seed-media.ts`) remains compatible.
 
 ### Who does what
 
@@ -745,6 +738,8 @@ Group 6: Network, Loading & Resiliency Tests (CDP Interception & .env Latency)
 | **4.14** | Media Form Modal Discard Changes Confirmation | `MediaFormModal` dirty exit guard | Modify any media field (e.g. alt text or variant tag) and attempt to close modal via X or Cancel. | `ConfirmDialog` (`tone="danger"`) opens warning that changes will be lost; confirming discards edits and closes; cancelling keeps modal open with state preserved. | `tmp/catalog/products/media/15-media-discard-dialog.png` |
 | **4.15** | Two-Tab Stale Media Conflict Resync | `ProductMediaDialog` OCC resync | Edit same media asset in two browser tabs; save in tab 1, then attempt save in tab 2. | Tab 2 catches 409 conflict, marks `hadConflictRef`; upon dismiss, `onConflict` callback triggers silent background resync without full dialog reload or losing active filter tab. | `tmp/catalog/products/media/16-media-conflict-resync.png` |
 | **4.16** | 1-Based Position Badges on Variant-Tagged Assets | Media card variant indicators | Inspect media cards with variant tags assigned. | Position badges format as 1-based indices (Pos 1, Pos 2…) matching human-readable editorial numbering across list and preview views. | `tmp/catalog/products/media/05-media-tagged-to-option.png` |
+| **4.17** | Direct File Upload via Presigned URL | `MediaFormModal` dropzone / picker | Drop or browse an image/video file (<50MB). | Triggers `requestUploadUrl` to obtain presigned PUT URL and storage key; streams binary file with progress indicator; auto-populates `fileKey` input upon 100% completion; saves asset to catalog. | `tmp/catalog/products/media/17-direct-file-upload.png` |
+| **4.18** | File Size Validation Cap (50MB) | `MediaFormModal` dropzone | Select a file exceeding 50MB. | Immediate client-side validation blocks upload displaying `"File exceeds maximum size (50MB)."`; skips network requests. | `tmp/catalog/products/media/18-upload-file-too-large.png` |
 
 ---
 

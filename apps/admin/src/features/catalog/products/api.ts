@@ -16,6 +16,7 @@ import type {
   PutMediaTagRequest,
   PutProductOptionRequest,
   ReorderMediaRequest,
+  RequestUploadUrlRequest,
   SellerWithShop,
   SetProductOptionValuesRequest,
   StockLevel,
@@ -24,6 +25,7 @@ import type {
   UpdateProductRequest,
   UpdateStockRequest,
   UpdateVariantRequest,
+  UploadUrlResponse,
   Variant,
   Warehouse,
 } from '@shopnetic/contracts';
@@ -183,6 +185,48 @@ export function restoreVariant(productId: string, id: string): Promise<Variant> 
 }
 
 // ── Product media (plan/26 §5) ──────────────────────────────────────────────
+
+export function requestUploadUrl(body: RequestUploadUrlRequest): Promise<UploadUrlResponse> {
+  return adminApi<UploadUrlResponse>('/media/upload-url', {
+    method: 'POST',
+    body,
+  });
+}
+
+export function uploadFileToPresignedUrl(
+  uploadUrl: string,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl, true);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable) {
+          const percent = Math.round((evt.loaded / evt.total) * 100);
+          onProgress(percent);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`Upload failed with status ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Network error during upload'));
+    };
+
+    xhr.send(file);
+  });
+}
 
 export function listProductMedia(productId: string): Promise<MediaAsset[]> {
   return adminApi<MediaAsset[]>(`/products/${productId}/media`);

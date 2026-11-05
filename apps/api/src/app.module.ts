@@ -10,6 +10,7 @@ import { IdentityModule } from './identity/identity.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
 import { SellerModule } from './seller/seller.module.js';
 import { InventoryModule } from './inventory/inventory.module.js';
+import { StorageModule } from './storage/storage.module.js';
 import { HealthController } from './health/health.controller.js';
 import { CorrelationMiddleware } from './common/correlation.middleware.js';
 
@@ -31,6 +32,7 @@ import { CorrelationMiddleware } from './common/correlation.middleware.js';
     CatalogModule,
     SellerModule,
     InventoryModule,
+    StorageModule,
   ],
   controllers: [HealthController],
 })
