@@ -484,6 +484,50 @@ describe('ProductMediaDialog', () => {
     });
   });
 
+  it('locks fileKey field as read-only after dropzone upload and unlocks on file removal', async () => {
+    mockedRequestUploadUrl.mockResolvedValueOnce({
+      uploadUrl: 'http://localhost:4000/admin/v1/storage/upload?token=test',
+      fileKey: 'product/prod_1/locked-file.jpg',
+      publicUrl: 'http://localhost:4000/uploads/product/prod_1/locked-file.jpg',
+    });
+    mockedUploadFileToPresignedUrl.mockResolvedValueOnce();
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const fileKeyInput = screen.getByPlaceholderText(/products\/antigravity-tee-navy\.jpg/i);
+    // Before upload, fileKey is editable
+    expect(fileKeyInput).not.toHaveAttribute('readonly');
+
+    const fileInput = screen.getByTestId('media-file-input');
+    const fakeFile = new File(['bytes'], 'sample.jpg', { type: 'image/jpeg' });
+    fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+
+    await waitFor(() => {
+      expect(fileKeyInput).toHaveValue('product/prod_1/locked-file.jpg');
+      expect(fileKeyInput).toHaveAttribute('readonly');
+    });
+
+    // Confirmation locked hint is displayed
+    expect(
+      screen.getByText(/Locked to uploaded file\. Click the remove button above/i),
+    ).toBeInTheDocument();
+
+    // Click the remove button on the upload preview
+    const removeBtn = screen.getByRole('button', { name: 'Change file' });
+    fireEvent.click(removeBtn);
+
+    // fileKey is cleared and unlocked for manual typing
+    expect(fileKeyInput).toHaveValue('');
+    expect(fileKeyInput).not.toHaveAttribute('readonly');
+    expect(
+      screen.queryByText(/Locked to uploaded file\. Click the remove button above/i),
+    ).not.toBeInTheDocument();
+  });
+
   it('rejects files larger than 50MB with localized error', async () => {
     renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
     await screen.findByText('Product Media Gallery');
@@ -1427,5 +1471,37 @@ describe('ProductMediaDialog', () => {
       'src',
       'https://cdn.example.com/products/prod_1/full-url.png',
     );
+  });
+
+  it('opens image inspection modal with magnifier on clicking image card or inspect button', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const inspectButtons = screen.getAllByRole('button', { name: 'Inspect image' });
+    expect(inspectButtons.length).toBeGreaterThan(0);
+
+    // Click inspect button for first image
+    fireEvent.click(inspectButtons[0]!);
+
+    // Inspection modal opens with magnifier container
+    expect(await screen.findByTestId('image-magnifier-container')).toBeInTheDocument();
+    expect(screen.getByText('Organic Tee Front View')).toBeInTheDocument();
+    expect(screen.getByText('2.5x Zoom:')).toBeInTheDocument();
+
+    // Adjust zoom level to 4x
+    const zoom4x = screen.getByRole('button', { name: '4x' });
+    fireEvent.click(zoom4x);
+    expect(screen.getByText('4x Zoom:')).toBeInTheDocument();
+
+    // Navigate to next image
+    const nextBtn = screen.getByRole('button', { name: 'Next image' });
+    fireEvent.click(nextBtn);
+    expect(screen.getByText('Navy Tee')).toBeInTheDocument();
+
+    // Close modal
+    const closeBtns = screen.getAllByRole('button', { name: 'Close' });
+    fireEvent.click(closeBtns[closeBtns.length - 1]!);
+    expect(screen.queryByTestId('image-magnifier-container')).not.toBeInTheDocument();
   });
 });

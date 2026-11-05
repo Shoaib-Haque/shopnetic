@@ -315,8 +315,13 @@ Rules:
   - Backend `MediaService.toView()` computes and returns `url` and `posterUrl` using `STORAGE_PUBLIC_BASE_URL`.
   - Admin UI renders `asset.url || resolveMediaUrl(asset.fileKey, NEXT_PUBLIC_STORAGE_PUBLIC_BASE_URL)` to ensure thumbnails, video previews, and original asset links render correctly regardless of whether the asset has a full legacy URL or a relative object key.
   The admin UI `MediaFormModal` provides drag-and-drop file upload with live progress tracking,
-  automatic media kind detection, and fallback manual key/URL input. Dev/CI seed data
-  (`packages/db/prisma/seed/fixtures/seed-media.ts`) remains compatible.
+  automatic media kind detection, and fallback manual key/URL input.
+  - **Dropzone lock decision**: once a file is uploaded via the dropzone in a form session, the `fileKey` input is locked as read-only to prevent orphaning uploaded assets with hand-edited paths. Removing the file via the dropzone "x" button clears `fileKey` and unlocks manual typing.
+  - **Amazon-style hover magnifier (`image-magnifier.tsx`) & Image Inspection Modal**:
+    - High-resolution hover magnifier with cursor-following lens and flyout panel (or loupe).
+    - Modal provides image gallery navigation (prev/next image), zoom controls (1.5x, 2.5x, 4x), keyboard panning (arrow keys), and fullscreen inspection.
+    - Card thumbnail and overlay actions allow 1-click inspection of any image asset.
+  Dev/CI seed data (`packages/db/prisma/seed/fixtures/seed-media.ts`) remains compatible.
 
 ### Who does what
 
@@ -754,6 +759,8 @@ Group 6: Network, Loading & Resiliency Tests (CDP Interception & .env Latency)
 | **4.16** | 1-Based Position Badges on Variant-Tagged Assets | Media card variant indicators | Inspect media cards with variant tags assigned. | Position badges format as 1-based indices (Pos 1, Pos 2…) matching human-readable editorial numbering across list and preview views. | `tmp/catalog/products/media/05-media-tagged-to-option.png` |
 | **4.17** | Direct File Upload via Presigned URL | `MediaFormModal` dropzone / picker | Drop or browse an image/video file (<50MB). | Triggers `requestUploadUrl` to obtain presigned PUT URL and storage key; streams binary file with progress indicator; auto-populates `fileKey` input upon 100% completion; saves asset to catalog. | `tmp/catalog/products/media/17-direct-file-upload.png` |
 | **4.18** | File Size Validation Cap (50MB) | `MediaFormModal` dropzone | Select a file exceeding 50MB. | Immediate client-side validation blocks upload displaying `"File exceeds maximum size (50MB)."`; skips network requests. | `tmp/catalog/products/media/18-upload-file-too-large.png` |
+| **4.19** | Dropzone FileKey Read-Only Lock & Unlock on Removal | `MediaFormModal` fileKey locking | Drop or browse a file to complete upload; inspect File Key input; click the remove ("X" / "Change file") button in dropzone preview. | Upon upload completion, `fileKey` input locks to `readOnly` with confirmation hint (`fileKeyLockedHint`) and visual styling (`cursor-not-allowed select-all`), preventing manual hand-edits that orphan uploaded assets; clicking remove clears the uploaded file and unlocks `fileKey` for manual typing. | `tmp/catalog/products/media/19-filekey-locked-after-upload.png` |
+| **4.20** | Amazon-Style Hover Magnifier & Image Inspection Modal | `ImageInspectionModal` & `ImageMagnifier` | Click image card or 'Inspect image' button; move cursor over image; toggle zoom levels (1.5x, 2.5x, 4x); use arrow keys. | Opens `ImageInspectionModal` with `ImageMagnifier`; cursor lens tracks pointer with smooth clamped position and renders high-resolution zoom flyout; zoom controls update magnification scale; keyboard arrow keys pan lens position; Escape key dismisses lens; previous/next controls navigate between image assets. | `tmp/catalog/products/media/20-image-magnifier-inspection.png` |
 
 ---
 
@@ -1254,6 +1261,11 @@ Group 6: Network, Loading & Resiliency Tests
   - **SQL-Native Blended Ranked Search in Offers (Scenario 5.31)**: Upgraded `OfferService.list` to execute native SQL-level blended ranked search using the canonical `buildTokenSearch` joining `inventory.offer` with `seller.seller` and `seller.shop`, ordering by `${scoreSql} DESC, o.price_minor ASC, o.id ASC` directly in PostgreSQL before pagination, eliminating arbitrary candidate truncation; awards score bonuses for exact phrase/token matches ("Beta Store") to the top while preserving partial cross-seller matches ("alpha gamma", "nordic har") without dropping either; upgraded offers search input to `<SearchInput>` with clear button.
   - **Standard Search Clear Button (`SearchInput`) Across Modals**: Added `isLoading` spinner support and forwarded `onKeyDown` to `<SearchInput>` in `@shopnetic/ui`; replaced inputs in `BrandCombobox`, `CategoryCombobox`, `SellerCombobox`, and `WarehouseFormModal` with `<SearchInput>` ensuring trailing clear buttons across all catalog popovers and dialogs.
   - **Verification Quality Gates**: Confirmed clean `pnpm typecheck` across all 16 workspaces, clean `pnpm lint`, clean `pnpm format:check`, 689/689 admin unit tests passing, 41/41 API unit tests passing, and 231/231 API integration tests passing.
+
+- 2026-11-05 — Implemented Amazon-Style Hover Magnifier & Upload Key Locking (Scenarios 4.19, 4.20):
+  - **Dropzone FileKey Read-Only Lock (Scenario 4.19)**: In `MediaFormModal`, locked `fileKey` input to `readOnly` after successful dropzone file upload, accompanied by confirmation hint (`fileKeyLockedHint`) and visual styling (`cursor-not-allowed select-all`), preventing manual path tampering that leaves uploaded storage blobs orphaned; clicking the dropzone remove ("X" / "Change file") button clears `fileKey` and unlocks manual typing.
+  - **Amazon-Style Hover Magnifier (`image-magnifier.tsx`) & Image Inspection Modal (Scenario 4.20)**: Built `ImageMagnifier` component with cursor-following lens, side flyout zoom panel (`backgroundSize: ${zoom * 100}%`), keyboard navigation (arrow keys to pan, escape to dismiss), touch support, and `prefers-reduced-motion` compliance; built `ImageInspectionModal` featuring previous/next image navigation, zoom scale selector (`1.5x`, `2.5x`, `4x`), fullscreen toggle, and error fallback; added 1-click inspection from image thumbnail cards and hover overlay actions.
+  - **Unit Tests**: Added 5 unit tests for `ImageMagnifier` in `image-magnifier.test.tsx` and 2 new tests in `product-media-dialog.test.tsx` (36/36 passing).
 
 - 2026-11-04 — Hardened Product Forms, Options, Variants UX & Unmapped Category Fallback Integration Tests (Scenarios 1.22, 1.23, 2.10, 3.12, 3.14, 3.15):
   - **Brand Combobox Infinite Scroll (Scenario 1.22)**: Replaced manual pagination cap with shared `useScrollLoad` and `useDebouncedSearch` in `BrandCombobox`; auto-detects `max-h-56` listbox container as scroll root; fetches initial page with `limit=30` and appends subsequent pages via sentinel intersection observer without row duplication; merges known/selected brands for off-page label retention; clamps ArrowDown navigation at boundary of currently loaded items.

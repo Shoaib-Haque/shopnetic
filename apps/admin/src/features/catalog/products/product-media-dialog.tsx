@@ -25,7 +25,9 @@ import {
   Trash2,
   Upload,
   X,
+  ZoomIn,
 } from 'lucide-react';
+import { ImageMagnifier } from './image-magnifier';
 import {
   deriveProductCoverMedia,
   deriveVariantLeadMediaMap,
@@ -169,6 +171,8 @@ function MediaFormModal({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [isFileUploaded, setIsFileUploaded] = useState(false);
+  const [isPosterUploaded, setIsPosterUploaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (file: File) => {
@@ -208,6 +212,7 @@ function MediaFormModal({
       });
 
       setValue('fileKey', presigned.fileKey, { shouldValidate: true, shouldDirty: true });
+      setIsFileUploaded(true);
       setUploadProgress(100);
       notify.saved(t('products.media.form.uploadSuccess'));
     } catch {
@@ -272,6 +277,8 @@ function MediaFormModal({
     setUploadError(null);
     setIsUploading(false);
     setDragActive(false);
+    setIsFileUploaded(false);
+    setIsPosterUploaded(false);
 
     if (!open) {
       reset({
@@ -507,6 +514,15 @@ function MediaFormModal({
                                 setSelectedFile(null);
                                 setFilePreview(null);
                                 setUploadProgress(null);
+                                setUploadError(null);
+                                if (fileInputRef.current) fileInputRef.current.value = '';
+                                if (isFileUploaded) {
+                                  setValue('fileKey', '', {
+                                    shouldValidate: true,
+                                    shouldDirty: true,
+                                  });
+                                  setIsFileUploaded(false);
+                                }
                               }}
                               title={t('products.media.form.removeFile')}
                               aria-label={t('products.media.form.removeFile')}
@@ -549,6 +565,7 @@ function MediaFormModal({
                 <Field
                   label={t('products.media.form.fileKey')}
                   htmlFor="media-file-key"
+                  hint={isFileUploaded ? t('products.media.form.fileKeyLockedHint') : undefined}
                   error={fieldError('fileKey')}
                 >
                   <Input
@@ -556,7 +573,12 @@ function MediaFormModal({
                     {...register('fileKey')}
                     placeholder={t('products.media.form.fileKeyPlaceholder')}
                     invalid={Boolean(errors.fileKey)}
-                    disabled={readOnly}
+                    readOnly={readOnly || isFileUploaded}
+                    tabIndex={isFileUploaded ? -1 : undefined}
+                    className={cn(
+                      (readOnly || isFileUploaded) &&
+                        'bg-muted/50 text-muted-foreground cursor-not-allowed select-all',
+                    )}
                   />
                 </Field>
 
@@ -565,7 +587,11 @@ function MediaFormModal({
                   <Field
                     label={t('products.media.form.posterKey')}
                     htmlFor="media-poster-key"
-                    hint={t('products.media.form.posterKeyHint')}
+                    hint={
+                      isPosterUploaded
+                        ? t('products.media.form.posterKeyLockedHint')
+                        : t('products.media.form.posterKeyHint')
+                    }
                     error={fieldError('posterKey')}
                   >
                     <Input
@@ -573,7 +599,12 @@ function MediaFormModal({
                       {...register('posterKey')}
                       placeholder={t('products.media.form.posterKeyPlaceholder')}
                       invalid={Boolean(errors.posterKey)}
-                      disabled={readOnly}
+                      readOnly={readOnly || isPosterUploaded}
+                      tabIndex={isPosterUploaded ? -1 : undefined}
+                      className={cn(
+                        (readOnly || isPosterUploaded) &&
+                          'bg-muted/50 text-muted-foreground cursor-not-allowed select-all',
+                      )}
                     />
                   </Field>
                 )}
@@ -1015,6 +1046,227 @@ function VideoPreviewModal({
   );
 }
 
+// ── Sub-modal: Image Inspection Modal (with Amazon-Style Magnifier) ───────────
+
+interface ImageInspectionModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  asset: MediaAsset | null;
+  imageAssets: MediaAsset[];
+  onSelectAsset: (asset: MediaAsset) => void;
+  onEditAsset?: (asset: MediaAsset) => void;
+  readOnly?: boolean;
+}
+
+function ImageInspectionModal({
+  open,
+  onOpenChange,
+  asset,
+  imageAssets,
+  onSelectAsset,
+  onEditAsset,
+  readOnly = false,
+}: ImageInspectionModalProps) {
+  const t = useTranslations('catalog');
+  const [zoomLevel, setZoomLevel] = useState<number>(2.5);
+  const [loadError, setLoadError] = useState(false);
+  const modalBodyRef = useRef<HTMLDivElement>(null);
+
+  const currentIndex = imageAssets.findIndex((a) => a.id === asset?.id);
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex >= 0 && currentIndex < imageAssets.length - 1;
+
+  const handlePrev = useCallback(() => {
+    if (hasPrev) {
+      const prev = imageAssets[currentIndex - 1];
+      if (prev) {
+        onSelectAsset(prev);
+        setLoadError(false);
+      }
+    }
+  }, [hasPrev, imageAssets, currentIndex, onSelectAsset]);
+
+  const handleNext = useCallback(() => {
+    if (hasNext) {
+      const next = imageAssets[currentIndex + 1];
+      if (next) {
+        onSelectAsset(next);
+        setLoadError(false);
+      }
+    }
+  }, [hasNext, imageAssets, currentIndex, onSelectAsset]);
+
+  const handleFullscreen = () => {
+    if (modalBodyRef.current) {
+      if (document.fullscreenElement) {
+        void document.exitFullscreen();
+      } else {
+        void modalBodyRef.current.requestFullscreen();
+      }
+    }
+  };
+
+  useEffect(() => {
+    setLoadError(false);
+  }, [asset?.id]);
+
+  if (!asset) return null;
+
+  const title = asset.alt?.en?.trim() || t('products.media.imageInspectionTitle');
+  const resolvedUrl = asset.url || resolveMediaUrl(asset.fileKey, STORAGE_PUBLIC_BASE_URL);
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange}>
+      <ModalContent className="max-w-4xl max-h-[92vh] flex flex-col p-0 overflow-hidden">
+        <ModalHeader className="p-4 pr-12 border-b border-border shrink-0 flex flex-row items-center justify-between">
+          <div className="flex flex-col min-w-0 pr-4">
+            <ModalTitle className="truncate pr-4">{title}</ModalTitle>
+            <ModalDescription className="text-xs font-mono text-muted-foreground truncate">
+              {asset.width && asset.height ? `${asset.width}×${asset.height} • ` : ''}
+              {asset.fileKey}
+            </ModalDescription>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {imageAssets.length > 1 && currentIndex >= 0 && (
+              <div className="flex items-center gap-1 bg-muted/60 px-2 py-0.5 rounded text-xs text-muted-foreground">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!hasPrev}
+                  onClick={handlePrev}
+                  className="h-6 w-6 p-0"
+                  aria-label={t('products.media.prevImageAsset')}
+                  title={t('products.media.prevImageAsset')}
+                >
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <span className="font-mono text-[11px] px-1">
+                  {currentIndex + 1} / {imageAssets.length}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!hasNext}
+                  onClick={handleNext}
+                  className="h-6 w-6 p-0"
+                  aria-label={t('products.media.nextImageAsset')}
+                  title={t('products.media.nextImageAsset')}
+                >
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleFullscreen}
+              className="h-8 px-2 text-xs"
+              title={t('products.media.fullscreen')}
+              aria-label={t('products.media.fullscreen')}
+            >
+              <Maximize className="size-3.5" />
+              <span className="hidden sm:inline">{t('products.media.fullscreen')}</span>
+            </Button>
+            {!readOnly && onEditAsset && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false);
+                  onEditAsset(asset);
+                }}
+                className="h-8 px-2 text-xs"
+                title={t('products.media.editAsset')}
+                aria-label={t('products.media.editAsset')}
+              >
+                <Pencil className="size-3.5" />
+                <span className="hidden sm:inline">{t('products.media.editAsset')}</span>
+              </Button>
+            )}
+            <a
+              href={resolvedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium hover:bg-muted text-foreground transition-colors"
+              title={t('products.media.openOriginal')}
+            >
+              <ExternalLink className="size-3.5" />
+              <span className="hidden sm:inline">{t('products.media.openOriginal')}</span>
+            </a>
+          </div>
+        </ModalHeader>
+
+        <ModalBody className="p-4 bg-muted/10 flex items-center justify-center min-h-[360px] flex-1 overflow-auto relative">
+          <div ref={modalBodyRef} className="size-full flex items-center justify-center">
+            {loadError ? (
+              <div
+                data-testid="image-load-error"
+                className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground gap-2"
+              >
+                <AlertCircle className="size-8 text-destructive shrink-0" />
+                <p className="text-sm font-medium">{t('products.media.imageLoadError')}</p>
+                <p className="font-mono text-xs text-muted-foreground break-all max-w-md">
+                  {asset.fileKey}
+                </p>
+              </div>
+            ) : (
+              <ImageMagnifier
+                src={resolvedUrl}
+                alt={title}
+                zoomLevel={zoomLevel}
+                mode="flyout"
+                onError={() => setLoadError(true)}
+              />
+            )}
+          </div>
+        </ModalBody>
+
+        <ModalFooter className="p-3 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0 bg-background">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground mr-1">
+                {t('products.media.zoomLevel', { level: zoomLevel })}:
+              </span>
+              {[1.5, 2.5, 4].map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setZoomLevel(level)}
+                  className={cn(
+                    'px-2 py-0.5 rounded text-xs font-mono font-medium transition-colors',
+                    zoomLevel === level
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted hover:bg-muted/80 text-foreground',
+                  )}
+                >
+                  {level}x
+                </button>
+              ))}
+            </div>
+
+            <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground border-l border-border pl-3">
+              <span>{t('products.media.magnifierHint')}</span>
+            </div>
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => onOpenChange(false)}
+          >
+            {t('products.media.close')}
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
 // ── Main Dialog: ProductMediaDialog ───────────────────────────────────────────
 
 export interface ProductMediaDialogProps {
@@ -1059,6 +1311,9 @@ export function ProductMediaDialog({
 
   // Video preview modal state (B10)
   const [previewVideoAsset, setPreviewVideoAsset] = useState<MediaAsset | null>(null);
+
+  // Image inspection modal state (Amazon magnifier)
+  const [inspectImageAsset, setInspectImageAsset] = useState<MediaAsset | null>(null);
 
   // Reordering state
   const [reordering, setReordering] = useState(false);
@@ -1465,17 +1720,28 @@ export function ProductMediaDialog({
                       {/* Media Thumbnail Container */}
                       <div className="relative aspect-square w-full bg-muted/40 overflow-hidden flex items-center justify-center group">
                         {asset.kind === 'image' ? (
-                          <img
-                            src={
-                              asset.url || resolveMediaUrl(asset.fileKey, STORAGE_PUBLIC_BASE_URL)
-                            }
-                            alt={asset.alt?.en ?? 'Product media'}
-                            className="size-full object-cover transition-transform group-hover:scale-105"
-                            onError={(e) => {
-                              // If image fails to load (e.g. storage key placeholder)
-                              (e.target as HTMLElement).style.display = 'none';
-                            }}
-                          />
+                          <div
+                            className="relative size-full flex items-center justify-center cursor-pointer group/img"
+                            onClick={() => setInspectImageAsset(asset)}
+                          >
+                            <img
+                              src={
+                                asset.url || resolveMediaUrl(asset.fileKey, STORAGE_PUBLIC_BASE_URL)
+                              }
+                              alt={asset.alt?.en ?? 'Product media'}
+                              className="size-full object-cover transition-transform group-hover/img:scale-105"
+                              onError={(e) => {
+                                // If image fails to load (e.g. storage key placeholder)
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-black/25 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                              <div className="rounded-full bg-background/90 text-foreground p-1.5 shadow-md flex items-center gap-1.5 text-xs font-medium px-2.5">
+                                <ZoomIn className="size-3.5" />
+                                <span>{t('products.media.inspectImage')}</span>
+                              </div>
+                            </div>
+                          </div>
                         ) : (
                           <div
                             className="relative size-full flex items-center justify-center bg-black/80 group/video cursor-pointer"
@@ -1576,6 +1842,19 @@ export function ProductMediaDialog({
                               >
                                 <Star className="size-3" />
                                 {t('products.media.setAsCover')}
+                              </Button>
+                            )}
+                            {asset.kind === 'image' && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setInspectImageAsset(asset)}
+                                className="size-7 p-0 rounded-full bg-background/90 hover:bg-background text-foreground"
+                                aria-label={t('products.media.inspectImage')}
+                                title={t('products.media.inspectImage')}
+                              >
+                                <ZoomIn className="size-3.5" />
                               </Button>
                             )}
                             <Button
@@ -1811,6 +2090,18 @@ export function ProductMediaDialog({
         videoAssets={mediaAssets.filter((a) => a.kind === 'video')}
         readOnly={isReadOnly}
         onSelectAsset={(a) => setPreviewVideoAsset(a)}
+        onEditAsset={(a) => setFormModalState({ open: true, asset: a })}
+      />
+
+      <ImageInspectionModal
+        open={inspectImageAsset !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setInspectImageAsset(null);
+        }}
+        asset={inspectImageAsset}
+        imageAssets={mediaAssets.filter((a) => a.kind === 'image')}
+        readOnly={isReadOnly}
+        onSelectAsset={(a) => setInspectImageAsset(a)}
         onEditAsset={(a) => setFormModalState({ open: true, asset: a })}
       />
     </>
