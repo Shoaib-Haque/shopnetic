@@ -768,7 +768,7 @@
         "zoomIn": "Zoom in",
         "zoomOut": "Zoom out",
         "zoomReset": "Reset zoom",
-        "magnifierHint": "Hover or use arrow keys to pan magnified area",
+        "magnifierHint": "Hover or click to pan with arrow keys • Esc to exit zoom",
         "openOriginal": "Open original",
         "editAsset": "Edit details",
         "fullscreen": "Fullscreen",

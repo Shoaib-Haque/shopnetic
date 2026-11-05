@@ -35,12 +35,24 @@ export function ImageMagnifier({
   onError,
 }: ImageMagnifierProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [isActive, setIsActive] = useState(false);
   const [coords, setCoords] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
   const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
   });
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReducedMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    mq.addEventListener?.('change', handler);
+    return () => mq.removeEventListener?.('change', handler);
+  }, []);
 
   const updateContainerSize = useCallback(() => {
     if (containerRef.current) {
@@ -52,7 +64,10 @@ export function ImageMagnifier({
   useEffect(() => {
     updateContainerSize();
     window.addEventListener('resize', updateContainerSize);
-    return () => window.removeEventListener('resize', updateContainerSize);
+    return () => {
+      window.removeEventListener('resize', updateContainerSize);
+      if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+    };
   }, [updateContainerSize]);
 
   const handlePointerMove = (clientX: number, clientY: number) => {
@@ -71,24 +86,61 @@ export function ImageMagnifier({
   };
 
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (leaveTimerRef.current) {
+      clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
     handlePointerMove(e.clientX, e.clientY);
+  };
+
+  const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
+    const touch = e.touches[0];
+    if (touch) {
+      if (leaveTimerRef.current) {
+        clearTimeout(leaveTimerRef.current);
+        leaveTimerRef.current = null;
+      }
+      containerRef.current?.focus({ preventScroll: true });
+      updateContainerSize();
+      handlePointerMove(touch.clientX, touch.clientY);
+      setIsActive(true);
+    }
   };
 
   const handleTouchMove = (e: TouchEvent<HTMLDivElement>) => {
     const touch = e.touches[0];
     if (touch) {
+      if (leaveTimerRef.current) {
+        clearTimeout(leaveTimerRef.current);
+        leaveTimerRef.current = null;
+      }
       handlePointerMove(touch.clientX, touch.clientY);
     }
   };
 
+  const handleTouchEnd = () => {
+    if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+    leaveTimerRef.current = setTimeout(() => {
+      setIsActive(false);
+    }, 100);
+  };
+
   const handleMouseEnter = (e: MouseEvent<HTMLDivElement>) => {
+    if (leaveTimerRef.current) {
+      clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+    containerRef.current?.focus({ preventScroll: true });
     updateContainerSize();
     handlePointerMove(e.clientX, e.clientY);
     setIsActive(true);
   };
 
   const handleMouseLeave = () => {
-    setIsActive(false);
+    if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+    leaveTimerRef.current = setTimeout(() => {
+      setIsActive(false);
+    }, 80);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -110,7 +162,11 @@ export function ImageMagnifier({
       setCoords((prev) => ({ ...prev, y: Math.min(100, prev.y + step) }));
       setIsActive(true);
     } else if (e.key === 'Escape') {
-      setIsActive(false);
+      if (isActive) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsActive(false);
+      }
     }
   };
 
@@ -143,16 +199,20 @@ export function ImageMagnifier({
       : 0;
 
   return (
-    <div className={cn('relative flex flex-col md:flex-row items-center gap-4', className)}>
-      {/* Main Image Viewport */}
+    <div className={cn('relative inline-flex items-center justify-center', className)}>
+      {/* Main Image Viewport — has stable dimensions independent of flyout visibility */}
       <div
         ref={containerRef}
         data-testid="image-magnifier-container"
         tabIndex={0}
         role="region"
         aria-label={alt}
+        onClick={() => containerRef.current?.focus({ preventScroll: true })}
         onMouseMove={handleMouseMove}
+        onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onKeyDown={handleKeyDown}
@@ -179,7 +239,10 @@ export function ImageMagnifier({
               left: `${lensLeftPx}px`,
               top: `${lensTopPx}px`,
             }}
-            className="absolute border-2 border-primary/80 bg-primary/20 backdrop-contrast-125 pointer-events-none shadow-xs rounded-xs motion-safe:transition-[left,top] motion-safe:duration-75"
+            className={cn(
+              'absolute border-2 border-primary/80 bg-primary/20 backdrop-contrast-125 pointer-events-none shadow-xs rounded-xs',
+              !reducedMotion && 'motion-safe:transition-[left,top] motion-safe:duration-75',
+            )}
           />
         )}
 
@@ -202,7 +265,7 @@ export function ImageMagnifier({
         )}
       </div>
 
-      {/* Flyout Magnified Panel (Amazon Desktop Style) */}
+      {/* Flyout Magnified Panel (Amazon Desktop Style) — ABSOLUTELY POSITIONED to eliminate layout shift/flicker */}
       {isActive && mode === 'flyout' && (
         <div
           data-testid="image-magnifier-flyout"
@@ -213,7 +276,12 @@ export function ImageMagnifier({
             backgroundSize: `${zoomLevel * 100}%`,
           }}
           className={cn(
-            'w-72 h-72 md:w-96 md:h-96 rounded-md border-2 border-border shadow-2xl bg-card overflow-hidden shrink-0 pointer-events-none animate-in fade-in zoom-in-95 duration-150',
+            'absolute z-30 pointer-events-none',
+            'w-72 h-72 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-md border-2 border-border shadow-2xl bg-card overflow-hidden',
+            // Positioned to the right of image, or aligned inside bounds on tight viewports
+            'left-full top-0 ml-4 max-xl:left-auto max-xl:right-2 max-xl:top-2',
+            !reducedMotion &&
+              'motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150',
             flyoutClassName,
           )}
           aria-hidden="true"

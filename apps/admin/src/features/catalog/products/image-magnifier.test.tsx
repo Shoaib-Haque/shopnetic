@@ -1,11 +1,20 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ImageMagnifier } from './image-magnifier';
 
 describe('ImageMagnifier', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
   afterEach(() => {
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+    vi.useRealTimers();
     cleanup();
   });
+
   it('renders image with src and alt attributes', () => {
     render(
       <ImageMagnifier
@@ -19,7 +28,7 @@ describe('ImageMagnifier', () => {
     expect(img).toHaveAttribute('alt', 'Sample organic tee');
   });
 
-  it('activates lens and flyout on mouse enter and move in flyout mode', () => {
+  it('activates lens and flyout on mouse enter, auto-focuses container, and hides on debounced mouse leave', () => {
     render(
       <ImageMagnifier
         src="http://localhost:4000/uploads/product/sample.jpg"
@@ -59,8 +68,14 @@ describe('ImageMagnifier', () => {
       backgroundPosition: '25% 25%',
     });
 
-    // Mouse leave hides the lens & flyout
+    // Mouse leave triggers debounced exit (80ms)
     fireEvent.mouseLeave(container);
+    // Still visible before timer fires (prevents boundary jitter)
+    expect(screen.getByTestId('image-magnifier-lens')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
     expect(screen.queryByTestId('image-magnifier-lens')).not.toBeInTheDocument();
     expect(screen.queryByTestId('image-magnifier-flyout')).not.toBeInTheDocument();
   });
@@ -99,7 +114,52 @@ describe('ImageMagnifier', () => {
     });
   });
 
-  it('handles keyboard navigation with arrow keys and escape key', () => {
+  it('handles touch gestures (onTouchStart activates, onTouchMove pans, onTouchEnd deactivates)', () => {
+    render(
+      <ImageMagnifier
+        src="http://localhost:4000/uploads/product/sample.jpg"
+        alt="Sample organic tee"
+        mode="flyout"
+      />,
+    );
+
+    const container = screen.getByTestId('image-magnifier-container');
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 400,
+      height: 400,
+      right: 400,
+      bottom: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    // Touch start activates lens immediately
+    fireEvent.touchStart(container, {
+      touches: [{ clientX: 200, clientY: 200 }],
+    });
+    expect(screen.getByTestId('image-magnifier-lens')).toBeInTheDocument();
+
+    // Touch move tracks cursor
+    fireEvent.touchMove(container, {
+      touches: [{ clientX: 300, clientY: 300 }],
+    });
+    const flyout = screen.getByTestId('image-magnifier-flyout');
+    expect(flyout).toHaveStyle({
+      backgroundPosition: '75% 75%',
+    });
+
+    // Touch end dismisses after finger lift
+    fireEvent.touchEnd(container);
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(screen.queryByTestId('image-magnifier-lens')).not.toBeInTheDocument();
+  });
+
+  it('handles keyboard navigation with arrow keys and stops propagation on escape', () => {
     render(
       <ImageMagnifier
         src="http://localhost:4000/uploads/product/sample.jpg"
@@ -114,7 +174,7 @@ describe('ImageMagnifier', () => {
     fireEvent.keyDown(container, { key: 'ArrowRight' });
     expect(screen.getByTestId('image-magnifier-lens')).toBeInTheDocument();
 
-    // Press Escape to dismiss
+    // Press Escape to dismiss lens
     fireEvent.keyDown(container, { key: 'Escape' });
     expect(screen.queryByTestId('image-magnifier-lens')).not.toBeInTheDocument();
   });
