@@ -55,6 +55,9 @@ export class StorageController {
     if (!key || !token || !expiresStr) {
       throw new ForbiddenException('Missing upload credentials');
     }
+    // Independently validate key server-side against path traversal and illegal formats
+    this.storage.assertSafeStorageKey(key);
+
     const expires = Number(expiresStr);
     if (!Number.isFinite(expires) || !this.storage.verifyToken(key, token, expires)) {
       throw new ForbiddenException('Invalid or expired upload signature');

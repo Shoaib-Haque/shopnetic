@@ -1,6 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { createHmac, randomBytes } from 'node:crypto';
-import { basename, extname, join, dirname } from 'node:path';
+import { basename, extname, dirname, resolve, sep } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -9,11 +9,24 @@ import { API_ENV, type ApiEnv } from '../config/env.js';
 
 @Injectable()
 export class StorageService {
+  private readonly logger = new Logger(StorageService.name);
   private readonly s3Client?: S3Client;
   private readonly hmacSecret: string;
 
   constructor(@Inject(API_ENV) private readonly env: ApiEnv) {
-    this.hmacSecret = env.JWT_PRIVATE_KEY || 'dev-storage-secret-key-shopnetic';
+    if (env.STORAGE_HMAC_SECRET) {
+      this.hmacSecret = env.STORAGE_HMAC_SECRET;
+    } else if (env.NODE_ENV === 'test') {
+      this.hmacSecret = 'test-storage-hmac-secret-32-chars-long';
+    } else if (env.NODE_ENV === 'development') {
+      this.hmacSecret = randomBytes(32).toString('hex');
+      this.logger.warn(
+        'STORAGE_HMAC_SECRET unset; generated an ephemeral 32-byte secret for local storage tokens.',
+      );
+    } else {
+      throw new Error('STORAGE_HMAC_SECRET must be configured in production');
+    }
+
     if (env.STORAGE_PROVIDER === 's3') {
       this.s3Client = new S3Client({
         region: env.STORAGE_REGION,
@@ -54,7 +67,8 @@ export class StorageService {
     // Local dev mode: sign URL pointing to local upload endpoint
     const expires = Date.now() + 15 * 60 * 1000;
     const token = this.signToken(fileKey, expires);
-    const uploadUrl = `http://localhost:${this.env.PORT}/admin/v1/storage/upload?key=${encodeURIComponent(fileKey)}&token=${token}&expires=${expires}`;
+    const uploadBaseUrl = this.env.STORAGE_UPLOAD_BASE_URL.replace(/\/$/, '');
+    const uploadUrl = `${uploadBaseUrl}/admin/v1/storage/upload?key=${encodeURIComponent(fileKey)}&token=${token}&expires=${expires}`;
 
     return { uploadUrl, fileKey, publicUrl };
   }
@@ -69,8 +83,26 @@ export class StorageService {
     return token === expected;
   }
 
+  assertSafeStorageKey(key: string): string {
+    if (!key || typeof key !== 'string') {
+      throw new BadRequestException('Storage key is required');
+    }
+    if (key.includes('..') || key.includes('\\') || key.startsWith('/') || /\0/.test(key)) {
+      throw new BadRequestException('Path traversal detected in storage key');
+    }
+    if (!/^[a-zA-Z0-9_-]+(\/[a-zA-Z0-9_.-]+)+$/.test(key)) {
+      throw new BadRequestException('Invalid storage key format');
+    }
+    const uploadsDir = resolve(process.cwd(), 'public/uploads');
+    const resolvedPath = resolve(uploadsDir, key);
+    if (!resolvedPath.startsWith(uploadsDir + sep)) {
+      throw new BadRequestException('Resolved path outside uploads directory');
+    }
+    return resolvedPath;
+  }
+
   async saveLocalFile(key: string, data: Buffer): Promise<void> {
-    const fullPath = join(process.cwd(), 'public/uploads', key);
+    const fullPath = this.assertSafeStorageKey(key);
     await mkdir(dirname(fullPath), { recursive: true });
     await writeFile(fullPath, data);
   }

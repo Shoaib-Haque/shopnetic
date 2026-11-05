@@ -297,9 +297,17 @@ Rules:
   `open` values.
 - **`file_key` & signed upload pipeline**: Implemented in Phase 1 (`POST /admin/v1/media/upload-url`,
   `StorageService` in `apps/api/src/storage/`). Supports both AWS S3 / MinIO (`STORAGE_PROVIDER=s3`)
-  using `@aws-sdk/s3-request-presigner` and local dev storage (`STORAGE_PROVIDER=local`, signed HMAC
-  upload endpoint storing to `apps/api/public/uploads/` and served statically). `fileKey` in `media_asset`
-  stores relative object-storage keys (e.g. `product/{id}/{timestamp}-{hash}-{filename}.jpg`).
+  using `@aws-sdk/s3-request-presigner` (with pre-configured local MinIO service and auto-initialized
+  `media` download bucket in `infra/docker/docker-compose.yml`) and local dev storage (`STORAGE_PROVIDER=local`,
+  signed HMAC upload endpoint storing to `apps/api/public/uploads/` and served statically).
+  Security & network resilience:
+  - Dedicated `STORAGE_HMAC_SECRET` prevents predictable fallback attacks; dev environments generate
+    ephemeral 32-byte hex secrets on boot if omitted, while production enforces a real secret.
+  - Server-side destination path validation on `PUT /admin/v1/storage/upload` rejects path traversal (`..`,
+    leading slashes, illegal chars, path escapes) independently of signature checks.
+  - `STORAGE_UPLOAD_BASE_URL` env variable ensures presigned upload URLs work across remote/container review
+    environments (not hardcoded to localhost).
+  `fileKey` in `media_asset` stores relative object-storage keys (e.g. `product/{id}/{timestamp}-{hash}-{filename}.jpg`).
   The admin UI `MediaFormModal` provides drag-and-drop file upload with live progress tracking,
   automatic media kind detection, and fallback manual key/URL input. Dev/CI seed data
   (`packages/db/prisma/seed/fixtures/seed-media.ts`) remains compatible.

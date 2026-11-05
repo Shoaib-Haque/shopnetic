@@ -91,7 +91,9 @@ const envSchema = z.object({
   STORAGE_ENDPOINT: z.string().optional(),
   STORAGE_ACCESS_KEY_ID: z.string().optional(),
   STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+  STORAGE_UPLOAD_BASE_URL: z.string().url().default('http://localhost:4000'),
   STORAGE_PUBLIC_BASE_URL: z.string().default('http://localhost:4000/uploads'),
+  STORAGE_HMAC_SECRET: z.string().min(16).optional(),
   STORAGE_FORCE_PATH_STYLE: z
     .enum(['true', 'false', '1', '0'])
     .default('true')
@@ -121,6 +123,13 @@ export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_FAULT_STATUS > 0) {
     throw new Error('DEV_FAULT_STATUS must not be set in production');
+  }
+  if (
+    parsed.data.NODE_ENV === 'production' &&
+    parsed.data.STORAGE_PROVIDER === 'local' &&
+    !parsed.data.STORAGE_HMAC_SECRET
+  ) {
+    throw new Error('STORAGE_HMAC_SECRET must be configured in production for local storage');
   }
   return parsed.data;
 }

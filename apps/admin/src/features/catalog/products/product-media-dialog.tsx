@@ -375,8 +375,11 @@ function MediaFormModal({
               <ModalDescription>{t('products.media.dialogSubtitle')}</ModalDescription>
             </ModalHeader>
 
-            <ModalBody className="min-h-0 flex-1 overflow-y-auto space-y-4 py-4">
-              <fieldset disabled={isSubmitting || readOnly} className="contents">
+            <ModalBody className="min-h-0 flex-1 overflow-y-auto py-4">
+              <fieldset
+                disabled={isSubmitting || isUploading || readOnly}
+                className="flex flex-col gap-4 border-0 p-0 m-0 min-w-0"
+              >
                 {/* Kind Selector */}
                 {!isEdit && (
                   <Field label={t('products.media.form.kind')} htmlFor="media-kind">
@@ -529,6 +532,16 @@ function MediaFormModal({
                   </div>
                 )}
 
+                {!readOnly && (
+                  <div className="relative flex py-1 items-center">
+                    <div className="flex-grow border-t border-border/60" />
+                    <span className="shrink mx-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                      or
+                    </span>
+                    <div className="flex-grow border-t border-border/60" />
+                  </div>
+                )}
+
                 {/* File Key / URL */}
                 <Field
                   label={t('products.media.form.fileKey')}
@@ -649,7 +662,7 @@ function MediaFormModal({
               </fieldset>
 
               {formError && (
-                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
+                <div className="mt-4 rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
                   {formError}
                 </div>
               )}

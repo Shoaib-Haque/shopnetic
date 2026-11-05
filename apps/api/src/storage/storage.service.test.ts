@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
 import { StorageService } from './storage.service.js';
-import type { ApiEnv } from '../config/env.js';
+import { loadApiEnv, type ApiEnv } from '../config/env.js';
 
 const mockEnv: ApiEnv = {
   NODE_ENV: 'test',
@@ -30,6 +31,7 @@ const mockEnv: ApiEnv = {
   STORAGE_PROVIDER: 'local',
   STORAGE_BUCKET: 'media',
   STORAGE_REGION: 'us-east-1',
+  STORAGE_UPLOAD_BASE_URL: 'http://localhost:4000',
   STORAGE_PUBLIC_BASE_URL: 'http://localhost:4000/uploads',
   STORAGE_FORCE_PATH_STYLE: true,
 };
@@ -53,7 +55,58 @@ describe('StorageService', () => {
     expect(res.publicUrl).toBe(`http://localhost:4000/uploads/${res.fileKey}`);
   });
 
-  it('validates HMAC tokens and rejects expired tokens', () => {
+  it('uses configurable STORAGE_UPLOAD_BASE_URL for non-localhost review environments', async () => {
+    const remoteEnv: ApiEnv = {
+      ...mockEnv,
+      STORAGE_UPLOAD_BASE_URL: 'https://api.review-env.shopnetic.internal',
+      STORAGE_PUBLIC_BASE_URL: 'https://cdn.review-env.shopnetic.internal/uploads',
+    };
+    const service = new StorageService(remoteEnv);
+    const res = await service.createUploadUrl({
+      fileName: 'sample.png',
+      contentType: 'image/png',
+      ownerType: 'product',
+      ownerId: 'prod-456',
+    });
+
+    expect(
+      res.uploadUrl.startsWith('https://api.review-env.shopnetic.internal/admin/v1/storage/upload'),
+    ).toBe(true);
+    expect(
+      res.publicUrl.startsWith(
+        'https://cdn.review-env.shopnetic.internal/uploads/product/prod-456/',
+      ),
+    ).toBe(true);
+  });
+
+  it('validates storage keys and blocks path traversal attempts', () => {
+    const service = new StorageService(mockEnv);
+
+    // Valid path passes
+    expect(() => service.assertSafeStorageKey('product/123/valid-photo.jpg')).not.toThrow();
+
+    // Path traversal with ..
+    expect(() => service.assertSafeStorageKey('../../../etc/passwd')).toThrow(BadRequestException);
+    expect(() => service.assertSafeStorageKey('product/../../secret.txt')).toThrow(
+      BadRequestException,
+    );
+
+    // Absolute paths or leading slashes
+    expect(() => service.assertSafeStorageKey('/etc/passwd')).toThrow(BadRequestException);
+
+    // Backslashes
+    expect(() => service.assertSafeStorageKey('product\\secret.txt')).toThrow(BadRequestException);
+
+    // Invalid / unsafe characters
+    expect(() => service.assertSafeStorageKey('product/123/photo;evil.sh')).toThrow(
+      BadRequestException,
+    );
+    expect(() => service.assertSafeStorageKey('product/123/photo\0evil.jpg')).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('validates HMAC tokens and rejects expired or tampered tokens', () => {
     const service = new StorageService(mockEnv);
     const key = 'product/123/photo.jpg';
     const futureExpiry = Date.now() + 60_000;
@@ -68,5 +121,40 @@ describe('StorageService', () => {
     const pastExpiry = Date.now() - 1000;
     const expiredToken = service.signToken(key, pastExpiry);
     expect(service.verifyToken(key, expiredToken, pastExpiry)).toBe(false);
+  });
+
+  it('generates distinct ephemeral HMAC secrets in dev when unset, avoiding predictable fallbacks', () => {
+    const devEnv: ApiEnv = {
+      ...mockEnv,
+      NODE_ENV: 'development',
+    };
+    const s1 = new StorageService(devEnv);
+    const s2 = new StorageService(devEnv);
+
+    const token1 = s1.signToken('product/123/test.jpg', 1234567890);
+    const token2 = s2.signToken('product/123/test.jpg', 1234567890);
+
+    // Two unconfigured dev boots must produce distinct HMAC signatures
+    expect(token1).not.toBe(token2);
+  });
+
+  it('fails loudly in production when STORAGE_HMAC_SECRET is missing for local storage', () => {
+    expect(() =>
+      loadApiEnv({
+        NODE_ENV: 'production',
+        PORT: '4000',
+        APP_VERSION: '1.0.0',
+        DATABASE_URL: 'postgresql://prod:prod@localhost:5432/prod',
+        REDIS_URL: 'redis://localhost:6379',
+        JWT_ISSUER: 'https://shopnetic.com',
+        JWT_ACCESS_TTL_SECONDS: '900',
+        AUTH_REFRESH_TTL_DAYS: '30',
+        AUTH_STAFF_REFRESH_TTL_HOURS: '8',
+        VERIFICATION_TTL_HOURS: '24',
+        PASSWORD_RESET_TTL_HOURS: '1',
+        TOTP_ISSUER: 'Shopnetic',
+        STORAGE_PROVIDER: 'local',
+      }),
+    ).toThrow('STORAGE_HMAC_SECRET must be configured in production for local storage');
   });
 });
