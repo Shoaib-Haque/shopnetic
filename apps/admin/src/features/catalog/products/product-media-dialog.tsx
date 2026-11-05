@@ -1202,7 +1202,7 @@ function ImageInspectionModal({
           </div>
         </ModalHeader>
 
-        <ModalBody className="p-4 sm:p-6 bg-muted/10 flex items-center justify-center min-h-[420px] flex-1 overflow-hidden relative">
+        <ModalBody className="p-4 sm:p-6 bg-muted/10 flex items-center justify-center min-h-[360px] sm:min-h-[420px] flex-1 overflow-y-auto overflow-x-hidden relative">
           <div ref={modalBodyRef} className="size-full flex items-center justify-center">
             {loadError ? (
               <div
