@@ -684,7 +684,9 @@ export const mediaAssetSchema = z.object({
   ownerId: z.string(),
   kind: mediaKindSchema,
   fileKey: z.string(),
+  url: z.string().optional(),
   posterKey: z.string().nullable(),
+  posterUrl: z.string().nullable().optional(),
   width: z.number().int().nullable(),
   height: z.number().int().nullable(),
   durationS: z.number().int().nullable(),
@@ -697,6 +699,29 @@ export const mediaAssetSchema = z.object({
   updatedAt: z.string(),
 });
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
+
+/**
+ * Resolves a storage key or absolute URL into a browser-renderable media URL.
+ * If publicBaseUrl is provided and key is a relative object key, prefixes it.
+ */
+export function resolveMediaUrl(keyOrUrl?: string | null, publicBaseUrl?: string): string {
+  if (!keyOrUrl) return '';
+  const trimmed = keyOrUrl.trim();
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:')
+  ) {
+    return trimmed;
+  }
+  if (publicBaseUrl) {
+    const base = publicBaseUrl.replace(/\/$/, '');
+    const cleanKey = trimmed.replace(/^\//, '');
+    return `${base}/${cleanKey}`;
+  }
+  return trimmed;
+}
 
 /**
  * Product cover asset derivation per plan/26 §5:

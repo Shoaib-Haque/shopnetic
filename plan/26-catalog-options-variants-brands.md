@@ -310,6 +310,10 @@ Rules:
   - Explicit CORS origin allowlist (`plan/16-security.md`) and preflight `OPTIONS` handling on `/admin/v1/storage/upload`
     with `crossOriginResourcePolicy: 'cross-origin'` enable secure direct browser binary PUT uploads across origins.
   `fileKey` in `media_asset` stores relative object-storage keys (e.g. `product/{id}/{timestamp}-{hash}-{filename}.jpg`).
+  Dual-layer URL resolution:
+  - `@shopnetic/contracts` exports `resolveMediaUrl(keyOrUrl, publicBaseUrl)` which leaves absolute URLs (`http://`, `https://`, `blob:`, `data:`) unchanged and joins relative object keys with `STORAGE_PUBLIC_BASE_URL`.
+  - Backend `MediaService.toView()` computes and returns `url` and `posterUrl` using `STORAGE_PUBLIC_BASE_URL`.
+  - Admin UI renders `asset.url || resolveMediaUrl(asset.fileKey, NEXT_PUBLIC_STORAGE_PUBLIC_BASE_URL)` to ensure thumbnails, video previews, and original asset links render correctly regardless of whether the asset has a full legacy URL or a relative object key.
   The admin UI `MediaFormModal` provides drag-and-drop file upload with live progress tracking,
   automatic media kind detection, and fallback manual key/URL input. Dev/CI seed data
   (`packages/db/prisma/seed/fixtures/seed-media.ts`) remains compatible.

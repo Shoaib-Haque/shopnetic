@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { Actor } from '@shopnetic/auth';
 import {
   createMediaRequestSchema,
   updateMediaRequestSchema,
+  resolveMediaUrl,
   type CreateMediaRequest,
   type MediaAsset,
   type MediaOwnerType,
@@ -14,6 +15,7 @@ import { AppError } from '../common/app-error.js';
 import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
+import { API_ENV, type ApiEnv } from '../config/env.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
 const withTags = {
@@ -35,6 +37,7 @@ export class MediaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Optional() @Inject(API_ENV) private readonly env?: ApiEnv,
   ) {
     this.record = auditRecordFor(this.audit, 'media_asset');
   }
@@ -46,11 +49,11 @@ export class MediaService {
       include: withTags,
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
-    return rows.map(toView);
+    return rows.map((r) => this.toView(r));
   }
 
   async get(id: string): Promise<MediaAsset> {
-    return toView(await this.rowOrThrow(id));
+    return this.toView(await this.rowOrThrow(id));
   }
 
   async create(
@@ -111,8 +114,10 @@ export class MediaService {
       return row;
     });
 
-    await this.record(actor, 'catalog.media_created', created.id, meta, { after: toView(created) });
-    return toView(created);
+    await this.record(actor, 'catalog.media_created', created.id, meta, {
+      after: this.toView(created),
+    });
+    return this.toView(created);
   }
 
   async update(
@@ -166,7 +171,7 @@ export class MediaService {
 
     const view = await this.get(id);
     await this.record(actor, 'catalog.media_updated', id, meta, {
-      before: toView(current),
+      before: this.toView(current),
       after: view,
     });
     return view;
@@ -180,7 +185,7 @@ export class MediaService {
       await writeCatalogOutbox(tx, 'media_asset', 'media.deleted', id, { id });
     });
     await this.record(actor, 'catalog.media_deleted', id, meta, {
-      before: toView(current),
+      before: this.toView(current),
       reason: 'deleted',
     });
   }
@@ -372,32 +377,35 @@ export class MediaService {
       });
     }
   }
-}
 
-function toView(row: MediaRow): MediaAsset {
-  return {
-    id: row.id,
-    ownerType: row.ownerType,
-    ownerId: row.ownerId,
-    kind: row.kind,
-    fileKey: row.fileKey,
-    posterKey: row.posterKey,
-    width: row.width,
-    height: row.height,
-    durationS: row.durationS,
-    blurhash: row.blurhash,
-    alt: (row.altI18n as Record<string, string> | null) ?? null,
-    position: row.position,
-    status: row.status,
-    tags: [...row.tags]
-      .sort((a, b) => a.optionTypeId.localeCompare(b.optionTypeId))
-      .map((tag) => ({
-        optionTypeId: tag.optionTypeId,
-        optionTypeCode: tag.optionValue.optionType.code,
-        optionValueId: tag.optionValueId,
-        code: tag.optionValue.code,
-      })),
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
+  private toView(row: MediaRow): MediaAsset {
+    const baseUrl = this.env?.STORAGE_PUBLIC_BASE_URL;
+    return {
+      id: row.id,
+      ownerType: row.ownerType,
+      ownerId: row.ownerId,
+      kind: row.kind,
+      fileKey: row.fileKey,
+      url: resolveMediaUrl(row.fileKey, baseUrl),
+      posterKey: row.posterKey,
+      posterUrl: row.posterKey ? resolveMediaUrl(row.posterKey, baseUrl) : null,
+      width: row.width,
+      height: row.height,
+      durationS: row.durationS,
+      blurhash: row.blurhash,
+      alt: (row.altI18n as Record<string, string> | null) ?? null,
+      position: row.position,
+      status: row.status,
+      tags: [...row.tags]
+        .sort((a, b) => a.optionTypeId.localeCompare(b.optionTypeId))
+        .map((tag) => ({
+          optionTypeId: tag.optionTypeId,
+          optionTypeCode: tag.optionValue.optionType.code,
+          optionValueId: tag.optionValueId,
+          code: tag.optionValue.code,
+        })),
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
 }

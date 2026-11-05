@@ -1393,4 +1393,39 @@ describe('ProductMediaDialog', () => {
     // Zero redundant full-list network requests
     expect(mockedListProductMedia).toHaveBeenCalledTimes(1);
   });
+
+  it('renders resolved absolute URL for media thumbnails with relative storage keys', async () => {
+    const assetsWithUrl: MediaAsset[] = [
+      {
+        ...sampleAssets[0]!,
+        id: 'media_url_1',
+        fileKey: 'products/prod_1/image.png',
+        url: 'http://localhost:4000/uploads/products/prod_1/image.png',
+      },
+      {
+        ...sampleAssets[1]!,
+        id: 'media_url_2',
+        fileKey: 'https://cdn.example.com/products/prod_1/full-url.png',
+        url: undefined,
+      },
+    ];
+    mockedListProductMedia.mockResolvedValueOnce(assetsWithUrl);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+
+    await screen.findByText('Product Media Gallery');
+
+    const images = screen.getAllByRole('img');
+    const firstImg = images.find((img) => img.getAttribute('src')?.includes('image.png'));
+    expect(firstImg).toHaveAttribute(
+      'src',
+      'http://localhost:4000/uploads/products/prod_1/image.png',
+    );
+
+    const secondImg = images.find((img) => img.getAttribute('src')?.includes('full-url.png'));
+    expect(secondImg).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/products/prod_1/full-url.png',
+    );
+  });
 });

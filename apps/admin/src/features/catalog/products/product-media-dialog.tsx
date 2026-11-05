@@ -29,6 +29,7 @@ import {
 import {
   deriveProductCoverMedia,
   deriveVariantLeadMediaMap,
+  resolveMediaUrl,
   type CreateMediaRequest,
   type MediaAsset,
   type OptionType,
@@ -77,6 +78,8 @@ import {
 } from './api';
 
 // ── Sub-modal: Media Form Modal (Add / Edit) ──────────────────────────────────
+
+const STORAGE_PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_STORAGE_PUBLIC_BASE_URL;
 
 interface MediaFormModalProps {
   open: boolean;
@@ -931,7 +934,7 @@ function VideoPreviewModal({
               </Button>
             )}
             <a
-              href={asset.fileKey}
+              href={asset.url || resolveMediaUrl(asset.fileKey, STORAGE_PUBLIC_BASE_URL)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium hover:bg-muted text-foreground transition-colors"
@@ -957,8 +960,13 @@ function VideoPreviewModal({
             <video
               ref={videoRef}
               data-testid="video-preview-player"
-              src={asset.fileKey}
-              poster={asset.posterKey || undefined}
+              src={asset.url || resolveMediaUrl(asset.fileKey, STORAGE_PUBLIC_BASE_URL)}
+              poster={
+                asset.posterUrl ||
+                (asset.posterKey
+                  ? resolveMediaUrl(asset.posterKey, STORAGE_PUBLIC_BASE_URL)
+                  : undefined)
+              }
               controls
               autoPlay
               muted
@@ -1458,7 +1466,9 @@ export function ProductMediaDialog({
                       <div className="relative aspect-square w-full bg-muted/40 overflow-hidden flex items-center justify-center group">
                         {asset.kind === 'image' ? (
                           <img
-                            src={asset.fileKey}
+                            src={
+                              asset.url || resolveMediaUrl(asset.fileKey, STORAGE_PUBLIC_BASE_URL)
+                            }
                             alt={asset.alt?.en ?? 'Product media'}
                             className="size-full object-cover transition-transform group-hover:scale-105"
                             onError={(e) => {
@@ -1473,7 +1483,10 @@ export function ProductMediaDialog({
                           >
                             {asset.posterKey ? (
                               <img
-                                src={asset.posterKey}
+                                src={
+                                  asset.posterUrl ||
+                                  resolveMediaUrl(asset.posterKey, STORAGE_PUBLIC_BASE_URL)
+                                }
                                 alt={asset.alt?.en ?? 'Video poster thumbnail'}
                                 className="size-full object-cover opacity-80 transition-opacity group-hover/video:opacity-90"
                                 onError={(e) => {
