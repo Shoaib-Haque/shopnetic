@@ -190,4 +190,64 @@ describe('StorageService', () => {
     );
     expect(service!.verifyToken('key', 'token', Date.now() + 1000)).toBe(false);
   });
+
+  describe('isInternalStorageKey', () => {
+    it('identifies internal storage keys vs external URLs', () => {
+      const service = new StorageService(mockEnv);
+
+      expect(
+        service.isInternalStorageKey(
+          'product/11111111-1111-1111-1111-111111111111/12345-photo.jpg',
+        ),
+      ).toBe(true);
+      expect(
+        service.isInternalStorageKey('brand/22222222-2222-2222-2222-222222222222/logo.png'),
+      ).toBe(true);
+      expect(
+        service.isInternalStorageKey('variant/33333333-3333-3333-3333-333333333333/poster.webp'),
+      ).toBe(true);
+
+      // External URLs
+      expect(service.isInternalStorageKey('https://example.com/image.jpg')).toBe(false);
+      expect(service.isInternalStorageKey('http://localhost:4000/uploads/img.jpg')).toBe(false);
+      expect(service.isInternalStorageKey('//cdn.example.com/asset.png')).toBe(false);
+
+      // Invalid formats
+      expect(service.isInternalStorageKey('')).toBe(false);
+      expect(service.isInternalStorageKey('random-file.jpg')).toBe(false);
+      expect(service.isInternalStorageKey('product/not-a-uuid/photo.jpg')).toBe(false);
+    });
+  });
+
+  describe('deleteFile and listInternalFiles', () => {
+    it('returns false for external URLs without attempting file deletion', async () => {
+      const service = new StorageService(mockEnv);
+      const res = await service.deleteFile('https://cdn.example.com/pic.jpg');
+      expect(res).toBe(false);
+    });
+
+    it('returns true on missing file (ENOENT)', async () => {
+      const service = new StorageService(mockEnv);
+      const res = await service.deleteFile(
+        'product/11111111-1111-1111-1111-111111111111/nonexistent.jpg',
+      );
+      expect(res).toBe(true);
+    });
+
+    it('deletes local file and reflects deletion in listInternalFiles', async () => {
+      const service = new StorageService(mockEnv);
+      const testKey = 'product/11111111-1111-1111-1111-111111111111/99999-test-asset.png';
+
+      await service.saveLocalFile(testKey, Buffer.from('hello world'));
+
+      const filesBefore = await service.listInternalFiles();
+      expect(filesBefore.some((f) => f.key === testKey)).toBe(true);
+
+      const deleted = await service.deleteFile(testKey);
+      expect(deleted).toBe(true);
+
+      const filesAfter = await service.listInternalFiles();
+      expect(filesAfter.some((f) => f.key === testKey)).toBe(false);
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import type { Actor } from '@shopnetic/auth';
 import { AuditService } from '../audit/audit.service.js';
@@ -6,6 +6,8 @@ import { OptionTypeService } from './option-type.service.js';
 import { ProductOptionService } from './product-option.service.js';
 import { MediaService } from './media.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import { StorageService } from '../storage/storage.service.js';
+import { loadApiEnv } from '../config/env.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
 
@@ -544,5 +546,47 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     await expect(
       media.putTag(asset.id, colorTypeId, colorBlackId, actor, {}, '2020-01-01T00:00:00.000Z'),
     ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('calls storage.deleteFile on remove and on update when fileKey or posterKey changes', async () => {
+    const testEnv = loadApiEnv({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost:5433/test',
+    });
+    const storage = new StorageService(testEnv);
+    const deleteSpy = vi.spyOn(storage, 'deleteFile').mockResolvedValue(true);
+    const mediaWithStorage = new MediaService(
+      prisma as PrismaService,
+      new AuditService(prisma as PrismaService),
+      undefined,
+      storage,
+    );
+
+    const asset = await mediaWithStorage.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: s('storage-del-1.jpg'), posterKey: s('storage-poster-1.jpg') },
+      actor,
+      {},
+    );
+
+    // Update replacing fileKey and posterKey
+    await mediaWithStorage.update(
+      asset.id,
+      { fileKey: s('storage-del-2.jpg'), posterKey: s('storage-poster-2.jpg') },
+      actor,
+      {},
+    );
+
+    expect(deleteSpy).toHaveBeenCalledWith(s('storage-del-1.jpg'));
+    expect(deleteSpy).toHaveBeenCalledWith(s('storage-poster-1.jpg'));
+
+    deleteSpy.mockClear();
+
+    // Now remove the asset
+    await mediaWithStorage.remove(asset.id, actor, {});
+
+    expect(deleteSpy).toHaveBeenCalledWith(s('storage-del-2.jpg'));
+    expect(deleteSpy).toHaveBeenCalledWith(s('storage-poster-2.jpg'));
   });
 });

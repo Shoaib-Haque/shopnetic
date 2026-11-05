@@ -5,6 +5,7 @@ export * from './auth.js';
 export * from './identity.js';
 export * from './staff.js';
 export * from './catalog.js';
+export * from './media-type.js';
 export * from './currency.js';
 export * from './country.js';
 export * from './seller.js';

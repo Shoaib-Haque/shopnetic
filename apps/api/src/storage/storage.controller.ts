@@ -13,6 +13,7 @@ import {
 import type { Request } from 'express';
 import { Permission } from '@shopnetic/auth';
 import {
+  detectMediaFileType,
   requestUploadUrlSchema,
   type RequestUploadUrlRequest,
   type UploadUrlResponse,
@@ -22,6 +23,7 @@ import { PermissionGuard } from '../auth/permission.guard.js';
 import { RequirePermission } from '../auth/require-permission.decorator.js';
 import { ZodBodyPipe } from '../common/zod-body.pipe.js';
 import { ok } from '../common/envelope.js';
+import { AppError } from '../common/app-error.js';
 import { StorageService } from './storage.service.js';
 
 const uploadUrlBody = new ZodBodyPipe(requestUploadUrlSchema);
@@ -83,6 +85,14 @@ export class StorageController {
       }
       fileBuffer = Buffer.concat(chunks);
     }
+
+    const detected = detectMediaFileType(fileBuffer);
+    if (!detected) {
+      throw new AppError('MEDIA_TYPE_INVALID', 415, {
+        detail: 'Invalid or unsupported media file format',
+      });
+    }
+
     await this.storage.saveLocalFile(key, fileBuffer);
 
     return { status: 'ok' };

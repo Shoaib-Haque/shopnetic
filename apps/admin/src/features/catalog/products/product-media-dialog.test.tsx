@@ -21,7 +21,7 @@ import {
   updateMedia,
   uploadFileToPresignedUrl,
 } from './api';
-import { ProductMediaDialog } from './product-media-dialog';
+import { ProductMediaDialog, getFriendlyMediaLabel } from './product-media-dialog';
 
 vi.mock('./api', async () => {
   const actual = await vi.importActual<typeof import('./api')>('./api');
@@ -429,7 +429,8 @@ describe('ProductMediaDialog', () => {
     expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
 
     const fileInput = screen.getByTestId('media-file-input');
-    const fakeFile = new File(['image-bytes'], 'tee-navy.jpg', { type: 'image/jpeg' });
+    const fakeJpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    const fakeFile = new File([fakeJpegBytes], 'tee-navy.jpg', { type: 'image/jpeg' });
 
     fireEvent.change(fileInput, { target: { files: [fakeFile] } });
 
@@ -503,7 +504,8 @@ describe('ProductMediaDialog', () => {
     expect(fileKeyInput).not.toHaveAttribute('readonly');
 
     const fileInput = screen.getByTestId('media-file-input');
-    const fakeFile = new File(['bytes'], 'sample.jpg', { type: 'image/jpeg' });
+    const fakeJpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    const fakeFile = new File([fakeJpegBytes], 'sample.jpg', { type: 'image/jpeg' });
     fireEvent.change(fileInput, { target: { files: [fakeFile] } });
 
     await waitFor(() => {
@@ -545,6 +547,80 @@ describe('ProductMediaDialog', () => {
       expect(screen.getByText('File exceeds maximum size (50MB).')).toBeInTheDocument();
     });
     expect(mockedRequestUploadUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects file upload with invalid magic bytes', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('media-file-input');
+    const invalidFile = new File(['plain-text-not-an-image'], 'fake-image.jpg', {
+      type: 'image/jpeg',
+    });
+
+    fireEvent.change(fileInput, { target: { files: [invalidFile] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'Invalid file format. Please upload a supported image (PNG, JPG, WebP, AVIF, GIF) or video (MP4, WebM).',
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(mockedRequestUploadUrl).not.toHaveBeenCalled();
+  });
+
+  it('detects video magic bytes and syncs kind to video', async () => {
+    mockedRequestUploadUrl.mockResolvedValueOnce({
+      uploadUrl: 'http://localhost:4000/admin/v1/storage/upload?token=test',
+      fileKey: 'product/prod_1/clip.mp4',
+      publicUrl: 'http://localhost:4000/uploads/product/prod_1/clip.mp4',
+    });
+    mockedUploadFileToPresignedUrl.mockResolvedValueOnce();
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('media-file-input');
+    const mp4Bytes = new Uint8Array([
+      0x00,
+      0x00,
+      0x00,
+      0x18,
+      0x66,
+      0x74,
+      0x79,
+      0x70, // ftyp
+      0x6d,
+      0x70,
+      0x34,
+      0x32, // mp42
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+    ]);
+    const videoFile = new File([mp4Bytes], 'clip.mp4', { type: 'video/mp4' });
+
+    fireEvent.change(fileInput, { target: { files: [videoFile] } });
+
+    await waitFor(() => {
+      expect(mockedRequestUploadUrl).toHaveBeenCalledWith({
+        fileName: 'clip.mp4',
+        contentType: 'video/mp4',
+        ownerType: 'product',
+        ownerId: 'prod_1',
+      });
+    });
+
+    // Poster Key field should now be present since kind switched to video
+    expect(screen.getByText('Video Poster Thumbnail URL')).toBeInTheDocument();
   });
 
   it('handles reordering moving asset left/right', async () => {
@@ -876,7 +952,10 @@ describe('ProductMediaDialog', () => {
 
     // Modal title & video element are rendered
     expect(await screen.findByText('Organic Tee Promo Reel')).toBeInTheDocument();
-    expect(screen.getByText(/45s • products\/tee-promo\.mp4/i)).toBeInTheDocument();
+    expect(screen.getByText(/45s •/i)).toBeInTheDocument();
+    const friendlyVideoLabel = screen.getByText('tee-promo.mp4');
+    expect(friendlyVideoLabel).toBeInTheDocument();
+    expect(friendlyVideoLabel).toHaveAttribute('title', 'products/tee-promo.mp4');
 
     const videoEl = screen.getByTestId('video-preview-player') as HTMLVideoElement;
     expect(videoEl).toBeInTheDocument();
@@ -945,11 +1024,13 @@ describe('ProductMediaDialog', () => {
     // Trigger video error
     fireEvent.error(videoEl);
 
-    // Error fallback is displayed with localized message and fileKey
+    // Error fallback is displayed with localized message and friendly file label with tooltip
     const errContainer = await screen.findByTestId('video-load-error');
     expect(errContainer).toBeInTheDocument();
     expect(within(errContainer).getByText(/Unable to load video preview/i)).toBeInTheDocument();
-    expect(within(errContainer).getByText('products/invalid-video.mp4')).toBeInTheDocument();
+    const errLabel = within(errContainer).getByText('invalid-video.mp4');
+    expect(errLabel).toBeInTheDocument();
+    expect(errLabel).toHaveAttribute('title', 'products/invalid-video.mp4');
     expect(screen.queryByTestId('video-preview-player')).not.toBeInTheDocument();
   });
 
@@ -1510,5 +1591,155 @@ describe('ProductMediaDialog', () => {
     const closeBtns = screen.getAllByRole('button', { name: 'Close' });
     fireEvent.click(closeBtns[closeBtns.length - 1]!);
     expect(screen.queryByTestId('image-magnifier-container')).not.toBeInTheDocument();
+  });
+
+  it('updates dropzone accept attribute and hint text when toggling between image and video kinds', async () => {
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+    await screen.findByText('Product Media Gallery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Media' }));
+    expect(await screen.findByText('Add Media Asset')).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('media-file-input');
+    // Default is image kind
+    expect(fileInput).toHaveAttribute(
+      'accept',
+      'image/png,image/jpeg,image/webp,image/avif,image/gif',
+    );
+    expect(screen.getByText('PNG, JPG, WebP, AVIF, GIF up to 50MB')).toBeInTheDocument();
+
+    // Toggle to Video kind
+    const videoBtn = screen.getByRole('button', { name: /Video/i });
+    fireEvent.click(videoBtn);
+
+    expect(fileInput).toHaveAttribute('accept', 'video/mp4,video/webm');
+    expect(screen.getByText('MP4, WebM up to 50MB')).toBeInTheDocument();
+
+    // Toggle back to Image kind
+    const imageBtn = screen.getByRole('button', { name: /Image/i });
+    fireEvent.click(imageBtn);
+
+    expect(fileInput).toHaveAttribute(
+      'accept',
+      'image/png,image/jpeg,image/webp,image/avif,image/gif',
+    );
+    expect(screen.getByText('PNG, JPG, WebP, AVIF, GIF up to 50MB')).toBeInTheDocument();
+  });
+
+  it('applies responsive wrapping classes to preview modal headers and image inspection footer', async () => {
+    const videoAsset: MediaAsset = {
+      id: 'media_video_1',
+      ownerType: 'product',
+      ownerId: 'prod_1',
+      kind: 'video',
+      fileKey: 'products/tee-promo.mp4',
+      posterKey: 'products/tee-promo-poster.jpg',
+      width: 1920,
+      height: 1080,
+      durationS: 45,
+      blurhash: null,
+      alt: { en: 'Organic Tee Promo Reel' },
+      position: 2,
+      status: 'active',
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    mockedListProductMedia.mockResolvedValue([...sampleAssets, videoAsset]);
+
+    renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+    await screen.findByText('Product Media Gallery');
+
+    // 1. Check Image Inspection Modal header and footer responsiveness classes
+    const inspectButtons = screen.getAllByRole('button', { name: 'Inspect image' });
+    fireEvent.click(inspectButtons[0]!);
+
+    expect(await screen.findByTestId('image-magnifier-container')).toBeInTheDocument();
+
+    // Header has sm:flex-row wrapping and button group has flex-wrap
+    const imageModalHeader =
+      screen.getByText('Organic Tee Front View').closest('[class*="border-b"]') ??
+      screen.getByText('Organic Tee Front View').parentElement?.parentElement;
+    expect(imageModalHeader).toHaveClass(
+      'flex-col',
+      'sm:flex-row',
+      'sm:items-center',
+      'sm:justify-between',
+    );
+
+    const fullscreenBtn = screen.getByRole('button', { name: 'Fullscreen' });
+    const headerBtnGroup = fullscreenBtn.parentElement;
+    expect(headerBtnGroup).toHaveClass('flex-wrap');
+
+    // Footer mode switcher has sm:border-l (no border on mobile when wrapped)
+    const modeSwitcher = screen.getByRole('button', { name: 'Loupe' }).parentElement;
+    expect(modeSwitcher).toHaveClass('sm:border-l', 'sm:border-border', 'sm:pl-3');
+
+    // Close image inspection modal
+    const closeBtns = screen.getAllByRole('button', { name: 'Close' });
+    fireEvent.click(closeBtns[closeBtns.length - 1]!);
+
+    // 2. Check Video Preview Modal header responsiveness classes
+    const playBtn = screen.getByRole('button', { name: /Play video preview/i });
+    fireEvent.click(playBtn);
+
+    expect(await screen.findByText('Organic Tee Promo Reel')).toBeInTheDocument();
+    const videoModalHeader =
+      screen.getByText('Organic Tee Promo Reel').closest('[class*="border-b"]') ??
+      screen.getByText('Organic Tee Promo Reel').parentElement?.parentElement;
+    expect(videoModalHeader).toHaveClass(
+      'flex-col',
+      'sm:flex-row',
+      'sm:items-center',
+      'sm:justify-between',
+    );
+
+    const videoFullscreenBtn = screen.getByRole('button', { name: 'Fullscreen' });
+    const videoHeaderBtnGroup = videoFullscreenBtn.parentElement;
+    expect(videoHeaderBtnGroup).toHaveClass('flex-wrap');
+  });
+});
+
+describe('getFriendlyMediaLabel', () => {
+  it('returns empty string for empty or falsy inputs', () => {
+    expect(getFriendlyMediaLabel('')).toBe('');
+    expect(getFriendlyMediaLabel(null)).toBe('');
+    expect(getFriendlyMediaLabel(undefined)).toBe('');
+  });
+
+  it('returns clean file name as is', () => {
+    expect(getFriendlyMediaLabel('front-view.jpg')).toBe('front-view.jpg');
+    expect(getFriendlyMediaLabel('video.mp4')).toBe('video.mp4');
+  });
+
+  it('extracts filename from nested storage paths', () => {
+    expect(getFriendlyMediaLabel('products/tee-front.jpg')).toBe('tee-front.jpg');
+    expect(getFriendlyMediaLabel('catalog/products/prod_1/gallery/photo.png')).toBe('photo.png');
+  });
+
+  it('strips internal timestamp and hash prefix', () => {
+    expect(getFriendlyMediaLabel('1730812345-a1b2c3d4-front-view.jpg')).toBe('front-view.jpg');
+    expect(getFriendlyMediaLabel('products/1730812345-a1b2c3d4-front-view.jpg')).toBe(
+      'front-view.jpg',
+    );
+    expect(getFriendlyMediaLabel('products/1730812345-A1B2C3D4-hero-image.webp')).toBe(
+      'hero-image.webp',
+    );
+    expect(getFriendlyMediaLabel('uploads/1234567890-abcdef-file-with-dashes-in-name.png')).toBe(
+      'file-with-dashes-in-name.png',
+    );
+  });
+
+  it('extracts and decodes filename from external URLs', () => {
+    expect(
+      getFriendlyMediaLabel('https://cdn.example.com/images/1730812345-a1b2c3d4-front-view.jpg'),
+    ).toBe('front-view.jpg');
+    expect(
+      getFriendlyMediaLabel('https://cdn.example.com/path/to/clean-photo.png?v=2#details'),
+    ).toBe('clean-photo.png');
+    expect(getFriendlyMediaLabel('http://storage.local/media/encoded%20file%20name.jpg')).toBe(
+      'encoded file name.jpg',
+    );
   });
 });

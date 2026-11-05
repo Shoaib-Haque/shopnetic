@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ALLOWED_MEDIA_MIME_TYPES } from './media-type.js';
 
 /**
  * Catalog contracts. User-facing names are **localized fields** (`24` section 5):
@@ -817,7 +818,7 @@ export type ReorderMediaRequest = z.infer<typeof reorderMediaRequestSchema>;
 /** Presigned upload URL request: `POST …/media/upload-url`. */
 export const requestUploadUrlSchema = z.object({
   fileName: z.string().trim().min(1).max(255),
-  contentType: z.string().trim().min(1).max(100),
+  contentType: z.enum(ALLOWED_MEDIA_MIME_TYPES),
   ownerType: mediaOwnerTypeSchema,
   ownerId: z.string().uuid(),
 });

@@ -16,6 +16,8 @@ import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { API_ENV, type ApiEnv } from '../config/env.js';
+import { StorageService, isInternalStorageKey } from '../storage/storage.service.js';
+import { MediaValidationQueueService } from '../queue/media-validation-queue.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 
 const withTags = {
@@ -38,6 +40,8 @@ export class MediaService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     @Optional() @Inject(API_ENV) private readonly env?: ApiEnv,
+    @Optional() private readonly storage?: StorageService,
+    @Optional() private readonly validationQueue?: MediaValidationQueueService,
   ) {
     this.record = auditRecordFor(this.audit, 'media_asset');
   }
@@ -77,42 +81,60 @@ export class MediaService {
     const valid = parseRes.data;
     await this.assertOwner(ownerType, ownerId);
 
-    const created = await this.prisma.$transaction(async (tx) => {
-      let position = valid.position;
-      if (position === undefined) {
-        const last = await tx.mediaAsset.findFirst({
-          where: { ownerType, ownerId },
-          orderBy: { position: 'desc' },
-          select: { position: true },
-        });
-        position = last ? last.position + 1 : 0;
-      }
+    let created: MediaRow;
+    try {
+      created = await this.prisma.$transaction(async (tx) => {
+        let position = valid.position;
+        if (position === undefined) {
+          const last = await tx.mediaAsset.findFirst({
+            where: { ownerType, ownerId },
+            orderBy: { position: 'desc' },
+            select: { position: true },
+          });
+          position = last ? last.position + 1 : 0;
+        }
 
-      const row = await tx.mediaAsset.create({
-        data: {
+        const row = await tx.mediaAsset.create({
+          data: {
+            ownerType,
+            ownerId,
+            kind: valid.kind,
+            fileKey: valid.fileKey,
+            position,
+            ...(valid.posterKey != null ? { posterKey: valid.posterKey } : {}),
+            ...(valid.width != null ? { width: valid.width } : {}),
+            ...(valid.height != null ? { height: valid.height } : {}),
+            ...(valid.durationS != null ? { durationS: valid.durationS } : {}),
+            ...(valid.blurhash != null ? { blurhash: valid.blurhash } : {}),
+            ...(valid.alt ? { altI18n: valid.alt } : {}),
+            ...(valid.status ? { status: valid.status } : {}),
+          },
+          include: withTags,
+        });
+        await writeCatalogOutbox(tx, 'media_asset', 'media.created', row.id, {
+          id: row.id,
           ownerType,
           ownerId,
-          kind: valid.kind,
-          fileKey: valid.fileKey,
-          position,
-          ...(valid.posterKey != null ? { posterKey: valid.posterKey } : {}),
-          ...(valid.width != null ? { width: valid.width } : {}),
-          ...(valid.height != null ? { height: valid.height } : {}),
-          ...(valid.durationS != null ? { durationS: valid.durationS } : {}),
-          ...(valid.blurhash != null ? { blurhash: valid.blurhash } : {}),
-          ...(valid.alt ? { altI18n: valid.alt } : {}),
-          ...(valid.status ? { status: valid.status } : {}),
-        },
-        include: withTags,
+          kind: row.kind,
+        });
+        return row;
       });
-      await writeCatalogOutbox(tx, 'media_asset', 'media.created', row.id, {
-        id: row.id,
-        ownerType,
-        ownerId,
-        kind: row.kind,
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new AppError('MEDIA_FILE_KEY_CONFLICT', 409, {
+          detail: 'a media asset with this file key already exists for this owner',
+        });
+      }
+      throw err;
+    }
+
+    if (this.env?.STORAGE_PROVIDER === 's3' && isInternalStorageKey(created.fileKey)) {
+      await this.validationQueue?.enqueueValidation({
+        mediaAssetId: created.id,
+        fileKey: created.fileKey,
+        expectedKind: created.kind,
       });
-      return row;
-    });
+    }
 
     await this.record(actor, 'catalog.media_created', created.id, meta, {
       after: this.toView(created),
@@ -161,13 +183,38 @@ export class MediaService {
     if (valid.position !== undefined) data.position = valid.position;
     if (valid.status !== undefined) data.status = valid.status;
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.mediaAsset.update({ where: { id }, data });
-      await writeCatalogOutbox(tx, 'media_asset', 'media.updated', id, {
-        id,
-        fields: Object.keys(data),
+    const keysToDelete: string[] = [];
+    if (valid.fileKey !== undefined && valid.fileKey !== current.fileKey) {
+      keysToDelete.push(current.fileKey);
+    }
+    if (
+      valid.posterKey !== undefined &&
+      valid.posterKey !== current.posterKey &&
+      current.posterKey
+    ) {
+      keysToDelete.push(current.posterKey);
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.mediaAsset.update({ where: { id }, data });
+        await writeCatalogOutbox(tx, 'media_asset', 'media.updated', id, {
+          id,
+          fields: Object.keys(data),
+        });
       });
-    });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new AppError('MEDIA_FILE_KEY_CONFLICT', 409, {
+          detail: 'a media asset with this file key already exists for this owner',
+        });
+      }
+      throw err;
+    }
+
+    if (this.storage && keysToDelete.length > 0) {
+      await Promise.allSettled(keysToDelete.map((k) => this.storage!.deleteFile(k)));
+    }
 
     const view = await this.get(id);
     await this.record(actor, 'catalog.media_updated', id, meta, {
@@ -184,6 +231,12 @@ export class MediaService {
       await tx.mediaAsset.delete({ where: { id } });
       await writeCatalogOutbox(tx, 'media_asset', 'media.deleted', id, { id });
     });
+    if (this.storage) {
+      await Promise.allSettled([
+        this.storage.deleteFile(current.fileKey),
+        current.posterKey ? this.storage.deleteFile(current.posterKey) : Promise.resolve(),
+      ]);
+    }
     await this.record(actor, 'catalog.media_deleted', id, meta, {
       before: this.toView(current),
       reason: 'deleted',

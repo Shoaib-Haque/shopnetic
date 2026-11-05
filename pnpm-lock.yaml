@@ -441,6 +441,15 @@ importers:
 
   apps/workers:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1161.0
+        version: 3.1161.0
+      '@shopnetic/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@shopnetic/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@shopnetic/events':
         specifier: workspace:*
         version: link:../../packages/events
@@ -534,12 +543,18 @@ importers:
       '@shopnetic/config':
         specifier: workspace:*
         version: link:../config
+      '@types/node':
+        specifier: 22.10.5
+        version: 22.10.5
       eslint:
         specifier: 9.18.0
         version: 9.18.0(jiti@2.6.1)
       typescript:
         specifier: 5.7.3
         version: 5.7.3
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@22.10.5)(jsdom@30.0.1)
 
   packages/db:
     dependencies:

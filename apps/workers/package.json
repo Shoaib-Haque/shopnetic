@@ -15,6 +15,9 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1161.0",
+    "@shopnetic/contracts": "workspace:*",
+    "@shopnetic/db": "workspace:*",
     "@shopnetic/events": "workspace:*",
     "@shopnetic/observability": "workspace:*",
     "bullmq": "6.3.6",

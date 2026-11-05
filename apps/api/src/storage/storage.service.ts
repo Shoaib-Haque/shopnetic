@@ -1,11 +1,28 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { createHmac, randomBytes } from 'node:crypto';
-import { basename, extname, dirname, resolve, sep } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import type { Dirent } from 'node:fs';
+import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
+import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { RequestUploadUrlRequest, UploadUrlResponse } from '@shopnetic/contracts';
 import { API_ENV, type ApiEnv } from '../config/env.js';
+
+export function isInternalStorageKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+  if (key.startsWith('http://') || key.startsWith('https://') || key.startsWith('//')) {
+    return false;
+  }
+  return (
+    /^[a-zA-Z0-9_-]+\/[0-9a-fA-F-]{36}\/[0-9]+-[a-f0-9]+-/.test(key) ||
+    /^[a-zA-Z0-9_-]+\/[0-9a-fA-F-]{36}\//.test(key)
+  );
+}
 
 @Injectable()
 export class StorageService {
@@ -111,5 +128,101 @@ export class StorageService {
     const fullPath = this.assertSafeStorageKey(key);
     await mkdir(dirname(fullPath), { recursive: true });
     await writeFile(fullPath, data);
+  }
+
+  isInternalStorageKey(key: string): boolean {
+    return isInternalStorageKey(key);
+  }
+
+  async deleteFile(key: string): Promise<boolean> {
+    if (!this.isInternalStorageKey(key)) {
+      return false;
+    }
+    if (this.env.STORAGE_PROVIDER === 's3' && this.s3Client) {
+      await this.s3Client.send(
+        new DeleteObjectCommand({
+          Bucket: this.env.STORAGE_BUCKET,
+          Key: key,
+        }),
+      );
+      return true;
+    }
+
+    try {
+      const fullPath = this.assertSafeStorageKey(key);
+      await unlink(fullPath);
+      return true;
+    } catch (err: unknown) {
+      if (
+        err &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code: string }).code === 'ENOENT'
+      ) {
+        return true;
+      }
+      throw err;
+    }
+  }
+
+  async listInternalFiles(): Promise<Array<{ key: string; lastModified: Date }>> {
+    if (this.env.STORAGE_PROVIDER === 's3' && this.s3Client) {
+      const results: Array<{ key: string; lastModified: Date }> = [];
+      let continuationToken: string | undefined;
+      do {
+        const response = await this.s3Client.send(
+          new ListObjectsV2Command({
+            Bucket: this.env.STORAGE_BUCKET,
+            ContinuationToken: continuationToken,
+          }),
+        );
+        for (const obj of response.Contents ?? []) {
+          if (obj.Key && this.isInternalStorageKey(obj.Key)) {
+            results.push({
+              key: obj.Key,
+              lastModified: obj.LastModified ?? new Date(),
+            });
+          }
+        }
+        continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+      } while (continuationToken);
+      return results;
+    }
+
+    // Local mode
+    const uploadsDir = resolve(process.cwd(), 'public/uploads');
+    try {
+      await stat(uploadsDir);
+    } catch {
+      return [];
+    }
+
+    const results: Array<{ key: string; lastModified: Date }> = [];
+    const walk = async (dir: string): Promise<void> => {
+      let entries: Dirent[];
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const fullPath = resolve(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(fullPath);
+        } else if (entry.isFile()) {
+          const fileStat = await stat(fullPath);
+          const relativeKey = relative(uploadsDir, fullPath).split(sep).join('/');
+          if (this.isInternalStorageKey(relativeKey)) {
+            results.push({
+              key: relativeKey,
+              lastModified: fileStat.mtime,
+            });
+          }
+        }
+      }
+    };
+
+    await walk(uploadsDir);
+    return results;
   }
 }

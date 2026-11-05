@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getPrismaClient, type PrismaClient } from '@shopnetic/db';
 import { Permission, type Actor } from '@shopnetic/auth';
 import {
@@ -14,6 +14,8 @@ import { ProductService } from './product.service.js';
 import { ProductOptionService } from './product-option.service.js';
 import { VariantService } from './variant.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import { StorageService } from '../storage/storage.service.js';
+import { loadApiEnv } from '../config/env.js';
 
 const hasDb = Boolean(process.env['DATABASE_URL']);
 
@@ -1253,5 +1255,69 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
         },
       ],
     });
+  });
+
+  it('cascades media asset deletion and cleans up storage files on product.remove', async () => {
+    const testEnv = loadApiEnv({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost:5433/test',
+    });
+    const storage = new StorageService(testEnv);
+    const deleteSpy = vi.spyOn(storage, 'deleteFile').mockResolvedValue(true);
+    const productsWithStorage = new ProductService(
+      prisma as PrismaService,
+      new AuditService(prisma as PrismaService),
+      undefined,
+      storage,
+    );
+
+    const p = await products.create(
+      { categoryId: catOptionalId, slug: s('cascade-prod'), title: t('Cascade Media Prod') },
+      actor,
+      {},
+    );
+
+    // Create 2 media assets for this product in DB
+    const m1 = await prisma.mediaAsset.create({
+      data: {
+        ownerType: 'product',
+        ownerId: p.id,
+        kind: 'image',
+        fileKey: s('cascade-1.jpg'),
+        posterKey: s('cascade-poster-1.jpg'),
+      },
+    });
+    const m2 = await prisma.mediaAsset.create({
+      data: {
+        ownerType: 'product',
+        ownerId: p.id,
+        kind: 'image',
+        fileKey: s('cascade-2.jpg'),
+      },
+    });
+
+    // Remove the product
+    await productsWithStorage.remove(p.id, actor, {});
+
+    // Verify media assets were deleted from DB
+    const remaining = await prisma.mediaAsset.findMany({
+      where: { ownerType: 'product', ownerId: p.id },
+    });
+    expect(remaining).toHaveLength(0);
+
+    // Verify outbox rows for media deletion
+    const outbox = await prisma.catalogOutbox.findMany({
+      where: {
+        aggregateType: 'media_asset',
+        eventType: 'media.deleted',
+        aggregateId: { in: [m1.id, m2.id] },
+      },
+    });
+    expect(outbox).toHaveLength(2);
+
+    // Verify storage.deleteFile was called for each file
+    expect(deleteSpy).toHaveBeenCalledWith(s('cascade-1.jpg'));
+    expect(deleteSpy).toHaveBeenCalledWith(s('cascade-poster-1.jpg'));
+    expect(deleteSpy).toHaveBeenCalledWith(s('cascade-2.jpg'));
   });
 });

@@ -32,6 +32,7 @@ import { OptionValueCombobox } from './option-value-combobox';
 import {
   deriveProductCoverMedia,
   deriveVariantLeadMediaMap,
+  detectMediaFileType,
   resolveMediaUrl,
   type CreateMediaRequest,
   type MediaAsset,
@@ -83,6 +84,27 @@ import {
 // ── Sub-modal: Media Form Modal (Add / Edit) ──────────────────────────────────
 
 const STORAGE_PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_STORAGE_PUBLIC_BASE_URL;
+
+export function getFriendlyMediaLabel(fileKey?: string | null): string {
+  if (!fileKey) return '';
+  let path = fileKey;
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const parsed = new URL(path);
+      try {
+        path = decodeURIComponent(parsed.pathname);
+      } catch {
+        path = parsed.pathname;
+      }
+    } catch {
+      // Keep path as is
+    }
+  }
+  const segments = path.split('/').filter(Boolean);
+  const last = segments[segments.length - 1] ?? path;
+  const match = /^\d+-[a-f0-9]+-(.+)$/i.exec(last);
+  return match?.[1] ?? last;
+}
 
 interface MediaFormModalProps {
   open: boolean;
@@ -182,12 +204,18 @@ function MediaFormModal({
       return;
     }
     setUploadError(null);
-    setSelectedFile(file);
 
-    if (file.type.startsWith('video/')) {
-      setValue('kind', 'video', { shouldValidate: true });
-    } else if (file.type.startsWith('image/')) {
-      setValue('kind', 'image', { shouldValidate: true });
+    const buffer = await file.slice(0, 64).arrayBuffer();
+    const detected = detectMediaFileType(new Uint8Array(buffer));
+    if (!detected) {
+      setUploadError(t('products.media.form.invalidFileType'));
+      return;
+    }
+
+    setSelectedFile(file);
+    setValue('kind', detected.kind, { shouldValidate: true });
+
+    if (detected.kind === 'image') {
       if (typeof window !== 'undefined' && 'URL' in window && URL.createObjectURL) {
         try {
           const previewUrl = URL.createObjectURL(file);
@@ -196,6 +224,8 @@ function MediaFormModal({
           // ignore in environments without object URL
         }
       }
+    } else {
+      setFilePreview(null);
     }
 
     setIsUploading(true);
@@ -203,7 +233,7 @@ function MediaFormModal({
     try {
       const presigned = await requestUploadUrl({
         fileName: file.name,
-        contentType: file.type || 'application/octet-stream',
+        contentType: detected.mimeType,
         ownerType: 'product',
         ownerId: productId,
       });
@@ -254,7 +284,8 @@ function MediaFormModal({
     },
   });
 
-  const selectedKind = watch('kind');
+  const watchKind = watch('kind');
+  const selectedKind = watchKind;
   const watchAlt = watch('alt') ?? '';
 
   function fieldError(field: Path<MediaFormValues>): string | undefined {
@@ -462,7 +493,11 @@ function MediaFormModal({
                         ref={fileInputRef}
                         type="file"
                         data-testid="media-file-input"
-                        accept="image/*,video/*"
+                        accept={
+                          watchKind === 'video'
+                            ? 'video/mp4,video/webm'
+                            : 'image/png,image/jpeg,image/webp,image/avif,image/gif'
+                        }
                         className="sr-only"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
@@ -519,7 +554,7 @@ function MediaFormModal({
                                 if (fileInputRef.current) fileInputRef.current.value = '';
                                 if (isFileUploaded) {
                                   setValue('fileKey', '', {
-                                    shouldValidate: true,
+                                    shouldValidate: false,
                                     shouldDirty: true,
                                   });
                                   setIsFileUploaded(false);
@@ -539,7 +574,9 @@ function MediaFormModal({
                             {t('products.media.form.dropzoneTitle')}
                           </p>
                           <p className="text-[11px] text-muted-foreground">
-                            {t('products.media.form.dropzoneHint')}
+                            {watchKind === 'video'
+                              ? t('products.media.form.dropzoneHintVideo')
+                              : t('products.media.form.dropzoneHintImage')}
                           </p>
                         </div>
                       )}
@@ -896,15 +933,20 @@ function VideoPreviewModal({
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
-        <ModalHeader className="p-4 pr-12 border-b border-border shrink-0 flex flex-row items-center justify-between">
+        <ModalHeader className="p-4 pr-12 border-b border-border shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex flex-col min-w-0 pr-4">
             <ModalTitle className="truncate pr-4">{title}</ModalTitle>
-            <ModalDescription className="text-xs font-mono text-muted-foreground truncate">
+            <ModalDescription
+              title={asset.fileKey}
+              className="text-xs font-mono text-muted-foreground truncate"
+            >
               {asset.durationS != null ? `${asset.durationS}s • ` : ''}
-              {asset.fileKey}
+              <span className="cursor-help" title={asset.fileKey}>
+                {getFriendlyMediaLabel(asset.fileKey)}
+              </span>
             </ModalDescription>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             {videoAssets.length > 1 && currentIndex >= 0 && (
               <div className="flex items-center gap-1 bg-muted/60 px-2 py-0.5 rounded text-xs text-muted-foreground">
                 <Button
@@ -986,7 +1028,12 @@ function VideoPreviewModal({
             >
               <AlertCircle className="size-8 text-destructive shrink-0" />
               <p className="text-sm font-medium">{t('products.media.videoLoadError')}</p>
-              <p className="font-mono text-xs text-white/50 break-all max-w-md">{asset.fileKey}</p>
+              <p
+                title={asset.fileKey}
+                className="font-mono text-xs text-white/50 break-all max-w-md cursor-help"
+              >
+                {getFriendlyMediaLabel(asset.fileKey)}
+              </p>
             </div>
           ) : (
             <video
@@ -1120,15 +1167,20 @@ function ImageInspectionModal({
   return (
     <Modal open={open} onOpenChange={onOpenChange}>
       <ModalContent className="max-w-5xl xl:max-w-6xl w-[96vw] max-h-[92vh] flex flex-col p-0 overflow-hidden">
-        <ModalHeader className="p-4 pr-12 border-b border-border shrink-0 flex flex-row items-center justify-between">
+        <ModalHeader className="p-4 pr-12 border-b border-border shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex flex-col min-w-0 pr-4">
             <ModalTitle className="truncate pr-4">{title}</ModalTitle>
-            <ModalDescription className="text-xs font-mono text-muted-foreground truncate">
+            <ModalDescription
+              title={asset.fileKey}
+              className="text-xs font-mono text-muted-foreground truncate"
+            >
               {asset.width && asset.height ? `${asset.width}×${asset.height} • ` : ''}
-              {asset.fileKey}
+              <span className="cursor-help" title={asset.fileKey}>
+                {getFriendlyMediaLabel(asset.fileKey)}
+              </span>
             </ModalDescription>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             {imageAssets.length > 1 && currentIndex >= 0 && (
               <div className="flex items-center gap-1 bg-muted/60 px-2 py-0.5 rounded text-xs text-muted-foreground">
                 <Button
@@ -1211,8 +1263,11 @@ function ImageInspectionModal({
               >
                 <AlertCircle className="size-8 text-destructive shrink-0" />
                 <p className="text-sm font-medium">{t('products.media.imageLoadError')}</p>
-                <p className="font-mono text-xs text-muted-foreground break-all max-w-md">
-                  {asset.fileKey}
+                <p
+                  title={asset.fileKey}
+                  className="font-mono text-xs text-muted-foreground break-all max-w-md cursor-help"
+                >
+                  {getFriendlyMediaLabel(asset.fileKey)}
                 </p>
               </div>
             ) : (
@@ -1253,7 +1308,7 @@ function ImageInspectionModal({
         </ModalBody>
 
         <ModalFooter className="p-3 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0 bg-background">
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground mr-1">
                 {t('products.media.zoomLevel', { level: zoomLevel })}:
@@ -1275,7 +1330,7 @@ function ImageInspectionModal({
               ))}
             </div>
 
-            <div className="flex items-center gap-1.5 border-l border-border pl-3">
+            <div className="flex items-center gap-1.5 sm:border-l sm:border-border sm:pl-3">
               <span className="text-xs text-muted-foreground mr-1">
                 {t('products.media.magnifierMode')}:
               </span>
@@ -1305,7 +1360,7 @@ function ImageInspectionModal({
               </button>
             </div>
 
-            <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground border-l border-border pl-3">
+            <div className="hidden md:flex items-center gap-1 text-[11px] text-muted-foreground md:border-l md:border-border md:pl-3">
               <span>{t('products.media.magnifierHint')}</span>
             </div>
           </div>

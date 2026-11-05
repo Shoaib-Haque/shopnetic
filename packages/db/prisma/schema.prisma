@@ -751,6 +751,7 @@ model MediaAsset {
   ownerType MediaOwnerType   @map("owner_type")
   ownerId   String           @map("owner_id") @db.Uuid
   kind      MediaKind
+  /// Partial unique index on file_key for internal keys — see migration 20261105120000
   fileKey   String           @map("file_key")
   posterKey String?          @map("poster_key")
   width     Int?

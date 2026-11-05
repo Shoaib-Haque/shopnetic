@@ -28,6 +28,7 @@ import type { RequestMeta } from '../identity/identity.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
 import { writeInventoryOutbox } from '../inventory/inventory-outbox.js';
 import { BuyboxService } from '../inventory/buybox.service.js';
+import { StorageService } from '../storage/storage.service.js';
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
@@ -46,6 +47,7 @@ export class ProductService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     @Optional() buybox?: BuyboxService,
+    @Optional() private readonly storage?: StorageService,
   ) {
     this.record = auditRecordFor(this.audit, 'product');
     this.buyboxService = buybox ?? new BuyboxService(prisma);
@@ -351,6 +353,8 @@ export class ProductService {
     }
     const currentSpec = (current.spec as Record<string, unknown>) ?? {};
     const deleteTime = new Date();
+    let productMedia: Array<{ id: string; fileKey: string; posterKey: string | null }> = [];
+
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({
         where: { id },
@@ -361,6 +365,24 @@ export class ProductService {
         },
       });
       await writeCatalogOutbox(tx, 'product', 'product.deleted', id, { id });
+
+      productMedia = await tx.mediaAsset.findMany({
+        where: { ownerType: 'product', ownerId: id },
+        select: { id: true, fileKey: true, posterKey: true },
+      });
+      if (productMedia.length > 0) {
+        await tx.mediaAsset.deleteMany({
+          where: { ownerType: 'product', ownerId: id },
+        });
+        for (const m of productMedia) {
+          await writeCatalogOutbox(tx, 'media_asset', 'media.deleted', m.id, {
+            id: m.id,
+            ownerType: 'product',
+            ownerId: id,
+            reason: 'product_deleted_cascade',
+          });
+        }
+      }
 
       // Invariant #4 (plan/32): Archiving a Product disables all active variants and attached Seller Offers
       const activeVariants = await tx.variant.findMany({
@@ -401,6 +423,16 @@ export class ProductService {
         }
       }
     });
+
+    if (this.storage && productMedia.length > 0) {
+      await Promise.allSettled(
+        productMedia.flatMap((m) => [
+          this.storage!.deleteFile(m.fileKey),
+          m.posterKey ? this.storage!.deleteFile(m.posterKey) : Promise.resolve(),
+        ]),
+      );
+    }
+
     const view = toView({ ...current, deletedAt: new Date(), status: 'archived' });
     const [categoryName, brandName] = await Promise.all([
       this.categoryNameOf(view.categoryId),

@@ -41,6 +41,8 @@ const CODE_TO_KEY: Record<string, string> = {
   VARIANT_SELECTION_INVALID: 'errors.variantSelectionInvalid',
   VARIANT_ALREADY_ACTIVE: 'errors.variantAlreadyActive',
   MEDIA_TAG_INVALID: 'errors.mediaTagInvalid',
+  MEDIA_FILE_KEY_CONFLICT: 'errors.mediaFileKeyConflict',
+  MEDIA_TYPE_INVALID: 'errors.mediaTypeInvalid',
   SELLER_NOT_FOUND: 'errors.sellerNotFound',
   SELLER_NOT_APPROVED: 'errors.sellerNotApproved',
   OFFER_NOT_FOUND: 'errors.offerNotFound',

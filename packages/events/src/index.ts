@@ -68,9 +68,21 @@ export interface EventEnvelope<TPayload = unknown> {
  */
 export const QueueName = {
   MAIL: 'mail',
+  MEDIA_CLEANUP: 'media-cleanup',
+  MEDIA_VALIDATION: 'media-validation',
 } as const;
 
 export type QueueName = (typeof QueueName)[keyof typeof QueueName];
+
+export interface MediaSweepJob {
+  gracePeriodMs?: number | undefined;
+}
+
+export interface MediaValidationJob {
+  mediaAssetId: string;
+  fileKey: string;
+  expectedKind: 'image' | 'video';
+}
 
 /** Rendered and ready to send — the worker knows nothing about templates or
  * locales, only SMTP delivery (`plan/31-background-jobs-and-queues.md`
