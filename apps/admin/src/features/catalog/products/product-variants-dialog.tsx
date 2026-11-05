@@ -9,9 +9,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Boxes,
-  Check,
   CheckCircle2,
-  ChevronsUpDown,
   Edit2,
   Grid,
   Image as ImageIcon,
@@ -49,9 +47,6 @@ import {
   ModalHeader,
   ModalTitle,
   notify,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
   SearchInput,
   Select,
   SelectContent,
@@ -77,7 +72,7 @@ import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { integerKeyDownHandler, integerPasteHandler } from '@/lib/numeric-input';
 import { listCategoryOptions } from '@/features/catalog/categories/api';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
-import { useComboboxKeyboardNav } from '@/hooks/use-combobox-keyboard-nav';
+import { OptionValueCombobox, type OptionValueItem } from './option-value-combobox';
 import { useSoftDeleteWithUndo } from '@/components/crud/use-soft-delete-with-undo';
 import { matchScore, tokenize } from '@/lib/search';
 import {
@@ -771,198 +766,6 @@ const variantFormSchema = z.object({
 });
 
 type VariantFormValues = z.infer<typeof variantFormSchema>;
-
-interface OptionValueItem {
-  id: string;
-  code: string;
-  label: string;
-  swatchHex?: string | null | undefined;
-}
-
-interface OptionValueComboboxProps {
-  id?: string;
-  value: string;
-  onChange: (valueId: string) => void;
-  values: OptionValueItem[];
-  placeholder?: string;
-  searchPlaceholder?: string;
-  emptyText?: string;
-  ariaLabel?: string;
-  disabled?: boolean;
-}
-
-function OptionValueCombobox({
-  id,
-  value,
-  onChange,
-  values,
-  placeholder = 'Select a value…',
-  searchPlaceholder = 'Search values…',
-  emptyText = 'No values found',
-  ariaLabel,
-  disabled = false,
-}: OptionValueComboboxProps) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-
-  const selectedItem = useMemo(() => values.find((v) => v.id === value), [values, value]);
-
-  const filteredValues = useMemo(() => {
-    const trimmed = search.trim().toLowerCase();
-    if (!trimmed) return values;
-    const tokens = tokenize(trimmed, { minLength: 1 });
-    if (tokens.length === 0) return values;
-    return values
-      .map((v) => {
-        const code = v.code.toLowerCase();
-        const label = v.label.toLowerCase();
-        const text = `${code} ${label}`;
-
-        let score = 0;
-        if (code === trimmed) {
-          score += 100;
-        } else if (label === trimmed) {
-          score += 80;
-        } else if (code.startsWith(trimmed)) {
-          score += 50;
-        } else if (label.startsWith(trimmed)) {
-          score += 30;
-        }
-
-        const tokenScore = matchScore(text, tokens);
-        score += tokenScore;
-
-        return { v, score };
-      })
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(({ v }) => v);
-  }, [values, search]);
-
-  const { listboxRef, handleKeyDown, getOptionProps } = useComboboxKeyboardNav({
-    open,
-    itemCount: filteredValues.length,
-    onSelect: (index) => {
-      const item = filteredValues[index];
-      if (item) {
-        onChange(item.id);
-        setOpen(false);
-        setSearch('');
-      }
-    },
-    onClose: () => setOpen(false),
-    resetOn: [filteredValues],
-  });
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setSearch('');
-      }}
-    >
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          id={id}
-          role="combobox"
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          aria-label={ariaLabel}
-          disabled={disabled}
-          className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1.5 text-xs shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <div className="flex items-center gap-2 truncate text-left">
-            {selectedItem?.swatchHex && (
-              <span
-                className="size-3.5 shrink-0 rounded-full border border-border shadow-xs"
-                style={{ backgroundColor: selectedItem.swatchHex }}
-                title={selectedItem.swatchHex}
-              />
-            )}
-            <span className={selectedItem ? 'text-foreground' : 'text-muted-foreground'}>
-              {selectedItem ? `${selectedItem.label} (${selectedItem.code})` : placeholder}
-            </span>
-          </div>
-          <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-muted-foreground opacity-70" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        sideOffset={4}
-        hideClose
-        className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] max-w-[24rem] p-2 shadow-lg z-[60]"
-        onWheel={(e) => e.stopPropagation()}
-      >
-        <SearchInput
-          value={search}
-          onValueChange={setSearch}
-          onKeyDown={handleKeyDown}
-          placeholder={searchPlaceholder}
-          className="mb-2"
-          inputClassName="h-8 text-xs"
-          autoFocus
-        />
-        <div
-          ref={listboxRef}
-          role="listbox"
-          className="max-h-56 overflow-y-auto space-y-0.5 pr-1"
-          onWheel={(e) => e.stopPropagation()}
-        >
-          {filteredValues.length === 0 ? (
-            <div className="py-6 text-center text-xs text-muted-foreground">{emptyText}</div>
-          ) : (
-            filteredValues.map((val, index) => {
-              const isSelected = val.id === value;
-              const { onMouseEnter, isHighlighted } = getOptionProps(index);
-              return (
-                <button
-                  key={val.id}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  onMouseEnter={onMouseEnter}
-                  onClick={() => {
-                    onChange(val.id);
-                    setOpen(false);
-                    setSearch('');
-                  }}
-                  className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-xs transition-colors text-left ${
-                    isSelected
-                      ? 'bg-primary text-primary-foreground font-medium'
-                      : isHighlighted
-                        ? 'bg-muted text-foreground'
-                        : 'text-foreground hover:bg-muted/70'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {val.swatchHex && (
-                      <span
-                        className="size-3.5 shrink-0 rounded-full border border-border shadow-xs"
-                        style={{ backgroundColor: val.swatchHex }}
-                        title={val.swatchHex}
-                      />
-                    )}
-                    <span>{val.label}</span>
-                    <span
-                      className={`font-mono text-[10px] ${
-                        isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'
-                      }`}
-                    >
-                      ({val.code})
-                    </span>
-                  </div>
-                  {isSelected && <Check className="size-3.5 shrink-0" />}
-                </button>
-              );
-            })
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 function VariantFormModal({
   open,

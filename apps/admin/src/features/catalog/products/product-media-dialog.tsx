@@ -28,6 +28,7 @@ import {
   ZoomIn,
 } from 'lucide-react';
 import { ImageMagnifier } from './image-magnifier';
+import { OptionValueCombobox } from './option-value-combobox';
 import {
   deriveProductCoverMedia,
   deriveVariantLeadMediaMap,
@@ -2012,44 +2013,40 @@ export function ProductMediaDialog({
                                   >
                                     {otName}:
                                   </label>
-                                  <Select
-                                    value={currentTag?.optionValueId || '__none__'}
-                                    onValueChange={(v) =>
+                                  <OptionValueCombobox
+                                    id={`tag-${asset.id}-${po.optionTypeId}`}
+                                    value={currentTag?.optionValueId || ''}
+                                    onChange={(v) =>
                                       handleTagChange(
                                         asset.id,
                                         po.optionTypeId,
                                         v === '__none__' ? '' : v,
                                       )
                                     }
-                                    disabled={isReadOnly || isTaggingThis}
-                                  >
-                                    <SelectTrigger
-                                      id={`tag-${asset.id}-${po.optionTypeId}`}
-                                      className="h-7 min-w-0 flex-1 px-1.5 text-[11px]"
-                                      aria-label={`Tag ${otName}`}
-                                    >
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent
-                                      align="end"
-                                      className="w-auto min-w-[9rem] max-w-[20rem]"
-                                    >
-                                      <SelectItem value="__none__">
-                                        {t('products.media.untagged')}
-                                      </SelectItem>
-                                      {po.values.map((v) => {
+                                    values={[
+                                      {
+                                        id: '',
+                                        code: '',
+                                        label: t('products.media.untagged'),
+                                      },
+                                      ...po.values.map((v) => {
                                         const ov = ot?.values.find(
                                           (val) => val.id === v.optionValueId,
                                         );
-                                        const displayLabel = ov?.label.en ?? v.code;
-                                        return (
-                                          <SelectItem key={v.optionValueId} value={v.optionValueId}>
-                                            {displayLabel}
-                                          </SelectItem>
-                                        );
-                                      })}
-                                    </SelectContent>
-                                  </Select>
+                                        return {
+                                          id: v.optionValueId,
+                                          code: v.code,
+                                          label: ov?.label.en ?? v.code,
+                                          swatchHex: ov?.swatchHex ?? null,
+                                        };
+                                      }),
+                                    ]}
+                                    compact
+                                    align="end"
+                                    ariaLabel={`Tag ${otName}`}
+                                    placeholder={t('products.media.untagged')}
+                                    disabled={isReadOnly || isTaggingThis}
+                                  />
                                 </div>
                               );
                             })
