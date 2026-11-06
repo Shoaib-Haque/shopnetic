@@ -59,7 +59,7 @@ export async function probeVideoStructure(filePath: string): Promise<VideoProbeR
   }
 
   return {
-    durationS: Math.round(durationFloat),
+    durationS: durationFloat,
     ...(videoStream.width !== undefined ? { width: videoStream.width } : {}),
     ...(videoStream.height !== undefined ? { height: videoStream.height } : {}),
     ...(videoStream.codec_name !== undefined ? { codec: videoStream.codec_name } : {}),

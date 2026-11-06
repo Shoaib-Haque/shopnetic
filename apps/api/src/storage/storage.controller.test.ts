@@ -166,6 +166,47 @@ describe('StorageController', () => {
     });
   });
 
+  it('rejects binary upload when video duration has fractional seconds exceeding 120s (e.g. 120.4s)', async () => {
+    mockedProbeVideoDuration.mockResolvedValueOnce(120.4);
+
+    const key = 'product/11111111-1111-1111-1111-111111111111/12345-fractional-exceeded.mp4';
+    const expires = Date.now() + 3600000;
+    const token = service.signToken(key, expires);
+
+    const mp4Buffer = Buffer.from([
+      0x00,
+      0x00,
+      0x00,
+      0x18,
+      0x66,
+      0x74,
+      0x79,
+      0x70, // ftyp
+      0x6d,
+      0x70,
+      0x34,
+      0x32, // mp42
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x69,
+      0x73,
+      0x6f,
+      0x6d,
+    ]);
+    const mockReq = {
+      body: mp4Buffer,
+    } as object as Request;
+
+    await expect(
+      controller.uploadLocal(mockReq, key, token, String(expires)),
+    ).rejects.toMatchObject({
+      status: 422,
+      code: 'MEDIA_VIDEO_DURATION_EXCEEDED',
+    });
+  });
+
   it('rejects binary upload and unlinks file when video duration probe fails (HTTP 415 MEDIA_TYPE_INVALID)', async () => {
     mockedProbeVideoDuration.mockRejectedValueOnce(new Error('ffprobe spawn failure'));
 

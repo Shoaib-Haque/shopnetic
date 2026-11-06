@@ -334,7 +334,7 @@ export function processMediaValidationJob(
           if (existing.durationS == null) {
             await prisma.mediaAsset.update({
               where: { id: mediaAssetId },
-              data: { durationS: duration },
+              data: { durationS: Math.round(duration) },
             });
           }
           if (Array.isArray(existing.posterCandidates)) {

@@ -109,6 +109,41 @@ describe('processMediaValidationJob', () => {
     });
   });
 
+  it('rejects video exceeding 120s even with fractional duration (e.g. 120.4 seconds)', async () => {
+    const mp4Bytes = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00,
+      0x00,
+    ]);
+    const validator: StorageValidatorDriver = {
+      readHeaderBytes: vi.fn().mockResolvedValue(mp4Bytes),
+      deleteFile: vi.fn().mockResolvedValue(true),
+      probeDuration: vi.fn().mockResolvedValue(120.4),
+    };
+    const prisma = {
+      mediaAsset: {
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+
+    const processor = processMediaValidationJob(validator, prisma);
+    const result = await processor(
+      fakeJob({
+        mediaAssetId: 'asset_fractional_long',
+        fileKey: 'product/11111111-1111-1111-1111-111111111111/fractional-long.mp4',
+        expectedKind: 'video',
+      }),
+    );
+
+    expect(result).toEqual({ status: 'rejected' });
+    expect(validator.deleteFile).toHaveBeenCalledWith(
+      'product/11111111-1111-1111-1111-111111111111/fractional-long.mp4',
+    );
+    expect(prisma.mediaAsset.update).toHaveBeenCalledWith({
+      where: { id: 'asset_fractional_long' },
+      data: { status: 'rejected' },
+    });
+  });
+
   it('rejects video and deletes storage object when duration probe returns null (corrupted video)', async () => {
     const mp4Bytes = new Uint8Array([
       0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00,
@@ -174,6 +209,39 @@ describe('processMediaValidationJob', () => {
     expect(prisma.mediaAsset.update).toHaveBeenCalledWith({
       where: { id: 'asset_unset_duration' },
       data: { durationS: 45 },
+    });
+  });
+
+  it('updates MediaAsset.durationS with rounded integer when probed duration is fractional', async () => {
+    const mp4Bytes = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00,
+      0x00,
+    ]);
+    const validator: StorageValidatorDriver = {
+      readHeaderBytes: vi.fn().mockResolvedValue(mp4Bytes),
+      deleteFile: vi.fn().mockResolvedValue(true),
+      probeDuration: vi.fn().mockResolvedValue(45.6),
+    };
+    const prisma = {
+      mediaAsset: {
+        findUnique: vi.fn().mockResolvedValue({ durationS: null }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+
+    const processor = processMediaValidationJob(validator, prisma);
+    const result = await processor(
+      fakeJob({
+        mediaAssetId: 'asset_unset_duration_frac',
+        fileKey: 'product/11111111-1111-1111-1111-111111111111/video.mp4',
+        expectedKind: 'video',
+      }),
+    );
+
+    expect(result).toEqual({ status: 'valid' });
+    expect(prisma.mediaAsset.update).toHaveBeenCalledWith({
+      where: { id: 'asset_unset_duration_frac' },
+      data: { durationS: 46 },
     });
   });
 
