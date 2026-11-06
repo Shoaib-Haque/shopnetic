@@ -10,16 +10,20 @@ export interface FieldProps {
   htmlFor?: string;
   error?: string | undefined;
   hint?: string | undefined;
+  action?: ReactNode;
   children: ReactNode;
   className?: string;
 }
 
-export function Field({ label, htmlFor, error, hint, children, className }: FieldProps) {
+export function Field({ label, htmlFor, error, hint, action, children, className }: FieldProps) {
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <label htmlFor={htmlFor} className="text-sm font-medium">
-        {label}
-      </label>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor={htmlFor} className="text-sm font-medium">
+          {label}
+        </label>
+        {action}
+      </div>
       {children}
       {hint !== undefined && error === undefined ? (
         <p className="text-xs text-muted-foreground">{hint}</p>

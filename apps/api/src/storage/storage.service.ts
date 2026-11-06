@@ -17,15 +17,10 @@ import {
   isInternalStorageKey,
   type RequestUploadUrlRequest,
   type UploadUrlResponse,
-  type MediaVariants,
 } from '@shopnetic/contracts';
 import { API_ENV, type ApiEnv } from '../config/env.js';
 import { probeVideoDuration } from './video-probe.js';
 import { generatePosterCandidates } from './poster-generator.js';
-import {
-  generateImageVariantsBuffers,
-  buildMediaVariantsRecord,
-} from './image-variant-generator.js';
 
 export { isInternalStorageKey };
 
@@ -378,70 +373,5 @@ export class StorageService {
     await generatePosterCandidates(videoLocalPath, duration, outDir, baseName);
 
     return candKeys.map((k) => ({ key: k, url: `${baseUrl}/${k}` }));
-  }
-
-  async generateAndSaveImageVariants(fileKey: string): Promise<MediaVariants> {
-    if (!fileKey || typeof fileKey !== 'string') {
-      throw new BadRequestException('File key is required');
-    }
-    if (!this.isInternalStorageKey(fileKey)) {
-      throw new BadRequestException('Cannot generate variants for non-internal storage keys');
-    }
-
-    let sourceBuffer: Buffer;
-    if (this.env.STORAGE_PROVIDER === 's3' && this.s3Client) {
-      const getRes = await this.s3Client.send(
-        new GetObjectCommand({
-          Bucket: this.env.STORAGE_BUCKET,
-          Key: fileKey,
-        }),
-      );
-      if (
-        getRes.Body &&
-        typeof (getRes.Body as { transformToByteArray?: () => Promise<Uint8Array> })
-          .transformToByteArray === 'function'
-      ) {
-        sourceBuffer = Buffer.from(
-          await (
-            getRes.Body as { transformToByteArray: () => Promise<Uint8Array> }
-          ).transformToByteArray(),
-        );
-      } else {
-        const chunks: Buffer[] = [];
-        for await (const chunk of getRes.Body as AsyncIterable<Uint8Array | Buffer>) {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        }
-        sourceBuffer = Buffer.concat(chunks);
-      }
-    } else {
-      const localPath = this.assertSafeStorageKey(fileKey);
-      if (!existsSync(localPath)) {
-        throw new BadRequestException('Source image file not found in storage');
-      }
-      sourceBuffer = await readFile(localPath);
-    }
-
-    const variants = await generateImageVariantsBuffers(sourceBuffer, fileKey);
-
-    if (this.env.STORAGE_PROVIDER === 's3' && this.s3Client) {
-      for (const v of variants) {
-        const contentType =
-          v.format === 'avif' ? 'image/avif' : v.format === 'webp' ? 'image/webp' : 'image/jpeg';
-        await this.s3Client.send(
-          new PutObjectCommand({
-            Bucket: this.env.STORAGE_BUCKET,
-            Key: v.key,
-            Body: v.data,
-            ContentType: contentType,
-          }),
-        );
-      }
-    } else {
-      for (const v of variants) {
-        await this.saveLocalFile(v.key, v.data);
-      }
-    }
-
-    return buildMediaVariantsRecord(variants, this.env.STORAGE_PUBLIC_BASE_URL);
   }
 }

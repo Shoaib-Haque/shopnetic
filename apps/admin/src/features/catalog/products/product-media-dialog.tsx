@@ -798,33 +798,11 @@ function MediaFormModal({
                 {/* File Key / URL */}
                 <Field
                   label={t('products.media.form.fileKey')}
-                  htmlFor="media-file-key"
-                  hint={
-                    isInternalKey
-                      ? t('products.media.form.readOnlyInternalKeyHint')
-                      : isFileUploaded
-                        ? t('products.media.form.fileKeyLockedHint')
-                        : undefined
-                  }
-                  error={fieldError('fileKey')}
-                >
-                  <div className="flex gap-2 items-center">
-                    <Input
-                      id="media-file-key"
-                      {...register('fileKey')}
-                      placeholder={t('products.media.form.fileKeyPlaceholder')}
-                      invalid={Boolean(errors.fileKey)}
-                      readOnly={readOnly || isFileUploaded || isInternalKey}
-                      tabIndex={isFileUploaded || isInternalKey ? -1 : undefined}
-                      className={cn(
-                        (readOnly || isFileUploaded || isInternalKey) &&
-                          'bg-muted/50 text-muted-foreground cursor-not-allowed select-all',
-                      )}
-                    />
-                    {isInternalKey && !readOnly && (
+                  action={
+                    isInternalKey && !readOnly ? (
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
                         onClick={() => {
                           if (
@@ -836,14 +814,36 @@ function MediaFormModal({
                             notify.saved(t('products.media.form.copiedKey'));
                           }
                         }}
-                        className="shrink-0 gap-1.5"
+                        className="size-5 p-0 text-muted-foreground hover:text-foreground"
                         title={t('products.media.form.copyKey')}
+                        aria-label={t('products.media.form.copyKey')}
                       >
                         <Copy className="size-3.5" />
-                        {t('products.media.form.copyKey')}
                       </Button>
+                    ) : undefined
+                  }
+                  htmlFor="media-file-key"
+                  hint={
+                    isInternalKey
+                      ? t('products.media.form.readOnlyInternalKeyHint')
+                      : isFileUploaded
+                        ? t('products.media.form.fileKeyLockedHint')
+                        : undefined
+                  }
+                  error={fieldError('fileKey')}
+                >
+                  <Input
+                    id="media-file-key"
+                    {...register('fileKey')}
+                    placeholder={t('products.media.form.fileKeyPlaceholder')}
+                    invalid={Boolean(errors.fileKey)}
+                    readOnly={readOnly || isFileUploaded || isInternalKey}
+                    tabIndex={isFileUploaded || isInternalKey ? -1 : undefined}
+                    className={cn(
+                      (readOnly || isFileUploaded || isInternalKey) &&
+                        'bg-muted/50 text-muted-foreground cursor-not-allowed select-all',
                     )}
-                  </div>
+                  />
                 </Field>
 
                 {/* Suggested Poster Candidates & Poster Key (Videos only) */}
