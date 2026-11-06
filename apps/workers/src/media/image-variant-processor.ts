@@ -117,11 +117,11 @@ export interface ImageVariantPrisma {
   mediaAsset: {
     findUnique?: (args: {
       where: { id: string };
-      select: { id: true; fileKey: true; status: true };
-    }) => Promise<{ id: string; fileKey: string; status: string } | null>;
+      select: { id?: boolean; fileKey?: boolean; status?: boolean; updatedAt?: boolean };
+    }) => Promise<{ id?: string; fileKey?: string; status?: string; updatedAt?: Date } | null>;
     update: (args: {
       where: { id: string };
-      data: { variants: MediaVariants };
+      data: { variants: MediaVariants; updatedAt?: Date };
     }) => Promise<unknown>;
   };
 }
@@ -149,9 +149,20 @@ export function processImageVariantJob(
     }
 
     const variantsRecord = buildMediaVariantsRecord(variants, publicBaseUrl);
+    const existing =
+      typeof prisma.mediaAsset.findUnique === 'function'
+        ? await prisma.mediaAsset.findUnique({
+            where: { id: mediaAssetId },
+            select: { updatedAt: true },
+          })
+        : null;
+
     await prisma.mediaAsset.update({
       where: { id: mediaAssetId },
-      data: { variants: variantsRecord },
+      data: {
+        variants: variantsRecord,
+        ...(existing?.updatedAt ? { updatedAt: existing.updatedAt } : {}),
+      },
     });
 
     log.info(

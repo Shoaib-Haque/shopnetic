@@ -268,15 +268,21 @@ export interface MediaValidationPrisma {
   mediaAsset: {
     findUnique?: (args: {
       where: { id: string };
-      select: { durationS: true; posterCandidates?: true; posterKey?: true };
+      select: { durationS: true; posterCandidates?: true; posterKey?: true; updatedAt?: true };
     }) => Promise<{
       durationS: number | null;
       posterCandidates?: string[];
       posterKey?: string | null;
+      updatedAt?: Date;
     } | null>;
     update: (args: {
       where: { id: string };
-      data: { status?: 'rejected'; durationS?: number; posterCandidates?: string[] };
+      data: {
+        status?: 'rejected';
+        durationS?: number;
+        posterCandidates?: string[];
+        updatedAt?: Date;
+      };
     }) => Promise<unknown>;
   };
 }
@@ -324,17 +330,22 @@ export function processMediaValidationJob(
 
       let existingCandidates: string[] = [];
       let existingHasPosterKey = false;
+      let existingUpdatedAt: Date | undefined;
       if (typeof prisma.mediaAsset.findUnique === 'function') {
         const existing = await prisma.mediaAsset.findUnique({
           where: { id: mediaAssetId },
-          select: { durationS: true, posterCandidates: true, posterKey: true },
+          select: { durationS: true, posterCandidates: true, posterKey: true, updatedAt: true },
         });
         if (existing) {
           existingHasPosterKey = Boolean(existing.posterKey);
+          existingUpdatedAt = existing.updatedAt;
           if (existing.durationS == null) {
             await prisma.mediaAsset.update({
               where: { id: mediaAssetId },
-              data: { durationS: Math.round(duration) },
+              data: {
+                durationS: Math.round(duration),
+                ...(existing.updatedAt ? { updatedAt: existing.updatedAt } : {}),
+              },
             });
           }
           if (Array.isArray(existing.posterCandidates)) {
@@ -353,7 +364,10 @@ export function processMediaValidationJob(
           if (candidateKeys && candidateKeys.length > 0) {
             await prisma.mediaAsset.update({
               where: { id: mediaAssetId },
-              data: { posterCandidates: candidateKeys },
+              data: {
+                posterCandidates: candidateKeys,
+                ...(existingUpdatedAt ? { updatedAt: existingUpdatedAt } : {}),
+              },
             });
           }
         } catch (err) {
