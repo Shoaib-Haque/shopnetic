@@ -16,6 +16,8 @@ import { Permission } from '@shopnetic/auth';
 import {
   detectMediaFileType,
   generatePosterCandidatesRequestSchema,
+  getMediaKindFromKey,
+  MEDIA_MAX_FILE_SIZE_BYTES,
   MEDIA_VIDEO_MAX_DURATION_SECONDS,
   requestUploadUrlSchema,
   type GeneratePosterCandidatesRequest,
@@ -98,16 +100,37 @@ export class StorageController {
       fileBuffer = req.body;
     } else {
       const chunks: Buffer[] = [];
+      let totalBytes = 0;
       for await (const chunk of req) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        totalBytes += buf.length;
+        if (totalBytes > MEDIA_MAX_FILE_SIZE_BYTES) {
+          throw new AppError('MEDIA_FILE_TOO_LARGE', 413, {
+            detail: `File size exceeds the 50MB limit (${MEDIA_MAX_FILE_SIZE_BYTES} bytes)`,
+          });
+        }
+        chunks.push(buf);
       }
       fileBuffer = Buffer.concat(chunks);
+    }
+
+    if (fileBuffer.length > MEDIA_MAX_FILE_SIZE_BYTES) {
+      throw new AppError('MEDIA_FILE_TOO_LARGE', 413, {
+        detail: `File size exceeds the 50MB limit (${MEDIA_MAX_FILE_SIZE_BYTES} bytes)`,
+      });
     }
 
     const detected = detectMediaFileType(fileBuffer);
     if (!detected) {
       throw new AppError('MEDIA_TYPE_INVALID', 415, {
         detail: 'Invalid or unsupported media file format',
+      });
+    }
+
+    const keyKind = getMediaKindFromKey(key);
+    if (keyKind && detected.kind !== keyKind) {
+      throw new AppError('MEDIA_TYPE_INVALID', 415, {
+        detail: `File content does not match extension kind "${keyKind}"`,
       });
     }
 

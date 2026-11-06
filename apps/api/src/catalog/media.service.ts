@@ -8,6 +8,7 @@ import {
   extractVariantKeys,
   isInternalStorageKey,
   getMediaKindFromKey,
+  detectMediaFileType,
   type CreateMediaRequest,
   type MediaAsset,
   type MediaOwnerType,
@@ -99,6 +100,17 @@ export class MediaService {
         throw new AppError('NOT_FOUND', 404, {
           detail: 'media file not found in storage',
         });
+      }
+      if (this.storage) {
+        const headerBytes = await this.storage.readHeaderBytes(valid.fileKey, 64);
+        if (headerBytes && headerBytes.length >= 3) {
+          const detected = detectMediaFileType(headerBytes);
+          if (!detected || detected.kind !== valid.kind) {
+            throw new AppError('MEDIA_TYPE_INVALID', 415, {
+              detail: `file content does not match media kind "${valid.kind}"`,
+            });
+          }
+        }
       }
     }
 
@@ -219,6 +231,17 @@ export class MediaService {
         throw new AppError('NOT_FOUND', 404, {
           detail: 'media file not found in storage',
         });
+      }
+      if (this.storage) {
+        const headerBytes = await this.storage.readHeaderBytes(valid.fileKey, 64);
+        if (headerBytes && headerBytes.length >= 3) {
+          const detected = detectMediaFileType(headerBytes);
+          if (!detected || detected.kind !== current.kind) {
+            throw new AppError('MEDIA_TYPE_INVALID', 415, {
+              detail: `file content does not match media kind "${current.kind}"`,
+            });
+          }
+        }
       }
     }
 

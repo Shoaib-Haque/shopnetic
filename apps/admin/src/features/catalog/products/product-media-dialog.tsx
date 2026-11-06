@@ -72,6 +72,7 @@ import {
   DUMMY_MEDIA_PLACEHOLDER,
 } from '@shopnetic/ui';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
+import { copyToClipboard } from '@/lib/clipboard';
 import { AdminApiError } from '@/features/admin-api/client';
 import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { integerKeyDownHandler, integerPasteHandler } from '@/lib/numeric-input';
@@ -235,10 +236,48 @@ function MediaFormModal({
   const tAdmin = useTranslations('admin');
   const isEdit = asset !== null;
 
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    setValue,
+    watch,
+    formState: { errors, isSubmitting, isDirty },
+  } = useForm<MediaFormValues>({
+    resolver: zodResolver(mediaFormSchema),
+    mode: 'onSubmit',
+    reValidateMode: 'onSubmit',
+    defaultValues: {
+      kind: 'image',
+      fileKey: '',
+      posterKey: '',
+      alt: '',
+      durationS: '',
+      status: 'active',
+    },
+  });
+
+  const watchKind = watch('kind');
+  const selectedKind = watchKind;
+  const watchFileKey = watch('fileKey');
+  const isInternalKey = isInternalStorageKey(watchFileKey);
+  const watchPosterKey = watch('posterKey');
+  const watchAlt = watch('alt') ?? '';
+
+  function fieldError(field: Path<MediaFormValues>): string | undefined {
+    const err = errors[field];
+    if (!err) return undefined;
+    return err.message?.startsWith('products.') ? t(err.message) : err.message;
+  }
+
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [currentUpdatedAt, setCurrentUpdatedAt] = useState<string | undefined>(asset?.updatedAt);
+  const [copiedKey, setCopiedKey] = useState(false);
   const uploadedTempKeyRef = useRef<string | null>(null);
+  const uncommittedKeysRef = useRef<Set<string>>(new Set());
+  const candidateKeysRef = useRef<Set<string>>(new Set());
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -252,14 +291,76 @@ function MediaFormModal({
   const [isGeneratingCandidates, setIsGeneratingCandidates] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const abortAllUncommitted = useCallback(() => {
+    const keysToAbort = [
+      ...Array.from(uncommittedKeysRef.current),
+      ...Array.from(candidateKeysRef.current),
+    ];
+    uncommittedKeysRef.current.clear();
+    candidateKeysRef.current.clear();
+    if (uploadedTempKeyRef.current) {
+      if (!keysToAbort.includes(uploadedTempKeyRef.current)) {
+        keysToAbort.push(uploadedTempKeyRef.current);
+      }
+      uploadedTempKeyRef.current = null;
+    }
+    if (keysToAbort.length > 0) {
+      Promise.allSettled(keysToAbort.map((k) => abortUpload(k))).catch(() => {});
+    }
+  }, []);
+
+  const clearStagedFile = useCallback(
+    (options?: { resetToSaved?: boolean; abortPrevious?: boolean }) => {
+      if (options?.abortPrevious) {
+        abortAllUncommitted();
+      }
+      setSelectedFile(null);
+      setFilePreview(null);
+      setUploadProgress(null);
+      setUploadError(null);
+      setFormError(null);
+      setIsFileUploaded(false);
+      setIsGeneratingCandidates(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
+      if (options?.resetToSaved && isEdit && asset) {
+        setValue('kind', asset.kind, { shouldValidate: false, shouldDirty: false });
+        setValue('fileKey', asset.fileKey, { shouldValidate: false, shouldDirty: false });
+        setValue('posterKey', asset.posterKey || '', { shouldValidate: false, shouldDirty: false });
+        setValue('durationS', asset.durationS != null ? String(asset.durationS) : '', {
+          shouldValidate: false,
+          shouldDirty: false,
+        });
+        if (asset.kind === 'video' && asset.posterCandidates && asset.posterCandidates.length > 0) {
+          setPosterCandidates(
+            asset.posterCandidates.map((key, i) => ({
+              key,
+              url: asset.posterCandidateUrls?.[i] || resolveMediaUrl(key, STORAGE_PUBLIC_BASE_URL),
+            })),
+          );
+        } else {
+          setPosterCandidates([]);
+        }
+      } else {
+        setPosterCandidates([]);
+        setValue('fileKey', '', { shouldValidate: false, shouldDirty: true });
+        setValue('posterKey', '', { shouldValidate: false, shouldDirty: true });
+        setValue('durationS', '', { shouldValidate: false, shouldDirty: true });
+      }
+    },
+    [abortAllUncommitted, isEdit, asset, setValue],
+  );
+
   const handleFileUpload = async (file: File) => {
+    setUploadError(null);
+    setFormError(null);
+
     if (file.size > 50 * 1024 * 1024) {
       setUploadError(t('products.media.form.fileTooBig'));
       if (fileInputRef.current) fileInputRef.current.value = '';
       setSelectedFile(null);
       return;
     }
-    setUploadError(null);
 
     const buffer = await file.slice(0, 64).arrayBuffer();
     const detected = detectMediaFileType(new Uint8Array(buffer));
@@ -269,6 +370,10 @@ function MediaFormModal({
       setSelectedFile(null);
       return;
     }
+
+    // Clean up any previously staged uncommitted uploads/candidates
+    abortAllUncommitted();
+    setPosterCandidates([]);
 
     if (detected.kind === 'video') {
       try {
@@ -325,6 +430,7 @@ function MediaFormModal({
       });
 
       uploadedTempKeyRef.current = presigned.fileKey;
+      uncommittedKeysRef.current.add(presigned.fileKey);
       setValue('fileKey', presigned.fileKey, { shouldValidate: true, shouldDirty: true });
       setIsFileUploaded(true);
       setUploadProgress(100);
@@ -336,6 +442,9 @@ function MediaFormModal({
           ?.then((res) => {
             if (res.candidates && res.candidates.length > 0) {
               setPosterCandidates(res.candidates);
+              for (const c of res.candidates) {
+                candidateKeysRef.current.add(c.key);
+              }
               const currentPoster = watch('posterKey');
               if (!currentPoster) {
                 setValue('posterKey', res.candidates[0]!.key, {
@@ -368,49 +477,13 @@ function MediaFormModal({
     };
   }, [filePreview]);
 
-  const {
-    register,
-    control,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-    formState: { errors, isSubmitting, isDirty },
-  } = useForm<MediaFormValues>({
-    resolver: zodResolver(mediaFormSchema),
-    mode: 'onSubmit',
-    reValidateMode: 'onSubmit',
-    defaultValues: {
-      kind: 'image',
-      fileKey: '',
-      posterKey: '',
-      alt: '',
-      durationS: '',
-      status: 'active',
-    },
-  });
-
-  const watchKind = watch('kind');
-  const selectedKind = watchKind;
-  const watchFileKey = watch('fileKey');
-  const isInternalKey = isInternalStorageKey(watchFileKey);
-  const watchPosterKey = watch('posterKey');
-  const watchAlt = watch('alt') ?? '';
-
-  function fieldError(field: Path<MediaFormValues>): string | undefined {
-    const err = errors[field];
-    if (!err) return undefined;
-    return err.message?.startsWith('products.') ? t(err.message) : err.message;
-  }
-
   function requestClose(next: boolean): void {
     if (!next && isDirty && !isSubmitting && !readOnly) {
       setConfirmDiscard(true);
       return;
     }
-    if (!next && uploadedTempKeyRef.current) {
-      abortUpload(uploadedTempKeyRef.current).catch(() => {});
-      uploadedTempKeyRef.current = null;
+    if (!next) {
+      abortAllUncommitted();
     }
     onOpenChange(next);
   }
@@ -504,6 +577,14 @@ function MediaFormModal({
       return;
     }
 
+    if (
+      isEdit &&
+      (asset?.status === 'rejected' || watch('status') === 'rejected') &&
+      !isFileUploaded
+    ) {
+      return;
+    }
+
     if (readOnly) {
       onOpenChange(false);
       return;
@@ -533,6 +614,8 @@ function MediaFormModal({
           expectedUpdatedAt: currentUpdatedAt,
         };
         const updated = await updateMedia(asset.id, req);
+        uncommittedKeysRef.current.clear();
+        candidateKeysRef.current.clear();
         uploadedTempKeyRef.current = null;
         onSaved(updated);
         notify.saved(t('products.media.toast.updated'));
@@ -550,6 +633,8 @@ function MediaFormModal({
           status: data.status,
         };
         const created = await createProductMedia(productId, req);
+        uncommittedKeysRef.current.clear();
+        candidateKeysRef.current.clear();
         uploadedTempKeyRef.current = null;
         onSaved(created);
         notify.saved(t('products.media.toast.added'));
@@ -564,6 +649,11 @@ function MediaFormModal({
             const fresh = freshAssets.find((a) => a.id === asset.id);
             if (fresh) {
               setCurrentUpdatedAt(fresh.updatedAt);
+              if (fresh.status === 'rejected') {
+                setValue('status', 'rejected');
+                setFormError(t('products.media.form.assetRejectedNotice'));
+                return;
+              }
               notify.error(t('products.media.toast.conflictRefreshed'));
               return;
             }
@@ -575,6 +665,19 @@ function MediaFormModal({
       setFormError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
     }
   };
+
+  const isDropzoneError =
+    Boolean(uploadError) ||
+    Boolean(
+      formError &&
+        (formError.includes('Invalid or unsupported') ||
+          formError.includes('exceeds the maximum duration') ||
+          formError.includes('file key already exists') ||
+          formError.includes('media file not found') ||
+          formError.includes('file content does not match') ||
+          formError.includes('file extension does not match') ||
+          formError.includes('50MB')),
+    );
 
   return (
     <>
@@ -593,6 +696,18 @@ function MediaFormModal({
             </ModalHeader>
 
             <ModalBody className="min-h-0 flex-1 overflow-y-auto py-4">
+              {((isEdit && asset?.status === 'rejected') || watch('status') === 'rejected') && (
+                <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive flex items-start gap-2.5">
+                  <AlertCircle className="size-5 shrink-0 text-destructive mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-semibold">{t('products.media.form.statusRejected')}</p>
+                    <p className="text-xs mt-0.5 text-destructive/90">
+                      {t('products.media.form.assetRejectedNotice')}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <fieldset
                 disabled={isSubmitting || isUploading || readOnly}
                 className="flex flex-col gap-4 border-0 p-0 m-0 min-w-0"
@@ -609,10 +724,15 @@ function MediaFormModal({
                           readOnly || isFileUploaded || Boolean(selectedFile) || isUploading
                         }
                         onClick={() => {
-                          setValue('kind', 'image', { shouldValidate: false });
+                          setUploadError(null);
+                          setFormError(null);
+                          setPosterCandidates([]);
+                          setValue('kind', 'image', { shouldValidate: true, shouldDirty: true });
                           const inferred = getMediaKindFromKey(watchFileKey);
                           if (inferred === 'video') {
                             setValue('fileKey', '', { shouldValidate: false });
+                            setValue('posterKey', '', { shouldValidate: false });
+                            setValue('durationS', '', { shouldValidate: false });
                           }
                         }}
                         className="flex-1 gap-1.5"
@@ -628,7 +748,10 @@ function MediaFormModal({
                           readOnly || isFileUploaded || Boolean(selectedFile) || isUploading
                         }
                         onClick={() => {
-                          setValue('kind', 'video', { shouldValidate: false });
+                          setUploadError(null);
+                          setFormError(null);
+                          setPosterCandidates([]);
+                          setValue('kind', 'video', { shouldValidate: true, shouldDirty: true });
                           const inferred = getMediaKindFromKey(watchFileKey);
                           if (inferred === 'image') {
                             setValue('fileKey', '', { shouldValidate: false });
@@ -679,9 +802,11 @@ function MediaFormModal({
                       }}
                       className={cn(
                         'relative flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg transition-colors cursor-pointer text-center',
-                        dragActive
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/30',
+                        uploadError || (formError && isDropzoneError)
+                          ? 'border-destructive bg-destructive/5'
+                          : dragActive
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/30',
                         isUploading && 'pointer-events-none opacity-80',
                       )}
                     >
@@ -743,18 +868,7 @@ function MediaFormModal({
                               className="size-7 p-0 shrink-0 text-muted-foreground hover:text-foreground"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedFile(null);
-                                setFilePreview(null);
-                                setUploadProgress(null);
-                                setUploadError(null);
-                                if (fileInputRef.current) fileInputRef.current.value = '';
-                                if (isFileUploaded) {
-                                  setValue('fileKey', '', {
-                                    shouldValidate: false,
-                                    shouldDirty: true,
-                                  });
-                                  setIsFileUploaded(false);
-                                }
+                                clearStagedFile({ resetToSaved: isEdit, abortPrevious: true });
                               }}
                               title={t('products.media.form.removeFile')}
                               aria-label={t('products.media.form.removeFile')}
@@ -778,8 +892,13 @@ function MediaFormModal({
                       )}
                     </div>
                     {uploadError && (
-                      <p className="text-xs text-destructive" role="alert">
+                      <p className="text-xs text-destructive font-medium mt-1.5" role="alert">
                         {uploadError}
+                      </p>
+                    )}
+                    {!uploadError && formError && isDropzoneError && (
+                      <p className="text-xs text-destructive font-medium mt-1.5" role="alert">
+                        {formError}
                       </p>
                     )}
                   </div>
@@ -804,21 +923,33 @@ function MediaFormModal({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          if (
-                            watchFileKey &&
-                            typeof navigator !== 'undefined' &&
-                            navigator.clipboard
-                          ) {
-                            navigator.clipboard.writeText(watchFileKey);
-                            notify.saved(t('products.media.form.copiedKey'));
+                        onClick={async () => {
+                          if (watchFileKey) {
+                            const ok = await copyToClipboard(watchFileKey);
+                            if (ok) {
+                              setCopiedKey(true);
+                              notify.saved(t('products.media.form.copiedKey'));
+                              setTimeout(() => setCopiedKey(false), 2000);
+                            }
                           }
                         }}
                         className="size-5 p-0 text-muted-foreground hover:text-foreground"
-                        title={t('products.media.form.copyKey')}
-                        aria-label={t('products.media.form.copyKey')}
+                        title={
+                          copiedKey
+                            ? t('products.media.form.copiedShort')
+                            : t('products.media.form.copyKey')
+                        }
+                        aria-label={
+                          copiedKey
+                            ? t('products.media.form.copiedShort')
+                            : t('products.media.form.copyKey')
+                        }
                       >
-                        <Copy className="size-3.5" />
+                        {copiedKey ? (
+                          <Check className="size-3.5 text-success" />
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
                       </Button>
                     ) : undefined
                   }
@@ -1061,7 +1192,7 @@ function MediaFormModal({
                 </Field>
               </fieldset>
 
-              {formError && (
+              {formError && !isDropzoneError && (
                 <div className="mt-4 rounded-md border border-destructive/20 bg-destructive/10 p-2.5 text-sm font-medium text-destructive">
                   {formError}
                 </div>
@@ -1084,7 +1215,14 @@ function MediaFormModal({
                   variant="primary"
                   size="sm"
                   loading={isSubmitting || isUploading}
-                  disabled={isSubmitting || isUploading || Boolean(uploadError)}
+                  disabled={
+                    isSubmitting ||
+                    isUploading ||
+                    Boolean(uploadError) ||
+                    (isEdit &&
+                      (asset?.status === 'rejected' || watch('status') === 'rejected') &&
+                      !isFileUploaded)
+                  }
                 >
                   {isEdit ? t('products.media.form.save') : t('products.media.form.add')}
                 </Button>
@@ -1102,10 +1240,7 @@ function MediaFormModal({
         confirmLabel={tAdmin('form.discardConfirm')}
         cancelLabel={tAdmin('actions.cancel')}
         onConfirm={() => {
-          if (uploadedTempKeyRef.current) {
-            abortUpload(uploadedTempKeyRef.current).catch(() => {});
-            uploadedTempKeyRef.current = null;
-          }
+          abortAllUncommitted();
           setConfirmDiscard(false);
           onOpenChange(false);
         }}

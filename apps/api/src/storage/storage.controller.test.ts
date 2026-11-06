@@ -50,6 +50,47 @@ describe('StorageController', () => {
   const service = new StorageService(mockEnv);
   const controller = new StorageController(service);
 
+  it('rejects binary upload exceeding 50MB ceiling (HTTP 413 MEDIA_FILE_TOO_LARGE)', async () => {
+    const key = 'product/11111111-1111-1111-1111-111111111111/12345-huge.jpg';
+    const expires = Date.now() + 3600000;
+    const token = service.signToken(key, expires);
+
+    // 51MB buffer (simulated)
+    const oversizedBuffer = Buffer.alloc(51 * 1024 * 1024);
+    const mockReq = {
+      body: oversizedBuffer,
+    } as object as Request;
+
+    await expect(
+      controller.uploadLocal(mockReq, key, token, String(expires)),
+    ).rejects.toMatchObject({
+      status: 413,
+      code: 'MEDIA_FILE_TOO_LARGE',
+    });
+  });
+
+  it('rejects binary upload with extension mismatch (e.g. video bytes to .jpg key) (HTTP 415 MEDIA_TYPE_INVALID)', async () => {
+    const key = 'product/11111111-1111-1111-1111-111111111111/12345-fake_image.jpg';
+    const expires = Date.now() + 3600000;
+    const token = service.signToken(key, expires);
+
+    // Real MP4 header
+    const mp4Buffer = Buffer.from([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00,
+      0x00, 0x69, 0x73, 0x6f, 0x6d,
+    ]);
+    const mockReq = {
+      body: mp4Buffer,
+    } as object as Request;
+
+    await expect(
+      controller.uploadLocal(mockReq, key, token, String(expires)),
+    ).rejects.toMatchObject({
+      status: 415,
+      code: 'MEDIA_TYPE_INVALID',
+    });
+  });
+
   it('rejects binary upload with invalid magic bytes (HTTP 415 MEDIA_TYPE_INVALID)', async () => {
     const key = 'product/11111111-1111-1111-1111-111111111111/12345-fake.jpg';
     const expires = Date.now() + 3600000;

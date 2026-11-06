@@ -8,6 +8,8 @@ export const ALLOWED_IMAGE_MIME_TYPES = [
 
 export const ALLOWED_VIDEO_MIME_TYPES = ['video/mp4', 'video/webm'] as const;
 
+export const MEDIA_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB ceiling
+
 export const ALLOWED_MEDIA_MIME_TYPES = [
   ...ALLOWED_IMAGE_MIME_TYPES,
   ...ALLOWED_VIDEO_MIME_TYPES,

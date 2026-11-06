@@ -2,7 +2,17 @@ import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common'
 import { createHmac, randomBytes } from 'node:crypto';
 import { existsSync, type Dirent } from 'node:fs';
 import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
-import { mkdir, readdir, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  unlink,
+  writeFile,
+  type FileHandle,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import {
   S3Client,
@@ -156,6 +166,49 @@ export class StorageService {
       return existsSync(fullPath);
     } catch {
       return false;
+    }
+  }
+
+  async readHeaderBytes(key: string, maxBytes = 64): Promise<Uint8Array | null> {
+    if (!this.isInternalStorageKey(key)) return null;
+
+    if (this.env.STORAGE_PROVIDER === 's3' && this.s3Client) {
+      try {
+        const res = await this.s3Client.send(
+          new GetObjectCommand({
+            Bucket: this.env.STORAGE_BUCKET,
+            Key: key,
+            Range: `bytes=0-${maxBytes - 1}`,
+          }),
+        );
+        if (!res.Body) return null;
+        const chunks: Buffer[] = [];
+        for await (const chunk of res.Body as AsyncIterable<Uint8Array | Buffer>) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        return new Uint8Array(Buffer.concat(chunks));
+      } catch (err) {
+        this.logger.warn(
+          { key, err: err instanceof Error ? err.message : String(err) },
+          'Failed to read S3 object header',
+        );
+        return null;
+      }
+    }
+
+    try {
+      const fullPath = this.assertSafeStorageKey(key);
+      let handle: FileHandle | null = null;
+      try {
+        handle = await open(fullPath, 'r');
+        const buf = Buffer.alloc(maxBytes);
+        const { bytesRead } = await handle.read(buf, 0, maxBytes, 0);
+        return new Uint8Array(buf.subarray(0, bytesRead));
+      } finally {
+        await handle?.close();
+      }
+    } catch {
+      return null;
     }
   }
 

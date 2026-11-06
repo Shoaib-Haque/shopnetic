@@ -2152,6 +2152,199 @@ describe('ProductMediaDialog', () => {
         expect(writeTextMock).toHaveBeenCalledWith(
           'product/01a2aec5-2e2e-7b32-9678-d96dc4287c34/1793933706408-07529a27-polo.jpeg',
         );
+        expect(screen.getByRole('button', { name: /Copied!/i })).toBeInTheDocument();
+      });
+    });
+
+    it('copies to clipboard via document.execCommand fallback when navigator.clipboard is undefined', async () => {
+      const internalAsset: MediaAsset = {
+        id: 'media_exec_copy',
+        ownerType: 'product',
+        ownerId: '01a2aec5-2e2e-7b32-9678-d96dc4287c34',
+        kind: 'image',
+        fileKey: 'product/01a2aec5-2e2e-7b32-9678-d96dc4287c34/1793933706408-07529a27-polo.jpeg',
+        posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
+        width: 800,
+        height: 600,
+        durationS: null,
+        blurhash: null,
+        alt: { en: 'Polo Shirt' },
+        position: 0,
+        status: 'active',
+        tags: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      };
+
+      mockedListProductMedia.mockResolvedValue([internalAsset]);
+
+      // Simulate non-secure context where navigator.clipboard is undefined
+      Object.assign(navigator, { clipboard: undefined });
+      const execMock = vi.fn().mockReturnValue(true);
+      document.execCommand = execMock;
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      const editBtns = screen.getAllByRole('button', { name: /Edit/i });
+      fireEvent.click(editBtns[0]!);
+
+      await screen.findByRole('heading', { name: 'Edit Media Asset' });
+
+      const copyBtn = screen.getByRole('button', { name: /Copy Key/i });
+      fireEvent.click(copyBtn);
+
+      await waitFor(() => {
+        expect(execMock).toHaveBeenCalledWith('copy');
+        expect(screen.getByRole('button', { name: /Copied!/i })).toBeInTheDocument();
+      });
+    });
+
+    it('reverts to saved asset when clicking Remove / Change file in Edit mode', async () => {
+      const savedAsset: MediaAsset = {
+        id: 'media_saved_edit',
+        ownerType: 'product',
+        ownerId: 'prod_1',
+        kind: 'image',
+        fileKey: 'product/prod_1/original-saved.jpg',
+        posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
+        width: 800,
+        height: 600,
+        durationS: null,
+        blurhash: null,
+        alt: { en: 'Original Saved' },
+        position: 0,
+        status: 'active',
+        tags: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      };
+
+      mockedListProductMedia.mockResolvedValue([savedAsset]);
+      mockedRequestUploadUrl.mockResolvedValue({
+        uploadUrl: 'http://upload/presigned',
+        fileKey: 'product/prod_1/new-staged.jpg',
+        publicUrl: 'http://cdn/new-staged.jpg',
+      });
+      mockedUploadFileToPresignedUrl.mockResolvedValue();
+      mockedAbortUpload.mockResolvedValue();
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      const editBtns = screen.getAllByRole('button', { name: /Edit/i });
+      fireEvent.click(editBtns[0]!);
+
+      await screen.findByRole('heading', { name: 'Edit Media Asset' });
+
+      // Stage a new replacement file in dropzone
+      const fileInput = screen.getByTestId('media-file-input');
+      const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+      const file = new File([jpegBytes], 'new-photo.jpg', { type: 'image/jpeg' });
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('product/prod_1/new-staged.jpg')).toBeInTheDocument();
+      });
+
+      // Now click "Change file" (the remove X button in dropzone)
+      const removeBtn = screen.getByRole('button', { name: /Change file/i });
+      fireEvent.click(removeBtn);
+
+      // Verify that uncommitted replacement was aborted and form reverted to saved asset
+      await waitFor(() => {
+        expect(mockedAbortUpload).toHaveBeenCalledWith('product/prod_1/new-staged.jpg');
+        expect(screen.getByDisplayValue('product/prod_1/original-saved.jpg')).toBeInTheDocument();
+      });
+    });
+
+    it('renders rejection alert banner and blocks Save button when asset is rejected', async () => {
+      const rejectedAsset: MediaAsset = {
+        id: 'media_rejected',
+        ownerType: 'product',
+        ownerId: 'prod_1',
+        kind: 'image',
+        fileKey: 'product/prod_1/corrupt.jpg',
+        posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
+        width: null,
+        height: null,
+        durationS: null,
+        blurhash: null,
+        alt: { en: 'Rejected Image' },
+        position: 0,
+        status: 'rejected',
+        tags: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      };
+
+      mockedListProductMedia.mockResolvedValue([rejectedAsset]);
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      const editBtns = screen.getAllByRole('button', { name: /Edit/i });
+      fireEvent.click(editBtns[0]!);
+
+      await screen.findByRole('heading', { name: 'Edit Media Asset' });
+
+      // Prominent rejection alert banner is shown
+      expect(
+        screen.getByText(/This media asset was rejected by server security validation/i),
+      ).toBeInTheDocument();
+
+      // Save button is disabled
+      const saveBtn = screen.getByRole('button', { name: /Save Media/i });
+      expect(saveBtn).toBeDisabled();
+    });
+
+    it('aborts previous uncommitted file when replacing with another file in dropzone', async () => {
+      mockedListProductMedia.mockResolvedValue([]);
+      mockedRequestUploadUrl
+        .mockResolvedValueOnce({
+          uploadUrl: 'http://upload/presigned1',
+          fileKey: 'product/prod_1/staged-file-1.jpg',
+          publicUrl: 'http://cdn/staged-file-1.jpg',
+        })
+        .mockResolvedValueOnce({
+          uploadUrl: 'http://upload/presigned2',
+          fileKey: 'product/prod_1/staged-file-2.jpg',
+          publicUrl: 'http://cdn/staged-file-2.jpg',
+        });
+      mockedUploadFileToPresignedUrl.mockResolvedValue();
+      mockedAbortUpload.mockResolvedValue();
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add Media' })[0]!);
+      await screen.findByRole('heading', { name: 'Add Media Asset' });
+
+      const fileInput = screen.getByTestId('media-file-input');
+      const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+
+      // Upload File 1
+      const file1 = new File([jpegBytes], 'photo1.jpg', { type: 'image/jpeg' });
+      fireEvent.change(fileInput, { target: { files: [file1] } });
+
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('product/prod_1/staged-file-1.jpg')).toBeInTheDocument();
+      });
+
+      // Upload File 2 without saving File 1
+      const file2 = new File([jpegBytes], 'photo2.jpg', { type: 'image/jpeg' });
+      fireEvent.change(fileInput, { target: { files: [file2] } });
+
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('product/prod_1/staged-file-2.jpg')).toBeInTheDocument();
+        // File 1 must be aborted immediately
+        expect(mockedAbortUpload).toHaveBeenCalledWith('product/prod_1/staged-file-1.jpg');
       });
     });
 
