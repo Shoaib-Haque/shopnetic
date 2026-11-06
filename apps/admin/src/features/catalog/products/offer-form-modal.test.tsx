@@ -615,13 +615,11 @@ describe('OfferFormModal', () => {
       const priceInput = screen.getByPlaceholderText('e.g. 29.99');
       fireEvent.change(priceInput, { target: { value: '19.99' } });
 
-      const minQtyLabel = screen.getByText('Min Order Qty');
-      const minQtyField = minQtyLabel.closest('div')?.querySelector('input');
-      const maxQtyLabel = screen.getByText('Max Order Qty (optional)');
-      const maxQtyField = maxQtyLabel.closest('div')?.querySelector('input');
+      const minQtyField = screen.getByLabelText('Min Order Qty');
+      const maxQtyField = screen.getByLabelText('Max Order Qty (optional)');
 
-      if (minQtyField) fireEvent.change(minQtyField, { target: { value: '5' } });
-      if (maxQtyField) fireEvent.change(maxQtyField, { target: { value: '3' } });
+      fireEvent.change(minQtyField, { target: { value: '5' } });
+      fireEvent.change(maxQtyField, { target: { value: '3' } });
 
       const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
       fireEvent.click(submitBtn);
@@ -639,9 +637,8 @@ describe('OfferFormModal', () => {
       const priceInput = screen.getByPlaceholderText('e.g. 29.99');
       fireEvent.change(priceInput, { target: { value: '19.99' } });
 
-      const minQtyLabel = screen.getByText('Min Order Qty');
-      const minQtyField = minQtyLabel.closest('div')?.querySelector('input');
-      if (minQtyField) fireEvent.change(minQtyField, { target: { value: '1000000' } });
+      const minQtyField = screen.getByLabelText('Min Order Qty');
+      fireEvent.change(minQtyField, { target: { value: '1000000' } });
 
       const submitBtn = screen.getByRole('button', { name: 'Create Offer' });
       fireEvent.click(submitBtn);

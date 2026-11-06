@@ -18,12 +18,18 @@ export interface FieldProps {
 export function Field({ label, htmlFor, error, hint, action, children, className }: FieldProps) {
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <div className="flex items-center gap-1.5">
+      {action ? (
+        <div className="flex items-center gap-1.5">
+          <label htmlFor={htmlFor} className="text-sm font-medium">
+            {label}
+          </label>
+          {action}
+        </div>
+      ) : (
         <label htmlFor={htmlFor} className="text-sm font-medium">
           {label}
         </label>
-        {action}
-      </div>
+      )}
       {children}
       {hint !== undefined && error === undefined ? (
         <p className="text-xs text-muted-foreground">{hint}</p>
