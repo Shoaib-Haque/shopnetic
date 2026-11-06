@@ -285,6 +285,67 @@ describe('processMediaValidationJob', () => {
     });
   });
 
+  it('preserves existing updatedAt timestamp when updating duration and poster candidates', async () => {
+    const mp4Bytes = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00,
+      0x00,
+    ]);
+    const candKeys = [
+      'product/1/vid-poster-cand-1.jpg',
+      'product/1/vid-poster-cand-2.jpg',
+      'product/1/vid-poster-cand-3.jpg',
+    ];
+    const fixedUpdatedAt = new Date('2026-11-06T11:42:16.842Z');
+    const validator: StorageValidatorDriver = {
+      readHeaderBytes: vi.fn().mockResolvedValue(mp4Bytes),
+      deleteFile: vi.fn().mockResolvedValue(true),
+      probeDuration: vi.fn().mockResolvedValue(30),
+      generatePosterCandidates: vi.fn().mockResolvedValue(candKeys),
+    };
+    const prisma = {
+      mediaAsset: {
+        findUnique: vi.fn().mockResolvedValue({
+          durationS: null,
+          posterCandidates: [],
+          posterKey: null,
+          updatedAt: fixedUpdatedAt,
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+
+    const processor = processMediaValidationJob(validator, prisma);
+    const result = await processor(
+      fakeJob({
+        mediaAssetId: 'asset_preserve_ts',
+        fileKey: 'product/1/vid.mp4',
+        expectedKind: 'video',
+      }),
+    );
+
+    expect(result).toEqual({ status: 'valid' });
+    expect(prisma.mediaAsset.findUnique).toHaveBeenCalledWith({
+      where: { id: 'asset_preserve_ts' },
+      select: { durationS: true, posterCandidates: true, posterKey: true, updatedAt: true },
+    });
+    // First update: durationS with preserved updatedAt
+    expect(prisma.mediaAsset.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'asset_preserve_ts' },
+      data: {
+        durationS: 30,
+        updatedAt: fixedUpdatedAt,
+      },
+    });
+    // Second update: posterCandidates with preserved updatedAt
+    expect(prisma.mediaAsset.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'asset_preserve_ts' },
+      data: {
+        posterCandidates: candKeys,
+        updatedAt: fixedUpdatedAt,
+      },
+    });
+  });
+
   it('deletes storage object and rejects DB row on invalid magic bytes', async () => {
     const textBytes = new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // 'Hello'
     const validator: StorageValidatorDriver = {

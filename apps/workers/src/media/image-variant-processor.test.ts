@@ -37,8 +37,10 @@ describe('processImageVariantJob', () => {
     };
 
     let updatedData: unknown = null;
+    const fixedUpdatedAt = new Date('2026-11-06T11:42:16.842Z');
     const prisma = {
       mediaAsset: {
+        findUnique: vi.fn().mockResolvedValue({ updatedAt: fixedUpdatedAt }),
         update: vi.fn().mockImplementation(({ data }) => {
           updatedData = data;
           return Promise.resolve({});
@@ -62,10 +64,15 @@ describe('processImageVariantJob', () => {
     expect(storage.saveFile).toHaveBeenCalledTimes(18);
     expect(Object.keys(savedFiles)).toHaveLength(18);
 
+    expect(prisma.mediaAsset.findUnique).toHaveBeenCalledWith({
+      where: { id: 'asset_test_1' },
+      select: { updatedAt: true },
+    });
     expect(prisma.mediaAsset.update).toHaveBeenCalledWith({
       where: { id: 'asset_test_1' },
       data: expect.objectContaining({
         variants: expect.any(Object),
+        updatedAt: fixedUpdatedAt,
       }),
     });
 
@@ -102,5 +109,47 @@ describe('processImageVariantJob', () => {
     expect(result).toEqual({ status: 'failed' });
     expect(storage.saveFile).not.toHaveBeenCalled();
     expect(prisma.mediaAsset.update).not.toHaveBeenCalled();
+  });
+
+  it('omits updatedAt from update when findUnique returns null', async () => {
+    const testImage = await sharp({
+      create: {
+        width: 100,
+        height: 100,
+        channels: 3,
+        background: { r: 10, g: 20, b: 30 },
+      },
+    })
+      .jpeg()
+      .toBuffer();
+
+    const storage: ImageVariantStorageDriver = {
+      readBuffer: vi.fn().mockResolvedValue(testImage),
+      saveFile: vi.fn().mockResolvedValue(true),
+    };
+
+    let updatedPayload: Record<string, unknown> | null = null;
+    const prisma = {
+      mediaAsset: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        update: vi.fn().mockImplementation(({ data }) => {
+          updatedPayload = data;
+          return Promise.resolve({});
+        }),
+      },
+    };
+
+    const processor = processImageVariantJob(storage, prisma);
+    const result = await processor(
+      fakeJob({
+        mediaAssetId: 'asset_no_existing',
+        fileKey: 'product/p1/test.jpg',
+      }),
+    );
+
+    expect(result).toEqual({ status: 'generated' });
+    expect(updatedPayload).toBeDefined();
+    expect(updatedPayload).toHaveProperty('variants');
+    expect(updatedPayload).not.toHaveProperty('updatedAt');
   });
 });
