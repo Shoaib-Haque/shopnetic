@@ -821,6 +821,7 @@
           "copyKey": "Copy key",
           "copiedKey": "Key copied to clipboard",
           "copiedShort": "Copied!",
+          "copyManualPrompt": "Clipboard access unavailable. Key selected — press Ctrl+C (or Cmd+C) to copy.",
           "assetRejectedNotice": "This media asset was rejected by server security validation (invalid or corrupted file) and has been removed from storage. Please upload a replacement file.",
           "replaceFile": "Replace File",
           "keepCurrentFile": "Keep Current File",

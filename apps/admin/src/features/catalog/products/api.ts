@@ -30,7 +30,7 @@ import type {
   Variant,
   Warehouse,
 } from '@shopnetic/contracts';
-import { adminApi } from '@/features/admin-api/client';
+import { adminApi, AdminApiError } from '@/features/admin-api/client';
 
 export interface ProductListPage {
   products: Product[];
@@ -224,12 +224,22 @@ export function uploadFileToPresignedUrl(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`Upload failed with status ${xhr.status}`));
+        let errCode: string | undefined;
+        try {
+          const parsed = JSON.parse(xhr.responseText) as {
+            error?: { code?: string };
+            code?: string;
+          };
+          errCode = parsed.error?.code || parsed.code;
+        } catch {
+          // ignore non-JSON error response
+        }
+        reject(new AdminApiError(errCode || `HTTP_${xhr.status}`, xhr.status));
       }
     };
 
     xhr.onerror = () => {
-      reject(new Error('Network error during upload'));
+      reject(new AdminApiError('OFFLINE', 0));
     };
 
     xhr.send(file);

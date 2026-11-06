@@ -8,6 +8,8 @@ import {
   type ProductOption,
 } from '@shopnetic/contracts';
 import { renderAdmin } from '@/test/render';
+import { notify } from '@shopnetic/ui';
+import { AdminApiError } from '@/features/admin-api/client';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import {
   abortUpload,
@@ -2346,6 +2348,153 @@ describe('ProductMediaDialog', () => {
         // File 1 must be aborted immediately
         expect(mockedAbortUpload).toHaveBeenCalledWith('product/prod_1/staged-file-1.jpg');
       });
+    });
+
+    it('clears staged file fields when a direct replacement upload fails', async () => {
+      mockedListProductMedia.mockResolvedValue([]);
+      mockedRequestUploadUrl.mockResolvedValueOnce({
+        uploadUrl: 'http://upload/presigned-1',
+        fileKey: 'product/prod_1/staged-file-1.jpg',
+        publicUrl: 'http://cdn/staged-file-1.jpg',
+      });
+      mockedUploadFileToPresignedUrl.mockResolvedValueOnce();
+      mockedAbortUpload.mockResolvedValue();
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add Media' })[0]!);
+      await screen.findByRole('heading', { name: 'Add Media Asset' });
+
+      const fileInput = screen.getByTestId('media-file-input');
+      const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+
+      // Upload File 1
+      const file1 = new File([jpegBytes], 'photo1.jpg', { type: 'image/jpeg' });
+      fireEvent.change(fileInput, { target: { files: [file1] } });
+
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('product/prod_1/staged-file-1.jpg')).toBeInTheDocument();
+      });
+
+      // Attempt to replace with File 2 which fails upload with MEDIA_TYPE_INVALID
+      mockedRequestUploadUrl.mockResolvedValueOnce({
+        uploadUrl: 'http://upload/presigned-2',
+        fileKey: 'product/prod_1/staged-file-2.jpg',
+        publicUrl: 'http://cdn/staged-file-2.jpg',
+      });
+      mockedUploadFileToPresignedUrl.mockRejectedValueOnce(
+        new AdminApiError('MEDIA_TYPE_INVALID', 415),
+      );
+
+      const file2 = new File([jpegBytes], 'corrupt.jpg', { type: 'image/jpeg' });
+      fireEvent.change(fileInput, { target: { files: [file2] } });
+
+      // Staged file 1 should be aborted
+      await waitFor(() => {
+        expect(mockedAbortUpload).toHaveBeenCalledWith('product/prod_1/staged-file-1.jpg');
+      });
+
+      // Error message from server should be displayed under dropzone
+      await waitFor(() => {
+        expect(screen.getByText(/Invalid or unsupported media file format/i)).toBeInTheDocument();
+      });
+
+      // Staged fileKey must NOT still contain file 1
+      const keyInput = document.getElementById('media-file-key') as HTMLInputElement;
+      expect(keyInput.value).toBe('');
+
+      // Submit button must be disabled
+      const modalAddBtns = screen.getAllByRole('button', { name: 'Add Media' });
+      const submitBtn = modalAddBtns[modalAddBtns.length - 1]!;
+      expect(submitBtn).toBeDisabled();
+    });
+
+    it('displays localized server error from presigned upload rejection under dropzone', async () => {
+      mockedListProductMedia.mockResolvedValue([]);
+      mockedRequestUploadUrl.mockResolvedValueOnce({
+        uploadUrl: 'http://upload/presigned-1',
+        fileKey: 'product/prod_1/oversized.jpg',
+        publicUrl: 'http://cdn/oversized.jpg',
+      });
+      mockedUploadFileToPresignedUrl.mockRejectedValueOnce(
+        new AdminApiError('MEDIA_FILE_TOO_LARGE', 413),
+      );
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add Media' })[0]!);
+      await screen.findByRole('heading', { name: 'Add Media Asset' });
+
+      const fileInput = screen.getByTestId('media-file-input');
+      const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+      const file = new File([jpegBytes], 'big.jpg', { type: 'image/jpeg' });
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/File exceeds the maximum allowed size of 50MB/i),
+        ).toBeInTheDocument();
+      });
+
+      const modalAddBtns = screen.getAllByRole('button', { name: 'Add Media' });
+      const submitBtn = modalAddBtns[modalAddBtns.length - 1]!;
+      expect(submitBtn).toBeDisabled();
+    });
+
+    it('notifies copyManualPrompt and focuses input when copyToClipboard fails', async () => {
+      const mockAsset: MediaAsset = {
+        id: 'med_test_copy',
+        ownerType: 'product',
+        ownerId: '01a2aec5-2e2e-7b32-9678-d96dc4287c34',
+        kind: 'image',
+        fileKey: 'product/01a2aec5-2e2e-7b32-9678-d96dc4287c34/1793933706408-photo.jpg',
+        posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
+        width: 800,
+        height: 600,
+        durationS: null,
+        blurhash: null,
+        alt: null,
+        position: 0,
+        status: 'active',
+        tags: [],
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      };
+      mockedListProductMedia.mockResolvedValue([mockAsset]);
+
+      const notifyErrorSpy = vi.spyOn(notify, 'error');
+
+      // Force clipboard failure
+      Object.defineProperty(navigator, 'clipboard', {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+      document.execCommand = vi.fn().mockReturnValue(false);
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      const editBtns = screen.getAllByRole('button', { name: 'Edit Media' });
+      fireEvent.click(editBtns[0]!);
+
+      await screen.findByRole('heading', { name: 'Edit Media Asset' });
+
+      const copyBtn = screen.getByRole('button', { name: 'Copy key' });
+      fireEvent.click(copyBtn);
+
+      await waitFor(() => {
+        expect(notifyErrorSpy).toHaveBeenCalledWith(
+          'Clipboard access unavailable. Key selected — press Ctrl+C (or Cmd+C) to copy.',
+        );
+      });
+
+      const keyInput = document.getElementById('media-file-key') as HTMLInputElement;
+      expect(document.activeElement).toBe(keyInput);
     });
 
     it('aborts and deletes temporary uploaded file on modal cancel or discard', async () => {

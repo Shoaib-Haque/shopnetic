@@ -352,8 +352,8 @@ function MediaFormModal({
   );
 
   const handleFileUpload = async (file: File) => {
-    setUploadError(null);
-    setFormError(null);
+    // Clean up any previously staged uncommitted uploads/candidates and reset staged fields
+    clearStagedFile({ resetToSaved: isEdit, abortPrevious: true });
 
     if (file.size > 50 * 1024 * 1024) {
       setUploadError(t('products.media.form.fileTooBig'));
@@ -370,10 +370,6 @@ function MediaFormModal({
       setSelectedFile(null);
       return;
     }
-
-    // Clean up any previously staged uncommitted uploads/candidates
-    abortAllUncommitted();
-    setPosterCandidates([]);
 
     if (detected.kind === 'video') {
       try {
@@ -461,8 +457,12 @@ function MediaFormModal({
             setIsGeneratingCandidates(false);
           });
       }
-    } catch {
-      setUploadError(t('products.media.form.uploadFailed'));
+    } catch (err) {
+      if (err instanceof AdminApiError) {
+        setUploadError(t(catalogErrorKey(err.code)));
+      } else {
+        setUploadError(t('products.media.form.uploadFailed'));
+      }
       setUploadProgress(null);
     } finally {
       setIsUploading(false);
@@ -925,11 +925,24 @@ function MediaFormModal({
                         size="sm"
                         onClick={async () => {
                           if (watchFileKey) {
+                            const inputEl = document.getElementById(
+                              'media-file-key',
+                            ) as HTMLInputElement | null;
+                            if (inputEl) {
+                              inputEl.focus();
+                              inputEl.select();
+                            }
                             const ok = await copyToClipboard(watchFileKey);
                             if (ok) {
                               setCopiedKey(true);
                               notify.saved(t('products.media.form.copiedKey'));
                               setTimeout(() => setCopiedKey(false), 2000);
+                            } else {
+                              if (inputEl) {
+                                inputEl.focus();
+                                inputEl.select();
+                              }
+                              notify.error(t('products.media.form.copyManualPrompt'));
                             }
                           }
                         }}
