@@ -263,6 +263,13 @@ export function deleteMedia(id: string): Promise<void> {
   });
 }
 
+export function abortUpload(fileKey: string): Promise<void> {
+  return adminApi<void>('/media/upload-abort', {
+    method: 'POST',
+    body: { fileKey },
+  });
+}
+
 export function putMediaTag(
   id: string,
   optionTypeId: string,

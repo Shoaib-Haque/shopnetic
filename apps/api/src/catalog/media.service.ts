@@ -7,6 +7,7 @@ import {
   resolveMediaVariantsUrls,
   extractVariantKeys,
   isInternalStorageKey,
+  getMediaKindFromKey,
   type CreateMediaRequest,
   type MediaAsset,
   type MediaOwnerType,
@@ -87,6 +88,20 @@ export class MediaService {
     const valid = parseRes.data;
     await this.assertOwner(ownerType, ownerId);
 
+    if (isInternalStorageKey(valid.fileKey)) {
+      const inferredKind = getMediaKindFromKey(valid.fileKey);
+      if (inferredKind && inferredKind !== valid.kind) {
+        throw new AppError('MEDIA_TYPE_INVALID', 415, {
+          detail: `file extension does not match media kind "${valid.kind}"`,
+        });
+      }
+      if (this.storage && !(await this.storage.fileExists(valid.fileKey))) {
+        throw new AppError('NOT_FOUND', 404, {
+          detail: 'media file not found in storage',
+        });
+      }
+    }
+
     let created: MediaRow;
     const unselectedCandidates: string[] = [];
     let posterCandidatesToSave = valid.posterCandidates;
@@ -160,26 +175,10 @@ export class MediaService {
     }
 
     if (created.kind === 'image' && isInternalStorageKey(created.fileKey)) {
-      if (this.env?.STORAGE_PROVIDER === 'local' && this.storage) {
-        try {
-          const variants = await this.storage.generateAndSaveImageVariants(created.fileKey);
-          await this.prisma.mediaAsset.update({
-            where: { id: created.id },
-            data: { variants },
-          });
-          created.variants = variants;
-        } catch {
-          await this.variantQueue?.enqueueImageVariants({
-            mediaAssetId: created.id,
-            fileKey: created.fileKey,
-          });
-        }
-      } else {
-        await this.variantQueue?.enqueueImageVariants({
-          mediaAssetId: created.id,
-          fileKey: created.fileKey,
-        });
-      }
+      await this.variantQueue?.enqueueImageVariants({
+        mediaAssetId: created.id,
+        fileKey: created.fileKey,
+      });
     }
 
     await this.record(actor, 'catalog.media_created', created.id, meta, {
@@ -208,6 +207,20 @@ export class MediaService {
     const valid = parseRes.data;
     const current = await this.rowOrThrow(id);
     await this.assertOwner(current.ownerType, current.ownerId);
+
+    if (valid.fileKey !== undefined && isInternalStorageKey(valid.fileKey)) {
+      const inferredKind = getMediaKindFromKey(valid.fileKey);
+      if (inferredKind && inferredKind !== current.kind) {
+        throw new AppError('MEDIA_TYPE_INVALID', 415, {
+          detail: `file extension does not match media kind "${current.kind}"`,
+        });
+      }
+      if (this.storage && !(await this.storage.fileExists(valid.fileKey))) {
+        throw new AppError('NOT_FOUND', 404, {
+          detail: 'media file not found in storage',
+        });
+      }
+    }
 
     if (
       valid.expectedUpdatedAt !== undefined &&
@@ -300,25 +313,10 @@ export class MediaService {
       current.kind === 'image' &&
       isInternalStorageKey(valid.fileKey)
     ) {
-      if (this.env?.STORAGE_PROVIDER === 'local' && this.storage) {
-        try {
-          const variants = await this.storage.generateAndSaveImageVariants(valid.fileKey);
-          await this.prisma.mediaAsset.update({
-            where: { id },
-            data: { variants },
-          });
-        } catch {
-          await this.variantQueue?.enqueueImageVariants({
-            mediaAssetId: id,
-            fileKey: valid.fileKey,
-          });
-        }
-      } else {
-        await this.variantQueue?.enqueueImageVariants({
-          mediaAssetId: id,
-          fileKey: valid.fileKey,
-        });
-      }
+      await this.variantQueue?.enqueueImageVariants({
+        mediaAssetId: id,
+        fileKey: valid.fileKey,
+      });
     }
 
     const view = await this.get(id);
@@ -348,6 +346,26 @@ export class MediaService {
       before: this.toView(current),
       reason: 'deleted',
     });
+  }
+
+  /**
+   * Deletes an uncommitted uploaded file from storage if it is not referenced by any MediaAsset.
+   * Safe to call on discard/cancel in modal.
+   */
+  async deleteTempFile(fileKey: string): Promise<boolean> {
+    if (!isInternalStorageKey(fileKey) || !this.storage) {
+      return false;
+    }
+    const referenced = await this.prisma.mediaAsset.findFirst({
+      where: {
+        OR: [{ fileKey }, { posterKey: fileKey }],
+      },
+      select: { id: true },
+    });
+    if (!referenced) {
+      return await this.storage.deleteFile(fileKey);
+    }
+    return false;
   }
 
   async reorder(

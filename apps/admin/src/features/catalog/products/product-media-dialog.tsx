@@ -12,6 +12,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Edit2,
   ExternalLink,
   FileCheck,
@@ -35,8 +36,10 @@ import {
   deriveProductCoverMedia,
   deriveVariantLeadMediaMap,
   detectMediaFileType,
+  getMediaKindFromKey,
   resolveMediaUrl,
   MEDIA_VIDEO_MAX_DURATION_SECONDS,
+  isInternalStorageKey,
   type CreateMediaRequest,
   type MediaAsset,
   type OptionType,
@@ -66,6 +69,7 @@ import {
   Spinner,
   StatusBadge,
   ResponsiveImage,
+  DUMMY_MEDIA_PLACEHOLDER,
 } from '@shopnetic/ui';
 import { ConfirmDialog } from '@/components/crud/confirm-dialog';
 import { AdminApiError } from '@/features/admin-api/client';
@@ -73,6 +77,7 @@ import { catalogErrorKey } from '@/features/catalog/error-copy';
 import { integerKeyDownHandler, integerPasteHandler } from '@/lib/numeric-input';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import {
+  abortUpload,
   createProductMedia,
   deleteMedia,
   deleteMediaTag,
@@ -232,6 +237,8 @@ function MediaFormModal({
 
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [currentUpdatedAt, setCurrentUpdatedAt] = useState<string | undefined>(asset?.updatedAt);
+  const uploadedTempKeyRef = useRef<string | null>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -248,6 +255,8 @@ function MediaFormModal({
   const handleFileUpload = async (file: File) => {
     if (file.size > 50 * 1024 * 1024) {
       setUploadError(t('products.media.form.fileTooBig'));
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setSelectedFile(null);
       return;
     }
     setUploadError(null);
@@ -256,6 +265,8 @@ function MediaFormModal({
     const detected = detectMediaFileType(new Uint8Array(buffer));
     if (!detected) {
       setUploadError(t('products.media.form.invalidFileType'));
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setSelectedFile(null);
       return;
     }
 
@@ -268,6 +279,8 @@ function MediaFormModal({
               duration: Math.round(duration),
             }),
           );
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          setSelectedFile(null);
           return;
         }
         if (duration > 0) {
@@ -311,6 +324,7 @@ function MediaFormModal({
         setUploadProgress(percent);
       });
 
+      uploadedTempKeyRef.current = presigned.fileKey;
       setValue('fileKey', presigned.fileKey, { shouldValidate: true, shouldDirty: true });
       setIsFileUploaded(true);
       setUploadProgress(100);
@@ -378,6 +392,8 @@ function MediaFormModal({
 
   const watchKind = watch('kind');
   const selectedKind = watchKind;
+  const watchFileKey = watch('fileKey');
+  const isInternalKey = isInternalStorageKey(watchFileKey);
   const watchPosterKey = watch('posterKey');
   const watchAlt = watch('alt') ?? '';
 
@@ -392,6 +408,10 @@ function MediaFormModal({
       setConfirmDiscard(true);
       return;
     }
+    if (!next && uploadedTempKeyRef.current) {
+      abortUpload(uploadedTempKeyRef.current).catch(() => {});
+      uploadedTempKeyRef.current = null;
+    }
     onOpenChange(next);
   }
 
@@ -404,6 +424,7 @@ function MediaFormModal({
     setDragActive(false);
     setIsFileUploaded(false);
     setIsPosterUploaded(false);
+    setCurrentUpdatedAt(asset?.updatedAt);
 
     if (!open) {
       setPosterCandidates([]);
@@ -479,6 +500,10 @@ function MediaFormModal({
   }, [open, asset, reset]);
 
   const onValidSubmit = async (data: MediaFormValues) => {
+    if (uploadError) {
+      return;
+    }
+
     if (readOnly) {
       onOpenChange(false);
       return;
@@ -505,9 +530,10 @@ function MediaFormModal({
           alt: data.alt?.trim() ? { en: data.alt.trim() } : null,
           durationS: data.durationS ? Number(data.durationS) : null,
           status: data.status,
-          expectedUpdatedAt: asset.updatedAt,
+          expectedUpdatedAt: currentUpdatedAt,
         };
         const updated = await updateMedia(asset.id, req);
+        uploadedTempKeyRef.current = null;
         onSaved(updated);
         notify.saved(t('products.media.toast.updated'));
         onOpenChange(false);
@@ -524,6 +550,7 @@ function MediaFormModal({
           status: data.status,
         };
         const created = await createProductMedia(productId, req);
+        uploadedTempKeyRef.current = null;
         onSaved(created);
         notify.saved(t('products.media.toast.added'));
         onOpenChange(false);
@@ -531,6 +558,19 @@ function MediaFormModal({
     } catch (err) {
       if (err instanceof AdminApiError && err.code === 'CONFLICT') {
         onConflict?.();
+        if (isEdit && asset) {
+          try {
+            const freshAssets = await listProductMedia(productId);
+            const fresh = freshAssets.find((a) => a.id === asset.id);
+            if (fresh) {
+              setCurrentUpdatedAt(fresh.updatedAt);
+              notify.error(t('products.media.toast.conflictRefreshed'));
+              return;
+            }
+          } catch {
+            // fall through to error banner
+          }
+        }
       }
       setFormError(t(catalogErrorKey(err instanceof AdminApiError ? err.code : undefined)));
     }
@@ -565,8 +605,16 @@ function MediaFormModal({
                         type="button"
                         variant={selectedKind === 'image' ? 'primary' : 'outline'}
                         size="sm"
-                        disabled={readOnly}
-                        onClick={() => setValue('kind', 'image', { shouldValidate: false })}
+                        disabled={
+                          readOnly || isFileUploaded || Boolean(selectedFile) || isUploading
+                        }
+                        onClick={() => {
+                          setValue('kind', 'image', { shouldValidate: false });
+                          const inferred = getMediaKindFromKey(watchFileKey);
+                          if (inferred === 'video') {
+                            setValue('fileKey', '', { shouldValidate: false });
+                          }
+                        }}
                         className="flex-1 gap-1.5"
                       >
                         <ImageIcon className="size-4" />
@@ -576,14 +624,27 @@ function MediaFormModal({
                         type="button"
                         variant={selectedKind === 'video' ? 'primary' : 'outline'}
                         size="sm"
-                        disabled={readOnly}
-                        onClick={() => setValue('kind', 'video', { shouldValidate: false })}
+                        disabled={
+                          readOnly || isFileUploaded || Boolean(selectedFile) || isUploading
+                        }
+                        onClick={() => {
+                          setValue('kind', 'video', { shouldValidate: false });
+                          const inferred = getMediaKindFromKey(watchFileKey);
+                          if (inferred === 'image') {
+                            setValue('fileKey', '', { shouldValidate: false });
+                          }
+                        }}
                         className="flex-1 gap-1.5"
                       >
                         <Film className="size-4" />
                         {t('products.media.kindVideo')}
                       </Button>
                     </div>
+                    {(isFileUploaded || Boolean(selectedFile)) && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {t('products.media.form.kindLockedHint')}
+                      </p>
+                    )}
                   </Field>
                 )}
 
@@ -738,21 +799,51 @@ function MediaFormModal({
                 <Field
                   label={t('products.media.form.fileKey')}
                   htmlFor="media-file-key"
-                  hint={isFileUploaded ? t('products.media.form.fileKeyLockedHint') : undefined}
+                  hint={
+                    isInternalKey
+                      ? t('products.media.form.readOnlyInternalKeyHint')
+                      : isFileUploaded
+                        ? t('products.media.form.fileKeyLockedHint')
+                        : undefined
+                  }
                   error={fieldError('fileKey')}
                 >
-                  <Input
-                    id="media-file-key"
-                    {...register('fileKey')}
-                    placeholder={t('products.media.form.fileKeyPlaceholder')}
-                    invalid={Boolean(errors.fileKey)}
-                    readOnly={readOnly || isFileUploaded}
-                    tabIndex={isFileUploaded ? -1 : undefined}
-                    className={cn(
-                      (readOnly || isFileUploaded) &&
-                        'bg-muted/50 text-muted-foreground cursor-not-allowed select-all',
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      id="media-file-key"
+                      {...register('fileKey')}
+                      placeholder={t('products.media.form.fileKeyPlaceholder')}
+                      invalid={Boolean(errors.fileKey)}
+                      readOnly={readOnly || isFileUploaded || isInternalKey}
+                      tabIndex={isFileUploaded || isInternalKey ? -1 : undefined}
+                      className={cn(
+                        (readOnly || isFileUploaded || isInternalKey) &&
+                          'bg-muted/50 text-muted-foreground cursor-not-allowed select-all',
+                      )}
+                    />
+                    {isInternalKey && !readOnly && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (
+                            watchFileKey &&
+                            typeof navigator !== 'undefined' &&
+                            navigator.clipboard
+                          ) {
+                            navigator.clipboard.writeText(watchFileKey);
+                            notify.saved(t('products.media.form.copiedKey'));
+                          }
+                        }}
+                        className="shrink-0 gap-1.5"
+                        title={t('products.media.form.copyKey')}
+                      >
+                        <Copy className="size-3.5" />
+                        {t('products.media.form.copyKey')}
+                      </Button>
                     )}
-                  />
+                  </div>
                 </Field>
 
                 {/* Suggested Poster Candidates & Poster Key (Videos only) */}
@@ -807,6 +898,10 @@ function MediaFormModal({
                                   alt={`Candidate frame ${idx + 1}`}
                                   className="size-full object-cover"
                                   loading="lazy"
+                                  decoding="async"
+                                  onError={(e) => {
+                                    e.currentTarget.src = DUMMY_MEDIA_PLACEHOLDER;
+                                  }}
                                 />
                                 {isSelected && (
                                   <div className="absolute top-1 right-1 size-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
@@ -862,8 +957,10 @@ function MediaFormModal({
                             src={resolveMediaUrl(watchPosterKey, STORAGE_PUBLIC_BASE_URL)}
                             alt="Poster preview"
                             className="size-12 rounded object-cover border border-border shrink-0"
+                            loading="lazy"
+                            decoding="async"
                             onError={(e) => {
-                              (e.target as HTMLElement).style.display = 'none';
+                              e.currentTarget.src = DUMMY_MEDIA_PLACEHOLDER;
                             }}
                           />
                           <div className="min-w-0 flex-1 text-xs">
@@ -987,7 +1084,7 @@ function MediaFormModal({
                   variant="primary"
                   size="sm"
                   loading={isSubmitting || isUploading}
-                  disabled={isSubmitting || isUploading}
+                  disabled={isSubmitting || isUploading || Boolean(uploadError)}
                 >
                   {isEdit ? t('products.media.form.save') : t('products.media.form.add')}
                 </Button>
@@ -1005,6 +1102,10 @@ function MediaFormModal({
         confirmLabel={tAdmin('form.discardConfirm')}
         cancelLabel={tAdmin('actions.cancel')}
         onConfirm={() => {
+          if (uploadedTempKeyRef.current) {
+            abortUpload(uploadedTempKeyRef.current).catch(() => {});
+            uploadedTempKeyRef.current = null;
+          }
           setConfirmDiscard(false);
           onOpenChange(false);
         }}
@@ -2079,10 +2180,6 @@ export function ProductMediaDialog({
                               sizes="160px"
                               alt={asset.alt?.en ?? 'Product media'}
                               className="size-full object-cover transition-transform group-hover/img:scale-105"
-                              onError={(e) => {
-                                // If image fails to load (e.g. storage key placeholder)
-                                (e.target as HTMLElement).style.display = 'none';
-                              }}
                             />
                             <div className="absolute inset-0 bg-black/25 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                               <div className="rounded-full bg-background/90 text-foreground p-1.5 shadow-md flex items-center gap-1.5 text-xs font-medium px-2.5">
@@ -2104,8 +2201,10 @@ export function ProductMediaDialog({
                                 }
                                 alt={asset.alt?.en ?? 'Video poster thumbnail'}
                                 className="size-full object-cover opacity-80 transition-opacity group-hover/video:opacity-90"
+                                loading="lazy"
+                                decoding="async"
                                 onError={(e) => {
-                                  (e.target as HTMLElement).style.display = 'none';
+                                  e.currentTarget.src = DUMMY_MEDIA_PLACEHOLDER;
                                 }}
                               />
                             ) : null}

@@ -4,6 +4,7 @@ import {
   ALLOWED_MEDIA_MIME_TYPES,
   ALLOWED_VIDEO_MIME_TYPES,
   detectMediaFileType,
+  getMediaKindFromKey,
   isValidMediaFileType,
 } from './media-type.js';
 
@@ -297,6 +298,31 @@ describe('media-type detection', () => {
     it('rejects when kind mismatches expectedKind', () => {
       expect(isValidMediaFileType(jpegBytes, 'video')).toBe(false);
       expect(isValidMediaFileType(mp4Bytes, 'image')).toBe(false);
+    });
+  });
+
+  describe('getMediaKindFromKey', () => {
+    it('identifies image extensions', () => {
+      expect(getMediaKindFromKey('product/123/photo.jpg')).toBe('image');
+      expect(getMediaKindFromKey('product/123/photo.JPEG')).toBe('image');
+      expect(getMediaKindFromKey('product/123/photo.png')).toBe('image');
+      expect(getMediaKindFromKey('product/123/photo.webp')).toBe('image');
+      expect(getMediaKindFromKey('product/123/photo.avif')).toBe('image');
+      expect(getMediaKindFromKey('product/123/photo.gif')).toBe('image');
+      expect(getMediaKindFromKey('https://cdn.example.com/banner.png?v=1#anchor')).toBe('image');
+    });
+
+    it('identifies video extensions', () => {
+      expect(getMediaKindFromKey('product/123/clip.mp4')).toBe('video');
+      expect(getMediaKindFromKey('product/123/clip.webm')).toBe('video');
+      expect(getMediaKindFromKey('https://cdn.example.com/movie.MP4')).toBe('video');
+    });
+
+    it('returns null for unknown extensions or missing files', () => {
+      expect(getMediaKindFromKey('product/123/doc.pdf')).toBeNull();
+      expect(getMediaKindFromKey('product/123/archive.zip')).toBeNull();
+      expect(getMediaKindFromKey('not-a-file')).toBeNull();
+      expect(getMediaKindFromKey('')).toBeNull();
     });
   });
 });

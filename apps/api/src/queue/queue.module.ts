@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Module, type OnApplicationBootstrap } from '@nestjs/common';
 import { MailQueueService } from './mail-queue.service.js';
 import { MediaCleanupQueueService } from './media-cleanup-queue.service.js';
 import { MediaValidationQueueService } from './media-validation-queue.service.js';
@@ -21,4 +21,10 @@ import { ImageVariantQueueService } from './image-variant-queue.service.js';
     ImageVariantQueueService,
   ],
 })
-export class QueueModule {}
+export class QueueModule implements OnApplicationBootstrap {
+  constructor(private readonly mediaCleanupQueue: MediaCleanupQueueService) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    await this.mediaCleanupQueue.scheduleRecurringSweep(3_600_000).catch(() => {});
+  }
+}

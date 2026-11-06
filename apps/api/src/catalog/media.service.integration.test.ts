@@ -759,4 +759,86 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
 
     await prisma.mediaAsset.deleteMany({ where: { id: { in: [asset1.id, asset2.id] } } });
   });
+
+  it('rejects creation when media kind mismatches internal file extension (HTTP 415 MEDIA_TYPE_INVALID)', async () => {
+    const mismatchedKey = `product/${productId}/wrong-extension.png`;
+
+    await expect(
+      media.create('product', productId, { kind: 'video', fileKey: mismatchedKey }, actor, {}),
+    ).rejects.toMatchObject({
+      code: 'MEDIA_TYPE_INVALID',
+      status: 415,
+      detail: 'file extension does not match media kind "video"',
+    });
+  });
+
+  it('rejects creation when internal storage file does not exist (HTTP 404 NOT_FOUND)', async () => {
+    const testEnv = loadApiEnv({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost:5433/test',
+    });
+    const storage = new StorageService(testEnv);
+    vi.spyOn(storage, 'fileExists').mockResolvedValue(false);
+
+    const mediaWithStorage = new MediaService(
+      prisma as PrismaService,
+      new AuditService(prisma as PrismaService),
+      undefined,
+      storage,
+    );
+
+    const nonExistentKey = `product/${productId}/ghost-file.jpg`;
+
+    await expect(
+      mediaWithStorage.create(
+        'product',
+        productId,
+        { kind: 'image', fileKey: nonExistentKey },
+        actor,
+        {},
+      ),
+    ).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      status: 404,
+      detail: 'media file not found in storage',
+    });
+  });
+
+  it('deleteTempFile deletes uncommitted storage files and preserves committed assets', async () => {
+    const testEnv = loadApiEnv({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost:5433/test',
+    });
+    const storage = new StorageService(testEnv);
+    const deleteSpy = vi.spyOn(storage, 'deleteFile').mockResolvedValue(true);
+    const mediaWithStorage = new MediaService(
+      prisma as PrismaService,
+      new AuditService(prisma as PrismaService),
+      undefined,
+      storage,
+    );
+
+    // 1. Committed asset in DB
+    const committedKey = `product/${productId}/committed.jpg`;
+    const committedAsset = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: committedKey },
+      actor,
+      {},
+    );
+
+    // Trying to delete temp file for committed key should do nothing
+    const res1 = await mediaWithStorage.deleteTempFile(committedKey);
+    expect(res1).toBe(false);
+    expect(deleteSpy).not.toHaveBeenCalled();
+
+    // 2. Uncommitted temp file
+    const uncommittedKey = `product/${productId}/abandoned-temp.jpg`;
+    const res2 = await mediaWithStorage.deleteTempFile(uncommittedKey);
+    expect(res2).toBe(true);
+    expect(deleteSpy).toHaveBeenCalledWith(uncommittedKey);
+
+    await prisma.mediaAsset.deleteMany({ where: { id: committedAsset.id } });
+  });
 });

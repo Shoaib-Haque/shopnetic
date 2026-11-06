@@ -796,12 +796,14 @@
           "deleted": "Media asset permanently deleted.",
           "reordered": "Media assets reordered.",
           "tagUpdated": "Tag updated for “{name}”.",
-          "tagRemoved": "Tag removed."
+          "tagRemoved": "Tag removed.",
+          "conflictRefreshed": "This media asset was modified concurrently. The form has been refreshed with the latest data — please review and save."
         },
         "form": {
           "addTitle": "Add Media Asset",
           "editTitle": "Edit Media Asset",
           "kind": "Media Kind",
+          "kindLockedHint": "To change media type, remove the current file first.",
           "sourceMode": "Media Source",
           "uploadMode": "Upload File",
           "urlMode": "URL / Key",
@@ -816,6 +818,11 @@
           "videoDurationExceeded": "Video duration exceeds the 120-second limit ({duration}s). Please upload a shorter video.",
           "invalidFileType": "Invalid file format. Please upload a supported image (PNG, JPG, WebP, AVIF, GIF) or video (MP4, WebM).",
           "removeFile": "Change file",
+          "copyKey": "Copy key",
+          "copiedKey": "Key copied to clipboard",
+          "replaceFile": "Replace File",
+          "keepCurrentFile": "Keep Current File",
+          "readOnlyInternalKeyHint": "Internal storage keys are managed automatically. Use 'Replace File' to upload a new asset.",
           "fileKey": "File Key / Asset URL",
           "fileKeyPlaceholder": "e.g. products/antigravity-tee-navy.jpg or https://cdn.example.com/...",
           "fileKeyLockedHint": "Locked to uploaded file. Click the remove button above to clear and enter a manual URL.",

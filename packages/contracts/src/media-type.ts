@@ -186,3 +186,20 @@ export function isValidMediaFileType(bytes: Uint8Array, expectedKind?: 'image' |
   if (expectedKind && detected.kind !== expectedKind) return false;
   return true;
 }
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm']);
+
+/**
+ * Derives the media kind ('image' | 'video') from a file key or URL extension.
+ */
+export function getMediaKindFromKey(key: string): 'image' | 'video' | null {
+  if (!key || typeof key !== 'string') return null;
+  const cleanKey = key.split('?')[0]!.split('#')[0]!.toLowerCase();
+  const lastDot = cleanKey.lastIndexOf('.');
+  if (lastDot === -1) return null;
+  const ext = cleanKey.slice(lastDot);
+  if (IMAGE_EXTENSIONS.has(ext)) return 'image';
+  if (VIDEO_EXTENSIONS.has(ext)) return 'video';
+  return null;
+}

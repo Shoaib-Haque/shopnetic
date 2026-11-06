@@ -10,6 +10,7 @@ import {
 import { renderAdmin } from '@/test/render';
 import { listOptionTypesPage } from '@/features/catalog/option-types/api';
 import {
+  abortUpload,
   createProductMedia,
   deleteMedia,
   deleteMediaTag,
@@ -32,6 +33,7 @@ vi.mock('./api', async () => {
   const actual = await vi.importActual<typeof import('./api')>('./api');
   return {
     ...actual,
+    abortUpload: vi.fn(),
     listProductMedia: vi.fn(),
     listProductOptions: vi.fn(),
     createProductMedia: vi.fn(),
@@ -50,6 +52,7 @@ vi.mock('@/features/catalog/option-types/api', () => ({
   listOptionTypesPage: vi.fn(),
 }));
 
+const mockedAbortUpload = vi.mocked(abortUpload);
 const mockedListProductMedia = vi.mocked(listProductMedia);
 const mockedListProductOptions = vi.mocked(listProductOptions);
 const mockedCreateProductMedia = vi.mocked(createProductMedia);
@@ -2023,6 +2026,172 @@ describe('ProductMediaDialog', () => {
             ],
           }),
         );
+      });
+    });
+    it('locks kind selector when a file is uploaded in the dropzone and unlocks on removal', async () => {
+      mockedListProductMedia.mockResolvedValue([]);
+      mockedRequestUploadUrl.mockResolvedValue({
+        uploadUrl: 'http://upload/presigned',
+        fileKey: 'product/prod_1/123-tee.jpg',
+        publicUrl: 'http://cdn/123-tee.jpg',
+      });
+      mockedUploadFileToPresignedUrl.mockResolvedValue();
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add Media' })[0]!);
+      await screen.findByRole('heading', { name: 'Add Media Asset' });
+
+      const imageKindBtn = screen.getByRole('button', { name: 'Image' });
+      const videoKindBtn = screen.getByRole('button', { name: 'Video' });
+      expect(imageKindBtn).not.toBeDisabled();
+      expect(videoKindBtn).not.toBeDisabled();
+
+      // Upload image
+      const fileInput = screen.getByTestId('media-file-input');
+      const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+      const file = new File([jpegBytes], 'front.jpg', { type: 'image/jpeg' });
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('product/prod_1/123-tee.jpg')).toBeInTheDocument();
+      });
+
+      // Both kind buttons should now be disabled to prevent kind mismatch
+      expect(videoKindBtn).toBeDisabled();
+      expect(imageKindBtn).toBeDisabled();
+
+      // Click Change file to remove the uploaded file
+      const changeFileBtn = screen.getByRole('button', { name: 'Change file' });
+      fireEvent.click(changeFileBtn);
+
+      await waitFor(() => {
+        expect(videoKindBtn).not.toBeDisabled();
+        expect(imageKindBtn).not.toBeDisabled();
+      });
+    });
+
+    it('disables submit button and clears file input when uploaded file exceeds 50MB', async () => {
+      mockedListProductMedia.mockResolvedValue([]);
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add Media' })[0]!);
+      await screen.findByRole('heading', { name: 'Add Media Asset' });
+
+      const fileInput = screen.getByTestId('media-file-input') as HTMLInputElement;
+      const oversizedFile = new File(['a'.repeat(100)], 'huge.jpg', { type: 'image/jpeg' });
+      Object.defineProperty(oversizedFile, 'size', { value: 55 * 1024 * 1024 });
+
+      fireEvent.change(fileInput, { target: { files: [oversizedFile] } });
+
+      // Localized error message appears
+      expect(await screen.findByText('File exceeds maximum size (50MB).')).toBeInTheDocument();
+
+      // Submit button is disabled
+      const modalAddBtns = screen.getAllByRole('button', { name: 'Add Media' });
+      const submitBtn = modalAddBtns[modalAddBtns.length - 1]!;
+      expect(submitBtn).toBeDisabled();
+    });
+
+    it('renders internal storage key as read-only with copy button in Edit modal', async () => {
+      const internalAsset: MediaAsset = {
+        id: 'media_internal',
+        ownerType: 'product',
+        ownerId: '01a2aec5-2e2e-7b32-9678-d96dc4287c34',
+        kind: 'image',
+        fileKey: 'product/01a2aec5-2e2e-7b32-9678-d96dc4287c34/1793933706408-07529a27-polo.jpeg',
+        posterKey: null,
+        posterCandidates: [],
+        posterCandidateUrls: [],
+        width: 800,
+        height: 600,
+        durationS: null,
+        blurhash: null,
+        alt: { en: 'Polo Shirt' },
+        position: 0,
+        status: 'active',
+        tags: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      };
+
+      mockedListProductMedia.mockResolvedValue([internalAsset]);
+
+      // Mock navigator.clipboard
+      const writeTextMock = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: writeTextMock,
+        },
+      });
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      // Click edit on the card
+      const editBtns = screen.getAllByRole('button', { name: /Edit/i });
+      fireEvent.click(editBtns[0]!);
+
+      await screen.findByRole('heading', { name: 'Edit Media Asset' });
+
+      // Check fileKey input is read-only
+      const fileKeyInput = screen.getByLabelText(/File Key \/ Asset URL/i) as HTMLInputElement;
+      expect(fileKeyInput).toHaveAttribute('readonly');
+      expect(fileKeyInput.value).toBe(
+        'product/01a2aec5-2e2e-7b32-9678-d96dc4287c34/1793933706408-07529a27-polo.jpeg',
+      );
+
+      // Click Copy Key
+      const copyBtn = screen.getByRole('button', { name: /Copy Key/i });
+      fireEvent.click(copyBtn);
+
+      await waitFor(() => {
+        expect(writeTextMock).toHaveBeenCalledWith(
+          'product/01a2aec5-2e2e-7b32-9678-d96dc4287c34/1793933706408-07529a27-polo.jpeg',
+        );
+      });
+    });
+
+    it('aborts and deletes temporary uploaded file on modal cancel or discard', async () => {
+      mockedListProductMedia.mockResolvedValue([]);
+      mockedRequestUploadUrl.mockResolvedValue({
+        uploadUrl: 'http://upload/presigned',
+        fileKey: 'product/prod_1/123-temp-to-abort.jpg',
+        publicUrl: 'http://cdn/123-temp-to-abort.jpg',
+      });
+      mockedUploadFileToPresignedUrl.mockResolvedValue();
+      mockedAbortUpload.mockResolvedValue();
+
+      renderAdmin(<ProductMediaDialog open onOpenChange={vi.fn()} product={sampleProduct} />);
+      await screen.findByText('Product Media Gallery');
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add Media' })[0]!);
+      await screen.findByRole('heading', { name: 'Add Media Asset' });
+
+      // Upload file
+      const fileInput = screen.getByTestId('media-file-input');
+      const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+      const file = new File([jpegBytes], 'temp.jpg', { type: 'image/jpeg' });
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(
+          screen.getByDisplayValue('product/prod_1/123-temp-to-abort.jpg'),
+        ).toBeInTheDocument();
+      });
+
+      // Click Cancel on the modal, triggering the discard confirmation prompt
+      const cancelBtn = screen.getByRole('button', { name: 'Cancel' });
+      fireEvent.click(cancelBtn);
+
+      const discardBtn = await screen.findByRole('button', { name: /Discard/i });
+      fireEvent.click(discardBtn);
+
+      await waitFor(() => {
+        expect(mockedAbortUpload).toHaveBeenCalledWith('product/prod_1/123-temp-to-abort.jpg');
       });
     });
   });

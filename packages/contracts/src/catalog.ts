@@ -981,3 +981,9 @@ export const uploadUrlResponseSchema = z.object({
   publicUrl: z.string().url(),
 });
 export type UploadUrlResponse = z.infer<typeof uploadUrlResponseSchema>;
+
+/** Abort uncommitted upload request: `POST …/media/upload-abort`. */
+export const abortUploadRequestSchema = z.object({
+  fileKey: z.string().trim().min(1).max(512),
+});
+export type AbortUploadRequest = z.infer<typeof abortUploadRequestSchema>;

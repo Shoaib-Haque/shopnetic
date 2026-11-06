@@ -14,10 +14,12 @@ import {
 import type { Request } from 'express';
 import { Permission, type Actor } from '@shopnetic/auth';
 import {
+  abortUploadRequestSchema,
   createMediaRequestSchema,
   putMediaTagRequestSchema,
   reorderMediaRequestSchema,
   updateMediaRequestSchema,
+  type AbortUploadRequest,
   type CreateMediaRequest,
   type MediaAsset,
   type PutMediaTagRequest,
@@ -37,6 +39,7 @@ const createBody = new ZodBodyPipe(createMediaRequestSchema);
 const updateBody = new ZodBodyPipe(updateMediaRequestSchema);
 const tagBody = new ZodBodyPipe(putMediaTagRequestSchema);
 const reorderBody = new ZodBodyPipe(reorderMediaRequestSchema);
+const abortBody = new ZodBodyPipe(abortUploadRequestSchema);
 
 type Envelope<T> = { data: T; meta: { requestId: string; count?: number } };
 
@@ -83,6 +86,16 @@ export class MediaController {
     @Body(createBody) body: CreateMediaRequest,
   ): Promise<Envelope<MediaAsset>> {
     return ok(req, await this.media.create('product', productId, body, actor, meta(req)));
+  }
+
+  @Post('media/upload-abort')
+  @HttpCode(200)
+  async abortUpload(
+    @Req() req: Request,
+    @Body(abortBody) body: AbortUploadRequest,
+  ): Promise<Envelope<{ aborted: boolean }>> {
+    const deleted = await this.media.deleteTempFile(body.fileKey);
+    return ok(req, { aborted: deleted });
   }
 
   @Get('media/:id')

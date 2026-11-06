@@ -139,6 +139,31 @@ export class StorageService {
     return isInternalStorageKey(key);
   }
 
+  async fileExists(key: string): Promise<boolean> {
+    if (!this.isInternalStorageKey(key)) {
+      return false;
+    }
+    if (this.env.STORAGE_PROVIDER === 's3' && this.s3Client) {
+      try {
+        await this.s3Client.send(
+          new HeadObjectCommand({
+            Bucket: this.env.STORAGE_BUCKET,
+            Key: key,
+          }),
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    try {
+      const fullPath = this.assertSafeStorageKey(key);
+      return existsSync(fullPath);
+    } catch {
+      return false;
+    }
+  }
+
   async deleteFile(key: string): Promise<boolean> {
     if (!this.isInternalStorageKey(key)) {
       return false;
