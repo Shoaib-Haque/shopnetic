@@ -37,8 +37,7 @@ export function ResponsiveImage({
       {sources.webpSrcSet && <source type="image/webp" srcSet={sources.webpSrcSet} sizes={sizes} />}
       <img
         src={sources.fallbackSrc}
-        srcSet={sources.jpegSrcSet}
-        sizes={sizes}
+        {...(sources.jpegSrcSet ? { srcSet: sources.jpegSrcSet, sizes } : {})}
         alt={alt}
         className={cn(className)}
         loading="lazy"

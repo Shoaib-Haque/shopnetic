@@ -88,6 +88,17 @@ export class MediaService {
     await this.assertOwner(ownerType, ownerId);
 
     let created: MediaRow;
+    const unselectedCandidates: string[] = [];
+    let posterCandidatesToSave = valid.posterCandidates;
+    if (valid.posterCandidates && valid.posterCandidates.length > 0 && valid.posterKey) {
+      posterCandidatesToSave = valid.posterCandidates.filter((c) => c === valid.posterKey);
+      for (const cand of valid.posterCandidates) {
+        if (cand !== valid.posterKey) {
+          unselectedCandidates.push(cand);
+        }
+      }
+    }
+
     try {
       created = await this.prisma.$transaction(async (tx) => {
         let position = valid.position;
@@ -108,7 +119,7 @@ export class MediaService {
             fileKey: valid.fileKey,
             position,
             ...(valid.posterKey != null ? { posterKey: valid.posterKey } : {}),
-            ...(valid.posterCandidates ? { posterCandidates: valid.posterCandidates } : {}),
+            ...(posterCandidatesToSave ? { posterCandidates: posterCandidatesToSave } : {}),
             ...(valid.variants != null ? { variants: valid.variants } : {}),
             ...(valid.width != null ? { width: valid.width } : {}),
             ...(valid.height != null ? { height: valid.height } : {}),
@@ -134,6 +145,10 @@ export class MediaService {
         });
       }
       throw err;
+    }
+
+    if (this.storage && unselectedCandidates.length > 0) {
+      await Promise.allSettled(unselectedCandidates.map((k) => this.storage!.deleteFile(k)));
     }
 
     if (this.env?.STORAGE_PROVIDER === 's3' && isInternalStorageKey(created.fileKey)) {
@@ -206,7 +221,6 @@ export class MediaService {
     const data: Prisma.MediaAssetUpdateInput = {};
     if (valid.fileKey !== undefined) data.fileKey = valid.fileKey;
     if (valid.posterKey !== undefined) data.posterKey = valid.posterKey;
-    if (valid.posterCandidates !== undefined) data.posterCandidates = valid.posterCandidates;
     if (valid.variants !== undefined) {
       data.variants =
         valid.variants === null ? Prisma.DbNull : (valid.variants as Prisma.InputJsonValue);
@@ -230,6 +244,33 @@ export class MediaService {
       current.posterKey
     ) {
       keysToDelete.push(current.posterKey);
+    }
+
+    const effectivePosterKey = valid.posterKey !== undefined ? valid.posterKey : current.posterKey;
+    const candidatesInput =
+      valid.posterCandidates !== undefined ? valid.posterCandidates : current.posterCandidates;
+
+    if (effectivePosterKey && candidatesInput && candidatesInput.length > 0) {
+      data.posterCandidates = candidatesInput.filter((c) => c === effectivePosterKey);
+      for (const cand of candidatesInput) {
+        if (cand !== effectivePosterKey && !keysToDelete.includes(cand)) {
+          keysToDelete.push(cand);
+        }
+      }
+    } else if (valid.posterCandidates !== undefined) {
+      data.posterCandidates = valid.posterCandidates;
+    }
+
+    if (current.posterCandidates && current.posterCandidates.length > 0) {
+      for (const cand of current.posterCandidates) {
+        if (
+          cand !== effectivePosterKey &&
+          (!Array.isArray(data.posterCandidates) || !data.posterCandidates.includes(cand)) &&
+          !keysToDelete.includes(cand)
+        ) {
+          keysToDelete.push(cand);
+        }
+      }
     }
 
     try {

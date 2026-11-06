@@ -590,6 +590,79 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     expect(deleteSpy).toHaveBeenCalledWith(s('storage-poster-2.jpg'));
   });
 
+  it('prunes unselected video poster candidates on create and update, preventing storage leaks', async () => {
+    const testEnv = loadApiEnv({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost:5433/test',
+    });
+    const storage = new StorageService(testEnv);
+    const deleteSpy = vi.spyOn(storage, 'deleteFile').mockResolvedValue(true);
+    const mediaWithStorage = new MediaService(
+      prisma as PrismaService,
+      new AuditService(prisma as PrismaService),
+      undefined,
+      storage,
+    );
+
+    const c1 = s('cand-1.jpg');
+    const c2 = s('cand-2.jpg');
+    const c3 = s('cand-3.jpg');
+
+    // Create video with 3 candidates, selecting c2 as posterKey
+    const asset = await mediaWithStorage.create(
+      'product',
+      productId,
+      {
+        kind: 'video',
+        fileKey: s('video-cands.mp4'),
+        posterKey: c2,
+        posterCandidates: [c1, c2, c3],
+      },
+      actor,
+      {},
+    );
+
+    // Unselected candidates c1 and c3 must be immediately deleted from storage
+    expect(deleteSpy).toHaveBeenCalledWith(c1);
+    expect(deleteSpy).toHaveBeenCalledWith(c3);
+    expect(deleteSpy).not.toHaveBeenCalledWith(c2);
+
+    // Database record must only retain the selected candidate key
+    const dbAsset = await prisma.mediaAsset.findUniqueOrThrow({ where: { id: asset.id } });
+    expect(dbAsset.posterKey).toBe(c2);
+    expect(dbAsset.posterCandidates).toEqual([c2]);
+
+    deleteSpy.mockClear();
+
+    // Now update asset with new candidates c4, c5, c6, selecting c5 as new posterKey
+    const c4 = s('cand-4.jpg');
+    const c5 = s('cand-5.jpg');
+    const c6 = s('cand-6.jpg');
+
+    await mediaWithStorage.update(
+      asset.id,
+      {
+        posterKey: c5,
+        posterCandidates: [c4, c5, c6],
+        expectedUpdatedAt: asset.updatedAt,
+      },
+      actor,
+      {},
+    );
+
+    // Old poster c2 and unselected new candidates c4 and c6 must be deleted
+    expect(deleteSpy).toHaveBeenCalledWith(c2);
+    expect(deleteSpy).toHaveBeenCalledWith(c4);
+    expect(deleteSpy).toHaveBeenCalledWith(c6);
+    expect(deleteSpy).not.toHaveBeenCalledWith(c5);
+
+    const updatedDbAsset = await prisma.mediaAsset.findUniqueOrThrow({ where: { id: asset.id } });
+    expect(updatedDbAsset.posterKey).toBe(c5);
+    expect(updatedDbAsset.posterCandidates).toEqual([c5]);
+
+    await prisma.mediaAsset.deleteMany({ where: { id: asset.id } });
+  });
+
   it('rejects duplicate internal fileKey across assets with MEDIA_FILE_KEY_CONFLICT (409)', async () => {
     const internalKey = `product/${productId}/unique-internal-photo.jpg`;
 

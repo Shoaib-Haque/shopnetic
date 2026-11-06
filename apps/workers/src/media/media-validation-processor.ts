@@ -268,8 +268,12 @@ export interface MediaValidationPrisma {
   mediaAsset: {
     findUnique?: (args: {
       where: { id: string };
-      select: { durationS: true; posterCandidates?: true };
-    }) => Promise<{ durationS: number | null; posterCandidates?: string[] } | null>;
+      select: { durationS: true; posterCandidates?: true; posterKey?: true };
+    }) => Promise<{
+      durationS: number | null;
+      posterCandidates?: string[];
+      posterKey?: string | null;
+    } | null>;
     update: (args: {
       where: { id: string };
       data: { status?: 'rejected'; durationS?: number; posterCandidates?: string[] };
@@ -319,12 +323,14 @@ export function processMediaValidationJob(
       }
 
       let existingCandidates: string[] = [];
+      let existingHasPosterKey = false;
       if (typeof prisma.mediaAsset.findUnique === 'function') {
         const existing = await prisma.mediaAsset.findUnique({
           where: { id: mediaAssetId },
-          select: { durationS: true, posterCandidates: true },
+          select: { durationS: true, posterCandidates: true, posterKey: true },
         });
         if (existing) {
+          existingHasPosterKey = Boolean(existing.posterKey);
           if (existing.durationS == null) {
             await prisma.mediaAsset.update({
               where: { id: mediaAssetId },
@@ -337,7 +343,11 @@ export function processMediaValidationJob(
         }
       }
 
-      if (existingCandidates.length === 0 && validator.generatePosterCandidates) {
+      if (
+        !existingHasPosterKey &&
+        existingCandidates.length === 0 &&
+        validator.generatePosterCandidates
+      ) {
         try {
           const candidateKeys = await validator.generatePosterCandidates(fileKey, duration);
           if (candidateKeys && candidateKeys.length > 0) {
