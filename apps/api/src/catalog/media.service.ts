@@ -6,6 +6,7 @@ import {
   resolveMediaUrl,
   resolveMediaVariantsUrls,
   extractVariantKeys,
+  isInternalStorageKey,
   type CreateMediaRequest,
   type MediaAsset,
   type MediaOwnerType,
@@ -19,7 +20,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { auditRecordFor } from '../audit/audit-record-for.js';
 import type { RequestMeta } from '../identity/identity.service.js';
 import { API_ENV, type ApiEnv } from '../config/env.js';
-import { StorageService, isInternalStorageKey } from '../storage/storage.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { MediaValidationQueueService } from '../queue/media-validation-queue.service.js';
 import { ImageVariantQueueService } from '../queue/image-variant-queue.service.js';
 import { writeCatalogOutbox } from './catalog-outbox.js';
@@ -129,7 +130,7 @@ export class MediaService {
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new AppError('MEDIA_FILE_KEY_CONFLICT', 409, {
-          detail: 'a media asset with this file key already exists for this owner',
+          detail: 'a media asset with this file key already exists',
         });
       }
       throw err;
@@ -242,7 +243,7 @@ export class MediaService {
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new AppError('MEDIA_FILE_KEY_CONFLICT', 409, {
-          detail: 'a media asset with this file key already exists for this owner',
+          detail: 'a media asset with this file key already exists',
         });
       }
       throw err;

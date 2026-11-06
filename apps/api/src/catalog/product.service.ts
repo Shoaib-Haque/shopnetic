@@ -3,7 +3,6 @@ import { can, Permission, type Actor } from '@shopnetic/auth';
 import {
   docToPlainText,
   plainTextToDoc,
-  extractVariantKeys,
   type CreateProductRequest,
   type Product,
   type ProductDescription,
@@ -354,13 +353,6 @@ export class ProductService {
     }
     const currentSpec = (current.spec as Record<string, unknown>) ?? {};
     const deleteTime = new Date();
-    let productMedia: Array<{
-      id: string;
-      fileKey: string;
-      posterKey: string | null;
-      posterCandidates?: string[];
-      variants?: unknown;
-    }> = [];
 
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({
@@ -372,30 +364,6 @@ export class ProductService {
         },
       });
       await writeCatalogOutbox(tx, 'product', 'product.deleted', id, { id });
-
-      productMedia = await tx.mediaAsset.findMany({
-        where: { ownerType: 'product', ownerId: id },
-        select: {
-          id: true,
-          fileKey: true,
-          posterKey: true,
-          posterCandidates: true,
-          variants: true,
-        },
-      });
-      if (productMedia.length > 0) {
-        await tx.mediaAsset.deleteMany({
-          where: { ownerType: 'product', ownerId: id },
-        });
-        for (const m of productMedia) {
-          await writeCatalogOutbox(tx, 'media_asset', 'media.deleted', m.id, {
-            id: m.id,
-            ownerType: 'product',
-            ownerId: id,
-            reason: 'product_deleted_cascade',
-          });
-        }
-      }
 
       // Invariant #4 (plan/32): Archiving a Product disables all active variants and attached Seller Offers
       const activeVariants = await tx.variant.findMany({
@@ -436,16 +404,6 @@ export class ProductService {
         }
       }
     });
-
-    if (this.storage && productMedia.length > 0) {
-      const allKeys = productMedia.flatMap((m) => [
-        m.fileKey,
-        ...(m.posterKey ? [m.posterKey] : []),
-        ...(m.posterCandidates ?? []),
-        ...extractVariantKeys(m.variants),
-      ]);
-      await Promise.allSettled(allKeys.map((k) => this.storage!.deleteFile(k)));
-    }
 
     const view = toView({ ...current, deletedAt: new Date(), status: 'archived' });
     const [categoryName, brandName] = await Promise.all([

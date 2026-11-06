@@ -5,22 +5,13 @@ import { relative, resolve, sep } from 'node:path';
 import { S3Client, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import type { Job } from 'bullmq';
 import type { MediaSweepJob } from '@shopnetic/events';
-import { extractVariantKeys } from '@shopnetic/contracts';
+import { extractVariantKeys, isInternalStorageKey } from '@shopnetic/contracts';
 import { createLogger } from '@shopnetic/observability';
 import type { WorkersEnv } from '../config/env.js';
 
 const log = createLogger({ service: 'media-cleanup' });
 
-export function isInternalStorageKey(key: string): boolean {
-  if (!key || typeof key !== 'string') return false;
-  if (key.startsWith('http://') || key.startsWith('https://') || key.startsWith('//')) {
-    return false;
-  }
-  return (
-    /^[a-zA-Z0-9_-]+\/[0-9a-fA-F-]{36}\/[0-9]+-[a-f0-9]+-/.test(key) ||
-    /^[a-zA-Z0-9_-]+\/[0-9a-fA-F-]{36}\//.test(key)
-  );
-}
+export { isInternalStorageKey };
 
 export interface StorageCleanerDriver {
   listInternalFiles(): Promise<Array<{ key: string; lastModified: Date }>>;

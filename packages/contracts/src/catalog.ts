@@ -726,6 +726,26 @@ export const mediaAssetSchema = z.object({
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 
 /**
+ * Regex matching internally-generated storage keys:
+ * `<ownerType>/<ownerId UUID>/<filename>`
+ * Matches the PostgreSQL partial unique index on `catalog.media_asset(file_key)`.
+ */
+export const INTERNAL_STORAGE_KEY_REGEX =
+  /^[a-z]+\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/.+$/;
+
+/**
+ * Checks whether a given key or URL represents an internally-generated storage key
+ * rather than an external URL (http://, https://, //) or arbitrary string.
+ */
+export function isInternalStorageKey(key: string | null | undefined): boolean {
+  if (!key || typeof key !== 'string') return false;
+  if (key.startsWith('http://') || key.startsWith('https://') || key.startsWith('//')) {
+    return false;
+  }
+  return INTERNAL_STORAGE_KEY_REGEX.test(key);
+}
+
+/**
  * Resolves a storage key or absolute URL into a browser-renderable media URL.
  * If publicBaseUrl is provided and key is a relative object key, prefixes it.
  */

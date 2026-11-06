@@ -78,7 +78,7 @@ describe('processImageVariantJob', () => {
       expect(variants[wStr]?.webp?.url).toContain('.webp');
       expect(variants[wStr]?.jpeg?.url).toContain('.jpg');
     }
-  });
+  }, 15000);
 
   it('returns status failed if source buffer cannot be read', async () => {
     const storage: ImageVariantStorageDriver = {

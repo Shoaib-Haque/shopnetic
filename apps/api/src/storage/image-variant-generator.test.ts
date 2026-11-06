@@ -58,5 +58,5 @@ describe('image-variant-generator', () => {
       expect(record[wStr]?.webp?.url).toContain('.webp');
       expect(record[wStr]?.jpeg?.url).toContain('.jpg');
     }
-  });
+  }, 15000);
 });

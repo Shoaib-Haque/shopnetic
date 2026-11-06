@@ -589,4 +589,101 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     expect(deleteSpy).toHaveBeenCalledWith(s('storage-del-2.jpg'));
     expect(deleteSpy).toHaveBeenCalledWith(s('storage-poster-2.jpg'));
   });
+
+  it('rejects duplicate internal fileKey across assets with MEDIA_FILE_KEY_CONFLICT (409)', async () => {
+    const internalKey = `product/${productId}/unique-internal-photo.jpg`;
+
+    // First asset succeeds
+    const first = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: internalKey },
+      actor,
+      {},
+    );
+    expect(first.fileKey).toBe(internalKey);
+
+    // Creating a second asset on the same product with the same internal key fails
+    await expect(
+      media.create('product', productId, { kind: 'image', fileKey: internalKey }, actor, {}),
+    ).rejects.toMatchObject({
+      code: 'MEDIA_FILE_KEY_CONFLICT',
+      status: 409,
+      detail: 'a media asset with this file key already exists',
+    });
+
+    // Create a 2nd product to verify conflict is global across owners
+    const prod2 = await prisma.product.create({
+      data: {
+        slug: s('prod-conflict-check'),
+        categoryId,
+        titleI18n: t('Prod 2'),
+        status: 'active',
+      },
+    });
+
+    try {
+      // Creating an asset on another product with the same internal key also fails
+      await expect(
+        media.create('product', prod2.id, { kind: 'image', fileKey: internalKey }, actor, {}),
+      ).rejects.toMatchObject({
+        code: 'MEDIA_FILE_KEY_CONFLICT',
+        status: 409,
+        detail: 'a media asset with this file key already exists',
+      });
+
+      // Create a second distinct asset on prod2
+      const secondInternalKey = `product/${prod2.id}/unique-second-photo.jpg`;
+      const second = await media.create(
+        'product',
+        prod2.id,
+        { kind: 'image', fileKey: secondInternalKey },
+        actor,
+        {},
+      );
+
+      // Updating second asset's fileKey to match the first asset's internalKey also fails
+      await expect(
+        media.update(
+          second.id,
+          { fileKey: internalKey, expectedUpdatedAt: second.updatedAt },
+          actor,
+          {},
+        ),
+      ).rejects.toMatchObject({
+        code: 'MEDIA_FILE_KEY_CONFLICT',
+        status: 409,
+        detail: 'a media asset with this file key already exists',
+      });
+    } finally {
+      await prisma.mediaAsset.deleteMany({ where: { ownerId: prod2.id } });
+      await prisma.product.deleteMany({ where: { id: prod2.id } });
+      await prisma.mediaAsset.deleteMany({ where: { id: first.id } });
+    }
+  });
+
+  it('allows duplicate external URLs across different assets without conflict', async () => {
+    const sharedExternalUrl = `https://cdn.example.com/shared-${stamp}.jpg`;
+
+    const asset1 = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: sharedExternalUrl },
+      actor,
+      {},
+    );
+    const asset2 = await media.create(
+      'product',
+      productId,
+      { kind: 'image', fileKey: sharedExternalUrl },
+      actor,
+      {},
+    );
+
+    expect(asset1.fileKey).toBe(sharedExternalUrl);
+    expect(asset2.fileKey).toBe(sharedExternalUrl);
+    expect(asset1.id).not.toBe(asset2.id);
+
+    await prisma.mediaAsset.deleteMany({ where: { id: { in: [asset1.id, asset2.id] } } });
+  });
 });

@@ -12,6 +12,7 @@ import {
   getResponsiveImageSources,
   resolveMediaVariantsUrls,
   extractVariantKeys,
+  isInternalStorageKey,
   type MediaVariants,
 } from './catalog.js';
 
@@ -242,6 +243,36 @@ describe('catalog media contracts', () => {
       expect(extractVariantKeys(undefined)).toEqual([]);
       expect(extractVariantKeys({})).toEqual([]);
       expect(extractVariantKeys('string')).toEqual([]);
+    });
+  });
+
+  describe('isInternalStorageKey', () => {
+    it('returns true for valid internal storage keys with lowercase ownerType and UUID', () => {
+      expect(
+        isInternalStorageKey(
+          'product/11111111-1111-1111-1111-111111111111/1730000000-abcd-photo.jpg',
+        ),
+      ).toBe(true);
+      expect(isInternalStorageKey('brand/22222222-2222-2222-2222-222222222222/logo.png')).toBe(
+        true,
+      );
+      expect(isInternalStorageKey('variant/33333333-3333-3333-3333-333333333333/poster.webp')).toBe(
+        true,
+      );
+    });
+
+    it('returns false for external URLs, non-UUID owners, or missing inputs', () => {
+      expect(isInternalStorageKey('https://example.com/image.jpg')).toBe(false);
+      expect(isInternalStorageKey('http://localhost:4000/uploads/img.jpg')).toBe(false);
+      expect(isInternalStorageKey('//cdn.example.com/asset.png')).toBe(false);
+      expect(isInternalStorageKey('')).toBe(false);
+      expect(isInternalStorageKey(null)).toBe(false);
+      expect(isInternalStorageKey(undefined)).toBe(false);
+      expect(isInternalStorageKey('random-file.jpg')).toBe(false);
+      expect(isInternalStorageKey('product/not-a-uuid/photo.jpg')).toBe(false);
+      expect(isInternalStorageKey('PRODUCT/11111111-1111-1111-1111-111111111111/photo.jpg')).toBe(
+        false,
+      );
     });
   });
 });

@@ -13,10 +13,11 @@ import {
   ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import type {
-  RequestUploadUrlRequest,
-  UploadUrlResponse,
-  MediaVariants,
+import {
+  isInternalStorageKey,
+  type RequestUploadUrlRequest,
+  type UploadUrlResponse,
+  type MediaVariants,
 } from '@shopnetic/contracts';
 import { API_ENV, type ApiEnv } from '../config/env.js';
 import { probeVideoDuration } from './video-probe.js';
@@ -26,16 +27,7 @@ import {
   buildMediaVariantsRecord,
 } from './image-variant-generator.js';
 
-export function isInternalStorageKey(key: string): boolean {
-  if (!key || typeof key !== 'string') return false;
-  if (key.startsWith('http://') || key.startsWith('https://') || key.startsWith('//')) {
-    return false;
-  }
-  return (
-    /^[a-zA-Z0-9_-]+\/[0-9a-fA-F-]{36}\/[0-9]+-[a-f0-9]+-/.test(key) ||
-    /^[a-zA-Z0-9_-]+\/[0-9a-fA-F-]{36}\//.test(key)
-  );
-}
+export { isInternalStorageKey };
 
 @Injectable()
 export class StorageService {

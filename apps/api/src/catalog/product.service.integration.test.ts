@@ -1257,7 +1257,7 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     });
   });
 
-  it('cascades media asset deletion and cleans up storage files on product.remove', async () => {
+  it('preserves media assets and storage files on product soft-delete and restore', async () => {
     const testEnv = loadApiEnv({
       NODE_ENV: 'test',
       DATABASE_URL: 'postgresql://localhost:5433/test',
@@ -1272,7 +1272,11 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
     );
 
     const p = await products.create(
-      { categoryId: catOptionalId, slug: s('cascade-prod'), title: t('Cascade Media Prod') },
+      {
+        categoryId: catOptionalId,
+        slug: s('preserve-media-prod'),
+        title: t('Preserve Media Prod'),
+      },
       actor,
       {},
     );
@@ -1283,8 +1287,8 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
         ownerType: 'product',
         ownerId: p.id,
         kind: 'image',
-        fileKey: s('cascade-1.jpg'),
-        posterKey: s('cascade-poster-1.jpg'),
+        fileKey: s('preserve-1.jpg'),
+        posterKey: s('preserve-poster-1.jpg'),
       },
     });
     const m2 = await prisma.mediaAsset.create({
@@ -1292,32 +1296,37 @@ describe.skipIf(!hasDb)('Product / ProductOption / Variant (integration)', () =>
         ownerType: 'product',
         ownerId: p.id,
         kind: 'image',
-        fileKey: s('cascade-2.jpg'),
+        fileKey: s('preserve-2.jpg'),
       },
     });
 
-    // Remove the product
+    // Soft-delete the product
     await productsWithStorage.remove(p.id, actor, {});
 
-    // Verify media assets were deleted from DB
+    // Verify product is soft-deleted
+    const archivedProd = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
+    expect(archivedProd.status).toBe('archived');
+    expect(archivedProd.deletedAt).not.toBeNull();
+
+    // Verify media assets were NOT deleted from DB (soft-delete preserves restorable state)
     const remaining = await prisma.mediaAsset.findMany({
       where: { ownerType: 'product', ownerId: p.id },
     });
-    expect(remaining).toHaveLength(0);
+    expect(remaining).toHaveLength(2);
+    expect(remaining.map((r) => r.id).sort()).toEqual([m1.id, m2.id].sort());
 
-    // Verify outbox rows for media deletion
-    const outbox = await prisma.catalogOutbox.findMany({
-      where: {
-        aggregateType: 'media_asset',
-        eventType: 'media.deleted',
-        aggregateId: { in: [m1.id, m2.id] },
-      },
+    // Verify storage.deleteFile was NOT called
+    expect(deleteSpy).not.toHaveBeenCalled();
+
+    // Restore the product
+    const restored = await productsWithStorage.restore(p.id, actor, {});
+    expect(restored.status).toBe('draft');
+    expect(restored.archivedAt).toBeNull();
+
+    // Verify media assets are still intact and linked
+    const intact = await prisma.mediaAsset.findMany({
+      where: { ownerType: 'product', ownerId: p.id },
     });
-    expect(outbox).toHaveLength(2);
-
-    // Verify storage.deleteFile was called for each file
-    expect(deleteSpy).toHaveBeenCalledWith(s('cascade-1.jpg'));
-    expect(deleteSpy).toHaveBeenCalledWith(s('cascade-poster-1.jpg'));
-    expect(deleteSpy).toHaveBeenCalledWith(s('cascade-2.jpg'));
+    expect(intact).toHaveLength(2);
   });
 });
