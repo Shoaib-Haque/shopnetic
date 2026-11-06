@@ -30,6 +30,10 @@ export function ResponsiveImage({
 }: ResponsiveImageProps) {
   const [hasError, setHasError] = React.useState(false);
 
+  React.useEffect(() => {
+    setHasError(false);
+  }, [src, fileKey]);
+
   const sources = React.useMemo(() => {
     return getResponsiveImageSources(
       { fileKey: fileKey ?? '', url: src ?? '', variants: variants ?? null },

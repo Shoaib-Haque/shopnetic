@@ -273,6 +273,9 @@ export class MediaService {
     if (valid.fileKey !== undefined && valid.fileKey !== current.fileKey) {
       keysToDelete.push(current.fileKey);
       keysToDelete.push(...extractVariantKeys(current.variants));
+      if (valid.variants === undefined) {
+        data.variants = Prisma.DbNull;
+      }
     }
     if (
       valid.posterKey !== undefined &&

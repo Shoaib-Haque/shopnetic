@@ -571,7 +571,7 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
     );
 
     // Update replacing fileKey and posterKey
-    await mediaWithStorage.update(
+    const updated = await mediaWithStorage.update(
       asset.id,
       { fileKey: s('storage-del-2.jpg'), posterKey: s('storage-poster-2.jpg') },
       actor,
@@ -580,6 +580,7 @@ describe.skipIf(!hasDb)('MediaService (integration)', () => {
 
     expect(deleteSpy).toHaveBeenCalledWith(s('storage-del-1.jpg'));
     expect(deleteSpy).toHaveBeenCalledWith(s('storage-poster-1.jpg'));
+    expect(updated.variants).toBeNull();
 
     deleteSpy.mockClear();
 

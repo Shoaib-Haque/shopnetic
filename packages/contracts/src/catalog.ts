@@ -822,7 +822,10 @@ export function buildResponsiveSrcSet(
   for (const width of widths) {
     const file = variants[String(width)]?.[format];
     if (file && file.key) {
-      const url = file.url || resolveMediaUrl(file.key, publicBaseUrl);
+      const url =
+        (publicBaseUrl ? resolveMediaUrl(file.key, publicBaseUrl) : file.url) ||
+        file.url ||
+        resolveMediaUrl(file.key, publicBaseUrl);
       if (url) {
         parts.push(`${url} ${file.width}w`);
       }
@@ -840,7 +843,10 @@ export function getResponsiveImageSources(
   jpegSrcSet?: string;
   fallbackSrc: string;
 } {
-  const fallbackSrc = asset.url || resolveMediaUrl(asset.fileKey, publicBaseUrl);
+  const fallbackSrc =
+    (publicBaseUrl && asset.fileKey ? resolveMediaUrl(asset.fileKey, publicBaseUrl) : asset.url) ||
+    asset.url ||
+    resolveMediaUrl(asset.fileKey, publicBaseUrl);
   const avif = buildResponsiveSrcSet(asset.variants, 'avif', publicBaseUrl);
   const webp = buildResponsiveSrcSet(asset.variants, 'webp', publicBaseUrl);
   const jpeg = buildResponsiveSrcSet(asset.variants, 'jpeg', publicBaseUrl);
